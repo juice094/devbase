@@ -65,6 +65,7 @@ pub fn build() -> I18n {
             would_fetch: "Would fetch {} -> {}",
             fetch_success: "Fetch completed successfully",
             fetch_failed: "Fetch failed: {}. Please check network, VPN or authentication.",
+            network_timeout: "Network timeout: sync operation exceeded 30s. Check network or VPN.",
             no_origin: "No origin remote and no upstream URL configured",
             status_running: "Syncing...",
             up_to_date: "Up to date on {}",

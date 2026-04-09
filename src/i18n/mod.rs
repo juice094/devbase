@@ -76,6 +76,7 @@ pub struct SyncStrings {
     pub would_fetch: &'static str,
     pub fetch_success: &'static str,
     pub fetch_failed: &'static str,
+    pub network_timeout: &'static str,
     pub no_origin: &'static str,
     pub status_running: &'static str,
     pub up_to_date: &'static str,

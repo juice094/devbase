@@ -65,6 +65,7 @@ pub fn build() -> I18n {
             would_fetch: "将获取 {} -> {}",
             fetch_success: "获取完成",
             fetch_failed: "获取失败: {}。请检查网络连接、VPN 或认证设置。",
+            network_timeout: "网络超时：同步操作超过 30 秒。请检查网络连接或 VPN 设置。", 
             no_origin: "无 origin 远程仓库且未配置上游 URL",
             status_running: "同步中...",
             up_to_date: "{} 已是最新",

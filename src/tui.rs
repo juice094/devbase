@@ -593,7 +593,10 @@ fn ui(frame: &mut Frame, app: &mut App) {
             .iter()
             .map(|(repo_id, message)| {
                 let msg_lower = message.to_lowercase();
-                let is_error = msg_lower.contains("failed") || msg_lower.contains("error");
+                let is_error = msg_lower.contains("failed")
+                    || msg_lower.contains("error")
+                    || msg_lower.contains("timeout")
+                    || msg_lower.contains("超时");
                 let is_pending = message == crate::i18n::current().log.status_queued
                     || message == crate::i18n::current().sync.status_running;
                 let color = if is_error {

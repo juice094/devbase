@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
+use tokio::time::{timeout, Duration};
 use tracing::{info, warn};
 
 #[derive(Debug, Default, Clone)]
@@ -78,7 +79,14 @@ impl SyncOrchestrator {
                             ..Default::default()
                         },
                     );
-                    let summary = execute_task(&task, dry_run, strategy).await;
+                    let summary = match timeout(Duration::from_secs(30), execute_task(&task, dry_run, strategy)).await {
+                        Ok(s) => s,
+                        Err(_) => SyncSummary {
+                            action: "TIMEOUT".to_string(),
+                            message: crate::i18n::current().sync.network_timeout.to_string(),
+                            ..Default::default()
+                        },
+                    };
                     on_progress(task.id.clone(), summary.clone());
                     results.push((task.id, summary));
                 }
@@ -103,7 +111,14 @@ impl SyncOrchestrator {
                         .expect("semaphore should not be closed");
                     let strategy = strategy.to_string();
                     let handle = tokio::spawn(async move {
-                        let summary = execute_task(&task, dry_run, &strategy).await;
+                        let summary = match timeout(Duration::from_secs(30), execute_task(&task, dry_run, &strategy)).await {
+                            Ok(s) => s,
+                            Err(_) => SyncSummary {
+                                action: "TIMEOUT".to_string(),
+                                message: crate::i18n::current().sync.network_timeout.to_string(),
+                                ..Default::default()
+                            },
+                        };
                         (task.id, summary, permit)
                     });
                     handles.push(handle);
@@ -293,7 +308,7 @@ pub async fn run(
             );
         } else {
             println!("  [{}] {} {}...", id, crate::i18n::current().sync.checking, path);
-            if action == "error" {
+            if action == "error" || action == "timeout" {
                 println!("    [{}] {}", crate::i18n::current().sync.error_prefix, message);
             } else if action == "fetch_only" {
                 println!("    -> {}", crate::i18n::current().sync.fetched_only);
@@ -329,6 +344,7 @@ fn map_action(action: &str, _message: &str) -> String {
         "MERGED_COMMIT" => "merged_commit".to_string(),
         "MERGED" => "merged_ff".to_string(),
         "CONFLICT" => "conflict".to_string(),
+        "TIMEOUT" => "timeout".to_string(),
         "ERROR" => "error".to_string(),
         _ => "skipped".to_string(),
     }
