@@ -159,8 +159,7 @@ async fn collect_tasks(filter_tags: Option<&str>) -> anyhow::Result<Vec<RepoSync
     let tasks: Vec<RepoSyncTask> = repos
         .into_iter()
         .filter(|repo| {
-            let tags = repo.tags.join(",");
-            filter_list.is_empty() || filter_list.iter().any(|f| tags.contains(f))
+            filter_list.is_empty() || filter_list.iter().any(|f| repo.tags.contains(&f.to_string()))
         })
         .map(|repo| {
             let primary = repo.primary_remote().cloned();

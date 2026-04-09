@@ -122,17 +122,15 @@ fn compute_behind(path: &str, default_branch: Option<&str>) -> anyhow::Result<Op
 }
 
 fn eval_condition(
+    repo: &crate::registry::RepoEntry,
     cond: &Condition,
-    id: &str,
-    path: &str,
-    tags: &str,
     last_sync: Option<&str>,
     behind: Option<i32>,
     notes: &HashMap<String, Vec<String>>,
 ) -> Option<String> {
     match cond {
         Condition::Lang(lang) => {
-            if detect_lang(path, lang) {
+            if detect_lang(repo.local_path.to_string_lossy().as_ref(), lang) {
                 Some(format!("lang={}", lang))
             } else {
                 None
@@ -170,21 +168,21 @@ fn eval_condition(
             }
         }
         Condition::Tag(tag) => {
-            if tags.to_lowercase().split(',').any(|t| t.trim() == tag) {
+            if repo.tags.iter().any(|t| t.to_lowercase() == *tag) {
                 Some(format!("tag={}", tag))
             } else {
                 None
             }
         }
         Condition::Note(note) => {
-            if notes.get(id).map(|vec| vec.iter().any(|n| n.to_lowercase().contains(note))).unwrap_or(false) {
+            if notes.get(&repo.id).map(|vec| vec.iter().any(|n| n.to_lowercase().contains(note))).unwrap_or(false) {
                 Some(format!("note={}", note))
             } else {
                 None
             }
         }
         Condition::Keyword(kw) => {
-            let haystack = format!("{} {} {}", id, path, tags).to_lowercase();
+            let haystack = format!("{} {} {}", repo.id, repo.local_path.to_string_lossy(), repo.tags.join(",")).to_lowercase();
             if haystack.contains(kw) {
                 Some(format!("keyword={}", kw))
             } else {
@@ -281,8 +279,6 @@ pub async fn run_json(query_str: &str, config: &crate::config::Config) -> anyhow
         let upstream_url = primary.and_then(|r| r.upstream_url.clone());
         let default_branch = primary.and_then(|r| r.default_branch.clone());
         let last_sync = primary.and_then(|r| r.last_sync.map(|dt| dt.to_rfc3339()));
-        let tags = repo.tags.join(",");
-
         let needs_behind = conditions.iter().any(|c| matches!(c, Condition::Behind { .. }));
         let behind = if needs_behind {
             let cached = WorkspaceRegistry::get_health(&conn, &repo.id).ok().flatten();
@@ -315,7 +311,7 @@ pub async fn run_json(query_str: &str, config: &crate::config::Config) -> anyhow
         let mut reasons = Vec::new();
         let mut matched = true;
         for cond in &conditions {
-            if let Some(reason) = eval_condition(cond, &repo.id, repo.local_path.to_string_lossy().as_ref(), &tags, last_sync.as_deref(), behind, &notes_map) {
+            if let Some(reason) = eval_condition(&repo, cond, last_sync.as_deref(), behind, &notes_map) {
                 reasons.push(reason);
             } else {
                 matched = false;
@@ -329,7 +325,7 @@ pub async fn run_json(query_str: &str, config: &crate::config::Config) -> anyhow
                 "id": repo.id,
                 "local_path": repo.local_path,
                 "upstream_url": upstream_url,
-                "tags": tags,
+                "tags": repo.tags.join(","),
                 "default_branch": default_branch,
                 "last_sync": last_sync,
                 "match_reasons": reasons

@@ -177,14 +177,21 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Tag { repo_id, tags } => {
             info!("Tagging {} with {}", repo_id, tags);
-            let conn = registry::WorkspaceRegistry::init_db()?;
-            let updated = conn.execute(
-                "UPDATE repos SET tags = ?1 WHERE id = ?2",
-                rusqlite::params![tags, repo_id],
-            )?;
-            if updated == 0 {
+            let mut conn = registry::WorkspaceRegistry::init_db()?;
+            let tag_list: Vec<&str> = tags.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            let tx = conn.transaction()?;
+            let exists: bool = tx.query_row("SELECT 1 FROM repos WHERE id = ?1", [&repo_id], |_| Ok(true)).unwrap_or(false);
+            if !exists {
                 println!("Repository '{}' not found in registry.", repo_id);
             } else {
+                tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1", [&repo_id])?;
+                for tag in &tag_list {
+                    tx.execute(
+                        "INSERT OR REPLACE INTO repo_tags (repo_id, tag) VALUES (?1, ?2)",
+                        rusqlite::params![&repo_id, tag],
+                    )?;
+                }
+                tx.commit()?;
                 println!("Tagged '{}' with '{}'.", repo_id, tags);
             }
         }
@@ -270,8 +277,7 @@ async fn main() -> anyhow::Result<()> {
             let filtered_repos: Vec<_> = repos
                 .into_iter()
                 .filter(|repo| {
-                    let tags = repo.tags.join(",");
-                    filter_list.is_empty() || filter_list.iter().any(|f| tags.contains(f))
+                    filter_list.is_empty() || filter_list.iter().any(|f| repo.tags.contains(&f.to_string()))
                 })
                 .collect();
 

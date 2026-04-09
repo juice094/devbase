@@ -20,7 +20,7 @@ struct RepoItem {
     local_path: String,
     upstream_url: Option<String>,
     default_branch: Option<String>,
-    tags: String,
+    tags: Vec<String>,
     language: Option<String>,
     status_dirty: Option<bool>,
     status_ahead: Option<usize>,
@@ -95,7 +95,7 @@ impl App {
                 local_path: repo.local_path.to_string_lossy().to_string(),
                 upstream_url: primary.as_ref().and_then(|r| r.upstream_url.clone()),
                 default_branch: primary.as_ref().and_then(|r| r.default_branch.clone()),
-                tags: repo.tags.join(","),
+                tags: repo.tags.clone(),
                 language: repo.language,
                 status_dirty: None,
                 status_ahead: None,
@@ -241,11 +241,16 @@ impl App {
         };
 
         match (|| -> anyhow::Result<()> {
-            let conn = WorkspaceRegistry::init_db()?;
-            conn.execute(
-                "UPDATE repos SET tags = ?1 WHERE id = ?2",
-                [new_tags, &repo_id],
-            )?;
+            let mut conn = WorkspaceRegistry::init_db()?;
+            let tx = conn.transaction()?;
+            tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1", [&repo_id])?;
+            for tag in new_tags.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                tx.execute(
+                    "INSERT OR REPLACE INTO repo_tags (repo_id, tag) VALUES (?1, ?2)",
+                    rusqlite::params![&repo_id, tag],
+                )?;
+            }
+            tx.commit()?;
             Ok(())
         })() {
             Ok(()) => {
@@ -273,9 +278,8 @@ impl App {
 
         let target_tags: Vec<&str> = current
             .tags
-            .split(',')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
+            .iter()
+            .map(|s| s.as_str())
             .collect();
 
         if target_tags.is_empty() {
@@ -287,13 +291,13 @@ impl App {
         let repos_to_sync: Vec<crate::sync::RepoSyncTask> = self
             .repos
             .iter()
-            .filter(|r| target_tags.iter().any(|t| r.tags.contains(t)))
+            .filter(|r| target_tags.iter().any(|t| r.tags.contains(&t.to_string())))
             .map(|r| crate::sync::RepoSyncTask {
                 id: r.id.clone(),
                 path: r.local_path.clone(),
                 upstream_url: r.upstream_url.clone(),
                 default_branch: r.default_branch.clone(),
-                tags: r.tags.clone(),
+                tags: r.tags.join(","),
             })
             .collect();
 
@@ -662,7 +666,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: ratatui::layout::Rect) -> ra
         .split(popup_layout[1])[1]
 }
 
-fn tag_spans(tags: &str) -> Vec<Span<'_>> {
+fn tag_spans(tags: &[String]) -> Vec<Span<'_>> {
     let palette = [
         Color::Magenta,
         Color::Green,
@@ -672,7 +676,7 @@ fn tag_spans(tags: &str) -> Vec<Span<'_>> {
         Color::Red,
     ];
     let mut spans = Vec::new();
-    for (i, tag) in tags.split(',').enumerate() {
+    for (i, tag) in tags.iter().enumerate() {
         let tag = tag.trim();
         if tag.is_empty() {
             continue;

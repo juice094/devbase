@@ -92,12 +92,50 @@ impl WorkspaceRegistry {
             "CREATE TABLE IF NOT EXISTS repos (
                 id TEXT PRIMARY KEY,
                 local_path TEXT NOT NULL,
-                tags TEXT,
                 language TEXT,
                 discovered_at TEXT NOT NULL
             )",
             [],
         )?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS repo_tags (
+                repo_id TEXT NOT NULL,
+                tag TEXT NOT NULL,
+                PRIMARY KEY (repo_id, tag),
+                FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_repo_tags_tag ON repo_tags(tag)",
+            [],
+        )?;
+
+        // One-time migration: tags from repos CSV to repo_tags
+        let repos_has_tags = {
+            let mut stmt = conn.prepare("PRAGMA table_info(repos)")?;
+            let rows = stmt.query_map([], |row| Ok(row.get::<_, String>(1)?))?;
+            rows.filter_map(Result::ok).any(|name| name == "tags")
+        };
+        if repos_has_tags {
+            {
+                let mut stmt = conn.prepare("SELECT id, tags FROM repos WHERE tags IS NOT NULL AND tags != ''")?;
+                let rows = stmt.query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?;
+                for row in rows {
+                    let (repo_id, tags_csv) = row?;
+                    for tag in tags_csv.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                        let _ = conn.execute(
+                            "INSERT OR IGNORE INTO repo_tags (repo_id, tag) VALUES (?1, ?2)",
+                            [&repo_id, tag],
+                        );
+                    }
+                }
+            }
+            let _ = conn.execute("ALTER TABLE repos DROP COLUMN tags", []);
+        }
+
         conn.execute(
             "CREATE TABLE IF NOT EXISTS repo_remotes (
                 repo_id TEXT NOT NULL,
@@ -226,9 +264,17 @@ impl WorkspaceRegistry {
                 for row in rows {
                     let (id, local_path, upstream_url, default_branch, tags, last_sync, discovered_at, language) = row?;
                     conn.execute(
-                        "INSERT OR REPLACE INTO repos (id, local_path, tags, language, discovered_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-                        rusqlite::params![&id, &local_path, tags.as_deref().unwrap_or(""), language.as_deref(), &discovered_at],
+                        "INSERT OR REPLACE INTO repos (id, local_path, language, discovered_at) VALUES (?1, ?2, ?3, ?4)",
+                        rusqlite::params![&id, &local_path, language.as_deref(), &discovered_at],
                     )?;
+                    if let Some(ref t) = tags {
+                        for tag in t.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                            let _ = conn.execute(
+                                "INSERT OR IGNORE INTO repo_tags (repo_id, tag) VALUES (?1, ?2)",
+                                [&id, tag],
+                            );
+                        }
+                    }
                     conn.execute(
                         "INSERT OR REPLACE INTO repo_remotes (repo_id, remote_name, upstream_url, default_branch, last_sync) VALUES (?1, ?2, ?3, ?4, ?5)",
                         rusqlite::params![&id, "origin", upstream_url.as_deref(), default_branch.as_deref(), last_sync.as_deref()],
@@ -296,7 +342,7 @@ impl WorkspaceRegistry {
 
     pub fn list_repos(conn: &rusqlite::Connection) -> anyhow::Result<Vec<RepoEntry>> {
         let stmt = conn.prepare(
-            "SELECT r.id, r.local_path, r.tags, r.language, r.discovered_at,
+            "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
                     rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
              FROM repos r
              LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
@@ -310,7 +356,7 @@ impl WorkspaceRegistry {
         threshold: &str,
     ) -> anyhow::Result<Vec<RepoEntry>> {
         let stmt = conn.prepare(
-            "SELECT r.id, r.local_path, r.tags, r.language, r.discovered_at,
+            "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
                     rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
              FROM repos r
              LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
@@ -329,7 +375,7 @@ impl WorkspaceRegistry {
         threshold: &str,
     ) -> anyhow::Result<Vec<RepoEntry>> {
         let stmt = conn.prepare(
-            "SELECT r.id, r.local_path, r.tags, r.language, r.discovered_at,
+            "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
                     rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
              FROM repos r
              LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
@@ -346,15 +392,21 @@ impl WorkspaceRegistry {
     pub fn save_repo(conn: &mut rusqlite::Connection, repo: &RepoEntry) -> anyhow::Result<()> {
         let tx = conn.transaction()?;
         tx.execute(
-            "INSERT OR REPLACE INTO repos (id, local_path, tags, language, discovered_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT OR REPLACE INTO repos (id, local_path, language, discovered_at) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![
                 &repo.id,
                 repo.local_path.to_string_lossy().to_string(),
-                repo.tags.join(","),
                 repo.language.as_ref(),
                 repo.discovered_at.to_rfc3339()
             ],
         )?;
+        tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1", [&repo.id])?;
+        for tag in &repo.tags {
+            tx.execute(
+                "INSERT OR REPLACE INTO repo_tags (repo_id, tag) VALUES (?1, ?2)",
+                rusqlite::params![&repo.id, tag],
+            )?;
+        }
         tx.execute("DELETE FROM repo_remotes WHERE repo_id = ?1", [&repo.id])?;
         for remote in &repo.remotes {
             tx.execute(
