@@ -304,6 +304,36 @@ pub fn extract_module_structure(path: &Path) -> Vec<ModuleInfo> {
     modules
 }
 
+pub fn index_repo(repo: &crate::registry::RepoEntry) -> anyhow::Result<()> {
+    use tracing::{info, warn};
+
+    let mut conn = WorkspaceRegistry::init_db()?;
+
+    let (summary, keywords) = match extract_readme_summary(&repo.local_path) {
+        Some((s, k)) => (s, k.join(", ")),
+        None => {
+            warn!("Failed to extract summary for {}", repo.id);
+            ("Unknown project".to_string(), "unknown".to_string())
+        }
+    };
+
+    let modules = extract_module_structure(&repo.local_path);
+
+    WorkspaceRegistry::save_summary(&conn, &repo.id, &summary, &keywords)?;
+
+    let modules_tuple: Vec<(String, String)> = modules
+        .into_iter()
+        .map(|m| (m.name, m.kind))
+        .collect();
+    WorkspaceRegistry::save_modules(&mut conn, &repo.id, &modules_tuple)?;
+
+    info!(
+        "Indexed [{}] -> \"{}\" (keywords: {})",
+        repo.id, summary, keywords
+    );
+    Ok(())
+}
+
 /// 兼容旧调用的包装层：执行索引逻辑
 pub fn run_index(path: &str) -> anyhow::Result<usize> {
     use tracing::{info, warn};

@@ -68,6 +68,7 @@ impl FsWatcher {
 
 /// Middle-layer aggregator: dedup and degrade to full-scan when too many files change.
 pub struct WatchAggregator {
+    #[allow(dead_code)]
     pub delay: Duration,
     pub max_files: usize,
 }
@@ -76,7 +77,7 @@ impl Default for WatchAggregator {
     fn default() -> Self {
         WatchAggregator {
             delay: Duration::from_secs(1),
-            max_files: 512,
+            max_files: crate::config::default_watch_max_files(),
         }
     }
 }
@@ -103,28 +104,41 @@ impl WatchAggregator {
 #[derive(Debug, Clone)]
 pub enum SyncAction {
     /// A full rescan was requested (degraded or initial).
-    Scan(PathBuf),
+    Scan(()),
     /// Incremental sync for a specific path with changed files.
-    Sync(PathBuf, Vec<FileInfo>),
+    Sync((), ()),
 }
 
 /// Top-layer scheduler that turns file-system events into sync actions.
 pub struct FolderScheduler {
     pub root: PathBuf,
     pub index: Option<SyncIndex>,
+    pub max_files: usize,
 }
 
 impl FolderScheduler {
     pub fn new(root: PathBuf) -> Self {
-        FolderScheduler { root, index: None }
+        FolderScheduler {
+            root,
+            index: None,
+            max_files: crate::config::default_watch_max_files(),
+        }
+    }
+
+    pub fn with_max_files(root: PathBuf, max_files: usize) -> Self {
+        FolderScheduler {
+            root,
+            index: None,
+            max_files,
+        }
     }
 
     /// Given a list of changed paths, produce SyncActions.
     pub fn check_and_schedule(&mut self, paths: Vec<PathBuf>) -> anyhow::Result<Vec<SyncAction>> {
         // If too many paths changed, degrade to full root scan
-        if paths.len() > 512 {
+        if paths.len() > self.max_files {
             let new_index = scan_directory(&self.root)?;
-            let action = SyncAction::Scan(self.root.clone());
+            let action = SyncAction::Scan(());
             self.index = Some(new_index);
             return Ok(vec![action]);
         }
@@ -167,11 +181,11 @@ impl FolderScheduler {
             let has_deletions = old_map.keys().any(|k| !new_map.contains_key(k));
 
             if !changed.is_empty() || has_deletions {
-                actions.push(SyncAction::Sync(self.root.clone(), changed));
+                actions.push(SyncAction::Sync((), ()));
             }
         } else {
             // First run: treat as full scan
-            actions.push(SyncAction::Scan(self.root.clone()));
+            actions.push(SyncAction::Scan(()));
         }
 
         self.index = Some(new_index);

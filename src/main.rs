@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use tracing::{info, warn};
 
 mod asyncgit;
+mod config;
 mod daemon;
 mod digest;
 mod health;
@@ -85,8 +86,8 @@ enum Commands {
     /// Start the background daemon for knowledge maintenance
     Daemon {
         /// Tick interval in seconds
-        #[arg(long, default_value = "3600")]
-        interval: u64,
+        #[arg(long)]
+        interval: Option<u64>,
     },
     /// Watch a directory for changes and schedule sync actions
     Watch {
@@ -121,6 +122,7 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
+    let config = config::Config::load()?;
     let cli = Cli::parse();
 
     match cli.command {
@@ -130,7 +132,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Health { detail } => {
             info!("Running health check...");
-            health::run(detail).await?;
+            health::run(detail, config.cache.ttl_seconds).await?;
         }
         Commands::Sync {
             dry_run,
@@ -145,7 +147,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Query { query } => {
             info!("Querying: {}", query);
-            query::run(&query).await?;
+            query::run(&query, &config).await?;
         }
         Commands::Index { path } => {
             info!("Indexing repositories: path='{}'", path);
@@ -198,7 +200,8 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Daemon { interval } => {
-            let d = daemon::Daemon::new(interval);
+            let interval = interval.unwrap_or(config.daemon.interval_seconds);
+            let d = daemon::Daemon::new(interval, config.clone());
             d.run().await?;
         }
         Commands::Watch { path, duration } => {
@@ -207,8 +210,11 @@ async fn main() -> anyhow::Result<()> {
 
             let root = std::path::PathBuf::from(&path);
             let watcher = FsWatcher::new(&root)?;
-            let aggregator = WatchAggregator::default();
-            let mut scheduler = FolderScheduler::new(root.clone());
+            let aggregator = WatchAggregator {
+                max_files: config.watch.max_files,
+                ..Default::default()
+            };
+            let mut scheduler = FolderScheduler::with_max_files(root.clone(), config.watch.max_files);
 
             println!("Watching {} for {} seconds...", path, duration);
             let start = std::time::Instant::now();
@@ -321,9 +327,14 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Digest => {
-            match tokio::task::spawn_blocking(|| {
+            let digest_config = config.digest.clone();
+            match tokio::task::spawn_blocking(move || {
                 let conn = registry::WorkspaceRegistry::init_db()?;
-                digest::generate_daily_digest(&conn)
+                let cfg = crate::config::Config {
+                    digest: digest_config,
+                    ..Default::default()
+                };
+                digest::generate_daily_digest(&conn, &cfg)
             })
             .await
             {

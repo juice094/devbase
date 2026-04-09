@@ -1,7 +1,7 @@
 use chrono::{Utc, Duration};
 
-pub fn generate_daily_digest(conn: &rusqlite::Connection) -> anyhow::Result<String> {
-    let since = (Utc::now() - Duration::hours(24)).to_rfc3339();
+pub fn generate_daily_digest(conn: &rusqlite::Connection, config: &crate::config::Config) -> anyhow::Result<String> {
+    let since = (Utc::now() - Duration::hours(config.digest.window_hours)).to_rfc3339();
     let mut lines = Vec::new();
     lines.push("📊 devbase 知识日报".to_string());
     lines.push(format!("生成时间: {}", Utc::now().format("%Y-%m-%d %H:%M UTC")));

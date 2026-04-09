@@ -19,6 +19,7 @@ pub struct VersionVector {
 
 impl VersionVector {
     /// Increment the counter for `local_id`, creating it if absent.
+    #[allow(dead_code)]
     pub fn update(mut self, local_id: u64) -> Self {
         for c in &mut self.counters {
             if c.id == local_id {
@@ -34,6 +35,7 @@ impl VersionVector {
     }
 
     /// Merge with another vector, taking the maximum value for each id.
+    #[allow(dead_code)]
     pub fn merge(mut self, other: &VersionVector) -> Self {
         for o in &other.counters {
             let mut found = false;
@@ -56,6 +58,7 @@ impl VersionVector {
     /// - Greater  => self dominates other (all >= and at least one >)
     /// - Less     => other dominates self
     /// - Equal    => identical or concurrent conflict (incomparable)
+    #[allow(dead_code)]
     pub fn compare(&self, other: &VersionVector) -> Ordering {
         let mut self_map = std::collections::HashMap::new();
         for c in &self.counters {

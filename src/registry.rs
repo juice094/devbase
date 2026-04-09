@@ -240,15 +240,11 @@ impl WorkspaceRegistry {
         Ok(conn)
     }
 
-    pub fn list_repos(conn: &rusqlite::Connection) -> anyhow::Result<Vec<RepoEntry>> {
-        let mut stmt = conn.prepare(
-            "SELECT r.id, r.local_path, r.tags, r.language, r.discovered_at,
-                    rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
-             FROM repos r
-             LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
-             ORDER BY r.id, rm.remote_name"
-        )?;
-        let rows = stmt.query_map([], |row| {
+    fn collect_repos_from_stmt(
+        mut stmt: rusqlite::Statement<'_>,
+        params: &[&dyn rusqlite::ToSql],
+    ) -> anyhow::Result<Vec<RepoEntry>> {
+        let rows = stmt.query_map(params, |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -296,6 +292,55 @@ impl WorkspaceRegistry {
             }
         }
         Ok(entries)
+    }
+
+    pub fn list_repos(conn: &rusqlite::Connection) -> anyhow::Result<Vec<RepoEntry>> {
+        let stmt = conn.prepare(
+            "SELECT r.id, r.local_path, r.tags, r.language, r.discovered_at,
+                    rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
+             FROM repos r
+             LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
+             ORDER BY r.id, rm.remote_name"
+        )?;
+        Self::collect_repos_from_stmt(stmt, &[])
+    }
+
+    pub fn list_repos_stale_health(
+        conn: &rusqlite::Connection,
+        threshold: &str,
+    ) -> anyhow::Result<Vec<RepoEntry>> {
+        let stmt = conn.prepare(
+            "SELECT r.id, r.local_path, r.tags, r.language, r.discovered_at,
+                    rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
+             FROM repos r
+             LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM repo_health h WHERE h.repo_id = r.id
+             ) OR EXISTS (
+                 SELECT 1 FROM repo_health h WHERE h.repo_id = r.id AND h.checked_at < ?1
+             )
+             ORDER BY r.id, rm.remote_name"
+        )?;
+        Self::collect_repos_from_stmt(stmt, &[&threshold])
+    }
+
+    pub fn list_repos_need_index(
+        conn: &rusqlite::Connection,
+        threshold: &str,
+    ) -> anyhow::Result<Vec<RepoEntry>> {
+        let stmt = conn.prepare(
+            "SELECT r.id, r.local_path, r.tags, r.language, r.discovered_at,
+                    rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
+             FROM repos r
+             LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM repo_summaries s WHERE s.repo_id = r.id
+             ) OR EXISTS (
+                 SELECT 1 FROM repo_summaries s WHERE s.repo_id = r.id AND s.generated_at < ?1
+             )
+             ORDER BY r.id, rm.remote_name"
+        )?;
+        Self::collect_repos_from_stmt(stmt, &[&threshold])
     }
 
     pub fn save_repo(conn: &mut rusqlite::Connection, repo: &RepoEntry) -> anyhow::Result<()> {

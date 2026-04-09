@@ -311,7 +311,8 @@ impl McpTool for DevkitHealthTool {
 
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let detail = args.get("detail").and_then(|v| v.as_bool()).unwrap_or(false);
-        crate::health::run_json(detail).await
+        let config = crate::config::Config::load()?;
+        crate::health::run_json(detail, config.cache.ttl_seconds).await
     }
 }
 
@@ -445,7 +446,8 @@ impl McpTool for DevkitDigestTool {
     async fn invoke(&self, _args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         tokio::task::spawn_blocking(|| {
             let conn = crate::registry::WorkspaceRegistry::init_db()?;
-            let text = crate::digest::generate_daily_digest(&conn)?;
+            let config = crate::config::Config::load()?;
+            let text = crate::digest::generate_daily_digest(&conn, &config)?;
             Ok::<_, anyhow::Error>(serde_json::json!({ "success": true, "digest": text }))
         })
         .await
@@ -489,7 +491,8 @@ impl McpTool for DevkitQueryTool {
         let expression = expression.to_string();
         tokio::task::spawn_blocking(move || {
             let rt = tokio::runtime::Handle::current();
-            rt.block_on(crate::query::run_json(&expression))
+            let config = crate::config::Config::load()?;
+            rt.block_on(crate::query::run_json(&expression, &config))
         })
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?

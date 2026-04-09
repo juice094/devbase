@@ -194,7 +194,7 @@ fn eval_condition(
     }
 }
 
-pub async fn run_json(query_str: &str) -> anyhow::Result<serde_json::Value> {
+pub async fn run_json(query_str: &str, config: &crate::config::Config) -> anyhow::Result<serde_json::Value> {
     let conn = WorkspaceRegistry::init_db()?;
 
     // Handle semantic: prefix queries directly against repo_summaries
@@ -283,14 +283,12 @@ pub async fn run_json(query_str: &str) -> anyhow::Result<serde_json::Value> {
         let last_sync = primary.and_then(|r| r.last_sync.map(|dt| dt.to_rfc3339()));
         let tags = repo.tags.join(",");
 
-        const CACHE_TTL_SECS: i64 = 300;
-
         let needs_behind = conditions.iter().any(|c| matches!(c, Condition::Behind { .. }));
         let behind = if needs_behind {
             let cached = WorkspaceRegistry::get_health(&conn, &repo.id).ok().flatten();
             if let Some(health) = cached {
                 let elapsed = Utc::now().signed_duration_since(health.checked_at).num_seconds();
-                if elapsed < CACHE_TTL_SECS {
+                if elapsed < config.cache.ttl_seconds {
                     Some(health.behind as i32)
                 } else {
                     match compute_behind(repo.local_path.to_string_lossy().as_ref(), default_branch.as_deref()) {
@@ -352,8 +350,8 @@ pub async fn run_json(query_str: &str) -> anyhow::Result<serde_json::Value> {
     }))
 }
 
-pub async fn run(query_str: &str) -> anyhow::Result<()> {
-    let result = run_json(query_str).await?;
+pub async fn run(query_str: &str, config: &crate::config::Config) -> anyhow::Result<()> {
+    let result = run_json(query_str, config).await?;
     let count = result["count"].as_u64().unwrap_or(0) as usize;
 
     if count == 0 {

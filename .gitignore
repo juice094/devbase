@@ -1,1 +1,4 @@
 /target
+
+daemon_test*.log
+daemon_test*.err

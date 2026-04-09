@@ -4,12 +4,14 @@ use tracing::{info, warn};
 
 pub struct Daemon {
     pub interval: Duration,
+    pub config: crate::config::Config,
 }
 
 impl Daemon {
-    pub fn new(interval_seconds: u64) -> Self {
+    pub fn new(interval_seconds: u64, config: crate::config::Config) -> Self {
         Self {
             interval: Duration::from_secs(interval_seconds),
+            config,
         }
     }
 
@@ -27,10 +29,19 @@ impl Daemon {
         info!("Daemon tick start");
 
         // 1. health check for stale repos
-        match tokio::task::spawn_blocking(|| {
+        let stale_threshold = if self.config.daemon.incremental {
+            Some((chrono::Utc::now() - chrono::Duration::hours(self.config.daemon.health_stale_hours)).to_rfc3339())
+        } else {
+            None
+        };
+        match tokio::task::spawn_blocking(move || {
             let conn = crate::registry::WorkspaceRegistry::init_db()?;
-            let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
-            for repo in repos {
+            let repos = if let Some(threshold) = stale_threshold {
+                crate::registry::WorkspaceRegistry::list_repos_stale_health(&conn, &threshold)?
+            } else {
+                crate::registry::WorkspaceRegistry::list_repos(&conn)?
+            };
+            for repo in &repos {
                 let primary = repo.primary_remote();
                 let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
                 let default_branch = primary.and_then(|r| r.default_branch.as_deref());
@@ -46,17 +57,40 @@ impl Daemon {
                     tracing::warn!("Failed to save health for {}: {}", repo.id, e);
                 }
             }
-            Ok::<_, anyhow::Error>(())
+            Ok::<_, anyhow::Error>(repos.len())
         })
         .await
         {
-            Ok(Ok(())) => {}
+            Ok(Ok(count)) => info!("Health check: {} stale repos", count),
             Ok(Err(e)) => warn!("Health check failed: {}", e),
             Err(e) => warn!("Health check task panicked: {}", e),
         }
 
         // 2. re-index recently modified repos
-        match tokio::task::spawn_blocking(|| crate::knowledge_engine::run_index("")).await {
+        let index_threshold = if self.config.daemon.incremental {
+            Some((chrono::Utc::now() - chrono::Duration::hours(24)).to_rfc3339())
+        } else {
+            None
+        };
+        match tokio::task::spawn_blocking(move || {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let repos = if let Some(threshold) = index_threshold {
+                crate::registry::WorkspaceRegistry::list_repos_need_index(&conn, &threshold)?
+            } else {
+                crate::registry::WorkspaceRegistry::list_repos(&conn)?
+            };
+            let mut count = 0;
+            for repo in repos {
+                if let Err(e) = crate::knowledge_engine::index_repo(&repo) {
+                    tracing::warn!("Failed to index {}: {}", repo.id, e);
+                } else {
+                    count += 1;
+                }
+            }
+            Ok::<_, anyhow::Error>(count)
+        })
+        .await
+        {
             Ok(Ok(count)) => info!("Re-indexed {} repositories", count),
             Ok(Err(e)) => warn!("Re-index failed: {}", e),
             Err(e) => warn!("Re-index task panicked: {}", e),
@@ -95,9 +129,14 @@ impl Daemon {
         }
 
         // 4. generate digest if it's morning (or every N ticks)
-        match tokio::task::spawn_blocking(|| {
+        let digest_config = self.config.digest.clone();
+        match tokio::task::spawn_blocking(move || {
             let conn = crate::registry::WorkspaceRegistry::init_db()?;
-            crate::digest::generate_daily_digest(&conn)
+            let cfg = crate::config::Config {
+                digest: digest_config,
+                ..Default::default()
+            };
+            crate::digest::generate_daily_digest(&conn, &cfg)
         })
         .await
         {

@@ -3,7 +3,7 @@ use chrono::Utc;
 use git2::Repository;
 use tracing::info;
 
-pub async fn run_json(detail: bool) -> anyhow::Result<serde_json::Value> {
+pub async fn run_json(detail: bool, ttl_seconds: i64) -> anyhow::Result<serde_json::Value> {
     let (total_repos, dirty_repos, behind_upstream, no_upstream_count, repo_details) = {
         let conn = WorkspaceRegistry::init_db()?;
         let repos = WorkspaceRegistry::list_repos(&conn)?;
@@ -14,8 +14,6 @@ pub async fn run_json(detail: bool) -> anyhow::Result<serde_json::Value> {
         let mut no_upstream_count: usize = 0;
         let mut repo_details: Vec<serde_json::Value> = Vec::new();
 
-        const CACHE_TTL_SECS: i64 = 300;
-
         for repo in repos {
             total_repos += 1;
             let primary = repo.primary_remote();
@@ -25,7 +23,7 @@ pub async fn run_json(detail: bool) -> anyhow::Result<serde_json::Value> {
             let (status, ahead, behind) = match WorkspaceRegistry::get_health(&conn, &repo.id) {
                 Ok(Some(health)) => {
                     let elapsed = Utc::now().signed_duration_since(health.checked_at).num_seconds();
-                    if elapsed < CACHE_TTL_SECS {
+                    if elapsed < ttl_seconds {
                         (health.status, health.ahead, health.behind)
                     } else {
                         let (status, ahead, behind) =
@@ -103,8 +101,8 @@ pub async fn run_json(detail: bool) -> anyhow::Result<serde_json::Value> {
     }))
 }
 
-pub async fn run(detail: bool) -> anyhow::Result<()> {
-    let result = run_json(detail).await?;
+pub async fn run(detail: bool, ttl_seconds: i64) -> anyhow::Result<()> {
+    let result = run_json(detail, ttl_seconds).await?;
 
     let summary = result["summary"].as_object().unwrap();
     println!("Summary:");
