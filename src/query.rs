@@ -1,6 +1,7 @@
 use crate::registry::WorkspaceRegistry;
 use chrono::{DateTime, Utc};
 use git2::Repository;
+use std::collections::HashMap;
 use std::path::Path;
 use tracing::{info, warn};
 
@@ -10,6 +11,7 @@ enum Condition {
     Stale { op: String, days: i64 },
     Behind { op: String, count: i64 },
     Tag(String),
+    Note(String),
     Keyword(String),
 }
 
@@ -44,6 +46,7 @@ fn parse_query(query_str: &str) -> Vec<Condition> {
                     }
                 }
                 "tag" => conditions.push(Condition::Tag(rest.to_lowercase())),
+                "note" => conditions.push(Condition::Note(rest.to_lowercase())),
                 _ => conditions.push(Condition::Keyword(token.to_lowercase())),
             }
         } else {
@@ -125,6 +128,7 @@ fn eval_condition(
     tags: &str,
     last_sync: Option<&str>,
     behind: Option<i32>,
+    notes: &HashMap<String, Vec<String>>,
 ) -> Option<String> {
     match cond {
         Condition::Lang(lang) => {
@@ -172,6 +176,13 @@ fn eval_condition(
                 None
             }
         }
+        Condition::Note(note) => {
+            if notes.get(id).map(|vec| vec.iter().any(|n| n.to_lowercase().contains(note))).unwrap_or(false) {
+                Some(format!("note={}", note))
+            } else {
+                None
+            }
+        }
         Condition::Keyword(kw) => {
             let haystack = format!("{} {} {}", id, path, tags).to_lowercase();
             if haystack.contains(kw) {
@@ -185,9 +196,82 @@ fn eval_condition(
 
 pub async fn run_json(query_str: &str) -> anyhow::Result<serde_json::Value> {
     let conn = WorkspaceRegistry::init_db()?;
+
+    // Handle semantic: prefix queries directly against repo_summaries
+    if let Some(rest) = query_str.strip_prefix("semantic:") {
+        let keywords: Vec<&str> = rest.split_whitespace().collect();
+        if keywords.is_empty() {
+            return Ok(serde_json::json!({
+                "success": true,
+                "count": 0,
+                "expression": query_str,
+                "results": []
+            }));
+        }
+
+        let clauses: Vec<String> = keywords.iter().map(|_| "(s.summary LIKE ? OR s.keywords LIKE ?)".to_string()).collect();
+        let sql = format!(
+            "SELECT r.id, r.local_path, s.summary, s.keywords FROM repo_summaries s JOIN repos r ON r.id = s.repo_id WHERE {}",
+            clauses.join(" OR ")
+        );
+
+        let likes: Vec<String> = keywords.iter().map(|k| format!("%{}%", k)).collect();
+        let mut param_refs: Vec<&dyn rusqlite::ToSql> = Vec::new();
+        for like in &likes {
+            param_refs.push(like);
+            param_refs.push(like);
+        }
+
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(param_refs), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+
+        let mut count = 0;
+        let mut results: Vec<serde_json::Value> = Vec::new();
+        for row in rows {
+            let (id, local_path, summary, keywords) = row?;
+            count += 1;
+            results.push(serde_json::json!({
+                "id": id,
+                "local_path": local_path,
+                "summary": summary,
+                "keywords": keywords,
+                "match_reasons": ["semantic"]
+            }));
+        }
+
+        let top_ids = results.iter().take(10).map(|r| r.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string()).collect::<Vec<_>>().join(",");
+        let _ = WorkspaceRegistry::log_query(&conn, query_str, "semantic", count, &top_ids);
+        return Ok(serde_json::json!({
+            "success": true,
+            "count": count,
+            "expression": query_str,
+            "results": results
+        }));
+    }
+
     let conditions = parse_query(query_str);
 
     let repos = WorkspaceRegistry::list_repos(&conn)?;
+
+    let needs_notes = conditions.iter().any(|c| matches!(c, Condition::Note(..)));
+    let mut notes_map: HashMap<String, Vec<String>> = HashMap::new();
+    if needs_notes {
+        let mut stmt = conn.prepare("SELECT repo_id, note_text FROM repo_notes")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            let (repo_id, note_text) = row?;
+            notes_map.entry(repo_id).or_default().push(note_text);
+        }
+    }
 
     let mut count = 0;
     let mut results: Vec<serde_json::Value> = Vec::new();
@@ -233,7 +317,7 @@ pub async fn run_json(query_str: &str) -> anyhow::Result<serde_json::Value> {
         let mut reasons = Vec::new();
         let mut matched = true;
         for cond in &conditions {
-            if let Some(reason) = eval_condition(cond, &repo.id, repo.local_path.to_string_lossy().as_ref(), &tags, last_sync.as_deref(), behind) {
+            if let Some(reason) = eval_condition(cond, &repo.id, repo.local_path.to_string_lossy().as_ref(), &tags, last_sync.as_deref(), behind, &notes_map) {
                 reasons.push(reason);
             } else {
                 matched = false;
@@ -255,6 +339,10 @@ pub async fn run_json(query_str: &str) -> anyhow::Result<serde_json::Value> {
         }
     }
 
+    let top_ids = results.iter().take(10).map(|r| r.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string()).collect::<Vec<_>>().join(",");
+    let query_type = if query_str.starts_with("semantic:") { "semantic" } else { "structured" };
+    let _ = WorkspaceRegistry::log_query(&conn, query_str, query_type, count, &top_ids);
+
     info!("Query executed: {}", query_str);
     Ok(serde_json::json!({
         "success": true,
@@ -274,13 +362,18 @@ pub async fn run(query_str: &str) -> anyhow::Result<()> {
         println!("\nFound {} result(s).", count);
         for item in result["results"].as_array().unwrap_or(&vec![]) {
             let id = item["id"].as_str().unwrap_or("");
-            let path = item["local_path"].as_str().unwrap_or("");
-            let tags = item["tags"].as_str().unwrap_or("");
-            let reasons = item["match_reasons"]
-                .as_array()
-                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
-                .unwrap_or_default();
-            println!("  [{}] {} (tags: {})  [match: {}]", id, path, tags, reasons);
+            if let Some(summary) = item["summary"].as_str() {
+                let keywords = item["keywords"].as_str().unwrap_or("");
+                println!("  [{}] {} (keywords: {})", id, summary, keywords);
+            } else {
+                let path = item["local_path"].as_str().unwrap_or("");
+                let tags = item["tags"].as_str().unwrap_or("");
+                let reasons = item["match_reasons"]
+                    .as_array()
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
+                    .unwrap_or_default();
+                println!("  [{}] {} (tags: {})  [match: {}]", id, path, tags, reasons);
+            }
         }
     }
 

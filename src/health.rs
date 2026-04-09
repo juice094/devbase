@@ -144,7 +144,7 @@ pub async fn run(detail: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn analyze_repo(path: &str, upstream_url: Option<&str>, default_branch: Option<&str>) -> (String, usize, usize) {
+pub fn analyze_repo(path: &str, upstream_url: Option<&str>, default_branch: Option<&str>) -> (String, usize, usize) {
     let repo = match Repository::open(path) {
         Ok(r) => r,
         Err(_) => return ("error".to_string(), 0, 0),

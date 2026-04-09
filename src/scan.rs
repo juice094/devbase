@@ -116,7 +116,7 @@ fn discover_repos(root: &Path) -> anyhow::Result<Vec<RepoEntry>> {
     Ok(repos)
 }
 
-fn detect_language(path: &Path) -> Option<String> {
+pub fn detect_language(path: &Path) -> Option<String> {
     if path.join("Cargo.toml").exists() {
         Some("Rust".to_string())
     } else if path.join("package.json").exists() {
@@ -132,7 +132,7 @@ fn detect_language(path: &Path) -> Option<String> {
     }
 }
 
-fn inspect_repo(path: &Path) -> anyhow::Result<RepoEntry> {
+pub fn inspect_repo(path: &Path) -> anyhow::Result<RepoEntry> {
     let repo = Repository::open(path)?;
 
     let id = path

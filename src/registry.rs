@@ -122,6 +122,78 @@ impl WorkspaceRegistry {
             [],
         )?;
 
+        // 共生知识库
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS repo_summaries (
+                repo_id TEXT PRIMARY KEY,
+                summary TEXT,
+                keywords TEXT,
+                generated_at TEXT,
+                FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS repo_modules (
+                repo_id TEXT NOT NULL,
+                module_path TEXT NOT NULL,
+                public_apis TEXT,
+                extracted_at TEXT,
+                PRIMARY KEY (repo_id, module_path),
+                FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS repo_relations (
+                from_repo_id TEXT NOT NULL,
+                to_repo_id TEXT NOT NULL,
+                relation_type TEXT NOT NULL,
+                confidence REAL DEFAULT 0.0,
+                discovered_at TEXT NOT NULL,
+                PRIMARY KEY (from_repo_id, to_repo_id, relation_type),
+                FOREIGN KEY (from_repo_id) REFERENCES repos(id) ON DELETE CASCADE,
+                FOREIGN KEY (to_repo_id) REFERENCES repos(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+
+        // 学习痕迹
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ai_queries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query_text TEXT NOT NULL,
+                query_type TEXT,
+                results_count INTEGER DEFAULT 0,
+                top_result_ids TEXT,
+                timestamp TEXT NOT NULL
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ai_discoveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_id TEXT,
+                discovery_type TEXT,
+                description TEXT,
+                confidence REAL DEFAULT 0.0,
+                timestamp TEXT NOT NULL,
+                FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS repo_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_id TEXT NOT NULL,
+                note_text TEXT NOT NULL,
+                author TEXT DEFAULT 'ai',
+                timestamp TEXT NOT NULL,
+                FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+
         // One-time migration from legacy table
         let legacy_exists: bool = conn
             .query_row(
@@ -298,5 +370,89 @@ impl WorkspaceRegistry {
         } else {
             Ok(None)
         }
+    }
+
+    pub fn save_summary(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        summary: &str,
+        keywords: &str,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "INSERT OR REPLACE INTO repo_summaries (repo_id, summary, keywords, generated_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![repo_id, summary, keywords, Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn save_modules(
+        conn: &mut rusqlite::Connection,
+        repo_id: &str,
+        modules: &[(String, String)],
+    ) -> anyhow::Result<()> {
+        let tx = conn.transaction()?;
+        for (module_path, public_apis) in modules {
+            tx.execute(
+                "INSERT OR REPLACE INTO repo_modules (repo_id, module_path, public_apis, extracted_at) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![repo_id, module_path, public_apis, Utc::now().to_rfc3339()],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn save_relation(
+        conn: &rusqlite::Connection,
+        from: &str,
+        to: &str,
+        rel_type: &str,
+        confidence: f64,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "INSERT OR REPLACE INTO repo_relations (from_repo_id, to_repo_id, relation_type, confidence, discovered_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![from, to, rel_type, confidence, Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn log_query(
+        conn: &rusqlite::Connection,
+        text: &str,
+        qtype: &str,
+        count: usize,
+        top_ids: &str,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "INSERT INTO ai_queries (query_text, query_type, results_count, top_result_ids, timestamp) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![text, qtype, count as i64, top_ids, Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn save_discovery(
+        conn: &rusqlite::Connection,
+        repo_id: Option<&str>,
+        dtype: &str,
+        desc: &str,
+        confidence: f64,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "INSERT INTO ai_discoveries (repo_id, discovery_type, description, confidence, timestamp) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![repo_id, dtype, desc, confidence, Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn save_note(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        text: &str,
+        author: &str,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "INSERT INTO repo_notes (repo_id, note_text, author, timestamp) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![repo_id, text, author, Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
     }
 }

@@ -2,7 +2,11 @@ use clap::{Parser, Subcommand};
 use tracing::{info, warn};
 
 mod asyncgit;
+mod daemon;
+mod digest;
 mod health;
+mod discovery_engine;
+mod knowledge_engine;
 mod mcp;
 mod query;
 mod registry;
@@ -55,6 +59,12 @@ enum Commands {
         /// Query expression, e.g. "lang:rust stale:>30"
         query: String,
     },
+    /// Index repository summaries and module structures
+    Index {
+        /// Specific path to index; if omitted, index all registered repos
+        #[arg(default_value = "")]
+        path: String,
+    },
     /// Remove archive/backup entries from registry
     Clean,
     /// Tag a registered repository
@@ -71,6 +81,12 @@ enum Commands {
         /// Transport protocol: stdio or sse
         #[arg(long, default_value = "stdio")]
         transport: String,
+    },
+    /// Start the background daemon for knowledge maintenance
+    Daemon {
+        /// Tick interval in seconds
+        #[arg(long, default_value = "3600")]
+        interval: u64,
     },
     /// Watch a directory for changes and schedule sync actions
     Watch {
@@ -93,6 +109,10 @@ enum Commands {
         #[arg(long)]
         filter_tags: Option<String>,
     },
+    /// Auto-discover relationships between registered repositories
+    Discover,
+    /// Generate daily knowledge digest
+    Digest,
 }
 
 #[tokio::main]
@@ -126,6 +146,14 @@ async fn main() -> anyhow::Result<()> {
         Commands::Query { query } => {
             info!("Querying: {}", query);
             query::run(&query).await?;
+        }
+        Commands::Index { path } => {
+            info!("Indexing repositories: path='{}'", path);
+            let path = path.clone();
+            let count = tokio::task::spawn_blocking(move || crate::knowledge_engine::run_index(&path))
+                .await
+                .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+            info!("Indexed {} repositories", count);
         }
         Commands::Clean => {
             info!("Cleaning backup entries from registry");
@@ -168,6 +196,10 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 anyhow::bail!("Unsupported transport: {}", transport);
             }
+        }
+        Commands::Daemon { interval } => {
+            let d = daemon::Daemon::new(interval);
+            d.run().await?;
         }
         Commands::Watch { path, duration } => {
             use std::time::Duration;
@@ -286,6 +318,60 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
+            }
+        }
+        Commands::Digest => {
+            match tokio::task::spawn_blocking(|| {
+                let conn = registry::WorkspaceRegistry::init_db()?;
+                digest::generate_daily_digest(&conn)
+            })
+            .await
+            {
+                Ok(Ok(text)) => println!("{}", text),
+                Ok(Err(e)) => println!("生成日报失败: {}", e),
+                Err(e) => println!("Digest task panicked: {}", e),
+            }
+        }
+        Commands::Discover => {
+            use discovery_engine::{discover_dependencies, discover_similar_projects, Discovery};
+            use registry::WorkspaceRegistry;
+            use std::collections::HashMap;
+
+            let conn = WorkspaceRegistry::init_db()?;
+            let repos = WorkspaceRegistry::list_repos(&conn)?;
+
+            let deps = discover_dependencies(&repos);
+            let sims = discover_similar_projects(&conn)?;
+
+            let mut merged: HashMap<(String, String, String), Discovery> = HashMap::new();
+            for d in deps.into_iter().chain(sims.into_iter()) {
+                let key = (d.from.clone(), d.to.clone(), d.relation_type.clone());
+                if let Some(existing) = merged.get(&key) {
+                    if d.confidence > existing.confidence {
+                        merged.insert(key, d);
+                    }
+                } else {
+                    merged.insert(key, d);
+                }
+            }
+
+            for d in merged.values() {
+                WorkspaceRegistry::save_relation(&conn, &d.from, &d.to, &d.relation_type, d.confidence)?;
+            }
+
+            let mut all: Vec<Discovery> = merged.into_values().collect();
+            all.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+
+            let dep_count = all.iter().filter(|d| d.relation_type == "depends_on").count();
+            let sim_count = all.iter().filter(|d| d.relation_type == "similar_to").count();
+            println!("Found {} dependencies and {} similarities.", dep_count, sim_count);
+
+            println!("Top 10 discoveries:");
+            for d in all.iter().take(10) {
+                println!(
+                    "  [{}] {} -> {} (confidence={:.2}): {}",
+                    d.relation_type, d.from, d.to, d.confidence, d.description
+                );
             }
         }
     }
