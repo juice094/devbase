@@ -105,24 +105,24 @@ pub async fn run(detail: bool, ttl_seconds: i64) -> anyhow::Result<()> {
     let result = run_json(detail, ttl_seconds).await?;
 
     let summary = result["summary"].as_object().unwrap();
-    println!("Summary:");
+    println!("{}:", crate::i18n::current().log.health_summary);
     println!("  total_repos: {}", summary["total_repos"].as_u64().unwrap_or(0));
     println!("  dirty_repos: {}", summary["dirty_repos"].as_u64().unwrap_or(0));
     println!("  behind_upstream: {}", summary["behind_upstream"].as_u64().unwrap_or(0));
     println!("  no_upstream: {}", summary["no_upstream"].as_u64().unwrap_or(0));
 
     let env = result["environment"].as_object().unwrap();
-    println!("\nEnvironment:");
-    println!("  rustc: {}", env["rustc"].as_str().unwrap_or("not installed"));
-    println!("  cargo: {}", env["cargo"].as_str().unwrap_or("not installed"));
-    println!("  node: {}", env["node"].as_str().unwrap_or("not installed"));
-    println!("  go: {}", env["go"].as_str().unwrap_or("not installed"));
-    println!("  cmake: {}", env["cmake"].as_str().unwrap_or("not installed"));
+    println!("\n{}:", crate::i18n::current().log.health_environment);
+    println!("  rustc: {}", env["rustc"].as_str().unwrap_or(crate::i18n::current().log.not_installed));
+    println!("  cargo: {}", env["cargo"].as_str().unwrap_or(crate::i18n::current().log.not_installed));
+    println!("  node: {}", env["node"].as_str().unwrap_or(crate::i18n::current().log.not_installed));
+    println!("  go: {}", env["go"].as_str().unwrap_or(crate::i18n::current().log.not_installed));
+    println!("  cmake: {}", env["cmake"].as_str().unwrap_or(crate::i18n::current().log.not_installed));
 
     if detail {
         let repos = result["repos"].as_array().unwrap();
         if !repos.is_empty() {
-            println!("\nRepos:");
+            println!("\n{}:", crate::i18n::current().log.health_repos);
             for repo in repos {
                 let id = repo["id"].as_str().unwrap_or("");
                 let path = repo["local_path"].as_str().unwrap_or("");
@@ -271,6 +271,6 @@ fn fmt_version(raw: Option<String>) -> String {
                 s
             }
         }
-        None => "not installed".to_string(),
+        None => crate::i18n::current().log.not_installed.to_string(),
     }
 }

@@ -110,7 +110,7 @@ async fn execute_task(task: &RepoSyncTask, dry_run: bool, strategy: &str) -> Syn
         if task.upstream_url.is_none() {
             return SyncSummary {
                 action: "SKIP".to_string(),
-                message: "Own project, no upstream".to_string(),
+                message: crate::i18n::current().sync.skip_no_upstream.to_string(),
                 ..Default::default()
             };
         }
@@ -120,7 +120,7 @@ async fn execute_task(task: &RepoSyncTask, dry_run: bool, strategy: &str) -> Syn
         let url = task.upstream_url.as_deref().unwrap_or("?");
         return SyncSummary {
             action: "DRY_RUN".to_string(),
-            message: format!("Would fetch from {}", url),
+            message: crate::i18n::format_template(crate::i18n::current().sync.would_fetch, &[url, &task.path]),
             ..Default::default()
         };
     }
@@ -208,7 +208,7 @@ pub async fn run_json(
         })
         .collect();
 
-    info!("{}", crate::i18n::log::SYNC_FINISHED);
+    info!("{}", crate::i18n::current().log.sync_finished);
     Ok(serde_json::json!({
         "success": true,
         "dry_run": dry_run,
@@ -236,15 +236,15 @@ pub async fn run(
             dry_run,
             strategy,
             |id, summary| {
-                println!("  [{}] {}: {}", id, crate::i18n::log::PROGRESS, summary.message);
+                println!("  [{}] {}: {}", id, crate::i18n::current().log.progress, summary.message);
             },
         )
         .await;
 
     let filter_suffix = filter_tags
-        .map(|f| format!("{}{}）", crate::i18n::sync::FILTER_PREFIX, f))
+        .map(|f| format!("{}{}）", crate::i18n::current().sync.filter_prefix, f))
         .unwrap_or_default();
-    println!("{}{} {}{}\n", crate::i18n::sync::STRATEGY_PREFIX, ":", strategy, filter_suffix);
+    println!("{}{} {}{}\n", crate::i18n::current().sync.strategy_prefix, ":", strategy, filter_suffix);
 
     let results_json: Vec<serde_json::Value> = results
         .iter()
@@ -267,29 +267,28 @@ pub async fn run(
         let action = item["action"].as_str().unwrap_or("");
         let message = item["message"].as_str().unwrap_or("");
 
-        if action == "skipped" && message.contains("Own project") {
-            println!("  [{}] {}", id, crate::i18n::sync::SKIP_NO_UPSTREAM);
+        if action == "skipped" && message == crate::i18n::current().sync.skip_no_upstream {
+            println!("  [{}] {}", id, crate::i18n::current().sync.skip_no_upstream);
         } else if action == "skipped" && dry_run {
             println!(
-                "  [{}] 将获取 {} -> {}",
+                "  [{}] {}",
                 id,
-                message.strip_prefix("Would fetch from ").unwrap_or("?"),
-                path
+                message
             );
         } else {
-            println!("  [{}] {} {}...", id, crate::i18n::sync::CHECKING, path);
+            println!("  [{}] {} {}...", id, crate::i18n::current().sync.checking, path);
             if action == "error" {
-                println!("    [{}] {}", crate::i18n::sync::ERROR_PREFIX, message);
+                println!("    [{}] {}", crate::i18n::current().sync.error_prefix, message);
             } else if action == "fetch_only" {
-                println!("    -> {}", crate::i18n::sync::FETCHED_ONLY);
+                println!("    -> {}", crate::i18n::current().sync.fetched_only);
             } else if action == "blocked_dirty" {
-                println!("    {}", crate::i18n::sync::BLOCKED_DIRTY);
+                println!("    {}", crate::i18n::current().sync.blocked_dirty);
             } else if action == "merged_ff" {
-                println!("    {}", crate::i18n::sync::MERGED_FF);
+                println!("    {}", crate::i18n::current().sync.merged_ff);
             } else if action == "merged_commit" {
-                println!("    {}", crate::i18n::sync::MERGED_COMMIT);
+                println!("    {}", crate::i18n::current().sync.merged_commit);
             } else if action == "conflict" {
-                println!("    {}", crate::i18n::sync::CONFLICT);
+                println!("    {}", crate::i18n::current().sync.conflict);
             }
         }
     }
@@ -297,28 +296,22 @@ pub async fn run(
     print_summary_table(&results_json);
 
     if dry_run {
-        println!("\n{}", crate::i18n::sync::DRY_RUN_COMPLETE);
+        println!("\n{}", crate::i18n::current().sync.dry_run_complete);
     } else {
-        println!("\n{}", crate::i18n::sync::SYNC_COMPLETE);
+        println!("\n{}", crate::i18n::current().sync.sync_complete);
     }
 
     Ok(())
 }
 
-fn map_action(action: &str, message: &str) -> String {
+fn map_action(action: &str, _message: &str) -> String {
     match action {
         "SKIP" | "OK" | "WARN" | "DRY_RUN" => "skipped".to_string(),
         "FETCH" => "fetch_only".to_string(),
         "BLOCKED" => "blocked_dirty".to_string(),
-        "MERGED" => {
-            if message.contains("Fast-forwarded") {
-                "merged_ff".to_string()
-            } else if message.contains("Created merge commit") {
-                "merged_commit".to_string()
-            } else {
-                "merged_ff".to_string()
-            }
-        }
+        "MERGED_FF" => "merged_ff".to_string(),
+        "MERGED_COMMIT" => "merged_commit".to_string(),
+        "MERGED" => "merged_ff".to_string(),
         "CONFLICT" => "conflict".to_string(),
         "ERROR" => "error".to_string(),
         _ => "skipped".to_string(),
@@ -327,14 +320,14 @@ fn map_action(action: &str, message: &str) -> String {
 
 fn print_summary_table(results: &[serde_json::Value]) {
     if results.is_empty() {
-        println!("{}", crate::i18n::sync::NO_REPOS_PROCESSED);
+        println!("{}", crate::i18n::current().sync.no_repos_processed);
         return;
     }
 
     println!("{:-<90}", "");
     println!(
         "{:<24} {:<10} {:>6} {:>7} {}",
-        crate::i18n::sync::HEADER_REPO, crate::i18n::sync::HEADER_ACTION, "超前", "落后", "消息"
+        crate::i18n::current().sync.header_repo, crate::i18n::current().sync.header_action, crate::i18n::current().sync.header_ahead, crate::i18n::current().sync.header_behind, crate::i18n::current().sync.header_message
     );
     println!("{:-<90}", "");
     for item in results {
@@ -381,8 +374,7 @@ async fn sync_repo(
                     None => {
                         return Ok(SyncSummary {
                             action: "SKIP".to_string(),
-                            message: "No origin remote and no upstream URL configured"
-                                .to_string(),
+                            message: crate::i18n::current().sync.no_origin.to_string(),
                             ..Default::default()
                         });
                     }
@@ -406,8 +398,8 @@ async fn sync_repo(
 
         remote.fetch(&[] as &[&str], Some(&mut fetch_opts), None).map_err(|e| {
             anyhow::anyhow!(
-                "Fetch failed: {}. Please check your network connection, VPN, or authentication settings.",
-                e
+                "{}",
+                crate::i18n::format_template(crate::i18n::current().sync.fetch_failed, &[&e.to_string()])
             )
         })?;
     }
@@ -441,7 +433,7 @@ async fn sync_repo(
             if local == remote {
                 SyncSummary {
                     action: "OK".to_string(),
-                    message: format!("Up to date on {}", branch),
+                    message: crate::i18n::format_template(crate::i18n::current().sync.up_to_date, &[&branch]),
                     ..Default::default()
                 }
             } else {
@@ -464,7 +456,7 @@ async fn sync_repo(
                             action: "BLOCKED".to_string(),
                             ahead,
                             behind,
-                            message: "Working directory is not clean".to_string(),
+                            message: crate::i18n::current().sync.blocked_dirty.to_string(),
                             ..Default::default()
                         }
                     } else if strategy == "ask" {
@@ -477,7 +469,7 @@ async fn sync_repo(
                                 action: "SKIP".to_string(),
                                 ahead,
                                 behind,
-                                message: "Skipped by user".to_string(),
+                                message: crate::i18n::current().sync.skipped_by_user.to_string(),
                                 ..Default::default()
                             }
                         } else {
@@ -492,21 +484,21 @@ async fn sync_repo(
         (None, Some(_)) => {
             SyncSummary {
                 action: "WARN".to_string(),
-                message: format!("Local branch '{}' does not exist yet", branch),
+                message: crate::i18n::format_template(crate::i18n::current().sync.local_branch_missing, &[&branch]),
                 ..Default::default()
             }
         }
         (Some(_), None) => {
             SyncSummary {
                 action: "WARN".to_string(),
-                message: format!("Remote branch 'origin/{}' not found after fetch", branch),
+                message: crate::i18n::format_template(crate::i18n::current().sync.remote_branch_missing, &[&branch]),
                 ..Default::default()
             }
         }
         (None, None) => {
             SyncSummary {
                 action: "WARN".to_string(),
-                message: format!("Neither local nor remote branch '{}' exists", branch),
+                message: crate::i18n::format_template(crate::i18n::current().sync.neither_branch_exists, &[&branch]),
                 ..Default::default()
             }
         }
@@ -556,8 +548,8 @@ fn perform_merge(
         repo.set_head(&local_ref)?;
         repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))?;
         Ok(SyncSummary {
-            action: "MERGED".to_string(),
-            message: format!("Fast-forwarded to origin/{}", branch),
+            action: "MERGED_FF".to_string(),
+            message: crate::i18n::current().sync.merged_ff.to_string(),
             ..Default::default()
         })
     } else if analysis.is_normal() {
@@ -565,7 +557,7 @@ fn perform_merge(
         if repo.index()?.has_conflicts() {
             Ok(SyncSummary {
                 action: "CONFLICT".to_string(),
-                message: "Merge has conflicts. Resolve manually.".to_string(),
+                message: crate::i18n::current().sync.conflict.to_string(),
                 ..Default::default()
             })
         } else {
@@ -584,21 +576,21 @@ fn perform_merge(
             )?;
             repo.cleanup_state()?;
             Ok(SyncSummary {
-                action: "MERGED".to_string(),
-                message: format!("Created merge commit for origin/{}", branch),
+                action: "MERGED_COMMIT".to_string(),
+                message: crate::i18n::current().sync.merged_commit.to_string(),
                 ..Default::default()
             })
         }
     } else if analysis.is_up_to_date() {
         Ok(SyncSummary {
             action: "OK".to_string(),
-            message: "Already up to date".to_string(),
+            message: crate::i18n::current().sync.already_up_to_date.to_string(),
             ..Default::default()
         })
     } else {
         Ok(SyncSummary {
             action: "SKIP".to_string(),
-            message: "Unhandled merge state".to_string(),
+            message: crate::i18n::current().sync.unhandled_merge_state.to_string(),
             ..Default::default()
         })
     }

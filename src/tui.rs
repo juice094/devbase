@@ -78,7 +78,7 @@ impl App {
             show_sync_popup: false,
             sync_popup_results: Vec::new(),
         };
-        app.log_info(crate::i18n::log::TUI_STARTED.to_string());
+        app.log_info(crate::i18n::current().log.tui_started.to_string());
         app.load_repos()?;
         Ok(app)
     }
@@ -106,7 +106,7 @@ impl App {
             self.selected = self.repos.len() - 1;
         }
         self.list_state.select(Some(self.selected));
-        self.log_info(crate::i18n::log::loaded_repos(self.repos.len()));
+        self.log_info(crate::i18n::current().log.loaded_repos(self.repos.len()));
         self.spawn_repo_status_for_current();
         Ok(())
     }
@@ -185,12 +185,12 @@ impl App {
         let repo = match self.current_repo().cloned() {
             Some(r) => r,
             None => {
-                self.log_warn(crate::i18n::log::NO_REPO_SELECTED.to_string());
+                self.log_warn(crate::i18n::current().log.no_repo_selected.to_string());
                 return;
             }
         };
 
-        self.log_info(crate::i18n::log::fetching_preview(&repo.id));
+        self.log_info(crate::i18n::current().log.fetching_preview(&repo.id));
         self.loading_preview.insert(repo.id.clone());
 
         self.fetch_preview_job
@@ -211,7 +211,7 @@ impl App {
                     repo.status_ahead = Some(n.ahead);
                     repo.status_behind = Some(n.behind);
                 }
-                self.log_info(crate::i18n::log::status_fmt(
+                self.log_info(crate::i18n::current().log.status_fmt(
                     &n.repo_id, n.dirty, n.ahead, n.behind
                 ));
             }
@@ -220,9 +220,13 @@ impl App {
                 self.log_info(n.msg);
             }
             AsyncNotification::SyncProgress(n) => {
+                if let Some(entry) = self.sync_popup_results.iter_mut().find(|(id, _)| id == &n.repo_id) {
+                    entry.1 = n.message.clone();
+                } else {
+                    self.sync_popup_results.push((n.repo_id.clone(), n.message.clone()));
+                }
                 self.loading_sync.remove(&n.repo_id);
-                self.sync_popup_results.push((n.repo_id.clone(), n.message.clone()));
-                self.log_info(crate::i18n::log::sync_progress_fmt(
+                self.log_info(crate::i18n::current().log.sync_progress_fmt(
                     &n.repo_id, &n.action, &n.message
                 ));
             }
@@ -233,7 +237,7 @@ impl App {
         let repo_id = match self.current_repo() {
             Some(r) => r.id.clone(),
             None => {
-                self.log_warn(crate::i18n::log::NO_REPO_SELECTED.to_string());
+                self.log_warn(crate::i18n::current().log.no_repo_selected.to_string());
                 return;
             }
         };
@@ -252,12 +256,12 @@ impl App {
             Ok(())
         })() {
             Ok(()) => {
-                self.log_info(crate::i18n::log::updated_tags(&repo_id, new_tags));
+                self.log_info(crate::i18n::current().log.updated_tags(&repo_id, new_tags));
                 if let Err(e) = self.load_repos() {
-                    self.log_error(crate::i18n::log::reload_repos_failed(e));
+                    self.log_error(crate::i18n::current().log.reload_repos_failed(e));
                 }
             }
-            Err(e) => self.log_error(crate::i18n::log::update_tags_failed(e)),
+            Err(e) => self.log_error(crate::i18n::current().log.update_tags_failed(e)),
         }
     }
 
@@ -268,8 +272,8 @@ impl App {
         let current = match self.current_repo() {
             Some(r) => r.clone(),
             None => {
-                self.log_warn(crate::i18n::log::NO_REPO_SELECTED.to_string());
-                self.sync_popup_results.push(("system".to_string(), crate::i18n::log::NO_REPO_SELECTED.to_string()));
+                self.log_warn(crate::i18n::current().log.no_repo_selected.to_string());
+                self.sync_popup_results.push(("system".to_string(), crate::i18n::current().log.no_repo_selected.to_string()));
                 return;
             }
         };
@@ -281,8 +285,8 @@ impl App {
             .collect();
 
         if target_tags.is_empty() {
-            self.log_warn(crate::i18n::log::NO_TAGS_TO_SYNC.to_string());
-            self.sync_popup_results.push(("system".to_string(), crate::i18n::log::NO_TAGS_TO_SYNC.to_string()));
+            self.log_warn(crate::i18n::current().log.no_tags_to_sync.to_string());
+            self.sync_popup_results.push(("system".to_string(), crate::i18n::current().log.no_tags_to_sync.to_string()));
             return;
         }
 
@@ -300,14 +304,15 @@ impl App {
             .collect();
 
         if repos_to_sync.is_empty() {
-            self.log_warn(crate::i18n::log::NO_REPOS_MATCH_TAGS.to_string());
-            self.sync_popup_results.push(("system".to_string(), crate::i18n::log::NO_REPOS_MATCH_TAGS.to_string()));
+            self.log_warn(crate::i18n::current().log.no_repos_match_tags.to_string());
+            self.sync_popup_results.push(("system".to_string(), crate::i18n::current().log.no_repos_match_tags.to_string()));
             return;
         }
 
-        self.log_info(crate::i18n::log::batch_syncing(repos_to_sync.len()));
+        self.log_info(crate::i18n::current().log.batch_syncing(repos_to_sync.len()));
         for r in &repos_to_sync {
             self.loading_sync.insert(r.id.clone());
+            self.sync_popup_results.push((r.id.clone(), crate::i18n::current().log.status_queued.to_string()));
         }
 
         let sender = self.async_tx.clone();
@@ -363,9 +368,9 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::R
                         InputMode::Normal => match key.code {
                             KeyCode::Char('q') => return Ok(()),
                             KeyCode::Char('r') => {
-                                app.log_info(crate::i18n::log::REFRESHING.to_string());
+                                app.log_info(crate::i18n::current().log.refreshing.to_string());
                                 if let Err(e) = app.load_repos() {
-                                    app.log_error(crate::i18n::log::refresh_failed(e));
+                                    app.log_error(crate::i18n::current().log.refresh_failed(e));
                                 }
                             }
                             KeyCode::Char('s') => app.sync_preview(),
@@ -387,7 +392,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::R
                                 if !tags.is_empty() {
                                     app.update_tags(&tags);
                                 } else {
-                                    app.log_warn(crate::i18n::log::EMPTY_TAG_IGNORED.to_string());
+                                    app.log_warn(crate::i18n::current().log.empty_tag_ignored.to_string());
                                 }
                                 app.input_mode = InputMode::Normal;
                                 app.input_buffer.clear();
@@ -395,7 +400,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::R
                             KeyCode::Esc => {
                                 app.input_mode = InputMode::Normal;
                                 app.input_buffer.clear();
-                                app.log_info(crate::i18n::log::TAG_INPUT_CANCELLED.to_string());
+                                app.log_info(crate::i18n::current().log.tag_input_cancelled.to_string());
                             }
                             KeyCode::Char(c) => app.input_buffer.push(c),
                             KeyCode::Backspace => {
@@ -475,7 +480,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
         .collect();
 
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(crate::i18n::tui::TITLE_REPOS))
+        .block(Block::default().borders(Borders::ALL).title(crate::i18n::current().tui.title_repos))
         .highlight_style(
             Style::default()
                 .bg(Color::Rgb(40, 40, 80))
@@ -495,35 +500,35 @@ fn ui(frame: &mut Frame, app: &mut App) {
     // Detail panel
     let detail_text = if let Some(repo) = app.current_repo() {
         let mut tag_line = vec![
-            Span::styled(crate::i18n::tui::LABEL_TAGS, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(crate::i18n::current().tui.label_tags, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
         ];
         tag_line.extend(tag_spans(&repo.tags));
 
         let status_text = match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
             (Some(d), Some(a), Some(b)) => format!("未提交={} 超前={} 落后={}", d, a, b),
-            _ => crate::i18n::tui::STATUS_LOADING.to_string(),
+            _ => crate::i18n::current().tui.status_loading.to_string(),
         };
 
         Text::from(vec![
             Line::from(vec![
-                Span::styled(crate::i18n::tui::LABEL_ID, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(crate::i18n::current().tui.label_id, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                 Span::raw(&repo.id),
             ]),
             Line::from(vec![
-                Span::styled(crate::i18n::tui::LABEL_PATH, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(crate::i18n::current().tui.label_path, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                 Span::raw(&repo.local_path),
             ]),
             Line::from(vec![
-                Span::styled(crate::i18n::tui::LABEL_BRANCH, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::raw(repo.default_branch.as_deref().unwrap_or(crate::i18n::tui::STATUS_UNKNOWN)),
+                Span::styled(crate::i18n::current().tui.label_branch, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::raw(repo.default_branch.as_deref().unwrap_or(crate::i18n::current().tui.status_unknown)),
             ]),
             Line::from(tag_line),
             Line::from(vec![
-                Span::styled(crate::i18n::tui::LABEL_LANGUAGE, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::raw(repo.language.as_deref().unwrap_or(crate::i18n::tui::STATUS_UNKNOWN)),
+                Span::styled(crate::i18n::current().tui.label_language, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::raw(repo.language.as_deref().unwrap_or(crate::i18n::current().tui.status_unknown)),
             ]),
             Line::from(vec![
-                Span::styled(crate::i18n::tui::LABEL_UPSTREAM, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(crate::i18n::current().tui.label_upstream, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                 Span::styled(
                     repo.upstream_url.as_deref().unwrap_or("(无)"),
                     if repo.upstream_url.is_some() {
@@ -534,16 +539,16 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 ),
             ]),
             Line::from(vec![
-                Span::styled(crate::i18n::tui::LABEL_STATUS, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(crate::i18n::current().tui.label_status, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                 Span::raw(status_text),
             ]),
         ])
     } else {
-        Text::raw(crate::i18n::log::NO_REPOS_REGISTERED)
+        Text::raw(crate::i18n::current().log.no_repos_registered)
     };
 
     let detail = Paragraph::new(detail_text)
-        .block(Block::default().borders(Borders::ALL).title(crate::i18n::tui::TITLE_DETAILS))
+        .block(Block::default().borders(Borders::ALL).title(crate::i18n::current().tui.title_details))
         .wrap(Wrap { trim: true });
 
     frame.render_widget(detail, right_chunks[0]);
@@ -552,7 +557,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
     let log_lines: Vec<Line> = app.logs.iter().map(|l| format_log_line(l)).collect();
     let log_text = Text::from(log_lines);
     let logs = Paragraph::new(log_text)
-        .block(Block::default().borders(Borders::ALL).title(crate::i18n::tui::TITLE_LOGS))
+        .block(Block::default().borders(Borders::ALL).title(crate::i18n::current().tui.title_logs))
         .wrap(Wrap { trim: true });
 
     frame.render_widget(logs, right_chunks[1]);
@@ -583,7 +588,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(crate::i18n::tui::TITLE_SYNC_PROGRESS),
+                    .title(crate::i18n::current().tui.title_sync_progress),
             );
 
         // Clear background and render popup
@@ -595,7 +600,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
 
         // Footer hint inside popup
         let hint = Paragraph::new(Span::styled(
-            crate::i18n::tui::HINT_POPUP_CLOSE,
+            crate::i18n::current().tui.hint_popup_close,
             Style::default().fg(Color::DarkGray),
         ));
         let hint_height = 1;
@@ -614,7 +619,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
             InputMode::TagInput => Line::from(vec![
                 Span::styled("标签: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
                 Span::raw(&app.input_buffer),
-                Span::styled(crate::i18n::tui::HINT_TAG_INPUT, Style::default().fg(Color::DarkGray)),
+                Span::styled(crate::i18n::current().tui.hint_tag_input, Style::default().fg(Color::DarkGray)),
             ]),
             InputMode::Normal => Line::from(vec![
                 Span::styled("q", Style::default().fg(Color::Cyan)),

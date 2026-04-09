@@ -4,6 +4,8 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
+    pub general: GeneralConfig,
+    #[serde(default)]
     pub daemon: DaemonConfig,
     #[serde(default)]
     pub cache: CacheConfig,
@@ -12,6 +14,20 @@ pub struct Config {
     #[serde(default)]
     pub digest: DigestConfig,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeneralConfig {
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+
+impl Default for GeneralConfig {
+    fn default() -> Self {
+        Self { language: default_language() }
+    }
+}
+
+fn default_language() -> String { "auto".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DaemonConfig {
@@ -44,6 +60,7 @@ pub struct DigestConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            general: GeneralConfig::default(),
             daemon: DaemonConfig::default(),
             cache: CacheConfig::default(),
             watch: WatchConfig::default(),
@@ -102,6 +119,16 @@ impl Config {
         let content = std::fs::read_to_string(&path)?;
         let config: Self = toml::from_str(&content)?;
         Ok(config)
+    }
+
+    pub fn save(&self) -> anyhow::Result<()> {
+        let path = Self::config_path()?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let content = toml::to_string_pretty(self)?;
+        std::fs::write(&path, content)?;
+        Ok(())
     }
 
     pub fn config_path() -> anyhow::Result<PathBuf> {

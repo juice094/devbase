@@ -123,16 +123,28 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let config = config::Config::load()?;
+    let mut config = config::Config::load()?;
+    let lang = if config.general.language == "auto" || config.general.language.is_empty() {
+        let detected = crate::i18n::detect_system_language();
+        config.general.language = detected.clone();
+        if let Err(e) = config.save() {
+            eprintln!("警告: 无法保存语言配置: {}", e);
+        }
+        detected
+    } else {
+        config.general.language.clone()
+    };
+    crate::i18n::init(&lang);
+
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Scan { path, register } => {
-            info!("{}: {}", i18n::cli::SCANNING, path);
+            info!("{}: {}", crate::i18n::current().cli.scanning, path);
             scan::run(&path, register).await?;
         }
         Commands::Health { detail } => {
-            info!("{}", i18n::cli::HEALTH_CHECK);
+            info!("{}", crate::i18n::current().cli.health_check);
             health::run(detail, config.cache.ttl_seconds).await?;
         }
         Commands::Sync {
@@ -143,15 +155,15 @@ async fn main() -> anyhow::Result<()> {
             if dry_run {
                 warn!("Dry-run mode enabled");
             }
-            info!("{}: {}", i18n::cli::SYNCING, strategy);
+            info!("{}: {}", crate::i18n::current().cli.syncing, strategy);
             sync::run(dry_run, &strategy, filter_tags.as_deref()).await?;
         }
         Commands::Query { query } => {
-            info!("{}: {}", i18n::cli::QUERYING, query);
+            info!("{}: {}", crate::i18n::current().cli.querying, query);
             query::run(&query, &config).await?;
         }
         Commands::Index { path } => {
-            info!("{}: path='{}'", i18n::cli::INDEXING, path);
+            info!("{}: path='{}'", crate::i18n::current().cli.indexing, path);
             let path = path.clone();
             let count = tokio::task::spawn_blocking(move || crate::knowledge_engine::run_index(&path))
                 .await
@@ -197,7 +209,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Tui => {
-            info!("{}", i18n::cli::LAUNCHING_TUI);
+            info!("{}", crate::i18n::current().cli.launching_tui);
             tui::run().await?;
         }
         Commands::Mcp { transport } => {
@@ -338,6 +350,7 @@ async fn main() -> anyhow::Result<()> {
             match tokio::task::spawn_blocking(move || {
                 let conn = registry::WorkspaceRegistry::init_db()?;
                 let cfg = crate::config::Config {
+                    general: crate::config::GeneralConfig::default(),
                     digest: digest_config,
                     ..Default::default()
                 };
@@ -346,8 +359,8 @@ async fn main() -> anyhow::Result<()> {
             .await
             {
                 Ok(Ok(text)) => println!("{}", text),
-                Ok(Err(e)) => println!("生成日报失败: {}", e),
-                Err(e) => println!("日报任务崩溃: {}", e),
+                Ok(Err(e)) => println!("{}: {}", crate::i18n::current().log.digest_failed, e),
+                Err(e) => println!("{}: {}", crate::i18n::current().log.digest_panic, e),
             }
         }
         Commands::Discover => {
