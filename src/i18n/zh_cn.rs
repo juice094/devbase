@@ -66,6 +66,7 @@ pub fn build() -> I18n {
             fetch_success: "获取完成",
             fetch_failed: "获取失败: {}。请检查网络连接、VPN 或认证设置。",
             no_origin: "无 origin 远程仓库且未配置上游 URL",
+            status_running: "同步中...",
             up_to_date: "{} 已是最新",
             skipped_by_user: "用户已跳过",
             local_branch_missing: "本地分支 '{}' 尚不存在",

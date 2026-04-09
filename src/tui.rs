@@ -51,6 +51,7 @@ pub struct App {
     sync_orchestrator: crate::sync::SyncOrchestrator,
     show_sync_popup: bool,
     sync_popup_results: Vec<(String, String)>, // (repo_id, message)
+    sync_total: usize,
 }
 
 impl App {
@@ -77,6 +78,7 @@ impl App {
             sync_orchestrator: crate::sync::SyncOrchestrator::new(4),
             show_sync_popup: false,
             sync_popup_results: Vec::new(),
+            sync_total: 0,
         };
         app.log_info(crate::i18n::current().log.tui_started.to_string());
         app.load_repos()?;
@@ -309,6 +311,7 @@ impl App {
             return;
         }
 
+        self.sync_total = repos_to_sync.len();
         self.log_info(crate::i18n::current().log.batch_syncing(repos_to_sync.len()));
         for r in &repos_to_sync {
             self.loading_sync.insert(r.id.clone());
@@ -382,8 +385,8 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::R
                             KeyCode::Char('h') => app.show_help = !app.show_help,
                             KeyCode::Down => app.next(),
                             KeyCode::Up => app.previous(),
-                            KeyCode::Home => app.jump_to_top(),
-                            KeyCode::End => app.jump_to_bottom(),
+                            KeyCode::Home | KeyCode::PageUp => app.jump_to_top(),
+                            KeyCode::End | KeyCode::PageDown => app.jump_to_bottom(),
                             _ => {}
                         },
                         InputMode::TagInput => match key.code {
@@ -525,7 +528,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
             Line::from(tag_line),
             Line::from(vec![
                 Span::styled(crate::i18n::current().tui.label_language, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::raw(repo.language.as_deref().unwrap_or(crate::i18n::current().tui.status_unknown)),
+                Span::raw(repo.language.as_deref().unwrap_or("—")),
             ]),
             Line::from(vec![
                 Span::styled(crate::i18n::current().tui.label_upstream, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
@@ -570,13 +573,36 @@ fn ui(frame: &mut Frame, app: &mut App) {
             vertical: 1,
         });
 
+        let completed = app
+            .sync_popup_results
+            .iter()
+            .filter(|(_, m)| {
+                m != crate::i18n::current().log.status_queued
+                    && m != crate::i18n::current().sync.status_running
+            })
+            .count();
+        let popup_title = format!(
+            "{} ({}/{})",
+            crate::i18n::current().tui.title_sync_progress,
+            completed,
+            app.sync_total.max(1)
+        );
+
         let items: Vec<ListItem> = app
             .sync_popup_results
             .iter()
             .map(|(repo_id, message)| {
-                let is_error = message.to_lowercase().contains("failed")
-                    || message.to_lowercase().contains("error");
-                let color = if is_error { Color::Red } else { Color::Green };
+                let msg_lower = message.to_lowercase();
+                let is_error = msg_lower.contains("failed") || msg_lower.contains("error");
+                let is_pending = message == crate::i18n::current().log.status_queued
+                    || message == crate::i18n::current().sync.status_running;
+                let color = if is_error {
+                    Color::Red
+                } else if is_pending {
+                    Color::Yellow
+                } else {
+                    Color::Green
+                };
                 ListItem::new(Span::styled(
                     format!("[{}] {}", repo_id, message),
                     Style::default().fg(color),
@@ -588,7 +614,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(crate::i18n::current().tui.title_sync_progress),
+                    .title(popup_title),
             );
 
         // Clear background and render popup
@@ -636,8 +662,8 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 Span::raw("=帮助 "),
                 Span::styled("↑↓", Style::default().fg(Color::Cyan)),
                 Span::raw("/"),
-                Span::styled("Home/End", Style::default().fg(Color::Cyan)),
-                Span::raw("=导航"),
+                Span::styled("PgUp/PgDn", Style::default().fg(Color::Cyan)),
+                Span::raw("=首末"),
             ]),
         };
         let bottom_bar = Paragraph::new(bottom_text);

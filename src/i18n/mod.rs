@@ -77,6 +77,7 @@ pub struct SyncStrings {
     pub fetch_success: &'static str,
     pub fetch_failed: &'static str,
     pub no_origin: &'static str,
+    pub status_running: &'static str,
     pub up_to_date: &'static str,
     pub skipped_by_user: &'static str,
     pub local_branch_missing: &'static str,

@@ -66,6 +66,7 @@ pub fn build() -> I18n {
             fetch_success: "Fetch completed successfully",
             fetch_failed: "Fetch failed: {}. Please check network, VPN or authentication.",
             no_origin: "No origin remote and no upstream URL configured",
+            status_running: "Syncing...",
             up_to_date: "Up to date on {}",
             skipped_by_user: "Skipped by user",
             local_branch_missing: "Local branch '{}' does not exist yet",

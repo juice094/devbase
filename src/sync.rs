@@ -70,6 +70,14 @@ impl SyncOrchestrator {
             SyncMode::SYNC => {
                 let mut results = Vec::with_capacity(repos.len());
                 for task in repos {
+                    on_progress(
+                        task.id.clone(),
+                        SyncSummary {
+                            action: "RUNNING".to_string(),
+                            message: crate::i18n::current().sync.status_running.to_string(),
+                            ..Default::default()
+                        },
+                    );
                     let summary = execute_task(&task, dry_run, strategy).await;
                     on_progress(task.id.clone(), summary.clone());
                     results.push((task.id, summary));
@@ -79,6 +87,14 @@ impl SyncOrchestrator {
             SyncMode::ASYNC | SyncMode::BlockUi => {
                 let mut handles = Vec::with_capacity(repos.len());
                 for task in repos {
+                    on_progress(
+                        task.id.clone(),
+                        SyncSummary {
+                            action: "RUNNING".to_string(),
+                            message: crate::i18n::current().sync.status_running.to_string(),
+                            ..Default::default()
+                        },
+                    );
                     let permit = self
                         .semaphore
                         .clone()
