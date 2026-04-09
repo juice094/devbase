@@ -7,6 +7,7 @@ mod daemon;
 mod digest;
 mod health;
 mod discovery_engine;
+mod i18n;
 mod knowledge_engine;
 mod mcp;
 mod query;
@@ -127,11 +128,11 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Scan { path, register } => {
-            info!("Scanning directory: {}", path);
+            info!("{}: {}", i18n::cli::SCANNING, path);
             scan::run(&path, register).await?;
         }
         Commands::Health { detail } => {
-            info!("Running health check...");
+            info!("{}", i18n::cli::HEALTH_CHECK);
             health::run(detail, config.cache.ttl_seconds).await?;
         }
         Commands::Sync {
@@ -142,30 +143,30 @@ async fn main() -> anyhow::Result<()> {
             if dry_run {
                 warn!("Dry-run mode enabled");
             }
-            info!("Syncing with strategy: {}", strategy);
+            info!("{}: {}", i18n::cli::SYNCING, strategy);
             sync::run(dry_run, &strategy, filter_tags.as_deref()).await?;
         }
         Commands::Query { query } => {
-            info!("Querying: {}", query);
+            info!("{}: {}", i18n::cli::QUERYING, query);
             query::run(&query, &config).await?;
         }
         Commands::Index { path } => {
-            info!("Indexing repositories: path='{}'", path);
+            info!("{}: path='{}'", i18n::cli::INDEXING, path);
             let path = path.clone();
             let count = tokio::task::spawn_blocking(move || crate::knowledge_engine::run_index(&path))
                 .await
                 .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
-            info!("Indexed {} repositories", count);
+            info!("已索引 {} 个仓库", count);
         }
         Commands::Clean => {
-            info!("Cleaning backup entries from registry");
+            info!("正在清理注册表中的备份条目");
             let conn = registry::WorkspaceRegistry::init_db()?;
             let deleted = conn.execute(
                 "DELETE FROM repos WHERE id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%'",
                 [],
             )?;
-            println!("Deleted {} backup entries from devbase registry.", deleted);
-            println!("\nRemaining registered repos:");
+            println!("已从 devbase 注册表中删除 {} 个备份条目。", deleted);
+            println!("\n剩余已注册仓库:");
             let mut stmt = conn.prepare("SELECT id, local_path FROM repos")?;
             let rows = stmt.query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -176,13 +177,13 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Tag { repo_id, tags } => {
-            info!("Tagging {} with {}", repo_id, tags);
+            info!("为 {} 打标签: {}", repo_id, tags);
             let mut conn = registry::WorkspaceRegistry::init_db()?;
             let tag_list: Vec<&str> = tags.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
             let tx = conn.transaction()?;
             let exists: bool = tx.query_row("SELECT 1 FROM repos WHERE id = ?1", [&repo_id], |_| Ok(true)).unwrap_or(false);
             if !exists {
-                println!("Repository '{}' not found in registry.", repo_id);
+                println!("注册表中未找到仓库 '{}'。", repo_id);
             } else {
                 tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1", [&repo_id])?;
                 for tag in &tag_list {
@@ -192,11 +193,11 @@ async fn main() -> anyhow::Result<()> {
                     )?;
                 }
                 tx.commit()?;
-                println!("Tagged '{}' with '{}'.", repo_id, tags);
+                println!("已为 '{}' 打上标签 '{}'。", repo_id, tags);
             }
         }
         Commands::Tui => {
-            info!("Launching TUI");
+            info!("{}", i18n::cli::LAUNCHING_TUI);
             tui::run().await?;
         }
         Commands::Mcp { transport } => {
@@ -346,7 +347,7 @@ async fn main() -> anyhow::Result<()> {
             {
                 Ok(Ok(text)) => println!("{}", text),
                 Ok(Err(e)) => println!("生成日报失败: {}", e),
-                Err(e) => println!("Digest task panicked: {}", e),
+                Err(e) => println!("日报任务崩溃: {}", e),
             }
         }
         Commands::Discover => {

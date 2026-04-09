@@ -208,7 +208,7 @@ pub async fn run_json(
         })
         .collect();
 
-    info!("Sync finished");
+    info!("{}", crate::i18n::log::SYNC_FINISHED);
     Ok(serde_json::json!({
         "success": true,
         "dry_run": dry_run,
@@ -236,15 +236,15 @@ pub async fn run(
             dry_run,
             strategy,
             |id, summary| {
-                println!("  [{}] progress: {}", id, summary.message);
+                println!("  [{}] {}: {}", id, crate::i18n::log::PROGRESS, summary.message);
             },
         )
         .await;
 
     let filter_suffix = filter_tags
-        .map(|f| format!(" | filter-tags: {}", f))
+        .map(|f| format!("{}{}）", crate::i18n::sync::FILTER_PREFIX, f))
         .unwrap_or_default();
-    println!("Sync strategy: {}{}\n", strategy, filter_suffix);
+    println!("{}{} {}{}\n", crate::i18n::sync::STRATEGY_PREFIX, ":", strategy, filter_suffix);
 
     let results_json: Vec<serde_json::Value> = results
         .iter()
@@ -268,28 +268,28 @@ pub async fn run(
         let message = item["message"].as_str().unwrap_or("");
 
         if action == "skipped" && message.contains("Own project") {
-            println!("  [{}] SKIP (own project, no upstream)", id);
+            println!("  [{}] {}", id, crate::i18n::sync::SKIP_NO_UPSTREAM);
         } else if action == "skipped" && dry_run {
             println!(
-                "  [{}] WOULD fetch from {} -> {}",
+                "  [{}] 将获取 {} -> {}",
                 id,
                 message.strip_prefix("Would fetch from ").unwrap_or("?"),
                 path
             );
         } else {
-            println!("  [{}] Checking {}...", id, path);
+            println!("  [{}] {} {}...", id, crate::i18n::sync::CHECKING, path);
             if action == "error" {
-                println!("    [ERROR] {}", message);
+                println!("    [{}] {}", crate::i18n::sync::ERROR_PREFIX, message);
             } else if action == "fetch_only" {
-                println!("    -> Fetched only. Use --strategy=auto-pull or ask to merge.");
+                println!("    -> {}", crate::i18n::sync::FETCHED_ONLY);
             } else if action == "blocked_dirty" {
-                println!("    [BLOCKED] Working directory is not clean. Commit or stash before merge.");
+                println!("    {}", crate::i18n::sync::BLOCKED_DIRTY);
             } else if action == "merged_ff" {
-                println!("    [MERGED] Fast-forwarded to origin/...");
+                println!("    {}", crate::i18n::sync::MERGED_FF);
             } else if action == "merged_commit" {
-                println!("    [MERGED] Created merge commit for origin/...");
+                println!("    {}", crate::i18n::sync::MERGED_COMMIT);
             } else if action == "conflict" {
-                println!("    [CONFLICT] Merge has conflicts. Resolve manually.");
+                println!("    {}", crate::i18n::sync::CONFLICT);
             }
         }
     }
@@ -297,9 +297,9 @@ pub async fn run(
     print_summary_table(&results_json);
 
     if dry_run {
-        println!("\nℹ️  Dry-run complete. No changes applied.");
+        println!("\n{}", crate::i18n::sync::DRY_RUN_COMPLETE);
     } else {
-        println!("\n✅ Sync complete.");
+        println!("\n{}", crate::i18n::sync::SYNC_COMPLETE);
     }
 
     Ok(())
@@ -327,14 +327,14 @@ fn map_action(action: &str, message: &str) -> String {
 
 fn print_summary_table(results: &[serde_json::Value]) {
     if results.is_empty() {
-        println!("No repositories processed.");
+        println!("{}", crate::i18n::sync::NO_REPOS_PROCESSED);
         return;
     }
 
     println!("{:-<90}", "");
     println!(
         "{:<24} {:<10} {:>6} {:>7} {}",
-        "ID", "Action", "Ahead", "Behind", "Message"
+        crate::i18n::sync::HEADER_REPO, crate::i18n::sync::HEADER_ACTION, "超前", "落后", "消息"
     );
     println!("{:-<90}", "");
     for item in results {

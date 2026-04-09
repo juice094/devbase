@@ -78,7 +78,7 @@ impl App {
             show_sync_popup: false,
             sync_popup_results: Vec::new(),
         };
-        app.log_info("devbase TUI started. Press 'h' for help, 'q' to quit.".to_string());
+        app.log_info(crate::i18n::log::TUI_STARTED.to_string());
         app.load_repos()?;
         Ok(app)
     }
@@ -106,7 +106,7 @@ impl App {
             self.selected = self.repos.len() - 1;
         }
         self.list_state.select(Some(self.selected));
-        self.log_info(format!("Loaded {} repositories.", self.repos.len()));
+        self.log_info(crate::i18n::log::loaded_repos(self.repos.len()));
         self.spawn_repo_status_for_current();
         Ok(())
     }
@@ -185,12 +185,12 @@ impl App {
         let repo = match self.current_repo().cloned() {
             Some(r) => r,
             None => {
-                self.log_warn("No repository selected.".to_string());
+                self.log_warn(crate::i18n::log::NO_REPO_SELECTED.to_string());
                 return;
             }
         };
 
-        self.log_info(format!("Fetching preview for {}...", repo.id));
+        self.log_info(crate::i18n::log::fetching_preview(&repo.id));
         self.loading_preview.insert(repo.id.clone());
 
         self.fetch_preview_job
@@ -211,9 +211,8 @@ impl App {
                     repo.status_ahead = Some(n.ahead);
                     repo.status_behind = Some(n.behind);
                 }
-                self.log_info(format!(
-                    "[{}] status: dirty={}, ahead={}, behind={}",
-                    n.repo_id, n.dirty, n.ahead, n.behind
+                self.log_info(crate::i18n::log::status_fmt(
+                    &n.repo_id, n.dirty, n.ahead, n.behind
                 ));
             }
             AsyncNotification::FetchPreview(n) => {
@@ -223,9 +222,8 @@ impl App {
             AsyncNotification::SyncProgress(n) => {
                 self.loading_sync.remove(&n.repo_id);
                 self.sync_popup_results.push((n.repo_id.clone(), n.message.clone()));
-                self.log_info(format!(
-                    "[{}] sync progress: {} - {}",
-                    n.repo_id, n.action, n.message
+                self.log_info(crate::i18n::log::sync_progress_fmt(
+                    &n.repo_id, &n.action, &n.message
                 ));
             }
         }
@@ -235,7 +233,7 @@ impl App {
         let repo_id = match self.current_repo() {
             Some(r) => r.id.clone(),
             None => {
-                self.log_warn("No repository selected.".to_string());
+                self.log_warn(crate::i18n::log::NO_REPO_SELECTED.to_string());
                 return;
             }
         };
@@ -254,12 +252,12 @@ impl App {
             Ok(())
         })() {
             Ok(()) => {
-                self.log_info(format!("Updated tags for [{}] to: {}", repo_id, new_tags));
+                self.log_info(crate::i18n::log::updated_tags(&repo_id, new_tags));
                 if let Err(e) = self.load_repos() {
-                    self.log_error(format!("Failed to reload repos: {}", e));
+                    self.log_error(crate::i18n::log::reload_repos_failed(e));
                 }
             }
-            Err(e) => self.log_error(format!("Failed to update tags: {}", e)),
+            Err(e) => self.log_error(crate::i18n::log::update_tags_failed(e)),
         }
     }
 
@@ -270,8 +268,8 @@ impl App {
         let current = match self.current_repo() {
             Some(r) => r.clone(),
             None => {
-                self.log_warn("No repository selected.".to_string());
-                self.sync_popup_results.push(("system".to_string(), "No repository selected.".to_string()));
+                self.log_warn(crate::i18n::log::NO_REPO_SELECTED.to_string());
+                self.sync_popup_results.push(("system".to_string(), crate::i18n::log::NO_REPO_SELECTED.to_string()));
                 return;
             }
         };
@@ -283,8 +281,8 @@ impl App {
             .collect();
 
         if target_tags.is_empty() {
-            self.log_warn("Selected repo has no tags to batch sync.".to_string());
-            self.sync_popup_results.push(("system".to_string(), "Selected repo has no tags to batch sync.".to_string()));
+            self.log_warn(crate::i18n::log::NO_TAGS_TO_SYNC.to_string());
+            self.sync_popup_results.push(("system".to_string(), crate::i18n::log::NO_TAGS_TO_SYNC.to_string()));
             return;
         }
 
@@ -302,16 +300,12 @@ impl App {
             .collect();
 
         if repos_to_sync.is_empty() {
-            self.log_warn("No repositories match the selected tags.".to_string());
-            self.sync_popup_results.push(("system".to_string(), "No repositories match the selected tags.".to_string()));
+            self.log_warn(crate::i18n::log::NO_REPOS_MATCH_TAGS.to_string());
+            self.sync_popup_results.push(("system".to_string(), crate::i18n::log::NO_REPOS_MATCH_TAGS.to_string()));
             return;
         }
 
-        self.log_info(format!(
-            "Batch syncing {} repos with tags {:?}...",
-            repos_to_sync.len(),
-            target_tags
-        ));
+        self.log_info(crate::i18n::log::batch_syncing(repos_to_sync.len()));
         for r in &repos_to_sync {
             self.loading_sync.insert(r.id.clone());
         }
@@ -369,9 +363,9 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::R
                         InputMode::Normal => match key.code {
                             KeyCode::Char('q') => return Ok(()),
                             KeyCode::Char('r') => {
-                                app.log_info("Refreshing registry...".to_string());
+                                app.log_info(crate::i18n::log::REFRESHING.to_string());
                                 if let Err(e) = app.load_repos() {
-                                    app.log_error(format!("Refresh failed: {}", e));
+                                    app.log_error(crate::i18n::log::refresh_failed(e));
                                 }
                             }
                             KeyCode::Char('s') => app.sync_preview(),
@@ -393,7 +387,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::R
                                 if !tags.is_empty() {
                                     app.update_tags(&tags);
                                 } else {
-                                    app.log_warn("Empty tag input ignored.".to_string());
+                                    app.log_warn(crate::i18n::log::EMPTY_TAG_IGNORED.to_string());
                                 }
                                 app.input_mode = InputMode::Normal;
                                 app.input_buffer.clear();
@@ -401,7 +395,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::R
                             KeyCode::Esc => {
                                 app.input_mode = InputMode::Normal;
                                 app.input_buffer.clear();
-                                app.log_info("Tag input cancelled.".to_string());
+                                app.log_info(crate::i18n::log::TAG_INPUT_CANCELLED.to_string());
                             }
                             KeyCode::Char(c) => app.input_buffer.push(c),
                             KeyCode::Backspace => {
@@ -481,7 +475,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
         .collect();
 
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Repositories"))
+        .block(Block::default().borders(Borders::ALL).title(crate::i18n::tui::TITLE_REPOS))
         .highlight_style(
             Style::default()
                 .bg(Color::Rgb(40, 40, 80))
@@ -501,37 +495,37 @@ fn ui(frame: &mut Frame, app: &mut App) {
     // Detail panel
     let detail_text = if let Some(repo) = app.current_repo() {
         let mut tag_line = vec![
-            Span::styled("Tags: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(crate::i18n::tui::LABEL_TAGS, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
         ];
         tag_line.extend(tag_spans(&repo.tags));
 
         let status_text = match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
-            (Some(d), Some(a), Some(b)) => format!("dirty={} ahead={} behind={}", d, a, b),
-            _ => "loading...".to_string(),
+            (Some(d), Some(a), Some(b)) => format!("未提交={} 超前={} 落后={}", d, a, b),
+            _ => crate::i18n::tui::STATUS_LOADING.to_string(),
         };
 
         Text::from(vec![
             Line::from(vec![
-                Span::styled("ID: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(crate::i18n::tui::LABEL_ID, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                 Span::raw(&repo.id),
             ]),
             Line::from(vec![
-                Span::styled("Path: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(crate::i18n::tui::LABEL_PATH, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                 Span::raw(&repo.local_path),
             ]),
             Line::from(vec![
-                Span::styled("Branch: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::raw(repo.default_branch.as_deref().unwrap_or("unknown")),
+                Span::styled(crate::i18n::tui::LABEL_BRANCH, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::raw(repo.default_branch.as_deref().unwrap_or(crate::i18n::tui::STATUS_UNKNOWN)),
             ]),
             Line::from(tag_line),
             Line::from(vec![
-                Span::styled("Language: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::raw(repo.language.as_deref().unwrap_or("unknown")),
+                Span::styled(crate::i18n::tui::LABEL_LANGUAGE, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::raw(repo.language.as_deref().unwrap_or(crate::i18n::tui::STATUS_UNKNOWN)),
             ]),
             Line::from(vec![
-                Span::styled("Upstream: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(crate::i18n::tui::LABEL_UPSTREAM, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                 Span::styled(
-                    repo.upstream_url.as_deref().unwrap_or("(none)"),
+                    repo.upstream_url.as_deref().unwrap_or("(无)"),
                     if repo.upstream_url.is_some() {
                         Style::default().fg(Color::Green)
                     } else {
@@ -540,16 +534,16 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 ),
             ]),
             Line::from(vec![
-                Span::styled("Status: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(crate::i18n::tui::LABEL_STATUS, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                 Span::raw(status_text),
             ]),
         ])
     } else {
-        Text::raw("No repositories registered. Run 'devbase scan <path> --register' first.")
+        Text::raw(crate::i18n::log::NO_REPOS_REGISTERED)
     };
 
     let detail = Paragraph::new(detail_text)
-        .block(Block::default().borders(Borders::ALL).title("Details"))
+        .block(Block::default().borders(Borders::ALL).title(crate::i18n::tui::TITLE_DETAILS))
         .wrap(Wrap { trim: true });
 
     frame.render_widget(detail, right_chunks[0]);
@@ -558,7 +552,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
     let log_lines: Vec<Line> = app.logs.iter().map(|l| format_log_line(l)).collect();
     let log_text = Text::from(log_lines);
     let logs = Paragraph::new(log_text)
-        .block(Block::default().borders(Borders::ALL).title("Logs"))
+        .block(Block::default().borders(Borders::ALL).title(crate::i18n::tui::TITLE_LOGS))
         .wrap(Wrap { trim: true });
 
     frame.render_widget(logs, right_chunks[1]);
@@ -589,7 +583,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title("Sync Progress"),
+                    .title(crate::i18n::tui::TITLE_SYNC_PROGRESS),
             );
 
         // Clear background and render popup
@@ -601,7 +595,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
 
         // Footer hint inside popup
         let hint = Paragraph::new(Span::styled(
-            "Press Esc or Enter to close",
+            crate::i18n::tui::HINT_POPUP_CLOSE,
             Style::default().fg(Color::DarkGray),
         ));
         let hint_height = 1;
@@ -618,27 +612,27 @@ fn ui(frame: &mut Frame, app: &mut App) {
     if bottom_height > 0 {
         let bottom_text = match app.input_mode {
             InputMode::TagInput => Line::from(vec![
-                Span::styled("Tag: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled("标签: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
                 Span::raw(&app.input_buffer),
-                Span::styled("  [Enter] confirm  [Esc] cancel", Style::default().fg(Color::DarkGray)),
+                Span::styled(crate::i18n::tui::HINT_TAG_INPUT, Style::default().fg(Color::DarkGray)),
             ]),
             InputMode::Normal => Line::from(vec![
                 Span::styled("q", Style::default().fg(Color::Cyan)),
-                Span::raw("=quit "),
+                Span::raw("=退出 "),
                 Span::styled("r", Style::default().fg(Color::Cyan)),
-                Span::raw("=refresh "),
+                Span::raw("=刷新 "),
                 Span::styled("s", Style::default().fg(Color::Cyan)),
-                Span::raw("=sync-preview "),
+                Span::raw("=获取预览 "),
                 Span::styled("S", Style::default().fg(Color::Cyan)),
-                Span::raw("=sync-batch "),
+                Span::raw("=批量同步 "),
                 Span::styled("t", Style::default().fg(Color::Cyan)),
-                Span::raw("=tag "),
+                Span::raw("=编辑标签 "),
                 Span::styled("h", Style::default().fg(Color::Cyan)),
-                Span::raw("=help "),
+                Span::raw("=帮助 "),
                 Span::styled("↑↓", Style::default().fg(Color::Cyan)),
                 Span::raw("/"),
                 Span::styled("Home/End", Style::default().fg(Color::Cyan)),
-                Span::raw("=navigate"),
+                Span::raw("=导航"),
             ]),
         };
         let bottom_bar = Paragraph::new(bottom_text);
@@ -688,7 +682,7 @@ fn tag_spans(tags: &[String]) -> Vec<Span<'_>> {
         spans.push(Span::styled(tag, Style::default().fg(color).add_modifier(Modifier::BOLD)));
     }
     if spans.is_empty() {
-        spans.push(Span::raw("(none)"));
+        spans.push(Span::raw("(无)"));
     }
     spans
 }
