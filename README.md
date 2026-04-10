@@ -11,14 +11,15 @@
 
 ## ✨ 核心特性
 
-- **🔍 扫描与注册**：`devbase scan` 递归发现 `.git` 仓库，自动识别语言（Rust/Node/Go/Python/C++）和 ZIP 快照来源。
+- **🔍 扫描与注册**：`devbase scan` 递归发现 `.git` 仓库，自动识别语言（Rust/Node/Go/Python/C++）并持久化到本地数据库，支持 ZIP 快照来源识别。
 - **❤️ 健康检查**：`devbase health` 检测每个仓库的 dirty/behind/ahead 状态，同时检查本地工具链版本（rustc/cargo/node/go/cmake）。
 - **🔄 智能同步**：`devbase sync` 按标签和策略批量同步仓库，支持并发编排、错误分类、dry-run 预览。
 - **🔎 结构化查询**：`devbase query` 支持 `lang:rust`、`stale:>30`、`behind:>10`、`tag:own-project` 等表达式。
 - **🤖 MCP 服务器**：`devbase mcp --transport stdio` 暴露 7 个工具，供 Claude Desktop、Cursor、Cline 等 Agent 调用。
-- **📊 交互式 TUI**：`devbase tui` 提供键盘驱动的实时界面，后台操作不阻塞 UI。
+- **📊 交互式 TUI**：`devbase tui` 提供键盘驱动的实时界面，后台操作不阻塞 UI；批量同步时底部状态栏实时显示进度，弹窗区分完成/运行中/等待状态。
 - **📝 知识日报**：`devbase digest` 生成 24 小时知识代谢报告，聚合新发现、异常仓库、项目关系。
 - **⚙️ 后台守护进程**：`devbase daemon` 定时执行 health → re-index → discovery → digest 自动化闭环。
+- **🌐 中英文自动适配**：首次启动自动检测系统语言，界面支持中文/英文无缝切换，配置持久化。
 
 ---
 
@@ -57,8 +58,9 @@ cargo build --release
 |------|------|
 | `↑` / `↓` | 切换仓库 |
 | `Home` / `End` | 跳到首项 / 末项 |
+| `PgUp` / `PgDn` | 快速翻页 |
 | `s` | 异步获取当前仓库的 fetch preview |
-| `S` | 批量同步具有相同标签的仓库（弹出进度窗口） |
+| `S` | 批量同步具有相同标签的仓库（弹出进度窗口，显示完成/运行/等待计数和已用时间） |
 | `t` | 编辑当前仓库的标签 |
 | `r` | 刷新仓库列表 |
 | `h` | 显示/隐藏帮助条 |
@@ -90,6 +92,9 @@ devbase 在启动时会读取 `~/.config/devbase/config.toml`（Windows 为 `%AP
 示例配置：
 
 ```toml
+[general]
+language = "auto"          # "auto" | "zh-CN" | "en"
+
 [daemon]
 interval_seconds = 3600
 incremental = true

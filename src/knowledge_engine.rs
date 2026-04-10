@@ -241,6 +241,95 @@ fn extract_keywords(content: &str) -> Vec<String> {
     pairs.into_iter().take(5).map(|(w, _)| w).collect()
 }
 
+/// 当 README 不存在时，基于项目元数据生成规则摘要
+pub fn generate_fallback_summary(path: &Path) -> (String, String) {
+    // Try language-specific metadata files
+    if let Some((summary, keywords)) = try_cargo_toml(path) {
+        return (summary, keywords);
+    }
+    if let Some((summary, keywords)) = try_package_json(path) {
+        return (summary, keywords);
+    }
+    if let Some((summary, keywords)) = try_go_mod(path) {
+        return (summary, keywords);
+    }
+    if let Some((summary, keywords)) = try_pyproject(path) {
+        return (summary, keywords);
+    }
+
+    // Last resort: file type distribution
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
+                *counts.entry(ext.to_lowercase()).or_insert(0) += 1;
+            }
+        }
+    }
+    let mut pairs: Vec<(String, usize)> = counts.into_iter().collect();
+    pairs.sort_by(|a, b| b.1.cmp(&a.1));
+    let top: Vec<String> = pairs.into_iter().take(3).map(|(e, c)| format!("{}({})", e, c)).collect();
+    if top.is_empty() {
+        ("Unclassified project".to_string(), "unknown".to_string())
+    } else {
+        (format!("Project containing files: {}", top.join(", ")), top.join(", "))
+    }
+}
+
+fn try_cargo_toml(path: &Path) -> Option<(String, String)> {
+    let cargo_path = path.join("Cargo.toml");
+    let cargo = std::fs::read_to_string(&cargo_path).ok()?;
+    let value: toml::Value = toml::from_str(&cargo).ok()?;
+    let package = value.get("package")?;
+    let desc = package.get("description")?.as_str()?;
+    let name = package.get("name")?.as_str()?;
+    let workspace_members: Vec<String> = value
+        .get("workspace")
+        .and_then(|w| w.get("members"))
+        .and_then(|m| m.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let summary = if workspace_members.len() > 1 {
+        format!("Rust workspace '{}' with {} crates: {}", name, workspace_members.len(), workspace_members.join(", "))
+    } else {
+        format!("Rust crate '{}' - {}", name, desc)
+    };
+    let keywords = format!("rust, {}, {}", name, workspace_members.first().cloned().unwrap_or_default());
+    Some((summary, keywords))
+}
+
+fn try_package_json(path: &Path) -> Option<(String, String)> {
+    let content = std::fs::read_to_string(path.join("package.json")).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let name = value.get("name")?.as_str()?;
+    let desc = value.get("description")?.as_str().unwrap_or("Node.js project");
+    let summary = format!("Node project '{}' - {}", name, desc);
+    Some((summary, format!("node, {}, javascript", name)))
+}
+
+fn try_go_mod(path: &Path) -> Option<(String, String)> {
+    let content = std::fs::read_to_string(path.join("go.mod")).ok()?;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("module ") {
+            let module_name = line.strip_prefix("module ")?.trim();
+            let summary = format!("Go module '{}'", module_name);
+            return Some((summary, format!("go, {}", module_name)));
+        }
+    }
+    None
+}
+
+fn try_pyproject(path: &Path) -> Option<(String, String)> {
+    let content = std::fs::read_to_string(path.join("pyproject.toml")).ok()?;
+    let value: toml::Value = toml::from_str(&content).ok()?;
+    let project = value.get("project")?;
+    let name = project.get("name")?.as_str()?;
+    let desc = project.get("description")?.as_str().unwrap_or("Python project");
+    let summary = format!("Python project '{}' - {}", name, desc);
+    Some((summary, format!("python, {}, {}", name, desc.split_whitespace().next().unwrap_or(""))))
+}
+
 /// 从 Rust 项目中提取模块结构
 /// - 调用 `cargo metadata --format-version 1 --manifest-path <path>/Cargo.toml --no-deps`
 /// - 解析 JSON，提取每个 package 的 targets[].name 和 targets[].kind[0]
@@ -312,8 +401,8 @@ pub fn index_repo(repo: &crate::registry::RepoEntry) -> anyhow::Result<()> {
     let (summary, keywords) = match extract_readme_summary(&repo.local_path) {
         Some((s, k)) => (s, k.join(", ")),
         None => {
-            warn!("Failed to extract summary for {}", repo.id);
-            ("Unknown project".to_string(), "unknown".to_string())
+            warn!("No README found for {}, generating fallback summary", repo.id);
+            generate_fallback_summary(&repo.local_path)
         }
     };
 
@@ -327,9 +416,14 @@ pub fn index_repo(repo: &crate::registry::RepoEntry) -> anyhow::Result<()> {
         .collect();
     WorkspaceRegistry::save_modules(&mut conn, &repo.id, &modules_tuple)?;
 
+    let detected_lang = crate::scan::detect_language(&repo.local_path);
+    if let Some(ref lang) = detected_lang {
+        WorkspaceRegistry::update_repo_language(&conn, &repo.id, Some(lang))?;
+    }
+
     info!(
-        "Indexed [{}] -> \"{}\" (keywords: {})",
-        repo.id, summary, keywords
+        "Indexed [{}] -> \"{}\" (keywords: {}) language={:?}",
+        repo.id, summary, keywords, detected_lang
     );
     Ok(())
 }
@@ -363,8 +457,8 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
         let (summary, keywords) = match extract_readme_summary(&repo.local_path) {
             Some((s, k)) => (s, k.join(", ")),
             None => {
-                warn!("Failed to extract summary for {}", repo.id);
-                ("Unknown project".to_string(), "unknown".to_string())
+                warn!("No README found for {}, generating fallback summary", repo.id);
+                generate_fallback_summary(&repo.local_path)
             }
         };
 
@@ -378,9 +472,14 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
             .collect();
         WorkspaceRegistry::save_modules(&mut conn, &repo.id, &modules_tuple)?;
 
+        let detected_lang = crate::scan::detect_language(&repo.local_path);
+        if let Some(ref lang) = detected_lang {
+            WorkspaceRegistry::update_repo_language(&conn, &repo.id, Some(lang))?;
+        }
+
         println!(
-            "Indexed [{}] -> \"{}\" (keywords: {})",
-            repo.id, summary, keywords
+            "Indexed [{}] -> \"{}\" (keywords: {}) language={:?}",
+            repo.id, summary, keywords, detected_lang
         );
         count += 1;
     }
@@ -470,6 +569,27 @@ First sentence here. {}Second sentence here.
         assert!(summary.ends_with('.'));
         assert!(summary.contains("First sentence here."));
         assert!(!summary.contains("Second sentence here"));
+    }
+
+    #[test]
+    fn test_fallback_summary_cargo_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let cargo = dir.path().join("Cargo.toml");
+        let mut file = std::fs::File::create(&cargo).unwrap();
+        write!(
+            file,
+            r#"[package]
+name = "test-fallback-crate"
+version = "0.1.0"
+edition = "2021"
+description = "A test crate for semantic fallback without README."
+"#
+        ).unwrap();
+
+        let (summary, keywords) = generate_fallback_summary(dir.path());
+        assert!(summary.contains("test-fallback-crate"), "summary: {}", summary);
+        assert!(summary.contains("A test crate for semantic fallback without README"), "summary: {}", summary);
+        assert!(keywords.contains("rust") || keywords.contains("test-fallback-crate"), "keywords: {}", keywords);
     }
 
     #[test]

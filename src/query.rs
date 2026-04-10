@@ -254,6 +254,87 @@ pub async fn run_json(query_str: &str, config: &crate::config::Config) -> anyhow
         }));
     }
 
+    // Handle paper: prefix queries
+    if query_str.starts_with("paper:") {
+        let rest = &query_str["paper:".len()..];
+        let papers = if let Some((field, value)) = rest.split_once(':') {
+            match field {
+                "venue" => WorkspaceRegistry::find_papers_by_venue(&conn, value)?,
+                _ => {
+                    let mut all = WorkspaceRegistry::list_papers(&conn)?;
+                    let v = value.to_lowercase();
+                    all.retain(|p| {
+                        p.venue.as_ref().map(|x| x.to_lowercase() == v).unwrap_or(false)
+                            || p.year.map(|y| y.to_string() == v).unwrap_or(false)
+                            || p.tags.iter().any(|t| t.to_lowercase() == v)
+                    });
+                    all
+                }
+            }
+        } else {
+            // paper:iclr  -> treat as venue search
+            let venue = rest;
+            WorkspaceRegistry::find_papers_by_venue(&conn, venue)?
+        };
+        let count = papers.len();
+        let results: Vec<serde_json::Value> = papers.into_iter().map(|p| serde_json::json!({
+            "id": p.id,
+            "title": p.title,
+            "venue": p.venue,
+            "year": p.year,
+            "pdf_path": p.pdf_path,
+            "tags": p.tags.join(","),
+            "match_reasons": ["paper"]
+        })).collect();
+        let top_ids = results.iter().take(10).map(|r| r.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string()).collect::<Vec<_>>().join(",");
+        let _ = WorkspaceRegistry::log_query(&conn, query_str, "paper", count, &top_ids);
+        return Ok(serde_json::json!({
+            "success": true,
+            "count": count,
+            "expression": query_str,
+            "results": results
+        }));
+    }
+
+    // Handle experiment: prefix queries
+    if query_str.starts_with("experiment:") {
+        let rest = &query_str["experiment:".len()..];
+        let exps = if let Some((field, value)) = rest.split_once(':') {
+            match field {
+                "repo" => WorkspaceRegistry::find_experiments_by_repo(&conn, value)?,
+                _ => {
+                    let mut all = WorkspaceRegistry::list_experiments(&conn)?;
+                    let v = value.to_lowercase();
+                    all.retain(|e| {
+                        e.status.to_lowercase() == v
+                            || e.paper_id.as_ref().map(|x| x.to_lowercase() == v).unwrap_or(false)
+                    });
+                    all
+                }
+            }
+        } else {
+            WorkspaceRegistry::list_experiments(&conn)?
+        };
+        let count = exps.len();
+        let results: Vec<serde_json::Value> = exps.into_iter().map(|e| serde_json::json!({
+            "id": e.id,
+            "repo_id": e.repo_id,
+            "paper_id": e.paper_id,
+            "status": e.status,
+            "syncthing_folder_id": e.syncthing_folder_id,
+            "timestamp": e.timestamp.to_rfc3339(),
+            "match_reasons": ["experiment"]
+        })).collect();
+        let top_ids = results.iter().take(10).map(|r| r.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string()).collect::<Vec<_>>().join(",");
+        let _ = WorkspaceRegistry::log_query(&conn, query_str, "experiment", count, &top_ids);
+        return Ok(serde_json::json!({
+            "success": true,
+            "count": count,
+            "expression": query_str,
+            "results": results
+        }));
+    }
+
     let conditions = parse_query(query_str);
 
     let repos = WorkspaceRegistry::list_repos(&conn)?;

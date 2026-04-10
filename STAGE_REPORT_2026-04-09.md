@@ -96,7 +96,7 @@
 - Details 面板新增 `Language` 和 `Status`（dirty/ahead/behind）显示。
 - **批量同步弹窗**：按键 `S` 后弹出居中模态窗口（60%×40%），实时显示各仓库同步进度，成功项绿色、错误项红色，`Esc`/`Enter` 关闭。
 - Logs 面板保留彩色分级（INFO 绿色 / WARN 黄色 / ERROR 红色粗体）。
-- 按键 `h` 帮助条、`t` 标签编辑、`Home/End` 快速跳转均保留。
+- 按键 `h` 帮助条、`t` 标签编辑、`Home/End` 快速跳转、`PgUp/PgDn` 翻页均保留。
 - 已适配 `repo_tags` 新 schema：`RepoItem.tags` 改为 `Vec<String>`，过滤使用精确匹配。
 
 #### `src/asyncgit.rs`（新增）
@@ -119,15 +119,15 @@
   - 检测 `repos` 是否仍有 `tags` CSV 列，如有则拆分导入 `repo_tags`，随后 `DROP COLUMN tags`
   - 已有 22 个仓库数据完整迁移，无丢失
 - 新增 `RepoEntry::primary_remote()` 辅助方法（优先返回 `origin`，否则第一个 remote）。
-- 新增数据访问方法：`list_repos`、`save_repo`、`save_health`、`get_health`。
-- 新增增量查询方法：`list_repos_stale_health`、`list_repos_need_index`。
+- 新增数据访问方法：`list_repos`、`save_repo`、`save_health`、`get_health`、**`update_repo_language`**。
+- 新增增量查询方法：`list_repos_stale_health`、`list_repos_need_index`（** latter 额外包含 `OR r.language IS NULL`，确保缺失语言的仓库也会被增量索引 **）。
 - `save_repo` 写入 tags 时通过事务先清空 `repo_tags` 再逐条插入。
 
 #### `src/knowledge_engine.rs`（新增）
 - `extract_readme_summary(path)`：提取首段摘要 + TF 关键词（规则模式，LLM 降级方案）。
 - `extract_module_structure(path)`：对 Rust 项目调用 `cargo metadata` 解析模块结构。
-- `run_index(path)`：遍历所有注册仓库并写入 `repo_summaries` / `repo_modules`。
-- `index_repo(repo)`：单个仓库索引，供 Daemon 增量化使用。
+- `run_index(path)`：遍历所有注册仓库并写入 `repo_summaries` / `repo_modules`；**索引完成后自动检测语言并回写 `repos.language`**。
+- `index_repo(repo)`：单个仓库索引，供 Daemon 增量化使用；同样包含语言检测回写逻辑。
 
 #### `src/discovery_engine.rs`（新增）
 - `discover_dependencies(repos)`：解析 `Cargo.toml` / `package.json` / `go.mod`，发现本地仓库间的依赖关系。
@@ -170,7 +170,7 @@
 #### `src/config.rs`（新增）
 - 基于 `serde` + `TOML` 的配置系统。
 - 默认路径：`~/.config/devbase/config.toml`。
-- 支持 `daemon` / `cache` / `watch` / `digest` 四个配置段。
+- 支持 `general` / `daemon` / `cache` / `watch` / `digest` 五个配置段；`general.language` 支持 `"auto"`、`"zh-CN"`、`"en"`。
 - 配置文件不存在时安全回退到 `Config::default()`。
 
 #### `Cargo.toml`
@@ -307,13 +307,49 @@ devbase digest
 
 ---
 
-## 七、已知问题与限制
+## 七、当日收尾与修复（晚间）
 
+### 7.1 语言检测缓存补全
+**问题**：TUI 中大部分仓库的语言显示为 "—"，但 `devbase query "lang:rust"` 却能正确返回 8 个 Rust 项目。  
+**根因**：`query.rs` 在过滤时动态调用 `detect_language(path)`，而 TUI 读取的是 SQLite `repos.language` 缓存列；该列在 21/22 个仓库中为 `NULL`（旧数据迁移或早期注册时未写入）。
+
+**修复**：
+- `knowledge_engine.rs` 的 `index_repo` 和 `run_index` 在生成摘要后，追加 `detect_language()` + `WorkspaceRegistry::update_repo_language()`，将检测结果回写数据库。
+- `registry.rs` 的 `list_repos_need_index` 增量查询增加 `OR r.language IS NULL` 条件，确保 Daemon 的 re-index tick 会自动 backfill 缺失的语言字段。
+- 执行 `devbase index` 全量刷新后，22 个仓库中 20 个已正确识别并持久化语言（仅 `cheat-engine`、`coze-studio` 因无可识别的构建文件而保持 `None`）。
+
+### 7.2 TUI 同步体验优化
+**问题**：批量同步（`S` 键）启动后，前 30 秒可能没有任何完成项，弹窗标题仅显示 `同步进度 (0/8)`，用户无法感知后台是否正在工作。
+
+**修复**：
+1. **状态精确追踪**：`App` 新增 `sync_running: HashSet<String>` 和 `sync_start_time: Option<Instant>`，配合已有的 `loading_sync`，精确区分：
+   - `loading_sync` = 已提交但尚未收到 `RUNNING` 通知的任务
+   - `sync_running` = 正在执行中的任务
+   - 已完成 = 总数 - 等待中 - 运行中
+2. **弹窗标题增强**：从简单的 `(3/8)` 升级为彩色分段标题，例如：
+   - 中文：`同步进度 | 3完成 2运行 3等待 | 已用12s`
+   - 英文：`Sync Progress | 3Done 2Run 3Wait | Elapsed12s`
+3. **底部状态栏实时计数**：当同步进行时，Normal 模式底部 hint 栏右侧追加 `同步进度 3/2/8`，任务结束后自动消失。
+4. **Logs 面板自动滚动**：渲染 Logs 时仅取最近 `height - 2` 条，确保最新日志始终显示在面板底部。
+
+### 7.3 运行时国际化（i18n）
+**新增** `src/i18n/` 运行时国际化框架：
+- `mod.rs`：`OnceLock<I18n>` 全局单例，支持 `init(lang)` 和 `current()`。
+- `zh_cn.rs` / `en.rs`：完整的中英文字符串表，覆盖 TUI、CLI、Sync、Log 四大场景。
+- `config.rs` 新增 `general.language`：首次启动时自动检测系统语言（Windows 注册表 `PreferredUILanguages` 优先，其次 `LANG` 环境变量），并持久化到 `~/.config/devbase/config.toml`。
+- 所有用户可见字符串已抽离到 i18n 表，TUI 和 CLI 均已适配中文语境（如 "未提交"、"超前"、"落后"、"排队中..." 等）。
+
+### 7.4 编译与测试结果（最终）
+```bash
+cargo check   # ✅ 0 error
+cargo test    # ✅ 25 passed, 2 ignored, 0 failed
+```
+
+### 7.5 更新后的已知限制
 1. **Clarity 集成未闭环**：需等待 Clarity TUI 层完成 LLM + MCP 桥接。
-2. **LLM 语义提取降级**：因本地 Ollama 安装被网络限制阻挡，README 摘要和 `semantic:` 查询使用规则提取（首段 + TF 关键词），质量不如 LLM 生成。
-3. **TUI 批量同步弹窗**：当前弹窗通过 `List` 显示进度，后续可进一步增加进度条百分比或取消按钮。
-4. **VersionVector 预留方法未使用**：`sync_protocol.rs` 中的方法尚无调用方，待与 Syncthing 版本向量对齐后使用。
-5. **FolderScheduler::new 未使用 warning**：`watch.rs` 中保留的旧 API，不影响运行。
+2. **LLM 语义提取降级**：因本地 Ollama 安装被网络限制阻挡，README 摘要和 `semantic:` 查询使用规则提取。
+3. **FolderScheduler::new 未使用 warning**：`watch.rs` 中保留的旧 API，不影响运行。
+
 
 ---
 

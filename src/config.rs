@@ -13,6 +13,20 @@ pub struct Config {
     pub watch: WatchConfig,
     #[serde(default)]
     pub digest: DigestConfig,
+    #[serde(default)]
+    pub github: GithubConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubConfig {
+    #[serde(default)]
+    pub token: Option<String>,
+}
+
+impl Default for GithubConfig {
+    fn default() -> Self {
+        Self { token: None }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +79,7 @@ impl Default for Config {
             cache: CacheConfig::default(),
             watch: WatchConfig::default(),
             digest: DigestConfig::default(),
+            github: GithubConfig::default(),
         }
     }
 }

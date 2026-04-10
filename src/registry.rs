@@ -39,6 +39,32 @@ impl RepoEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaperEntry {
+    pub id: String,
+    pub title: String,
+    pub authors: Option<String>,
+    pub venue: Option<String>,
+    pub year: Option<i32>,
+    pub pdf_path: Option<String>,
+    pub bibtex: Option<String>,
+    pub tags: Vec<String>,
+    pub added_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExperimentEntry {
+    pub id: String,
+    pub repo_id: Option<String>,
+    pub paper_id: Option<String>,
+    pub config_json: Option<String>,
+    pub result_path: Option<String>,
+    pub git_commit: Option<String>,
+    pub syncthing_folder_id: Option<String>,
+    pub status: String,
+    pub timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceRegistry {
     pub version: String,
     pub entries: Vec<RepoEntry>,
@@ -232,6 +258,60 @@ impl WorkspaceRegistry {
             [],
         )?;
 
+        // Academic asset tracking
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS papers (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                authors TEXT,
+                venue TEXT,
+                year INTEGER,
+                pdf_path TEXT,
+                bibtex TEXT,
+                tags TEXT,
+                added_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_papers_venue ON papers(venue)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_papers_year ON papers(year)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS experiments (
+                id TEXT PRIMARY KEY,
+                repo_id TEXT,
+                paper_id TEXT,
+                config_json TEXT,
+                result_path TEXT,
+                git_commit TEXT,
+                syncthing_folder_id TEXT,
+                status TEXT,
+                timestamp TEXT NOT NULL,
+                FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE SET NULL,
+                FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE SET NULL
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_experiments_repo ON experiments(repo_id)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_experiments_paper ON experiments(paper_id)",
+            [],
+        )?;
+
+        // Schema versioning for future migrations
+        let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if user_version < 1 {
+            conn.execute("PRAGMA user_version = 1", [])?;
+        }
+
         // One-time migration from legacy table
         let legacy_exists: bool = conn
             .query_row(
@@ -383,7 +463,7 @@ impl WorkspaceRegistry {
                  SELECT 1 FROM repo_summaries s WHERE s.repo_id = r.id
              ) OR EXISTS (
                  SELECT 1 FROM repo_summaries s WHERE s.repo_id = r.id AND s.generated_at < ?1
-             )
+             ) OR r.language IS NULL
              ORDER BY r.id, rm.remote_name"
         )?;
         Self::collect_repos_from_stmt(stmt, &[&threshold])
@@ -421,6 +501,18 @@ impl WorkspaceRegistry {
             )?;
         }
         tx.commit()?;
+        Ok(())
+    }
+
+    pub fn update_repo_language(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        language: Option<&str>,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "UPDATE repos SET language = ?1 WHERE id = ?2",
+            rusqlite::params![language, repo_id],
+        )?;
         Ok(())
     }
 
@@ -551,5 +643,138 @@ impl WorkspaceRegistry {
             rusqlite::params![repo_id, text, author, Utc::now().to_rfc3339()],
         )?;
         Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // Papers
+    // ------------------------------------------------------------------
+    pub fn save_paper(conn: &rusqlite::Connection, paper: &PaperEntry) -> anyhow::Result<()> {
+        let tags = if paper.tags.is_empty() { None } else { Some(paper.tags.join(",")) };
+        conn.execute(
+            "INSERT OR REPLACE INTO papers (id, title, authors, venue, year, pdf_path, bibtex, tags, added_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                &paper.id,
+                &paper.title,
+                paper.authors.as_ref(),
+                paper.venue.as_ref(),
+                paper.year,
+                paper.pdf_path.as_ref(),
+                paper.bibtex.as_ref(),
+                tags,
+                paper.added_at.to_rfc3339()
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_papers(conn: &rusqlite::Connection) -> anyhow::Result<Vec<PaperEntry>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, title, authors, venue, year, pdf_path, bibtex, tags, added_at FROM papers ORDER BY added_at DESC"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let tags: Option<String> = row.get(7)?;
+            Ok(PaperEntry {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                authors: row.get(2)?,
+                venue: row.get(3)?,
+                year: row.get(4)?,
+                pdf_path: row.get(5)?,
+                bibtex: row.get(6)?,
+                tags: tags.map(|s| s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()).unwrap_or_default(),
+                added_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now()),
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn find_papers_by_venue(conn: &rusqlite::Connection, venue: &str) -> anyhow::Result<Vec<PaperEntry>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, title, authors, venue, year, pdf_path, bibtex, tags, added_at FROM papers WHERE venue = ?1 ORDER BY year DESC"
+        )?;
+        let rows = stmt.query_map([venue], |row| {
+            let tags: Option<String> = row.get(7)?;
+            Ok(PaperEntry {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                authors: row.get(2)?,
+                venue: row.get(3)?,
+                year: row.get(4)?,
+                pdf_path: row.get(5)?,
+                bibtex: row.get(6)?,
+                tags: tags.map(|s| s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()).unwrap_or_default(),
+                added_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now()),
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    // ------------------------------------------------------------------
+    // Experiments
+    // ------------------------------------------------------------------
+    pub fn save_experiment(conn: &rusqlite::Connection, exp: &ExperimentEntry) -> anyhow::Result<()> {
+        conn.execute(
+            "INSERT OR REPLACE INTO experiments (id, repo_id, paper_id, config_json, result_path, git_commit, syncthing_folder_id, status, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                &exp.id,
+                exp.repo_id.as_ref(),
+                exp.paper_id.as_ref(),
+                exp.config_json.as_ref(),
+                exp.result_path.as_ref(),
+                exp.git_commit.as_ref(),
+                exp.syncthing_folder_id.as_ref(),
+                &exp.status,
+                exp.timestamp.to_rfc3339()
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_experiments(conn: &rusqlite::Connection) -> anyhow::Result<Vec<ExperimentEntry>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, repo_id, paper_id, config_json, result_path, git_commit, syncthing_folder_id, status, timestamp FROM experiments ORDER BY timestamp DESC"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(ExperimentEntry {
+                id: row.get(0)?,
+                repo_id: row.get(1)?,
+                paper_id: row.get(2)?,
+                config_json: row.get(3)?,
+                result_path: row.get(4)?,
+                git_commit: row.get(5)?,
+                syncthing_folder_id: row.get(6)?,
+                status: row.get(7)?,
+                timestamp: DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now()),
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn find_experiments_by_repo(conn: &rusqlite::Connection, repo_id: &str) -> anyhow::Result<Vec<ExperimentEntry>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, repo_id, paper_id, config_json, result_path, git_commit, syncthing_folder_id, status, timestamp FROM experiments WHERE repo_id = ?1 ORDER BY timestamp DESC"
+        )?;
+        let rows = stmt.query_map([repo_id], |row| {
+            Ok(ExperimentEntry {
+                id: row.get(0)?,
+                repo_id: row.get(1)?,
+                paper_id: row.get(2)?,
+                config_json: row.get(3)?,
+                result_path: row.get(4)?,
+                git_commit: row.get(5)?,
+                syncthing_folder_id: row.get(6)?,
+                status: row.get(7)?,
+                timestamp: DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now()),
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 }

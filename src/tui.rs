@@ -12,7 +12,7 @@ use ratatui::{
 };
 use std::collections::HashSet;
 use std::io;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
 struct RepoItem {
@@ -52,6 +52,8 @@ pub struct App {
     show_sync_popup: bool,
     sync_popup_results: Vec<(String, String)>, // (repo_id, message)
     sync_total: usize,
+    sync_start_time: Option<Instant>,
+    sync_running: HashSet<String>,
 }
 
 impl App {
@@ -79,6 +81,8 @@ impl App {
             show_sync_popup: false,
             sync_popup_results: Vec::new(),
             sync_total: 0,
+            sync_start_time: None,
+            sync_running: HashSet::new(),
         };
         app.log_info(crate::i18n::current().log.tui_started.to_string());
         app.load_repos()?;
@@ -222,12 +226,17 @@ impl App {
                 self.log_info(n.msg);
             }
             AsyncNotification::SyncProgress(n) => {
+                if n.action == "RUNNING" {
+                    self.loading_sync.remove(&n.repo_id);
+                    self.sync_running.insert(n.repo_id.clone());
+                } else {
+                    self.sync_running.remove(&n.repo_id);
+                }
                 if let Some(entry) = self.sync_popup_results.iter_mut().find(|(id, _)| id == &n.repo_id) {
                     entry.1 = n.message.clone();
                 } else {
                     self.sync_popup_results.push((n.repo_id.clone(), n.message.clone()));
                 }
-                self.loading_sync.remove(&n.repo_id);
                 self.log_info(crate::i18n::current().log.sync_progress_fmt(
                     &n.repo_id, &n.action, &n.message
                 ));
@@ -270,6 +279,8 @@ impl App {
     fn sync_tagged_repos(&mut self) {
         self.show_sync_popup = true;
         self.sync_popup_results.clear();
+        self.sync_start_time = Some(Instant::now());
+        self.sync_running.clear();
 
         let current = match self.current_repo() {
             Some(r) => r.clone(),
@@ -557,7 +568,9 @@ fn ui(frame: &mut Frame, app: &mut App) {
     frame.render_widget(detail, right_chunks[0]);
 
     // Logs panel
-    let log_lines: Vec<Line> = app.logs.iter().map(|l| format_log_line(l)).collect();
+    let log_visible = right_chunks[1].height.saturating_sub(2) as usize;
+    let log_start = app.logs.len().saturating_sub(log_visible);
+    let log_lines: Vec<Line> = app.logs[log_start..].iter().map(|l| format_log_line(l)).collect();
     let log_text = Text::from(log_lines);
     let logs = Paragraph::new(log_text)
         .block(Block::default().borders(Borders::ALL).title(crate::i18n::current().tui.title_logs))
@@ -573,20 +586,31 @@ fn ui(frame: &mut Frame, app: &mut App) {
             vertical: 1,
         });
 
-        let completed = app
-            .sync_popup_results
-            .iter()
-            .filter(|(_, m)| {
-                m != crate::i18n::current().log.status_queued
-                    && m != crate::i18n::current().sync.status_running
-            })
-            .count();
-        let popup_title = format!(
-            "{} ({}/{})",
-            crate::i18n::current().tui.title_sync_progress,
-            completed,
-            app.sync_total.max(1)
-        );
+        let queued = app.loading_sync.len();
+        let running = app.sync_running.len();
+        let completed = app.sync_total.saturating_sub(queued + running);
+        let elapsed_secs = app
+            .sync_start_time
+            .map(|t| t.elapsed().as_secs())
+            .unwrap_or(0);
+        let i18n = crate::i18n::current();
+        let popup_title = Line::from(vec![
+            Span::raw(i18n.tui.title_sync_progress),
+            Span::raw(" | "),
+            Span::styled(
+                format!("{}{}", completed, i18n.tui.sync_done),
+                Style::default().fg(Color::Green),
+            ),
+            Span::styled(
+                format!("{}{}", running, i18n.tui.sync_running),
+                Style::default().fg(Color::Yellow),
+            ),
+            Span::styled(
+                format!("{}{}", queued, i18n.tui.sync_queued),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::raw(format!(" | {}{}s", i18n.tui.elapsed, elapsed_secs)),
+        ]);
 
         let items: Vec<ListItem> = app
             .sync_popup_results
@@ -650,24 +674,37 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 Span::raw(&app.input_buffer),
                 Span::styled(crate::i18n::current().tui.hint_tag_input, Style::default().fg(Color::DarkGray)),
             ]),
-            InputMode::Normal => Line::from(vec![
-                Span::styled("q", Style::default().fg(Color::Cyan)),
-                Span::raw("=退出 "),
-                Span::styled("r", Style::default().fg(Color::Cyan)),
-                Span::raw("=刷新 "),
-                Span::styled("s", Style::default().fg(Color::Cyan)),
-                Span::raw("=获取预览 "),
-                Span::styled("S", Style::default().fg(Color::Cyan)),
-                Span::raw("=批量同步 "),
-                Span::styled("t", Style::default().fg(Color::Cyan)),
-                Span::raw("=编辑标签 "),
-                Span::styled("h", Style::default().fg(Color::Cyan)),
-                Span::raw("=帮助 "),
-                Span::styled("↑↓", Style::default().fg(Color::Cyan)),
-                Span::raw("/"),
-                Span::styled("PgUp/PgDn", Style::default().fg(Color::Cyan)),
-                Span::raw("=首末"),
-            ]),
+            InputMode::Normal => {
+                let mut spans = vec![
+                    Span::styled("q", Style::default().fg(Color::Cyan)),
+                    Span::raw("=退出 "),
+                    Span::styled("r", Style::default().fg(Color::Cyan)),
+                    Span::raw("=刷新 "),
+                    Span::styled("s", Style::default().fg(Color::Cyan)),
+                    Span::raw("=获取预览 "),
+                    Span::styled("S", Style::default().fg(Color::Cyan)),
+                    Span::raw("=批量同步 "),
+                    Span::styled("t", Style::default().fg(Color::Cyan)),
+                    Span::raw("=编辑标签 "),
+                    Span::styled("h", Style::default().fg(Color::Cyan)),
+                    Span::raw("=帮助 "),
+                    Span::styled("↑↓", Style::default().fg(Color::Cyan)),
+                    Span::raw("/"),
+                    Span::styled("PgUp/PgDn", Style::default().fg(Color::Cyan)),
+                    Span::raw("=首末"),
+                ];
+                if app.sync_total > 0 {
+                    let queued = app.loading_sync.len();
+                    let running = app.sync_running.len();
+                    let completed = app.sync_total.saturating_sub(queued + running);
+                    spans.push(Span::raw(" | "));
+                    spans.push(Span::styled(
+                        format!("{}{}/{}/{}", crate::i18n::current().tui.title_sync_progress, completed, running, app.sync_total),
+                        Style::default().fg(Color::Yellow),
+                    ));
+                }
+                Line::from(spans)
+            }
         };
         let bottom_bar = Paragraph::new(bottom_text);
         frame.render_widget(bottom_bar, main_vertical[1]);

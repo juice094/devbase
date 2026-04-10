@@ -1,6 +1,7 @@
 use anyhow::Context;
+use rusqlite::OptionalExtension;
 use std::collections::HashMap;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
 pub trait McpTool: Send + Sync {
     fn name(&self) -> &'static str;
@@ -16,6 +17,9 @@ pub(crate) enum McpToolEnum {
     Index(DevkitIndexTool),
     Note(DevkitNoteTool),
     Digest(DevkitDigestTool),
+    Paper(DevkitPaperIndexTool),
+    Experiment(DevkitExperimentLogTool),
+    GithubInfo(DevkitGithubInfoTool),
 }
 
 impl McpTool for McpToolEnum {
@@ -28,6 +32,9 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Index(t) => t.name(),
             McpToolEnum::Note(t) => t.name(),
             McpToolEnum::Digest(t) => t.name(),
+            McpToolEnum::Paper(t) => t.name(),
+            McpToolEnum::Experiment(t) => t.name(),
+            McpToolEnum::GithubInfo(t) => t.name(),
         }
     }
 
@@ -40,6 +47,9 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Index(t) => t.schema(),
             McpToolEnum::Note(t) => t.schema(),
             McpToolEnum::Digest(t) => t.schema(),
+            McpToolEnum::Paper(t) => t.schema(),
+            McpToolEnum::Experiment(t) => t.schema(),
+            McpToolEnum::GithubInfo(t) => t.schema(),
         }
     }
 
@@ -52,6 +62,9 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Index(t) => t.invoke(args).await,
             McpToolEnum::Note(t) => t.invoke(args).await,
             McpToolEnum::Digest(t) => t.invoke(args).await,
+            McpToolEnum::Paper(t) => t.invoke(args).await,
+            McpToolEnum::Experiment(t) => t.invoke(args).await,
+            McpToolEnum::GithubInfo(t) => t.invoke(args).await,
         }
     }
 }
@@ -187,6 +200,9 @@ pub fn build_server() -> McpServer {
         .register_tool(McpToolEnum::Index(DevkitIndexTool))
         .register_tool(McpToolEnum::Note(DevkitNoteTool))
         .register_tool(McpToolEnum::Digest(DevkitDigestTool))
+        .register_tool(McpToolEnum::Paper(DevkitPaperIndexTool))
+        .register_tool(McpToolEnum::Experiment(DevkitExperimentLogTool))
+        .register_tool(McpToolEnum::GithubInfo(DevkitGithubInfoTool))
 }
 
 pub fn format_mcp_message(body: &serde_json::Value) -> String {
@@ -198,23 +214,127 @@ pub async fn run_stdio() -> anyhow::Result<()> {
     let server = build_server();
     let stdin = tokio::io::stdin();
     let mut stdout = tokio::io::stdout();
-    let reader = BufReader::new(stdin);
-    let mut lines = reader.lines();
+    let mut reader = BufReader::new(stdin);
+    let mut line_buf = String::new();
 
-    while let Some(line) = lines.next_line().await? {
-        let line: &str = line.trim();
+    loop {
+        line_buf.clear();
+        // Read header line to get Content-Length
+        let n = reader.read_line(&mut line_buf).await?;
+        if n == 0 {
+            break; // EOF
+        }
+        let line = line_buf.trim();
         if line.is_empty() {
             continue;
         }
-        let req: serde_json::Value = match serde_json::from_str(line) {
-            Ok(v) => v,
+        
+        let content_length = if line.starts_with("Content-Length: ") {
+            line.strip_prefix("Content-Length: ")
+                .and_then(|v| v.parse::<usize>().ok())
+        } else {
+            // Fallback: parse raw JSON line for backward compatibility
+            let req: serde_json::Value = match serde_json::from_str(line) {
+                Ok(v) => v,
+                Err(e) => {
+                    let resp = serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": null,
+                        "error": {
+                            "code": -32700,
+                            "message": format!("Parse error: {}", e)
+                        }
+                    });
+                    let msg = format_mcp_message(&resp);
+                    let _ = stdout.write_all(msg.as_bytes()).await;
+                    let _ = stdout.flush().await;
+                    continue;
+                }
+            };
+            let resp = server.handle_request(req).await.unwrap_or_else(|e| {
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": null,
+                    "error": {
+                        "code": -32603,
+                        "message": format!("Internal error: {}", e)
+                    }
+                })
+            });
+            let msg = format_mcp_message(&resp);
+            let _ = stdout.write_all(msg.as_bytes()).await;
+            let _ = stdout.flush().await;
+            continue;
+        };
+        
+        let content_length = match content_length {
+            Some(len) => len,
+            None => {
+                let resp = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": null,
+                    "error": {
+                        "code": -32700,
+                        "message": format!("Invalid Content-Length header: {}", line)
+                    }
+                });
+                let msg = format_mcp_message(&resp);
+                let _ = stdout.write_all(msg.as_bytes()).await;
+                let _ = stdout.flush().await;
+                continue;
+            }
+        };
+        
+        // Read the empty line (\r\n or \n)
+        line_buf.clear();
+        let _ = reader.read_line(&mut line_buf).await;
+        
+        // Read the exact number of bytes
+        let mut body_buf = vec![0u8; content_length];
+        if let Err(e) = reader.read_exact(&mut body_buf).await {
+            let resp = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": null,
+                "error": {
+                    "code": -32700,
+                    "message": format!("Failed to read request body: {}", e)
+                }
+            });
+            let msg = format_mcp_message(&resp);
+            let _ = stdout.write_all(msg.as_bytes()).await;
+            let _ = stdout.flush().await;
+            continue;
+        }
+        
+        // Some clients include a trailing newline after the body; consume it if present
+        line_buf.clear();
+        let _ = reader.read_line(&mut line_buf).await;
+        
+        let req: serde_json::Value = match String::from_utf8(body_buf) {
+            Ok(body) => match serde_json::from_str(&body) {
+                Ok(v) => v,
+                Err(e) => {
+                    let resp = serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": null,
+                        "error": {
+                            "code": -32700,
+                            "message": format!("Parse error: {}", e)
+                        }
+                    });
+                    let msg = format_mcp_message(&resp);
+                    let _ = stdout.write_all(msg.as_bytes()).await;
+                    let _ = stdout.flush().await;
+                    continue;
+                }
+            },
             Err(e) => {
                 let resp = serde_json::json!({
                     "jsonrpc": "2.0",
                     "id": null,
                     "error": {
                         "code": -32700,
-                        "message": format!("Parse error: {}", e)
+                        "message": format!("Invalid UTF-8: {}", e)
                     }
                 });
                 let msg = format_mcp_message(&resp);
@@ -455,6 +575,235 @@ impl McpTool for DevkitDigestTool {
     }
 }
 
+pub struct DevkitPaperIndexTool;
+
+impl McpTool for DevkitPaperIndexTool {
+    fn name(&self) -> &'static str { "devkit_paper_index" }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": "Scan a directory for PDF papers and index them",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Directory containing PDFs", "default": "~/papers" },
+                    "tags": { "type": "string", "description": "Comma-separated tags to apply", "default": "" }
+                }
+            }
+        })
+    }
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("~/papers");
+        let tags_str = args.get("tags").and_then(|v| v.as_str()).unwrap_or("");
+        let tags: Vec<String> = tags_str.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        let path = if path.starts_with("~/") {
+            dirs::home_dir().map(|d| d.join(&path[2..])).unwrap_or_else(|| std::path::PathBuf::from(path))
+        } else {
+            std::path::PathBuf::from(path)
+        };
+
+        tokio::task::spawn_blocking(move || {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let mut count = 0;
+            if path.is_dir() {
+                for entry in std::fs::read_dir(&path)? {
+                    let entry = entry?;
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if name.to_lowercase().ends_with(".pdf") {
+                        let id = name.trim_end_matches(".pdf").trim_end_matches(".PDF").to_string();
+                        // Simple heuristic: if filename contains arXiv format (e.g., 2507.03616)
+                        let title = if id.chars().filter(|c| c.is_numeric() || *c == '.').count() > 5 {
+                            format!("arXiv:{}", id)
+                        } else {
+                            id.clone()
+                        };
+                        let paper = crate::registry::PaperEntry {
+                            id: id.clone(),
+                            title,
+                            authors: None,
+                            venue: None,
+                            year: None,
+                            pdf_path: Some(entry.path().to_string_lossy().to_string()),
+                            bibtex: None,
+                            tags: tags.clone(),
+                            added_at: chrono::Utc::now(),
+                        };
+                        crate::registry::WorkspaceRegistry::save_paper(&conn, &paper)?;
+                        count += 1;
+                    }
+                }
+            }
+            Ok::<_, anyhow::Error>(serde_json::json!({ "success": true, "indexed": count }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
+pub struct DevkitExperimentLogTool;
+
+impl McpTool for DevkitExperimentLogTool {
+    fn name(&self) -> &'static str { "devkit_experiment_log" }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": "Log an experiment run",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "Experiment identifier" },
+                    "repo_id": { "type": "string" },
+                    "paper_id": { "type": "string" },
+                    "config_json": { "type": "string" },
+                    "result_path": { "type": "string" },
+                    "git_commit": { "type": "string" },
+                    "syncthing_folder_id": { "type": "string" },
+                    "status": { "type": "string", "default": "running" },
+                    "tag_repo": { "type": "boolean", "default": false, "description": "Tag the associated repo with experiment-active" }
+                },
+                "required": ["id"]
+            }
+        })
+    }
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let id = args.get("id").and_then(|v| v.as_str()).context("id required")?.to_string();
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).map(String::from);
+        let tag_repo = args.get("tag_repo").and_then(|v| v.as_bool()).unwrap_or(false);
+        let exp = crate::registry::ExperimentEntry {
+            id,
+            repo_id: repo_id.clone(),
+            paper_id: args.get("paper_id").and_then(|v| v.as_str()).map(String::from),
+            config_json: args.get("config_json").and_then(|v| v.as_str()).map(String::from),
+            result_path: args.get("result_path").and_then(|v| v.as_str()).map(String::from),
+            git_commit: args.get("git_commit").and_then(|v| v.as_str()).map(String::from),
+            syncthing_folder_id: args.get("syncthing_folder_id").and_then(|v| v.as_str()).map(String::from),
+            status: args.get("status").and_then(|v| v.as_str()).unwrap_or("running").to_string(),
+            timestamp: chrono::Utc::now(),
+        };
+        tokio::task::spawn_blocking(move || {
+            let mut conn = crate::registry::WorkspaceRegistry::init_db()?;
+            crate::registry::WorkspaceRegistry::save_experiment(&conn, &exp)?;
+            if tag_repo {
+                if let Some(ref rid) = repo_id {
+                    let tx = conn.transaction()?;
+                    tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1 AND tag = 'experiment-active'", [rid])?;
+                    tx.execute("INSERT OR REPLACE INTO repo_tags (repo_id, tag) VALUES (?1, 'experiment-active')", [rid])?;
+                    tx.commit()?;
+                }
+            }
+            Ok::<_, anyhow::Error>(serde_json::json!({ "success": true }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
+pub struct DevkitGithubInfoTool;
+
+impl McpTool for DevkitGithubInfoTool {
+    fn name(&self) -> &'static str { "devkit_github_info" }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": "Fetch live repository metadata from GitHub API",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": { "type": "string", "description": "Registered repository ID in devbase" },
+                    "write_summary": { "type": "boolean", "description": "Write GitHub description into repo summary", "default": false }
+                },
+                "required": ["repo_id"]
+            }
+        })
+    }
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?.to_string();
+        let write_summary = args.get("write_summary").and_then(|v| v.as_bool()).unwrap_or(false);
+
+        let upstream_url = tokio::task::spawn_blocking({
+            let repo_id = repo_id.clone();
+            move || -> anyhow::Result<Option<String>> {
+                let conn = crate::registry::WorkspaceRegistry::init_db()?;
+                let mut stmt = conn.prepare("SELECT upstream_url FROM repo_remotes WHERE repo_id = ?1 AND remote_name = 'origin'")?;
+                let url: Option<String> = stmt.query_row([&repo_id], |row| row.get(0)).optional()?;
+                Ok(url)
+            }
+        }).await.map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+
+        let upstream_url = upstream_url.context("No origin remote found for repo")?;
+        let (owner, repo_name) = parse_github_repo(&upstream_url).context("Failed to parse GitHub owner/repo from upstream_url")?;
+
+        let config = crate::config::Config::load()?;
+        let client = reqwest::Client::new();
+        let mut req = client.get(format!("https://api.github.com/repos/{}/{}", owner, repo_name))
+            .header("User-Agent", "devbase/0.1.0");
+        if let Some(token) = config.github.token.as_deref() {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let resp = req.send().await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Ok(serde_json::json!({ "success": false, "error": format!("GitHub API error {}: {}", status, text) }));
+        }
+        let data: serde_json::Value = resp.json().await?;
+
+        let stars = data.get("stargazers_count").and_then(|v| v.as_i64());
+        let forks = data.get("forks_count").and_then(|v| v.as_i64());
+        let description = data.get("description").and_then(|v| v.as_str()).map(String::from);
+        let language = data.get("language").and_then(|v| v.as_str()).map(String::from);
+        let open_issues = data.get("open_issues_count").and_then(|v| v.as_i64());
+        let updated_at = data.get("updated_at").and_then(|v| v.as_str()).map(String::from);
+        let html_url = data.get("html_url").and_then(|v| v.as_str()).map(String::from);
+
+        if write_summary {
+            if let Some(ref desc) = description {
+                let repo_id2 = repo_id.clone();
+                let desc2 = desc.clone();
+                tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                    let conn = crate::registry::WorkspaceRegistry::init_db()?;
+                    crate::registry::WorkspaceRegistry::save_summary(&conn, &repo_id2, &desc2, "")?;
+                    Ok(())
+                }).await.map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+            }
+        }
+
+        Ok(serde_json::json!({
+            "success": true,
+            "owner": owner,
+            "repo": repo_name,
+            "stars": stars,
+            "forks": forks,
+            "description": description,
+            "language": language,
+            "open_issues": open_issues,
+            "updated_at": updated_at,
+            "html_url": html_url,
+            "raw": data
+        }))
+    }
+}
+
+fn parse_github_repo(url: &str) -> Option<(String, String)> {
+    let url = url.trim_end_matches(".git");
+    if let Some(rest) = url.strip_prefix("https://github.com/") {
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            return Some((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+    if let Some(rest) = url.strip_prefix("http://github.com/") {
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            return Some((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+    if let Some(rest) = url.strip_prefix("git@github.com:") {
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            return Some((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+    None
+}
+
 pub struct DevkitQueryTool;
 
 impl McpTool for DevkitQueryTool {
@@ -529,7 +878,7 @@ mod tests {
         });
         let resp = server.handle_request(req).await.unwrap();
         let tools = resp.get("result").unwrap().get("tools").unwrap().as_array().unwrap();
-        assert_eq!(tools.len(), 7);
+        assert_eq!(tools.len(), 10);
         let names: Vec<&str> = tools.iter().map(|t| t.get("name").unwrap().as_str().unwrap()).collect();
         assert!(names.contains(&"devkit_scan"));
         assert!(names.contains(&"devkit_health"));
@@ -538,6 +887,9 @@ mod tests {
         assert!(names.contains(&"devkit_index"));
         assert!(names.contains(&"devkit_note"));
         assert!(names.contains(&"devkit_digest"));
+        assert!(names.contains(&"devkit_paper_index"));
+        assert!(names.contains(&"devkit_experiment_log"));
+        assert!(names.contains(&"devkit_github_info"));
         for tool in tools {
             assert!(tool.get("name").is_some());
             assert!(tool.get("description").is_some());

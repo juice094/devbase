@@ -110,6 +110,9 @@ enum Commands {
         /// Only push repos matching these tags (comma-separated, OR logic)
         #[arg(long)]
         filter_tags: Option<String>,
+        /// Only push the repo associated with this experiment ID
+        #[arg(long)]
+        experiment: Option<String>,
     },
     /// Auto-discover relationships between registered repositories
     Discover,
@@ -260,13 +263,14 @@ async fn main() -> anyhow::Result<()> {
             api_url,
             api_key,
             filter_tags,
+            experiment,
         } => {
             use registry::WorkspaceRegistry;
             use syncthing_client::SyncthingClient;
 
             let client = SyncthingClient::new(&api_url, api_key.as_deref());
 
-            let conn = match WorkspaceRegistry::init_db() {
+            let mut conn = match WorkspaceRegistry::init_db() {
                 Ok(c) => c,
                 Err(e) => {
                     println!("无法初始化数据库: {}", e);
@@ -287,12 +291,24 @@ async fn main() -> anyhow::Result<()> {
                 .map(|f| f.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect())
                 .unwrap_or_default();
 
-            let filtered_repos: Vec<_> = repos
-                .into_iter()
-                .filter(|repo| {
-                    filter_list.is_empty() || filter_list.iter().any(|f| repo.tags.contains(&f.to_string()))
-                })
-                .collect();
+            let filtered_repos: Vec<_> = if let Some(ref exp_id) = experiment {
+                let exps = WorkspaceRegistry::list_experiments(&conn).unwrap_or_default();
+                let target_repo = exps.into_iter().find(|e| e.id == *exp_id).and_then(|e| e.repo_id);
+                match target_repo {
+                    Some(repo_id) => repos.into_iter().filter(|r| r.id == repo_id).collect(),
+                    None => {
+                        println!("未找到实验 '{}' 关联的仓库。", exp_id);
+                        return Ok(());
+                    }
+                }
+            } else {
+                repos
+                    .into_iter()
+                    .filter(|repo| {
+                        filter_list.is_empty() || filter_list.iter().any(|f| repo.tags.contains(&f.to_string()))
+                    })
+                    .collect()
+            };
 
             if filtered_repos.is_empty() {
                 println!("没有符合条件的仓库需要推送。");
@@ -307,6 +323,15 @@ async fn main() -> anyhow::Result<()> {
                 match client.create_or_update_folder(&folder_id, &path, &[]).await {
                     Ok(()) => {
                         println!("  [{}] Pushed {} -> {}", repo.id, folder_id, path);
+                        // Update experiment record if --experiment was provided
+                        if let Some(ref exp_id) = experiment {
+                            if let Ok(mut exps) = WorkspaceRegistry::list_experiments(&conn) {
+                                if let Some(exp) = exps.iter_mut().find(|e| e.id == *exp_id) {
+                                    exp.syncthing_folder_id = Some(folder_id.clone());
+                                    let _ = WorkspaceRegistry::save_experiment(&conn, exp);
+                                }
+                            }
+                        }
                         pushed.push((repo.id.clone(), folder_id));
                     }
                     Err(e) => {
