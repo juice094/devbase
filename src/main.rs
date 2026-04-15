@@ -55,6 +55,9 @@ enum Commands {
         /// Comma-separated list of tags to filter repositories (OR logic)
         #[arg(long)]
         filter_tags: Option<String>,
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Query the knowledge base
     Query {
@@ -154,12 +157,18 @@ async fn main() -> anyhow::Result<()> {
             dry_run,
             strategy,
             filter_tags,
+            json,
         } => {
             if dry_run {
                 warn!("Dry-run mode enabled");
             }
             info!("{}: {}", crate::i18n::current().cli.syncing, strategy);
-            sync::run(dry_run, &strategy, filter_tags.as_deref()).await?;
+            if json {
+                let output = sync::run_json(dry_run, &strategy, filter_tags.as_deref()).await?;
+                println!("{}", serde_json::to_string_pretty(&output)?);
+            } else {
+                sync::run(dry_run, &strategy, filter_tags.as_deref()).await?;
+            }
         }
         Commands::Query { query } => {
             info!("{}: {}", crate::i18n::current().cli.querying, query);
@@ -270,7 +279,7 @@ async fn main() -> anyhow::Result<()> {
 
             let client = SyncthingClient::new(&api_url, api_key.as_deref());
 
-            let mut conn = match WorkspaceRegistry::init_db() {
+            let conn = match WorkspaceRegistry::init_db() {
                 Ok(c) => c,
                 Err(e) => {
                     println!("无法初始化数据库: {}", e);

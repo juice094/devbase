@@ -390,167 +390,182 @@ async fn sync_repo(
     default_branch: Option<&str>,
     strategy: &str,
 ) -> anyhow::Result<SyncSummary> {
-    let result: anyhow::Result<SyncSummary> = async {
-        let repo = Repository::open(path)?;
+    let path = path.to_string();
+    let upstream_url = upstream_url.map(|s| s.to_string());
+    let default_branch = default_branch.map(|s| s.to_string());
+    let strategy = strategy.to_string();
 
-    // Ensure origin remote points to the expected URL
-    {
-        let mut remote = match repo.find_remote("origin") {
-            Ok(r) => r,
-            Err(_) => {
-                match upstream_url {
-                    Some(url) => {
-                        repo.remote("origin", url)?;
-                        repo.find_remote("origin")?
-                    }
-                    None => {
-                        return Ok(SyncSummary {
-                            action: "SKIP".to_string(),
-                            message: crate::i18n::current().sync.no_origin.to_string(),
-                            ..Default::default()
-                        });
+    let result = tokio::task::spawn_blocking(move || {
+        let repo = Repository::open(&path)?;
+
+        // Ensure origin remote points to the expected URL
+        {
+            let mut remote = match repo.find_remote("origin") {
+                Ok(r) => r,
+                Err(_) => {
+                    match upstream_url.as_deref() {
+                        Some(url) => {
+                            repo.remote("origin", url)?;
+                            repo.find_remote("origin")?
+                        }
+                        None => {
+                            return Ok(SyncSummary {
+                                action: "SKIP".to_string(),
+                                message: crate::i18n::current().sync.no_origin.to_string(),
+                                ..Default::default()
+                            });
+                        }
                     }
                 }
+            };
+            if let Some(ref url) = upstream_url {
+                if remote.url() != Some(url) {
+                    repo.remote_set_url("origin", url)?;
+                    remote = repo.find_remote("origin")?;
+                }
             }
-        };
-        if let Some(url) = upstream_url {
-            if remote.url() != Some(url) {
-                repo.remote_set_url("origin", url)?;
-                remote = repo.find_remote("origin")?;
-            }
+
+            // Fetch with friendly error message
+            let mut callbacks = git2::RemoteCallbacks::new();
+            callbacks.credentials(|_url, username_from_url, _allowed_types| {
+                git2::Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
+            });
+            let mut fetch_opts = git2::FetchOptions::new();
+            fetch_opts.remote_callbacks(callbacks);
+
+            remote.fetch(&[] as &[&str], Some(&mut fetch_opts), None).map_err(|e| {
+                anyhow::anyhow!(
+                    "{}",
+                    crate::i18n::format_template(crate::i18n::current().sync.fetch_failed, &[&e.to_string()])
+                )
+            })?;
         }
 
-        // Fetch with friendly error message
-        let mut callbacks = git2::RemoteCallbacks::new();
-        callbacks.credentials(|_url, username_from_url, _allowed_types| {
-            git2::Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
-        });
-        let mut fetch_opts = git2::FetchOptions::new();
-        fetch_opts.remote_callbacks(callbacks);
+        // Determine default branch
+        let branch = default_branch
+            .clone()
+            .or_else(|| {
+                repo.find_remote("origin")
+                    .ok()
+                    .and_then(|r| r.default_branch().ok())
+                    .and_then(|b| {
+                        b.as_str()
+                            .map(|s| s.trim_start_matches("refs/heads/").to_string())
+                    })
+            })
+            .unwrap_or_else(|| "main".to_string());
 
-        remote.fetch(&[] as &[&str], Some(&mut fetch_opts), None).map_err(|e| {
-            anyhow::anyhow!(
-                "{}",
-                crate::i18n::format_template(crate::i18n::current().sync.fetch_failed, &[&e.to_string()])
-            )
-        })?;
-    }
+        // Check local vs remote
+        let local_oid = repo
+            .revparse_single(&format!("refs/heads/{}", branch))
+            .ok()
+            .map(|obj| obj.id());
+        let remote_oid = repo
+            .revparse_single(&format!("refs/remotes/origin/{}", branch))
+            .ok()
+            .map(|obj| obj.id());
 
-    // Determine default branch
-    let branch = default_branch
-        .map(|s| s.to_string())
-        .or_else(|| {
-            repo.find_remote("origin")
-                .ok()
-                .and_then(|r| r.default_branch().ok())
-                .and_then(|b| {
-                    b.as_str()
-                        .map(|s| s.trim_start_matches("refs/heads/").to_string())
-                })
-        })
-        .unwrap_or_else(|| "main".to_string());
-
-    // Check local vs remote
-    let local_oid = repo
-        .revparse_single(&format!("refs/heads/{}", branch))
-        .ok()
-        .map(|obj| obj.id());
-    let remote_oid = repo
-        .revparse_single(&format!("refs/remotes/origin/{}", branch))
-        .ok()
-        .map(|obj| obj.id());
-
-    let summary = match (local_oid, remote_oid) {
-        (Some(local), Some(remote)) => {
-            if local == remote {
-                SyncSummary {
-                    action: "OK".to_string(),
-                    message: crate::i18n::format_template(crate::i18n::current().sync.up_to_date, &[&branch]),
-                    ..Default::default()
-                }
-            } else {
-                let (ahead, behind) = repo.graph_ahead_behind(local, remote)?;
-
-                if strategy == "fetch-only" {
+        let summary = match (local_oid, remote_oid) {
+            (Some(local), Some(remote)) => {
+                if local == remote {
                     SyncSummary {
-                        action: "FETCH".to_string(),
-                        ahead,
-                        behind,
-                        message: "Fetched only".to_string(),
+                        action: "OK".to_string(),
+                        message: crate::i18n::format_template(crate::i18n::current().sync.up_to_date, &[&branch]),
                         ..Default::default()
                     }
                 } else {
-                    // Check working directory is clean
-                    let statuses = repo.statuses(None)?;
-                    let is_clean = statuses.iter().count() == 0;
-                    if !is_clean {
+                    let (ahead, behind) = repo.graph_ahead_behind(local, remote)?;
+
+                    if strategy == "fetch-only" {
                         SyncSummary {
-                            action: "BLOCKED".to_string(),
+                            action: "FETCH".to_string(),
                             ahead,
                             behind,
-                            message: crate::i18n::current().sync.blocked_dirty.to_string(),
+                            message: "Fetched only".to_string(),
                             ..Default::default()
                         }
-                    } else if strategy == "ask" {
-                        print!("    Merge origin/{} into {}? [y/N] ", branch, branch);
-                        io::stdout().flush()?;
-                        let mut input = String::new();
-                        io::stdin().read_line(&mut input)?;
-                        if !input.trim().eq_ignore_ascii_case("y") {
+                    } else {
+                        // Check working directory is clean
+                        let statuses = repo.statuses(None)?;
+                        let is_clean = statuses.iter().count() == 0;
+                        if !is_clean {
                             SyncSummary {
-                                action: "SKIP".to_string(),
+                                action: "BLOCKED".to_string(),
                                 ahead,
                                 behind,
-                                message: crate::i18n::current().sync.skipped_by_user.to_string(),
+                                message: crate::i18n::current().sync.blocked_dirty.to_string(),
                                 ..Default::default()
+                            }
+                        } else if strategy == "ask" {
+                            print!("    Merge origin/{} into {}? [y/N] ", branch, branch);
+                            io::stdout().flush()?;
+                            let mut input = String::new();
+                            io::stdin().read_line(&mut input)?;
+                            if !input.trim().eq_ignore_ascii_case("y") {
+                                SyncSummary {
+                                    action: "SKIP".to_string(),
+                                    ahead,
+                                    behind,
+                                    message: crate::i18n::current().sync.skipped_by_user.to_string(),
+                                    ..Default::default()
+                                }
+                            } else {
+                                perform_merge(&repo, &branch, local, remote)?
                             }
                         } else {
                             perform_merge(&repo, &branch, local, remote)?
                         }
-                    } else {
-                        perform_merge(&repo, &branch, local, remote)?
                     }
                 }
             }
-        }
-        (None, Some(_)) => {
-            SyncSummary {
-                action: "WARN".to_string(),
-                message: crate::i18n::format_template(crate::i18n::current().sync.local_branch_missing, &[&branch]),
-                ..Default::default()
+            (None, Some(_)) => {
+                SyncSummary {
+                    action: "WARN".to_string(),
+                    message: crate::i18n::format_template(crate::i18n::current().sync.local_branch_missing, &[&branch]),
+                    ..Default::default()
+                }
             }
-        }
-        (Some(_), None) => {
-            SyncSummary {
-                action: "WARN".to_string(),
-                message: crate::i18n::format_template(crate::i18n::current().sync.remote_branch_missing, &[&branch]),
-                ..Default::default()
+            (Some(_), None) => {
+                SyncSummary {
+                    action: "WARN".to_string(),
+                    message: crate::i18n::format_template(crate::i18n::current().sync.remote_branch_missing, &[&branch]),
+                    ..Default::default()
+                }
             }
-        }
-        (None, None) => {
-            SyncSummary {
-                action: "WARN".to_string(),
-                message: crate::i18n::format_template(crate::i18n::current().sync.neither_branch_exists, &[&branch]),
-                ..Default::default()
+            (None, None) => {
+                SyncSummary {
+                    action: "WARN".to_string(),
+                    message: crate::i18n::format_template(crate::i18n::current().sync.neither_branch_exists, &[&branch]),
+                    ..Default::default()
+                }
             }
-        }
-    };
+        };
 
-    // Update submodules if present
-    if std::path::Path::new(&format!("{}/.gitmodules", path)).exists() {
-        repo.submodules()?.iter_mut().for_each(|sm| {
-            if let Err(e) = sm.update(true, None) {
-                warn!("Submodule update failed: {}", e);
-            }
-        });
-    }
+        // Update submodules if present
+        if std::path::Path::new(&format!("{}/.gitmodules", path)).exists() {
+            repo.submodules()?.iter_mut().for_each(|sm| {
+                if let Err(e) = sm.update(true, None) {
+                    warn!("Submodule update failed: {}", e);
+                }
+            });
+        }
 
         Ok::<SyncSummary, anyhow::Error>(summary)
-    }.await;
+    }).await;
 
     match result {
-        Ok(summary) => Ok(summary),
-        Err(e) => {
+        Ok(Ok(summary)) => Ok(summary),
+        Ok(Err(e)) => {
+            let kind = classify_sync_error(&e);
+            Ok(SyncSummary {
+                action: "ERROR".to_string(),
+                message: e.to_string(),
+                error_kind: Some(kind.to_string()),
+                ..Default::default()
+            })
+        }
+        Err(join_err) => {
+            let e = anyhow::anyhow!("Sync task panicked: {}", join_err);
             let kind = classify_sync_error(&e);
             Ok(SyncSummary {
                 action: "ERROR".to_string(),
