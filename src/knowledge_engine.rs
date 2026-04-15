@@ -798,7 +798,7 @@ description = "A test crate for semantic fallback without README."
     #[test]
     #[ignore = "integration test on real gitui repo"]
     fn test_real_gitui_repo() {
-        let path = Path::new(r"C:\Users\22414\dev\third_party\gitui");
+        let path = Path::new(r"C:\Users\<user>\dev\third_party\gitui");
         if !path.exists() {
             return;
         }
@@ -814,7 +814,7 @@ description = "A test crate for semantic fallback without README."
     #[test]
     #[ignore = "integration test on real syncthing repo"]
     fn test_real_syncthing_repo() {
-        let path = Path::new(r"C:\Users\22414\dev\third_party\syncthing");
+        let path = Path::new(r"C:\Users\<user>\dev\third_party\syncthing");
         if !path.exists() {
             return;
         }

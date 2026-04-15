@@ -1,6 +1,6 @@
 # third_party 竞品分析与业务能力增强规划
 
-> 分析范围：`C:\Users\22414\dev\third_party`（29 个仓库）
+> 分析范围：`C:\Users\<user>\dev\third_party`（29 个仓库）
 > 目标项目：`devbase`（开发者知识库）与 `syncthing-rust-rearch`（Rust 重构版 Syncthing）
 
 ---

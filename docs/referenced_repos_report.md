@@ -1,6 +1,6 @@
 # Referenced Repositories Report
 
-> Generated from `C:\Users\22414\Desktop\发散性对话.txt`
+> Generated from `C:\Users\<user>\Desktop\发散性对话.txt`
 > Date: 2026-04-10
 
 ## Summary
@@ -55,7 +55,7 @@
 
 ## Core Repositories Selected for Cloning
 
-The following 10 repositories are confirmed existent and deemed most relevant to the current project stack (Clarity / devbase / syncthing-rust). They will be cloned into `C:\Users\22414\Desktop\devbase_refs`.
+The following 10 repositories are confirmed existent and deemed most relevant to the current project stack (Clarity / devbase / syncthing-rust). They will be cloned into `C:\Users\<user>\Desktop\devbase_refs`.
 
 | # | Repository | Primary Language | Relevance | Proposed Tags |
 |---|------------|------------------|-----------|---------------|

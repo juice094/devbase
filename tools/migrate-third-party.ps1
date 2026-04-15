@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
     Batch migrate confirmed third-party ZIP snapshots to official Git clones.
-    Projects are cloned into C:\Users\22414\dev\third_party and registered to devbase.
+    Projects are cloned into C:\Users\<user>\dev\third_party and registered to devbase.
 #>
 
-$targetRoot = "C:\Users\22414\dev\third_party"
+$targetRoot = "C:\Users\<user>\dev\third_party"
 New-Item -ItemType Directory -Force -Path $targetRoot | Out-Null
 
 $repos = @(
@@ -24,10 +24,10 @@ $repos = @(
     @{ name = "zeroclaw";         url = "https://github.com/zeroclaw-labs/zeroclaw.git";         branch = "master" }
 )
 
-$devbaseExe = "C:\Users\22414\target\debug\devbase.exe"
+$devbaseExe = "C:\Users\<user>\target\debug\devbase.exe"
 if (-not (Test-Path $devbaseExe)) {
     Write-Host "devbase executable not found at $devbaseExe" -ForegroundColor Red
-    Write-Host "Please run 'cargo build' in C:\Users\22414\Desktop\devbase first." -ForegroundColor Yellow
+    Write-Host "Please run 'cargo build' in C:\Users\<user>\Desktop\devbase first." -ForegroundColor Yellow
     exit 1
 }
 

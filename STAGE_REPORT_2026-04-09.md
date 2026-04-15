@@ -379,4 +379,4 @@ cargo test    # ✅ 25 passed, 2 ignored, 0 failed
 ---
 
 **报告生成人**：Kimi Code CLI (devbase 优化轮次)  
-**报告位置**：`C:\Users\22414\Desktop\devbase\STAGE_REPORT_2026-04-09.md`
+**报告位置**：`C:\Users\<user>\Desktop\devbase\STAGE_REPORT_2026-04-09.md`

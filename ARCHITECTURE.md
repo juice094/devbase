@@ -210,7 +210,7 @@ Peer Device (另一台机器的实体层)
   - `sync` 自动跳过
 
 - **第三方参考库（19 个）**：已全部从 ZIP 迁移为 Git 官方仓库
-  - 位置：`C:\Users\22414\dev\third_party\`
+  - 位置：`C:\Users\<user>\dev\third_party\`
   - `tags: third-party,reference`
   - 包含：`openclaw`、`lazygit`、`gitui`、`ollama`、`dify`、`codex`、`kimi-cli`、`iroh`、`tailscale`、`vllm`、`coze-studio`、`nanobot`、`claude-code-rust`、`zeroclaw`、`desktop`、`openhanako`、`AutoCLI`
 
