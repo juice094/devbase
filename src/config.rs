@@ -2,6 +2,24 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmConfig {
+    #[serde(default = "default_llm_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_llm_provider")]
+    pub provider: String,
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default = "default_llm_max_tokens")]
+    pub max_tokens: u32,
+    #[serde(default = "default_llm_timeout_seconds")]
+    pub timeout_seconds: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
@@ -15,6 +33,8 @@ pub struct Config {
     pub digest: DigestConfig,
     #[serde(default)]
     pub github: GithubConfig,
+    #[serde(default)]
+    pub llm: LlmConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +100,7 @@ impl Default for Config {
             watch: WatchConfig::default(),
             digest: DigestConfig::default(),
             github: GithubConfig::default(),
+            llm: LlmConfig::default(),
         }
     }
 }
@@ -117,6 +138,25 @@ impl Default for DigestConfig {
         }
     }
 }
+
+impl Default for LlmConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_llm_enabled(),
+            provider: default_llm_provider(),
+            api_key: None,
+            model: None,
+            base_url: None,
+            max_tokens: default_llm_max_tokens(),
+            timeout_seconds: default_llm_timeout_seconds(),
+        }
+    }
+}
+
+fn default_llm_enabled() -> bool { false }
+fn default_llm_provider() -> String { "ollama".to_string() }
+fn default_llm_max_tokens() -> u32 { 200 }
+fn default_llm_timeout_seconds() -> u64 { 30 }
 
 fn default_daemon_interval_seconds() -> u64 { 3600 }
 fn default_true() -> bool { true }

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use crate::registry::{RepoEntry, WorkspaceRegistry};
 
@@ -393,18 +394,153 @@ pub fn extract_module_structure(path: &Path) -> Vec<ModuleInfo> {
     modules
 }
 
+fn build_llm_prompt(context: &str) -> String {
+    format!(
+        r#"Analyze the following project context and produce a JSON object with exactly two string fields: \"summary\" (a one-sentence description of the project) and \"keywords\" (a comma-separated list of relevant tags).
+
+Context:
+{}
+
+Respond with only the JSON object, no extra text."#,
+        context
+    )
+}
+
+fn parse_llm_json(text: &str) -> Option<(String, String)> {
+    let trimmed = text.trim();
+    let json_str = if trimmed.starts_with("```json") {
+        trimmed.strip_prefix("```json")
+            .and_then(|s| s.strip_suffix("```"))?
+            .trim()
+    } else if trimmed.starts_with("```") {
+        trimmed.strip_prefix("```")
+            .and_then(|s| s.strip_suffix("```"))?
+            .trim()
+    } else {
+        trimmed
+    };
+    let value: serde_json::Value = serde_json::from_str(json_str).ok()?;
+    let summary = value.get("summary")?.as_str()?.to_string();
+    let keywords = value.get("keywords")?.as_str()?.to_string();
+    if summary.is_empty() || keywords.is_empty() {
+        return None;
+    }
+    Some((summary, keywords))
+}
+
+fn try_llm_summary(path: &Path, config: &crate::config::LlmConfig) -> Option<(String, String)> {
+    if !config.enabled {
+        return None;
+    }
+
+    let mut context = if let Some(readme) = find_readme(path) {
+        std::fs::read_to_string(&readme)
+            .map(|c| c.chars().take(3000).collect::<String>())
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    if context.is_empty() {
+        context = if let Some((summary, _)) = try_cargo_toml(path) {
+            summary
+        } else if let Some((summary, _)) = try_package_json(path) {
+            summary
+        } else if let Some((summary, _)) = try_go_mod(path) {
+            summary
+        } else if let Some((summary, _)) = try_pyproject(path) {
+            summary
+        } else {
+            return None;
+        };
+    }
+
+    let mut registry = clarity_core::llm::ProviderRegistry::default();
+
+    if config.provider == "deepseek" {
+        if let Some(ref key) = config.api_key {
+            if let Ok(provider) = clarity_core::llm::ProviderConfigBuilder::new()
+                .api_key(key)
+                .build_deepseek()
+            {
+                registry.register(provider);
+            }
+        }
+    } else if config.provider == "dashscope" {
+        if let Some(ref key) = config.api_key {
+            if let Ok(provider) = clarity_core::llm::ProviderConfigBuilder::new()
+                .api_key(key)
+                .build_dashscope()
+            {
+                registry.register(provider);
+            }
+        }
+    } else if config.provider == "kimi" {
+        if let Some(ref key) = config.api_key {
+            let base_url = config.base_url.as_deref()
+                .unwrap_or("https://api.moonshot.cn/v1");
+            let default_model = config.model.as_deref()
+                .unwrap_or("kimi-k2-07132k");
+            let kimi_config = clarity_core::llm::kimi::KimiConfig {
+                api_key: key.clone(),
+                base_url: base_url.to_string(),
+                default_model: default_model.to_string(),
+            };
+            registry.register(clarity_core::llm::kimi::KimiProvider::new(kimi_config));
+        }
+    } else if config.provider == "openai" {
+        if let Some(ref key) = config.api_key {
+            let base_url = config.base_url.as_deref()
+                .unwrap_or("https://api.openai.com/v1");
+            let default_model = config.model.as_deref()
+                .unwrap_or("gpt-4o");
+            let openai_config = clarity_core::llm::openai::OpenAiProviderConfig {
+                api_key: key.clone(),
+                base_url: base_url.to_string(),
+                default_model: default_model.to_string(),
+                organization: None,
+            };
+            registry.register(clarity_core::llm::openai::OpenAiProvider::new(openai_config));
+        }
+    }
+
+    let provider = registry.get(&config.provider).ok()?;
+    let request = clarity_core::llm::LlmRequest::new(build_llm_prompt(&context))
+        .with_max_tokens(config.max_tokens);
+
+    let rt = tokio::runtime::Runtime::new().ok()?;
+    let future = provider.complete(request);
+    let result = rt.block_on(async {
+        tokio::time::timeout(Duration::from_secs(config.timeout_seconds), future).await
+    });
+
+    match result {
+        Ok(Ok(response)) => parse_llm_json(&response.content),
+        Ok(Err(e)) => {
+            tracing::debug!("LLM completion error: {}", e);
+            None
+        }
+        Err(_) => {
+            tracing::debug!("LLM completion timed out");
+            None
+        }
+    }
+}
+
 pub fn index_repo(repo: &crate::registry::RepoEntry) -> anyhow::Result<()> {
     use tracing::{info, warn};
 
     let mut conn = WorkspaceRegistry::init_db()?;
 
-    let (summary, keywords) = match extract_readme_summary(&repo.local_path) {
-        Some((s, k)) => (s, k.join(", ")),
-        None => {
+    let config = crate::config::Config::load().ok();
+    let (summary, keywords) = config
+        .as_ref()
+        .and_then(|cfg| try_llm_summary(&repo.local_path, &cfg.llm))
+        .or_else(|| extract_readme_summary(&repo.local_path).map(|(s, k)| (s, k.join(", "))))
+        .unwrap_or_else(|| {
             warn!("No README found for {}, generating fallback summary", repo.id);
             generate_fallback_summary(&repo.local_path)
-        }
-    };
+        });
 
     let modules = extract_module_structure(&repo.local_path);
 
@@ -454,13 +590,15 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
 
     let mut count = 0;
     for repo in &repos {
-        let (summary, keywords) = match extract_readme_summary(&repo.local_path) {
-            Some((s, k)) => (s, k.join(", ")),
-            None => {
+        let config = crate::config::Config::load().ok();
+        let (summary, keywords) = config
+            .as_ref()
+            .and_then(|cfg| try_llm_summary(&repo.local_path, &cfg.llm))
+            .or_else(|| extract_readme_summary(&repo.local_path).map(|(s, k)| (s, k.join(", "))))
+            .unwrap_or_else(|| {
                 warn!("No README found for {}, generating fallback summary", repo.id);
                 generate_fallback_summary(&repo.local_path)
-            }
-        };
+            });
 
         let modules = extract_module_structure(&repo.local_path);
 
@@ -607,6 +745,43 @@ description = "A test crate for semantic fallback without README."
         let dir = tempfile::tempdir().unwrap();
         let modules = extract_module_structure(dir.path());
         assert!(modules.is_empty());
+    }
+
+    #[test]
+    fn test_try_llm_summary_disabled_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = crate::config::LlmConfig {
+            enabled: false,
+            provider: "ollama".to_string(),
+            api_key: None,
+            model: None,
+            base_url: None,
+            max_tokens: 200,
+            timeout_seconds: 30,
+        };
+        assert!(try_llm_summary(dir.path(), &config).is_none());
+    }
+
+    #[test]
+    fn test_parse_llm_json_valid() {
+        let result = parse_llm_json(r#"{"summary":"A tool","keywords":"rust, cli"}"#).unwrap();
+        assert_eq!(result.0, "A tool");
+        assert_eq!(result.1, "rust, cli");
+    }
+
+    #[test]
+    fn test_parse_llm_json_markdown_fenced() {
+        let text = "```json\n{\"summary\":\"A tool\",\"keywords\":\"rust, cli\"}\n```";
+        let result = parse_llm_json(text).unwrap();
+        assert_eq!(result.0, "A tool");
+        assert_eq!(result.1, "rust, cli");
+    }
+
+    #[test]
+    fn test_build_llm_prompt_contains_json_instruction() {
+        let prompt = build_llm_prompt("test context");
+        assert!(prompt.contains("JSON object"));
+        assert!(prompt.contains("summary"));
     }
 
     #[test]
