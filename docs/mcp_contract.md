@@ -88,7 +88,7 @@
 {
   "name": "devkit_scan",
   "arguments": {
-    "path": "C:\\Users\\22414\\Desktop",
+    "path": "C:\\Users\\<user>\\Desktop",
     "register": false
   }
 }
@@ -101,9 +101,9 @@
   "count": 3,
   "registered": 0,
   "repos": [
-    { "id": "clarity", "local_path": "C:\\Users\\22414\\Desktop\\clarity", "upstream_url": null, "default_branch": "main", "tags": "own-project,no-upstream" },
-    { "id": "devbase", "local_path": "C:\\Users\\22414\\Desktop\\devbase", "upstream_url": null, "default_branch": null, "tags": "tool" },
-    { "id": "syncthing-rust-rearch", "local_path": "C:\\Users\\22414\\Desktop\\syncthing-rust-rearch", "upstream_url": null, "default_branch": "main", "tags": "own-project,no-upstream" }
+    { "id": "clarity", "local_path": "C:\\Users\\<user>\\Desktop\\clarity", "upstream_url": null, "default_branch": "main", "tags": "own-project,no-upstream" },
+    { "id": "devbase", "local_path": "C:\\Users\\<user>\\Desktop\\devbase", "upstream_url": null, "default_branch": null, "tags": "tool" },
+    { "id": "syncthing-rust-rearch", "local_path": "C:\\Users\\<user>\\Desktop\\syncthing-rust-rearch", "upstream_url": null, "default_branch": "main", "tags": "own-project,no-upstream" }
   ]
 }
 ```
@@ -376,9 +376,9 @@
   "count": 3,
   "expression": "rust",
   "results": [
-    { "id": "clarity", "local_path": "C:\\Users\\22414\\Desktop\\clarity", "tags": "own-project,no-upstream" },
-    { "id": "devbase", "local_path": "C:\\Users\\22414\\Desktop\\devbase", "tags": "tool" },
-    { "id": "syncthing-rust-rearch", "local_path": "C:\\Users\\22414\\Desktop\\syncthing-rust-rearch", "tags": "own-project,no-upstream" }
+    { "id": "clarity", "local_path": "C:\\Users\\<user>\\Desktop\\clarity", "tags": "own-project,no-upstream" },
+    { "id": "devbase", "local_path": "C:\\Users\\<user>\\Desktop\\devbase", "tags": "tool" },
+    { "id": "syncthing-rust-rearch", "local_path": "C:\\Users\\<user>\\Desktop\\syncthing-rust-rearch", "tags": "own-project,no-upstream" }
   ]
 }
 ```
