@@ -179,7 +179,10 @@ async fn execute_task(task: &RepoSyncTask, dry_run: bool, strategy: &str) -> Syn
     }
 }
 
-async fn collect_tasks(filter_tags: Option<&str>) -> anyhow::Result<Vec<RepoSyncTask>> {
+async fn collect_tasks(
+    filter_tags: Option<&str>,
+    exclude: Option<&str>,
+) -> anyhow::Result<Vec<RepoSyncTask>> {
     let conn = WorkspaceRegistry::init_db()?;
     let repos = WorkspaceRegistry::list_repos(&conn)?;
 
@@ -187,10 +190,16 @@ async fn collect_tasks(filter_tags: Option<&str>) -> anyhow::Result<Vec<RepoSync
         .map(|f| f.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect())
         .unwrap_or_default();
 
+    let exclude_list: Vec<&str> = exclude
+        .map(|e| e.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default();
+
     let tasks: Vec<RepoSyncTask> = repos
         .into_iter()
         .filter(|repo| {
-            filter_list.is_empty() || filter_list.iter().any(|f| repo.tags.contains(&f.to_string()))
+            let tag_match = filter_list.is_empty() || filter_list.iter().any(|f| repo.tags.contains(&f.to_string()));
+            let not_excluded = !exclude_list.iter().any(|id| repo.id == *id);
+            tag_match && not_excluded
         })
         .map(|repo| {
             let primary = repo.primary_remote().cloned();
@@ -211,8 +220,9 @@ pub async fn run_json(
     dry_run: bool,
     strategy: &str,
     filter_tags: Option<&str>,
+    exclude: Option<&str>,
 ) -> anyhow::Result<serde_json::Value> {
-    let tasks = collect_tasks(filter_tags).await?;
+    let tasks = collect_tasks(filter_tags, exclude).await?;
     let mut path_map = HashMap::new();
     for task in &tasks {
         path_map.insert(task.id.clone(), task.path.clone());
@@ -252,8 +262,9 @@ pub async fn run(
     dry_run: bool,
     strategy: &str,
     filter_tags: Option<&str>,
+    exclude: Option<&str>,
 ) -> anyhow::Result<()> {
-    let tasks = collect_tasks(filter_tags).await?;
+    let tasks = collect_tasks(filter_tags, exclude).await?;
     let mut path_map = HashMap::new();
     for task in &tasks {
         path_map.insert(task.id.clone(), task.path.clone());

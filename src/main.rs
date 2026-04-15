@@ -55,6 +55,9 @@ enum Commands {
         /// Comma-separated list of tags to filter repositories (OR logic)
         #[arg(long)]
         filter_tags: Option<String>,
+        /// Comma-separated list of repo IDs to exclude from sync
+        #[arg(long)]
+        exclude: Option<String>,
         /// Output results as JSON
         #[arg(long)]
         json: bool,
@@ -157,6 +160,7 @@ async fn main() -> anyhow::Result<()> {
             dry_run,
             strategy,
             filter_tags,
+            exclude,
             json,
         } => {
             if dry_run {
@@ -164,10 +168,10 @@ async fn main() -> anyhow::Result<()> {
             }
             info!("{}: {}", crate::i18n::current().cli.syncing, strategy);
             if json {
-                let output = sync::run_json(dry_run, &strategy, filter_tags.as_deref()).await?;
+                let output = sync::run_json(dry_run, &strategy, filter_tags.as_deref(), exclude.as_deref()).await?;
                 println!("{}", serde_json::to_string_pretty(&output)?);
             } else {
-                sync::run(dry_run, &strategy, filter_tags.as_deref()).await?;
+                sync::run(dry_run, &strategy, filter_tags.as_deref(), exclude.as_deref()).await?;
             }
         }
         Commands::Query { query } => {

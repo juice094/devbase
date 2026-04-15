@@ -477,7 +477,7 @@ impl McpTool for DevkitSyncTool {
             .and_then(|v| v.as_str())
             .unwrap_or("fetch-only");
         let filter_tags = args.get("filter_tags").and_then(|v| v.as_str());
-        crate::sync::run_json(dry_run, strategy, filter_tags).await
+        crate::sync::run_json(dry_run, strategy, filter_tags, None).await
     }
 }
 
