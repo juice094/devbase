@@ -70,7 +70,9 @@ pub async fn run_json(detail: bool, ttl_seconds: i64) -> anyhow::Result<serde_js
                 "default_branch": default_branch,
                 "status": status,
                 "ahead": ahead,
-                "behind": behind
+                "behind": behind,
+                "workspace_type": repo.workspace_type,
+                "data_tier": repo.data_tier
             }));
         }
 
@@ -131,9 +133,11 @@ pub async fn run(detail: bool, ttl_seconds: i64) -> anyhow::Result<()> {
                 let status = repo["status"].as_str().unwrap_or("");
                 let ahead = repo["ahead"].as_u64().unwrap_or(0);
                 let behind = repo["behind"].as_u64().unwrap_or(0);
+                let workspace_type = repo["workspace_type"].as_str().unwrap_or("git");
+                let data_tier = repo["data_tier"].as_str().unwrap_or("private");
                 println!(
-                    "  [{}] status={} | ahead={} | behind={} | path={} | upstream={} | branch={}",
-                    id, status, ahead, behind, path, upstream, branch
+                    "  [{}] status={} | ahead={} | behind={} | tier={} | type={} | path={} | upstream={} | branch={}",
+                    id, status, ahead, behind, data_tier, workspace_type, path, upstream, branch
                 );
             }
         }

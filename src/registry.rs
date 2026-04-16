@@ -25,6 +25,9 @@ pub struct RepoEntry {
     pub tags: Vec<String>,
     pub discovered_at: DateTime<Utc>,
     pub language: Option<String>,
+    pub workspace_type: String,
+    pub data_tier: String,
+    pub last_synced_at: Option<DateTime<Utc>>,
     pub remotes: Vec<RemoteEntry>,
 }
 
@@ -113,13 +116,16 @@ impl WorkspaceRegistry {
             }
         }
 
-        // New normalized schema
+        // New normalized schema (v2: added workspace_type, data_tier, last_synced_at)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS repos (
                 id TEXT PRIMARY KEY,
                 local_path TEXT NOT NULL,
                 language TEXT,
-                discovered_at TEXT NOT NULL
+                discovered_at TEXT NOT NULL,
+                workspace_type TEXT DEFAULT 'git',
+                data_tier TEXT DEFAULT 'private',
+                last_synced_at TEXT
             )",
             [],
         )?;
@@ -311,6 +317,23 @@ impl WorkspaceRegistry {
         if user_version < 1 {
             conn.execute("PRAGMA user_version = 1", [])?;
         }
+        if user_version < 2 {
+            let cols = {
+                let mut stmt = conn.prepare("PRAGMA table_info(repos)")?;
+                let rows = stmt.query_map([], |row| Ok(row.get::<_, String>(1)?))?;
+                rows.filter_map(Result::ok).collect::<Vec<_>>()
+            };
+            if !cols.iter().any(|c| c == "workspace_type") {
+                conn.execute("ALTER TABLE repos ADD COLUMN workspace_type TEXT DEFAULT 'git'", [])?;
+            }
+            if !cols.iter().any(|c| c == "data_tier") {
+                conn.execute("ALTER TABLE repos ADD COLUMN data_tier TEXT DEFAULT 'private'", [])?;
+            }
+            if !cols.iter().any(|c| c == "last_synced_at") {
+                conn.execute("ALTER TABLE repos ADD COLUMN last_synced_at TEXT", [])?;
+            }
+            conn.execute("PRAGMA user_version = 2", [])?;
+        }
 
         // One-time migration from legacy table
         let legacy_exists: bool = conn
@@ -381,16 +404,23 @@ impl WorkspaceRegistry {
                 row.get::<_, Option<String>>(6)?,
                 row.get::<_, Option<String>>(7)?,
                 row.get::<_, Option<String>>(8)?,
+                row.get::<_, Option<String>>(9)?,
+                row.get::<_, Option<String>>(10)?,
+                row.get::<_, Option<String>>(11)?,
             ))
         })?;
         let mut entries = Vec::new();
         for row in rows {
-            let (id, local_path, tags, language, discovered_at, remote_name, upstream_url, default_branch, last_sync) = row?;
+            let (id, local_path, tags, language, discovered_at, workspace_type, data_tier, last_synced_at, remote_name, upstream_url, default_branch, last_sync) = row?;
             let local_path = PathBuf::from(local_path);
             let discovered_at = DateTime::parse_from_rfc3339(&discovered_at)?.with_timezone(&Utc);
             let tags: Vec<String> = tags
                 .map(|s| s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect())
                 .unwrap_or_default();
+            let workspace_type = workspace_type.unwrap_or_else(|| "git".to_string());
+            let data_tier = data_tier.unwrap_or_else(|| "private".to_string());
+            let last_synced_at = last_synced_at
+                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc)));
             let remote = remote_name.map(|name| RemoteEntry {
                 remote_name: name,
                 upstream_url,
@@ -412,6 +442,9 @@ impl WorkspaceRegistry {
                     local_path,
                     tags,
                     language,
+                    workspace_type,
+                    data_tier,
+                    last_synced_at,
                     discovered_at,
                     remotes,
                 });
@@ -423,6 +456,7 @@ impl WorkspaceRegistry {
     pub fn list_repos(conn: &rusqlite::Connection) -> anyhow::Result<Vec<RepoEntry>> {
         let stmt = conn.prepare(
             "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
+                    r.workspace_type, r.data_tier, r.last_synced_at,
                     rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
              FROM repos r
              LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
@@ -437,6 +471,7 @@ impl WorkspaceRegistry {
     ) -> anyhow::Result<Vec<RepoEntry>> {
         let stmt = conn.prepare(
             "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
+                    r.workspace_type, r.data_tier, r.last_synced_at,
                     rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
              FROM repos r
              LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
@@ -456,6 +491,7 @@ impl WorkspaceRegistry {
     ) -> anyhow::Result<Vec<RepoEntry>> {
         let stmt = conn.prepare(
             "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
+                    r.workspace_type, r.data_tier, r.last_synced_at,
                     rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
              FROM repos r
              LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
@@ -472,12 +508,15 @@ impl WorkspaceRegistry {
     pub fn save_repo(conn: &mut rusqlite::Connection, repo: &RepoEntry) -> anyhow::Result<()> {
         let tx = conn.transaction()?;
         tx.execute(
-            "INSERT OR REPLACE INTO repos (id, local_path, language, discovered_at) VALUES (?1, ?2, ?3, ?4)",
+            "INSERT OR REPLACE INTO repos (id, local_path, language, discovered_at, workspace_type, data_tier, last_synced_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![
                 &repo.id,
                 repo.local_path.to_string_lossy().to_string(),
                 repo.language.as_ref(),
-                repo.discovered_at.to_rfc3339()
+                repo.discovered_at.to_rfc3339(),
+                &repo.workspace_type,
+                &repo.data_tier,
+                repo.last_synced_at.map(|dt| dt.to_rfc3339())
             ],
         )?;
         tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1", [&repo.id])?;
@@ -514,6 +553,58 @@ impl WorkspaceRegistry {
             rusqlite::params![language, repo_id],
         )?;
         Ok(())
+    }
+
+    pub fn update_repo_tier(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        tier: &str,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "UPDATE repos SET data_tier = ?1 WHERE id = ?2",
+            rusqlite::params![tier, repo_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_repo_workspace_type(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        workspace_type: &str,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "UPDATE repos SET workspace_type = ?1 WHERE id = ?2",
+            rusqlite::params![workspace_type, repo_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_repo_last_synced_at(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        timestamp: DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "UPDATE repos SET last_synced_at = ?1 WHERE id = ?2",
+            rusqlite::params![timestamp.to_rfc3339(), repo_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_workspaces_by_tier(
+        conn: &rusqlite::Connection,
+        tier: &str,
+    ) -> anyhow::Result<Vec<RepoEntry>> {
+        let stmt = conn.prepare(
+            "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
+                    r.workspace_type, r.data_tier, r.last_synced_at,
+                    rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
+             FROM repos r
+             LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
+             WHERE r.data_tier = ?1
+             ORDER BY r.id, rm.remote_name"
+        )?;
+        Self::collect_repos_from_stmt(stmt, &[&tier])
     }
 
     pub fn save_health(

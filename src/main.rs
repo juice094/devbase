@@ -82,6 +82,17 @@ enum Commands {
         /// Comma-separated tags
         tags: String,
     },
+    /// Update metadata (tier / workspace type) of a registered repository
+    Meta {
+        /// Repository ID
+        repo_id: String,
+        /// Data tier: public, cooperative, or private
+        #[arg(long)]
+        tier: Option<String>,
+        /// Workspace type: git, openclaw, or generic
+        #[arg(long)]
+        workspace_type: Option<String>,
+    },
     /// Launch interactive TUI
     Tui,
     /// Run as an MCP server
@@ -222,6 +233,26 @@ async fn main() -> anyhow::Result<()> {
                 }
                 tx.commit()?;
                 println!("已为 '{}' 打上标签 '{}'。", repo_id, tags);
+            }
+        }
+        Commands::Meta { repo_id, tier, workspace_type } => {
+            info!("更新 {} 的元数据", repo_id);
+            let conn = registry::WorkspaceRegistry::init_db()?;
+            let exists: bool = conn.query_row("SELECT 1 FROM repos WHERE id = ?1", [&repo_id], |_| Ok(true)).unwrap_or(false);
+            if !exists {
+                println!("注册表中未找到仓库 '{}'。", repo_id);
+            } else {
+                if let Some(ref t) = tier {
+                    registry::WorkspaceRegistry::update_repo_tier(&conn, &repo_id, t)?;
+                    println!("已将 '{}' 的数据分级设为 '{}'。", repo_id, t);
+                }
+                if let Some(ref wt) = workspace_type {
+                    registry::WorkspaceRegistry::update_repo_workspace_type(&conn, &repo_id, wt)?;
+                    println!("已将 '{}' 的工作区类型设为 '{}'。", repo_id, wt);
+                }
+                if tier.is_none() && workspace_type.is_none() {
+                    println!("未提供任何要更新的字段。使用 --tier 或 --workspace-type 指定。");
+                }
             }
         }
         Commands::Tui => {

@@ -1,6 +1,12 @@
 # devbase
 
+devbase is a **local-first knowledge base manager** for developer workspaces and AI agent memory.
+
 开发者工作区数据库与知识库管理器。
+
+## Memory Sovereignty
+
+devbase tracks not only Git repositories, but any workspace you treat as knowledge. Data stays local by default; you decide what—if anything—leaves your machine.
 
 ## 功能
 

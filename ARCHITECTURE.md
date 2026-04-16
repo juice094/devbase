@@ -160,7 +160,46 @@ Peer Device (另一台机器的实体层)
 
 ---
 
-## 五、当前实现状态（2026-04-05）
+## 五、Memory Sovereignty（记忆主权）
+
+### 5.1 从"仓库管理"到"记忆管家"
+
+devbase 的演进方向不仅是管理 Git 仓库，而是成为**开发者知识资产的主权层**。这意味着：
+
+- **数据物理上属于你**：所有元数据存储在本地 SQLite，无需云端数据库账号
+- **同步边界由你定义**：通过 `data_tier`（`public` / `cooperative` / `private`）明确哪些数据可以离开本机
+- **Agent 记忆的托管方**：Clarity 的 `SOUL.md` / `MEMORY.md`、agri-paper 的知识库，都可以被 devbase 追踪和保鲜
+
+### 5.2 为什么 SQLite + 本地优先？
+
+| 选择 | 理由 | 对立面（云服务）的风险 |
+|------|------|----------------------|
+| **SQLite** | 零外部依赖、单文件可复制、可被版本控制 | 云端数据库需要账号、网络、可能泄露查询模式 |
+| **本地优先** | 代码/对话永不出境，满足合规与隐私需求 | SaaS 工具默认上传用户代码用于训练 |
+| **Syncthing P2P** | 端到端加密、无中心化服务器、用户掌控 peer 列表 | 云同步服务商可见文件内容 |
+
+### 5.3 `data_tier` 的架构意义
+
+Registry Schema v2 引入了三层数据分级：
+
+- `private`：默认状态。原始对话、私有代码、个人笔记。不同步到任何外部节点。
+- `cooperative`：经授权后可参与模式聚合。例如去标识化的工具调用序列、农业诊断案例统计。
+- `public`：完全开放的知识。例如开源文档、去标识化的通用百科。
+
+CLI 已支持通过 `devbase meta <repo_id> --tier <tier>` 动态调整分级，使"数据主权"从架构设计落地为可操作的日常命令。
+
+### 5.4 Syncthing 的对接价值
+
+Syncthing 解决的是"数据怎么在机器之间搬运"，而 devbase 解决的是"搬运的数据有什么语义、值不值得更新"。
+
+两者的衔接点：
+- devbase 决定**哪些目录**需要被同步（基于 `data_tier` 和 `workspace_type`）
+- syncthing-rust 决定**怎么高效同步**（块级 P2P、端到端加密）
+- devbase 监控 `.sync-conflict` 文件，将冲突升华为"diverged"状态等待用户 merge
+
+---
+
+## 六、当前实现状态（2026-04-15）
 
 ### 5.1 CLI 功能清单
 
@@ -176,6 +215,7 @@ Peer Device (另一台机器的实体层)
 | `devbase clean` | ✅ 已实现 | 清理备份目录记录 |
 | `devbase tui` | ✅ 已实现 | `ratatui` 交互式界面：异步事件循环、后台 Git 操作不阻塞 UI、inline spinner、按键 `s`/`S`/`t`/`h`/`Home`/`End` |
 | `devbase mcp --transport stdio` | ✅ 已实现 | MCP Server 模式，暴露 `devkit_scan`/`devkit_health`/`devkit_sync`/`devkit_query` 4 个工具 |
+| `devbase meta <repo_id> --tier <tier>` | ✅ 已实现 | Registry Schema v2：支持 `workspace_type` 和 `data_tier` 字段的动态更新 |
 | `devbase watch <path> --duration` | ✅ 已实现 | 目录监控 + 事件聚合 + 变更调度；基于 `notify` 的 `ReadDirectoryChangesW` 实现 |
 
 ### 5.2 TUI 设计原则
@@ -209,16 +249,16 @@ Peer Device (另一台机器的实体层)
   - `tags: own-project,no-upstream` 或 `tool`
   - `sync` 自动跳过
 
-- **第三方参考库（19 个）**：已全部从 ZIP 迁移为 Git 官方仓库
+- **第三方参考库（30 个）**：已全部从 ZIP 迁移为 Git 官方仓库
   - 位置：`C:\Users\<user>\dev\third_party\`
   - `tags: third-party,reference`
   - 包含：`openclaw`、`lazygit`、`gitui`、`ollama`、`dify`、`codex`、`kimi-cli`、`iroh`、`tailscale`、`vllm`、`coze-studio`、`nanobot`、`claude-code-rust`、`zeroclaw`、`desktop`、`openhanako`、`AutoCLI`
 
 ---
 
-## 六、后续规划
+## 七、后续规划
 
-### 6.1 短期（1~2 周）
+### 7.1 短期（1~2 周）
 
 1. ~~**MCP 接口契约文档**~~ ✅ **已完成**
    - 定义 `devkit_scan`、`devkit_sync`、`devkit_query`、`devkit_health` 的输入输出模式
@@ -238,7 +278,7 @@ Peer Device (另一台机器的实体层)
 5. **Registry 缓存预热**
    - 在 `health` 和 `query` 中复用 `repo_health` 缓存，减少重复 `git2::Repository::open` 的 IO 开销
 
-### 6.2 中期（1 个月内）
+### 7.2 中期（1 个月内）
 
 1. **封装 `devbase-core` Rust 库**
    - 将核心能力（Registry、HealthEngine、SyncOrchestrator、QueryEngine）抽象为可复用 crate
@@ -251,7 +291,7 @@ Peer Device (另一台机器的实体层)
    - 基于 `SyncIndex` 和 `WatchAggregator`，通过 Syncthing REST API 动态创建/更新 folder 配置
    - 完成「devbase 决策 → syncthing 执行」的同步闭环
 
-### 6.3 长期（3 个月内）
+### 7.3 长期（3 个月内）
 
 1. **依赖图谱可视化**
    - 绘制项目间的引用关系（哪些项目依赖 tokio、哪些参考了 openclaw）

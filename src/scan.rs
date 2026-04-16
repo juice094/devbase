@@ -178,6 +178,9 @@ pub fn inspect_repo(path: &Path) -> anyhow::Result<RepoEntry> {
         tags,
         discovered_at: Utc::now(),
         language,
+        workspace_type: "git".to_string(),
+        data_tier: "private".to_string(),
+        last_synced_at: None,
         remotes: vec![remote_entry],
     })
 }
@@ -248,6 +251,9 @@ mod tests {
             tags: vec![],
             discovered_at: Utc::now(),
             language: None,
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
             remotes: vec![],
         };
         let child = Path::new("/workspace/parent/sub");
@@ -262,6 +268,9 @@ mod tests {
             tags: vec![],
             discovered_at: Utc::now(),
             language: None,
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
             remotes: vec![],
         };
         let same = Path::new("/workspace/parent");
