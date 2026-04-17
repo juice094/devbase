@@ -14,6 +14,12 @@ pub struct RepoStatusNotification {
 pub struct FetchPreviewNotification {
     pub repo_id: String,
     pub msg: String,
+    pub local_commit: Option<String>,
+    pub remote_commit: Option<String>,
+    pub branch: Option<String>,
+    pub ahead: Option<usize>,
+    pub behind: Option<usize>,
+    pub is_synced: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -125,7 +131,7 @@ pub struct AsyncFetchPreview {
 
 impl AsyncJob for AsyncFetchPreview {
     fn run(&self) -> AsyncNotification {
-        let result = (|| -> anyhow::Result<String> {
+        let result = (|| -> anyhow::Result<(String, Option<String>, Option<String>, Option<String>, Option<usize>, Option<usize>, Option<bool>)> {
             let git_repo = Repository::open(&self.local_path)?;
 
             let upstream_url = self
@@ -177,41 +183,61 @@ impl AsyncJob for AsyncFetchPreview {
                 .ok()
                 .map(|o| o.id());
 
+            let local_commit = local_oid.map(|o| o.to_string());
+            let remote_commit = remote_oid.map(|o| o.to_string());
+
             match (local_oid, remote_oid) {
                 (Some(local), Some(remote)) => {
                     if local == remote {
-                        Ok(format!("[{}] Up to date on {}", self.repo_id, branch))
+                        Ok((
+                            format!("[{}] Up to date on {}", self.repo_id, branch),
+                            local_commit, remote_commit,
+                            Some(branch), Some(0), Some(0), Some(true),
+                        ))
                     } else {
                         let (ahead, behind) = git_repo.graph_ahead_behind(local, remote)?;
-                        Ok(format!(
-                            "[{}] {} ahead, {} behind origin/{}",
-                            self.repo_id, ahead, behind, branch
+                        Ok((
+                            format!(
+                                "[{}] {} ahead, {} behind origin/{}",
+                                self.repo_id, ahead, behind, branch
+                            ),
+                            local_commit, remote_commit,
+                            Some(branch), Some(ahead), Some(behind), Some(false),
                         ))
                     }
                 }
-                (None, Some(_)) => Ok(format!(
-                    "[{}] Local branch '{}' does not exist yet",
-                    self.repo_id, branch
+                (None, Some(_)) => Ok((
+                    format!("[{}] Local branch '{}' does not exist yet", self.repo_id, branch),
+                    local_commit, remote_commit,
+                    Some(branch), None, None, Some(false),
                 )),
-                (Some(_), None) => Ok(format!(
-                    "[{}] Remote branch 'origin/{}' not found after fetch",
-                    self.repo_id, branch
+                (Some(_), None) => Ok((
+                    format!("[{}] Remote branch 'origin/{}' not found after fetch", self.repo_id, branch),
+                    local_commit, remote_commit,
+                    Some(branch), None, None, Some(false),
                 )),
-                (None, None) => Ok(format!(
-                    "[{}] Neither local nor remote branch '{}' exists",
-                    self.repo_id, branch
+                (None, None) => Ok((
+                    format!("[{}] Neither local nor remote branch '{}' exists", self.repo_id, branch),
+                    local_commit, remote_commit,
+                    Some(branch), None, None, Some(false),
                 )),
             }
         })();
 
-        let msg = match result {
-            Ok(m) => m,
-            Err(e) => format!("Sync preview failed: {}", e),
+        let (msg, local_commit, remote_commit, branch, ahead, behind, is_synced) = match result {
+            Ok(v) => v,
+            Err(e) => (format!("Sync preview failed: {}", e), None, None, None, None, None, None),
         };
 
         AsyncNotification::FetchPreview(FetchPreviewNotification {
             repo_id: self.repo_id.clone(),
             msg,
+            local_commit,
+            remote_commit,
+            branch,
+            ahead,
+            behind,
+            is_synced,
         })
     }
 }

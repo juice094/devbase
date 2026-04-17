@@ -25,6 +25,13 @@ struct RepoItem {
     status_dirty: Option<bool>,
     status_ahead: Option<usize>,
     status_behind: Option<usize>,
+    // Fetch preview cache
+    local_commit: Option<String>,
+    remote_commit: Option<String>,
+    last_preview_branch: Option<String>,
+    last_preview_ahead: Option<usize>,
+    last_preview_behind: Option<usize>,
+    last_preview_synced: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -128,8 +135,24 @@ impl App {
                 status_dirty: None,
                 status_ahead: None,
                 status_behind: None,
+                local_commit: None,
+                remote_commit: None,
+                last_preview_branch: None,
+                last_preview_ahead: None,
+                last_preview_behind: None,
+                last_preview_synced: None,
             });
         }
+        // Sort: group by primary tag, then by id
+        self.repos.sort_by(|a, b| {
+            let tag_a = a.tags.first().map(|s| s.as_str()).unwrap_or("zzz");
+            let tag_b = b.tags.first().map(|s| s.as_str()).unwrap_or("zzz");
+            let tag_cmp = tag_a.cmp(tag_b);
+            if tag_cmp != std::cmp::Ordering::Equal {
+                return tag_cmp;
+            }
+            a.id.cmp(&b.id)
+        });
         if self.selected >= self.repos.len() && !self.repos.is_empty() {
             self.selected = self.repos.len() - 1;
         }
@@ -246,6 +269,14 @@ impl App {
             AsyncNotification::FetchPreview(n) => {
                 self.loading_preview.remove(&n.repo_id);
                 self.log_info(n.msg);
+                if let Some(repo) = self.repos.iter_mut().find(|r| r.id == n.repo_id) {
+                    repo.local_commit = n.local_commit;
+                    repo.remote_commit = n.remote_commit;
+                    repo.last_preview_branch = n.branch;
+                    repo.last_preview_ahead = n.ahead;
+                    repo.last_preview_behind = n.behind;
+                    repo.last_preview_synced = n.is_synced;
+                }
             }
             AsyncNotification::SyncProgress(n) => {
                 if n.action == "RUNNING" {
@@ -499,7 +530,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
         .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
         .split(main_vertical[0]);
 
-    // Left: repo list
+    // Left: repo list (sorted by primary tag for implicit clustering)
     let items: Vec<ListItem> = app
         .repos
         .iter()
@@ -532,8 +563,15 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 base_fg
             };
 
+            // Tag cluster indicator: show primary tag in muted color
+            let tag_indicator = if let Some(first_tag) = repo.tags.first() {
+                format!(" [{}]", first_tag)
+            } else {
+                String::new()
+            };
+
             ListItem::new(Span::styled(
-                format!("{}{}", prefix, repo.id),
+                format!("{}{}{}", prefix, repo.id, tag_indicator),
                 Style::default().fg(fg),
             ))
         })
@@ -560,7 +598,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
     // Detail panel
     let detail_text = if let Some(repo) = app.current_repo() {
         let mut tag_line = vec![
-            Span::styled(crate::i18n::current().tui.label_tags, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled("本地标签: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
         ];
         tag_line.extend(tag_spans(&repo.tags));
 
@@ -569,7 +607,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
             _ => crate::i18n::current().tui.status_loading.to_string(),
         };
 
-        Text::from(vec![
+        let mut lines: Vec<Line> = vec![
             Line::from(vec![
                 Span::styled(crate::i18n::current().tui.label_id, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                 Span::raw(&repo.id),
@@ -602,7 +640,37 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 Span::styled(crate::i18n::current().tui.label_status, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                 Span::raw(status_text),
             ]),
-        ])
+        ];
+
+        // Commit comparison line (from fetch preview)
+        if let (Some(local), Some(remote)) = (&repo.local_commit, &repo.remote_commit) {
+            let local_short = &local[..local.len().min(7)];
+            let remote_short = &remote[..remote.len().min(7)];
+            let synced = repo.last_preview_synced.unwrap_or(false);
+            let cmp_text = if synced {
+                format!("{} == {} ✓", local_short, remote_short)
+            } else {
+                format!("{} ≠ {}", local_short, remote_short)
+            };
+            let cmp_color = if synced { Color::Green } else { Color::Yellow };
+            lines.push(Line::from(vec![
+                Span::styled("版本对比: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(cmp_text, Style::default().fg(cmp_color)),
+            ]));
+            if let Some(branch) = &repo.last_preview_branch {
+                lines.push(Line::from(vec![
+                    Span::styled("对比分支: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                    Span::raw(branch),
+                ]));
+            }
+        } else if repo.upstream_url.is_some() {
+            lines.push(Line::from(vec![
+                Span::styled("版本对比: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled("按 s 获取远程版本对比", Style::default().fg(Color::DarkGray)),
+            ]));
+        }
+
+        Text::from(lines)
     } else {
         Text::raw(crate::i18n::current().log.no_repos_registered)
     };
