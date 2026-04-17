@@ -332,6 +332,12 @@ impl WorkspaceRegistry {
 
         // Schema versioning for future migrations
         let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        const CURRENT_SCHEMA_VERSION: i32 = 3;
+        if user_version < CURRENT_SCHEMA_VERSION && path.exists() {
+            if let Err(e) = crate::backup::auto_backup_before_migration(&path) {
+                tracing::warn!("Failed to auto-backup registry before migration: {}", e);
+            }
+        }
         if user_version < 1 {
             conn.execute("PRAGMA user_version = 1", [])?;
         }

@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use tracing::{info, warn};
 
 mod asyncgit;
+mod backup;
 mod config;
 mod daemon;
 mod digest;
@@ -135,6 +136,36 @@ enum Commands {
     Discover,
     /// Generate daily knowledge digest
     Digest,
+    /// Registry backup and restore operations
+    Registry {
+        #[command(subcommand)]
+        cmd: RegistryCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum RegistryCommands {
+    /// Export registry to a backup file
+    Export {
+        /// Output format: sqlite or json
+        #[arg(long, default_value = "sqlite")]
+        format: String,
+        /// Output file path (optional, defaults to backup dir with timestamp)
+        #[arg(long)]
+        output: Option<String>,
+    },
+    /// Import registry from a backup SQLite file
+    Import {
+        /// Source backup file path
+        path: String,
+        /// Skip dry-run and execute immediately
+        #[arg(long)]
+        yes: bool,
+    },
+    /// List existing registry backups
+    Backups,
+    /// Clean old backups, keeping only the most recent ones
+    Clean,
 }
 
 #[tokio::main]
@@ -474,6 +505,22 @@ async fn main() -> anyhow::Result<()> {
                 );
             }
         }
+        Commands::Registry { cmd } => match cmd {
+            RegistryCommands::Export { format, output } => {
+                let out_path = output.as_deref().map(std::path::Path::new);
+                backup::run_export(&format, out_path)?;
+            }
+            RegistryCommands::Import { path, yes } => {
+                let source = std::path::Path::new(&path);
+                backup::run_import(source, yes)?;
+            }
+            RegistryCommands::Backups => {
+                backup::run_list()?;
+            }
+            RegistryCommands::Clean => {
+                backup::run_clean()?;
+            }
+        },
     }
 
     Ok(())
