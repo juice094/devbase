@@ -75,6 +75,16 @@ pub struct WorkspaceSnapshot {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OplogEntry {
+    pub id: Option<i64>,
+    pub operation: String,
+    pub repo_id: Option<String>,
+    pub details: Option<String>,
+    pub status: String,
+    pub timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceRegistry {
     pub version: String,
     pub entries: Vec<RepoEntry>,
@@ -330,9 +340,30 @@ impl WorkspaceRegistry {
             [],
         )?;
 
+        // v4: operation log for tracking devbase actions
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS oplog (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                operation TEXT NOT NULL,
+                repo_id TEXT,
+                details TEXT,
+                status TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_oplog_operation ON oplog(operation)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_oplog_timestamp ON oplog(timestamp)",
+            [],
+        )?;
+
         // Schema versioning for future migrations
         let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        const CURRENT_SCHEMA_VERSION: i32 = 3;
+        const CURRENT_SCHEMA_VERSION: i32 = 4;
         if user_version < CURRENT_SCHEMA_VERSION && path.exists() {
             if let Err(e) = crate::backup::auto_backup_before_migration(&path) {
                 tracing::warn!("Failed to auto-backup registry before migration: {}", e);
@@ -378,6 +409,31 @@ impl WorkspaceRegistry {
                 )?;
             }
             conn.execute("PRAGMA user_version = 3", [])?;
+        }
+        if user_version < 4 {
+            let oplog_exists: bool = conn
+                .query_row(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='oplog'",
+                    [],
+                    |_| Ok(true),
+                )
+                .unwrap_or(false);
+            if !oplog_exists {
+                conn.execute(
+                    "CREATE TABLE oplog (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        operation TEXT NOT NULL,
+                        repo_id TEXT,
+                        details TEXT,
+                        status TEXT NOT NULL,
+                        timestamp TEXT NOT NULL
+                    )",
+                    [],
+                )?;
+                conn.execute("CREATE INDEX idx_oplog_operation ON oplog(operation)", [])?;
+                conn.execute("CREATE INDEX idx_oplog_timestamp ON oplog(timestamp)", [])?;
+            }
+            conn.execute("PRAGMA user_version = 4", [])?;
         }
 
         // One-time migration from legacy table
@@ -948,5 +1004,74 @@ impl WorkspaceRegistry {
         } else {
             Ok(None)
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Operation log
+    // ------------------------------------------------------------------
+    pub fn save_oplog(
+        conn: &rusqlite::Connection,
+        entry: &OplogEntry,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "INSERT INTO oplog (operation, repo_id, details, status, timestamp) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                &entry.operation,
+                entry.repo_id.as_ref(),
+                entry.details.as_ref(),
+                &entry.status,
+                entry.timestamp.to_rfc3339()
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_oplog(
+        conn: &rusqlite::Connection,
+        limit: i64,
+    ) -> anyhow::Result<Vec<OplogEntry>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, operation, repo_id, details, status, timestamp FROM oplog ORDER BY timestamp DESC LIMIT ?1"
+        )?;
+        let rows = stmt.query_map([limit], |row| {
+            let ts: String = row.get(5)?;
+            let timestamp = DateTime::parse_from_rfc3339(&ts)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+            Ok(OplogEntry {
+                id: row.get(0)?,
+                operation: row.get(1)?,
+                repo_id: row.get(2)?,
+                details: row.get(3)?,
+                status: row.get(4)?,
+                timestamp,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn list_oplog_by_repo(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        limit: i64,
+    ) -> anyhow::Result<Vec<OplogEntry>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, operation, repo_id, details, status, timestamp FROM oplog WHERE repo_id = ?1 ORDER BY timestamp DESC LIMIT ?2"
+        )?;
+        let rows = stmt.query_map(rusqlite::params![repo_id, limit], |row| {
+            let ts: String = row.get(5)?;
+            let timestamp = DateTime::parse_from_rfc3339(&ts)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+            Ok(OplogEntry {
+                id: row.get(0)?,
+                operation: row.get(1)?,
+                repo_id: row.get(2)?,
+                details: row.get(3)?,
+                status: row.get(4)?,
+                timestamp,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 }

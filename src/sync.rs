@@ -1,4 +1,5 @@
-use crate::registry::WorkspaceRegistry;
+use crate::registry::{OplogEntry, WorkspaceRegistry};
+use chrono::Utc;
 use git2::Repository;
 use std::collections::HashMap;
 use std::io::{self, Write};
@@ -380,6 +381,23 @@ pub async fn run_json(
         .collect();
 
     info!("{}", crate::i18n::current().log.sync_finished);
+
+    // Log to oplog
+    if let Ok(conn) = WorkspaceRegistry::init_db() {
+        let repo_count = results_json.len();
+        let _ = WorkspaceRegistry::save_oplog(
+            &conn,
+            &OplogEntry {
+                id: None,
+                operation: "sync".to_string(),
+                repo_id: None,
+                details: Some(format!("strategy={}, dry_run={}, repos={}", strategy, dry_run, repo_count)),
+                status: "success".to_string(),
+                timestamp: Utc::now(),
+            },
+        );
+    }
+
     Ok(serde_json::json!({
         "success": true,
         "dry_run": dry_run,
@@ -472,6 +490,22 @@ pub async fn run(
         println!("\n{}", crate::i18n::current().sync.dry_run_complete);
     } else {
         println!("\n{}", crate::i18n::current().sync.sync_complete);
+    }
+
+    // Log to oplog
+    if let Ok(conn) = WorkspaceRegistry::init_db() {
+        let repo_count = results_json.len();
+        let _ = WorkspaceRegistry::save_oplog(
+            &conn,
+            &OplogEntry {
+                id: None,
+                operation: "sync".to_string(),
+                repo_id: None,
+                details: Some(format!("strategy={}, dry_run={}, repos={}", strategy, dry_run, repo_count)),
+                status: "success".to_string(),
+                timestamp: Utc::now(),
+            },
+        );
     }
 
     Ok(())

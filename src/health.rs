@@ -1,4 +1,4 @@
-use crate::registry::{HealthEntry, WorkspaceRegistry, WorkspaceSnapshot};
+use crate::registry::{HealthEntry, OplogEntry, WorkspaceRegistry, WorkspaceSnapshot};
 use chrono::Utc;
 use git2::Repository;
 use std::path::Path;
@@ -167,6 +167,22 @@ pub async fn run_json(detail: bool, ttl_seconds: i64) -> anyhow::Result<serde_js
     });
 
     info!("Health check completed");
+
+    // Log to oplog
+    if let Ok(conn) = WorkspaceRegistry::init_db() {
+        let _ = WorkspaceRegistry::save_oplog(
+            &conn,
+            &OplogEntry {
+                id: None,
+                operation: "health".to_string(),
+                repo_id: None,
+                details: Some(format!("repos={}, dirty={}, behind={}", total_repos, dirty_repos, behind_upstream)),
+                status: "success".to_string(),
+                timestamp: Utc::now(),
+            },
+        );
+    }
+
     Ok(serde_json::json!({
         "success": true,
         "summary": summary,

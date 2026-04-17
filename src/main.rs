@@ -139,6 +139,15 @@ enum Commands {
     Discover,
     /// Generate daily knowledge digest
     Digest,
+    /// View the operation log
+    Oplog {
+        /// Limit number of entries (default: 20)
+        #[arg(long, default_value_t = 20)]
+        limit: i64,
+        /// Filter by repo ID
+        #[arg(long)]
+        repo: Option<String>,
+    },
     /// Registry backup and restore operations
     Registry {
         #[command(subcommand)]
@@ -464,6 +473,30 @@ async fn main() -> anyhow::Result<()> {
                 Ok(Ok(text)) => println!("{}", text),
                 Ok(Err(e)) => println!("{}: {}", crate::i18n::current().log.digest_failed, e),
                 Err(e) => println!("{}: {}", crate::i18n::current().log.digest_panic, e),
+            }
+        }
+        Commands::Oplog { limit, repo } => {
+            let conn = registry::WorkspaceRegistry::init_db()?;
+            let entries = match repo {
+                Some(ref r) => registry::WorkspaceRegistry::list_oplog_by_repo(&conn, r, limit)?,
+                None => registry::WorkspaceRegistry::list_oplog(&conn, limit)?,
+            };
+            if entries.is_empty() {
+                println!("操作日志为空。");
+            } else {
+                println!("最近 {} 条操作日志:", entries.len());
+                for entry in entries {
+                    let ts = entry.timestamp.format("%Y-%m-%d %H:%M:%S").to_string();
+                    let repo = entry.repo_id.as_deref().unwrap_or("-");
+                    println!(
+                        "  [{}] {} | repo={} | status={} | {}",
+                        ts,
+                        entry.operation,
+                        repo,
+                        entry.status,
+                        entry.details.as_deref().unwrap_or("")
+                    );
+                }
             }
         }
         Commands::Discover => {

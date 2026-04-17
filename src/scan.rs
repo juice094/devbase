@@ -1,4 +1,4 @@
-use crate::registry::{RepoEntry, RemoteEntry, WorkspaceRegistry};
+use crate::registry::{OplogEntry, RepoEntry, RemoteEntry, WorkspaceRegistry};
 use chrono::Utc;
 use git2::Repository;
 use std::path::{Path, PathBuf};
@@ -44,6 +44,21 @@ pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::
             })
         })
         .collect();
+
+    // Log to oplog
+    if let Ok(conn) = WorkspaceRegistry::init_db() {
+        let _ = WorkspaceRegistry::save_oplog(
+            &conn,
+            &OplogEntry {
+                id: None,
+                operation: "scan".to_string(),
+                repo_id: None,
+                details: Some(format!("path={}, discovered={}, registered={}", path, count, registered)),
+                status: "success".to_string(),
+                timestamp: Utc::now(),
+            },
+        );
+    }
 
     Ok(serde_json::json!({
         "success": true,
