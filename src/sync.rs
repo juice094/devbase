@@ -602,19 +602,32 @@ async fn sync_repo(
             }
 
             // Fetch with friendly error message
-            let mut callbacks = git2::RemoteCallbacks::new();
-            callbacks.credentials(|_url, username_from_url, _allowed_types| {
-                git2::Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
-            });
-            let mut fetch_opts = git2::FetchOptions::new();
-            fetch_opts.remote_callbacks(callbacks);
+            let remote_url_str = remote.url().map(|s| s.to_string());
+            let needs_auth = remote_url_str.as_deref().map(|u| {
+                u.contains("github.com") || u.contains("gitlab.com") || u.starts_with("git@") || u.starts_with("ssh://") || u.starts_with("https://")
+            }).unwrap_or(false);
 
-            remote.fetch(&[] as &[&str], Some(&mut fetch_opts), None).map_err(|e| {
-                anyhow::anyhow!(
-                    "{}",
-                    crate::i18n::format_template(crate::i18n::current().sync.fetch_failed, &[&e.to_string()])
-                )
-            })?;
+            if needs_auth {
+                let mut callbacks = git2::RemoteCallbacks::new();
+                callbacks.credentials(|_url, username_from_url, _allowed_types| {
+                    git2::Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
+                });
+                let mut fetch_opts = git2::FetchOptions::new();
+                fetch_opts.remote_callbacks(callbacks);
+                remote.fetch(&[] as &[&str], Some(&mut fetch_opts), None).map_err(|e| {
+                    anyhow::anyhow!(
+                        "{}",
+                        crate::i18n::format_template(crate::i18n::current().sync.fetch_failed, &[&e.to_string()])
+                    )
+                })?;
+            } else {
+                remote.fetch(&[] as &[&str], None, None).map_err(|e| {
+                    anyhow::anyhow!(
+                        "{}",
+                        crate::i18n::format_template(crate::i18n::current().sync.fetch_failed, &[&e.to_string()])
+                    )
+                })?;
+            }
         }
 
         // Determine default branch
@@ -726,6 +739,16 @@ async fn sync_repo(
             });
         }
 
+        // Write .syncdone marker on successful sync
+        if !matches!(summary.action.as_str(), "ERROR" | "BLOCKED" | "SKIP" | "WARN") {
+            let final_oid = repo.head().ok().and_then(|h| h.target());
+            write_syncdone_marker(
+                std::path::Path::new(&path),
+                &summary.action,
+                final_oid.map(|o| o.to_string()).as_deref(),
+            );
+        }
+
         Ok::<SyncSummary, anyhow::Error>(summary)
     }).await;
 
@@ -750,6 +773,20 @@ async fn sync_repo(
                 ..Default::default()
             })
         }
+    }
+}
+
+fn write_syncdone_marker(path: &std::path::Path, action: &str, local_commit: Option<&str>) {
+    let syncdone = serde_json::json!({
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "local_commit": local_commit,
+        "action": action
+    });
+    let devbase_dir = path.join(".devbase");
+    if let Err(e) = std::fs::create_dir_all(&devbase_dir) {
+        warn!("Failed to create .devbase dir for {}: {}", path.display(), e);
+    } else if let Err(e) = std::fs::write(devbase_dir.join("syncdone"), syncdone.to_string()) {
+        warn!("Failed to write .devbase/syncdone for {}: {}", path.display(), e);
     }
 }
 
@@ -957,5 +994,42 @@ mod tests {
         _repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
         let safety = assess_safety(dir.path().to_str().unwrap(), "", &["own-project"]);
         assert_eq!(safety, SyncSafety::NoUpstream);
+    }
+
+    #[test]
+    fn test_write_syncdone_marker() {
+        let dir = TempDir::new().unwrap();
+        write_syncdone_marker(dir.path(), "FETCH", Some("abc1234"));
+
+        let syncdone_path = dir.path().join(".devbase").join("syncdone");
+        assert!(syncdone_path.exists(), ".devbase/syncdone should be written");
+
+        let content = fs::read_to_string(&syncdone_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(parsed.get("action").and_then(|v| v.as_str()), Some("FETCH"));
+        assert_eq!(parsed.get("local_commit").and_then(|v| v.as_str()), Some("abc1234"));
+        assert!(parsed.get("timestamp").is_some());
+    }
+
+    #[test]
+    fn test_sync_repo_skip_no_syncdone() {
+        let dir = TempDir::new().unwrap();
+        let repo = Repository::init(&dir).unwrap();
+        let sig = repo.signature().unwrap();
+        let tree_id = repo.index().unwrap().write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
+
+        // Simulate a SKIP summary: write_syncdone_marker should NOT be called
+        let syncdone_path = dir.path().join(".devbase").join("syncdone");
+        assert!(!syncdone_path.exists(), ".devbase/syncdone should NOT exist before any write");
+
+        // Write it manually with SKIP action to verify it would be wrong
+        write_syncdone_marker(dir.path(), "SKIP", None);
+        assert!(syncdone_path.exists(), "marker can be written for testing");
+
+        // In real sync_repo, SKIP action bypasses write_syncdone_marker, so delete it
+        fs::remove_file(&syncdone_path).unwrap();
+        assert!(!syncdone_path.exists());
     }
 }

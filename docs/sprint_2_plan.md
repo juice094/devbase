@@ -94,11 +94,17 @@ pub trait McpTool: Send + Sync {
 2. `DevkitQueryTool::invoke_stream()` 实现：分页结果逐页 `Partial` → 最后 `Done`
 3. TUI 进度条展示
 
+**状态**：✅ 完成 (`6fca007`)，46 tests passed
+
+> TUI 进度条 deferred 到 Sprint 3（需要 ratatui 事件循环重构）
+
 ### Task 2.6: `.syncdone` 文件标记
 
 1. `sync_repo()` 成功后写入 `.devbase/syncdone`
 2. 格式：`{"timestamp":"2026-04-17T10:42:00Z","local_commit":"abc1234"}`
 3. 与 syncthing-rust `FolderStatus::Idle` REST endpoint 集成
+
+**状态**：🔴 当前执行
 
 ---
 
