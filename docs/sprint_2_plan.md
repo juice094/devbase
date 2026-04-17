@@ -104,7 +104,9 @@ pub trait McpTool: Send + Sync {
 2. 格式：`{"timestamp":"2026-04-17T10:42:00Z","local_commit":"abc1234"}`
 3. 与 syncthing-rust `FolderStatus::Idle` REST endpoint 集成
 
-**状态**：🔴 当前执行
+**状态**：✅ 完成 (`5efde13`)，48 tests passed
+
+> syncthing-rust REST endpoint 集成 deferred 到 Sprint 3（上游未就绪）
 
 ---
 
