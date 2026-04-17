@@ -20,6 +20,20 @@ pub struct LlmConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncConfig {
+    #[serde(default = "default_sync_timeout_seconds")]
+    pub timeout_seconds: u64,
+}
+
+impl Default for SyncConfig {
+    fn default() -> Self {
+        Self {
+            timeout_seconds: default_sync_timeout_seconds(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
@@ -35,6 +49,8 @@ pub struct Config {
     pub github: GithubConfig,
     #[serde(default)]
     pub llm: LlmConfig,
+    #[serde(default)]
+    pub sync: SyncConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,6 +117,7 @@ impl Default for Config {
             digest: DigestConfig::default(),
             github: GithubConfig::default(),
             llm: LlmConfig::default(),
+            sync: SyncConfig::default(),
         }
     }
 }
@@ -157,6 +174,7 @@ fn default_llm_enabled() -> bool { false }
 fn default_llm_provider() -> String { "ollama".to_string() }
 fn default_llm_max_tokens() -> u32 { 200 }
 fn default_llm_timeout_seconds() -> u64 { 30 }
+fn default_sync_timeout_seconds() -> u64 { 60 }
 
 fn default_daemon_interval_seconds() -> u64 { 3600 }
 fn default_true() -> bool { true }

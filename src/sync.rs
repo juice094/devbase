@@ -47,6 +47,85 @@ pub enum SyncMode {
     BlockUi,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SyncSafety {
+    Safe,
+    BlockedDirty,
+    BlockedDiverged,
+    BlockedProtected,
+    NoUpstream,
+    UpToDate,
+    Unknown,
+}
+
+impl SyncSafety {
+    pub fn is_runnable(&self) -> bool {
+        matches!(self, SyncSafety::Safe)
+    }
+}
+
+/// Pre-flight safety assessment for auto-pull strategy.
+/// Returns `Safe` only when the repo is clean and a fast-forward merge is possible.
+pub fn assess_safety(path: &str, task_tags: &str, protected_tags: &[&str]) -> SyncSafety {
+    let repo = match Repository::open(path) {
+        Ok(r) => r,
+        Err(_) => return SyncSafety::Unknown,
+    };
+
+    let dirty = match repo.statuses(None) {
+        Ok(statuses) => statuses.iter().any(|entry| entry.status() != git2::Status::CURRENT),
+        Err(_) => false,
+    };
+    if dirty {
+        return SyncSafety::BlockedDirty;
+    }
+
+    let head = match repo.head() {
+        Ok(h) => h,
+        Err(_) => return SyncSafety::Unknown,
+    };
+    let local_oid = match head.target() {
+        Some(o) => o,
+        None => return SyncSafety::Unknown,
+    };
+    let branch = match head.shorthand() {
+        Some(b) => b,
+        None => return SyncSafety::Unknown,
+    };
+
+    let remote_oid = match repo.revparse_single(&format!("refs/remotes/origin/{}", branch)) {
+        Ok(obj) => obj.id(),
+        Err(_) => return SyncSafety::NoUpstream,
+    };
+
+    if local_oid == remote_oid {
+        return SyncSafety::UpToDate;
+    }
+
+    let (ahead, behind) = match repo.graph_ahead_behind(local_oid, remote_oid) {
+        Ok(ab) => ab,
+        Err(_) => return SyncSafety::Unknown,
+    };
+
+    let is_protected = protected_tags
+        .iter()
+        .any(|pt| task_tags.split(',').map(|s| s.trim()).any(|t| t == *pt));
+
+    if ahead > 0 && behind > 0 {
+        if is_protected {
+            return SyncSafety::BlockedProtected;
+        }
+        return SyncSafety::BlockedDiverged;
+    }
+
+    if behind > 0 && ahead == 0 {
+        return SyncSafety::Safe;
+    }
+
+    // ahead > 0, behind == 0
+    SyncSafety::UpToDate
+}
+
 #[derive(Clone)]
 pub struct SyncOrchestrator {
     semaphore: Arc<Semaphore>,
@@ -65,6 +144,7 @@ impl SyncOrchestrator {
         mode: SyncMode,
         dry_run: bool,
         strategy: &str,
+        timeout_duration: Duration,
         mut on_progress: impl FnMut(String, SyncSummary) + Send,
     ) -> Vec<(String, SyncSummary)> {
         match mode {
@@ -79,7 +159,7 @@ impl SyncOrchestrator {
                             ..Default::default()
                         },
                     );
-                    let summary = match timeout(Duration::from_secs(30), execute_task(&task, dry_run, strategy)).await {
+                    let summary = match timeout(timeout_duration, execute_task(&task, dry_run, strategy)).await {
                         Ok(s) => s,
                         Err(_) => SyncSummary {
                             action: "TIMEOUT".to_string(),
@@ -111,7 +191,7 @@ impl SyncOrchestrator {
                         .expect("semaphore should not be closed");
                     let strategy = strategy.to_string();
                     let handle = tokio::spawn(async move {
-                        let summary = match timeout(Duration::from_secs(30), execute_task(&task, dry_run, &strategy)).await {
+                        let summary = match timeout(timeout_duration, execute_task(&task, dry_run, &strategy)).await {
                             Ok(s) => s,
                             Err(_) => SyncSummary {
                                 action: "TIMEOUT".to_string(),
@@ -154,6 +234,56 @@ async fn execute_task(task: &RepoSyncTask, dry_run: bool, strategy: &str) -> Syn
             message: crate::i18n::format_template(crate::i18n::current().sync.would_fetch, &[url, &task.path]),
             ..Default::default()
         };
+    }
+
+    // Pre-flight safety assessment for auto-pull
+    if strategy == "auto-pull" {
+        let safety = assess_safety(&task.path, &task.tags, &["own-project", "tool"]);
+        match safety {
+            SyncSafety::BlockedDirty => {
+                return SyncSummary {
+                    action: "BLOCKED".to_string(),
+                    message: crate::i18n::current().sync.blocked_dirty.to_string(),
+                    ..Default::default()
+                };
+            }
+            SyncSafety::BlockedDiverged => {
+                return SyncSummary {
+                    action: "BLOCKED".to_string(),
+                    message: "Diverged from upstream. Manual merge required.".to_string(),
+                    ..Default::default()
+                };
+            }
+            SyncSafety::BlockedProtected => {
+                return SyncSummary {
+                    action: "BLOCKED".to_string(),
+                    message: "Protected project blocked from auto-merge.".to_string(),
+                    ..Default::default()
+                };
+            }
+            SyncSafety::UpToDate => {
+                return SyncSummary {
+                    action: "SKIP".to_string(),
+                    message: crate::i18n::current().sync.already_up_to_date.to_string(),
+                    ..Default::default()
+                };
+            }
+            SyncSafety::NoUpstream => {
+                return SyncSummary {
+                    action: "SKIP".to_string(),
+                    message: crate::i18n::current().sync.skip_no_upstream.to_string(),
+                    ..Default::default()
+                };
+            }
+            SyncSafety::Unknown => {
+                return SyncSummary {
+                    action: "ERROR".to_string(),
+                    message: "Failed to assess repository safety.".to_string(),
+                    ..Default::default()
+                };
+            }
+            SyncSafety::Safe => {}
+        }
     }
 
     match sync_repo(
@@ -230,7 +360,7 @@ pub async fn run_json(
 
     let orchestrator = SyncOrchestrator::new(1);
     let summaries = orchestrator
-        .run_sync(tasks, SyncMode::SYNC, dry_run, strategy, |_id, _summary| {})
+        .run_sync(tasks, SyncMode::SYNC, dry_run, strategy, Duration::from_secs(60), |_id, _summary| {})
         .await;
 
     let results_json: Vec<serde_json::Value> = summaries
@@ -277,6 +407,7 @@ pub async fn run(
             SyncMode::ASYNC,
             dry_run,
             strategy,
+            Duration::from_secs(60),
             |id, summary| {
                 println!("  [{}] {}: {}", id, crate::i18n::current().log.progress, summary.message);
             },
@@ -651,5 +782,146 @@ fn perform_merge(
             message: crate::i18n::current().sync.unhandled_merge_state.to_string(),
             ..Default::default()
         })
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use git2::Repository;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn create_commit(repo: &Repository, message: &str) -> git2::Oid {
+        let sig = repo.signature().unwrap();
+        let tree_id = {
+            let mut index = repo.index().unwrap();
+            index.write_tree().unwrap()
+        };
+        let tree = repo.find_tree(tree_id).unwrap();
+        let parent = repo.head().ok().and_then(|h| h.target()).and_then(|oid| repo.find_commit(oid).ok());
+        match parent {
+            Some(ref p) => repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[p]).unwrap(),
+            None => repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[]).unwrap(),
+        }
+    }
+
+    fn setup_repo_with_remote_commits(ahead_local: usize, behind_remote: usize) -> (TempDir, Repository) {
+        let dir = TempDir::new().unwrap();
+        let repo = Repository::init(&dir).unwrap();
+        
+        // Initial commit on main
+        fs::write(dir.path().join("file.txt"), "base").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("file.txt")).unwrap();
+        index.write().unwrap();
+        let sig = repo.signature().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        {
+            let tree = repo.find_tree(tree_id).unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "base", &tree, &[]).unwrap();
+        }
+        
+        // Create origin remote pointing to a bare repo
+        let bare_dir = TempDir::new().unwrap();
+        let _bare_repo = Repository::init_bare(&bare_dir).unwrap();
+        repo.remote("origin", bare_dir.path().to_str().unwrap()).unwrap();
+        
+        // Push base to origin/main
+        {
+            let mut remote = repo.find_remote("origin").unwrap();
+            remote.push(&["+refs/heads/main:refs/heads/main"], None).unwrap();
+        }
+        
+        // Create remote commits via a helper clone
+        let helper_dir = TempDir::new().unwrap();
+        let helper = Repository::clone(bare_dir.path().to_str().unwrap(), &helper_dir).unwrap();
+        for i in 0..behind_remote {
+            fs::write(helper_dir.path().join("file.txt"), format!("remote{}", i)).unwrap();
+            let mut hindex = helper.index().unwrap();
+            hindex.add_path(std::path::Path::new("file.txt")).unwrap();
+            hindex.write().unwrap();
+            let hsig = helper.signature().unwrap();
+            let htree_id = hindex.write_tree().unwrap();
+            {
+                let htree = helper.find_tree(htree_id).unwrap();
+                let hparent = helper.head().unwrap().peel_to_commit().unwrap();
+                helper.commit(Some("HEAD"), &hsig, &hsig, &format!("remote{}", i), &htree, &[&hparent]).unwrap();
+            }
+        }
+        let mut hremote = helper.find_remote("origin").unwrap();
+        hremote.push(&["+refs/heads/main:refs/heads/main"], None).unwrap();
+        
+        // Fetch remote changes back so origin/main exists and is updated
+        {
+            let mut remote = repo.find_remote("origin").unwrap();
+            remote.fetch(&["main"], None, None).unwrap();
+        }
+        
+        // Set upstream tracking for local main branch
+        {
+            let mut branch = repo.find_branch("main", git2::BranchType::Local).unwrap();
+            branch.set_upstream(Some("origin/main")).unwrap();
+        }
+        
+        // Create local commits (these will make local ahead)
+        for i in 0..ahead_local {
+            fs::write(dir.path().join("file.txt"), format!("local{}", i)).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("file.txt")).unwrap();
+            index.write().unwrap();
+            create_commit(&repo, &format!("local{}", i));
+        }
+        
+        (dir, repo)
+    }
+
+    #[test]
+    fn test_assess_safety_safe_ff() {
+        let (dir, _repo) = setup_repo_with_remote_commits(0, 2);
+        let safety = assess_safety(dir.path().to_str().unwrap(), "third-party", &["own-project"]);
+        assert_eq!(safety, SyncSafety::Safe);
+    }
+
+    #[test]
+    fn test_assess_safety_blocked_dirty() {
+        let (dir, _repo) = setup_repo_with_remote_commits(0, 2);
+        fs::write(dir.path().join("dirty.txt"), "dirty").unwrap();
+        let safety = assess_safety(dir.path().to_str().unwrap(), "third-party", &["own-project"]);
+        assert_eq!(safety, SyncSafety::BlockedDirty);
+    }
+
+    #[test]
+    fn test_assess_safety_blocked_diverged() {
+        let (dir, _repo) = setup_repo_with_remote_commits(1, 2);
+        let safety = assess_safety(dir.path().to_str().unwrap(), "third-party", &["own-project"]);
+        assert_eq!(safety, SyncSafety::BlockedDiverged);
+    }
+
+    #[test]
+    fn test_assess_safety_blocked_protected() {
+        let (dir, _repo) = setup_repo_with_remote_commits(1, 2);
+        let safety = assess_safety(dir.path().to_str().unwrap(), "own-project", &["own-project"]);
+        assert_eq!(safety, SyncSafety::BlockedProtected);
+    }
+
+    #[test]
+    fn test_assess_safety_up_to_date() {
+        let (dir, _repo) = setup_repo_with_remote_commits(0, 0);
+        let safety = assess_safety(dir.path().to_str().unwrap(), "third-party", &["own-project"]);
+        assert_eq!(safety, SyncSafety::UpToDate);
+    }
+
+    #[test]
+    fn test_assess_safety_no_upstream() {
+        let dir = TempDir::new().unwrap();
+        let _repo = Repository::init(&dir).unwrap();
+        let sig = _repo.signature().unwrap();
+        let tree_id = _repo.index().unwrap().write_tree().unwrap();
+        let tree = _repo.find_tree(tree_id).unwrap();
+        _repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
+        let safety = assess_safety(dir.path().to_str().unwrap(), "", &["own-project"]);
+        assert_eq!(safety, SyncSafety::NoUpstream);
     }
 }

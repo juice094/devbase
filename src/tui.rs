@@ -33,6 +33,21 @@ enum InputMode {
     TagInput,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum SyncPopupMode {
+    Hidden,
+    Preview,
+    Progress,
+}
+
+#[derive(Debug, Clone)]
+struct SyncPreviewItem {
+    repo_id: String,
+    safety: crate::sync::SyncSafety,
+    ahead: usize,
+    behind: usize,
+}
+
 pub struct App {
     repos: Vec<RepoItem>,
     selected: usize,
@@ -49,11 +64,13 @@ pub struct App {
     loading_preview: HashSet<String>,
     loading_sync: HashSet<String>,
     sync_orchestrator: crate::sync::SyncOrchestrator,
-    show_sync_popup: bool,
+    sync_popup_mode: SyncPopupMode,
+    sync_preview_items: Vec<SyncPreviewItem>,
     sync_popup_results: Vec<(String, String)>, // (repo_id, message)
     sync_total: usize,
     sync_start_time: Option<Instant>,
     sync_running: HashSet<String>,
+    sync_timeout: Duration,
 }
 
 impl App {
@@ -62,6 +79,9 @@ impl App {
         let repo_status_job = crate::asyncgit::AsyncSingleJob::new(async_tx.clone());
         let fetch_preview_job = crate::asyncgit::AsyncSingleJob::new(async_tx.clone());
 
+        let timeout_secs = crate::config::Config::load()
+            .map(|c| c.sync.timeout_seconds)
+            .unwrap_or(60);
         let mut app = Self {
             repos: Vec::new(),
             selected: 0,
@@ -78,11 +98,13 @@ impl App {
             loading_preview: HashSet::new(),
             loading_sync: HashSet::new(),
             sync_orchestrator: crate::sync::SyncOrchestrator::new(4),
-            show_sync_popup: false,
+            sync_popup_mode: SyncPopupMode::Hidden,
+            sync_preview_items: Vec::new(),
             sync_popup_results: Vec::new(),
             sync_total: 0,
             sync_start_time: None,
             sync_running: HashSet::new(),
+            sync_timeout: Duration::from_secs(timeout_secs),
         };
         app.log_info(crate::i18n::current().log.tui_started.to_string());
         app.load_repos()?;
@@ -276,68 +298,81 @@ impl App {
         }
     }
 
-    fn sync_tagged_repos(&mut self) {
-        self.show_sync_popup = true;
+    fn safe_sync_preview(&mut self) {
+        self.sync_popup_mode = SyncPopupMode::Preview;
+        self.sync_preview_items.clear();
         self.sync_popup_results.clear();
-        self.sync_start_time = Some(Instant::now());
+        self.sync_total = 0;
+        self.sync_start_time = None;
         self.sync_running.clear();
 
-        let current = match self.current_repo() {
-            Some(r) => r.clone(),
-            None => {
-                self.log_warn(crate::i18n::current().log.no_repo_selected.to_string());
-                self.sync_popup_results.push(("system".to_string(), crate::i18n::current().log.no_repo_selected.to_string()));
-                return;
+        for repo in &self.repos {
+            if repo.upstream_url.is_none() {
+                continue;
             }
-        };
-
-        let target_tags: Vec<&str> = current
-            .tags
-            .iter()
-            .map(|s| s.as_str())
-            .collect();
-
-        if target_tags.is_empty() {
-            self.log_warn(crate::i18n::current().log.no_tags_to_sync.to_string());
-            self.sync_popup_results.push(("system".to_string(), crate::i18n::current().log.no_tags_to_sync.to_string()));
-            return;
+            let safety = crate::sync::assess_safety(&repo.local_path, &repo.tags.join(","), &["own-project", "tool"]);
+            let ahead = repo.status_ahead.unwrap_or(0);
+            let behind = repo.status_behind.unwrap_or(0);
+            self.sync_preview_items.push(SyncPreviewItem {
+                repo_id: repo.id.clone(),
+                safety,
+                ahead,
+                behind,
+            });
         }
 
-        let repos_to_sync: Vec<crate::sync::RepoSyncTask> = self
-            .repos
+        if self.sync_preview_items.is_empty() {
+            self.sync_popup_results.push(("system".to_string(), "No repositories eligible for safe sync.".to_string()));
+            self.sync_popup_mode = SyncPopupMode::Progress;
+        }
+    }
+
+    fn start_safe_sync(&mut self) {
+        let safe_items: Vec<crate::sync::RepoSyncTask> = self
+            .sync_preview_items
             .iter()
-            .filter(|r| target_tags.iter().any(|t| r.tags.contains(&t.to_string())))
-            .map(|r| crate::sync::RepoSyncTask {
-                id: r.id.clone(),
-                path: r.local_path.clone(),
-                upstream_url: r.upstream_url.clone(),
-                default_branch: r.default_branch.clone(),
-                tags: r.tags.join(","),
+            .filter(|item| item.safety == crate::sync::SyncSafety::Safe)
+            .filter_map(|item| {
+                self.repos.iter().find(|r| r.id == item.repo_id).map(|repo| {
+                    crate::sync::RepoSyncTask {
+                        id: repo.id.clone(),
+                        path: repo.local_path.clone(),
+                        upstream_url: repo.upstream_url.clone(),
+                        default_branch: repo.default_branch.clone(),
+                        tags: repo.tags.join(","),
+                    }
+                })
             })
             .collect();
 
-        if repos_to_sync.is_empty() {
-            self.log_warn(crate::i18n::current().log.no_repos_match_tags.to_string());
-            self.sync_popup_results.push(("system".to_string(), crate::i18n::current().log.no_repos_match_tags.to_string()));
+        self.sync_popup_mode = SyncPopupMode::Progress;
+        self.sync_popup_results.clear();
+        self.sync_total = safe_items.len();
+        self.sync_start_time = Some(Instant::now());
+        self.sync_running.clear();
+
+        if safe_items.is_empty() {
+            self.sync_popup_results.push(("system".to_string(), "No safe repositories to sync.".to_string()));
             return;
         }
 
-        self.sync_total = repos_to_sync.len();
-        self.log_info(crate::i18n::current().log.batch_syncing(repos_to_sync.len()));
-        for r in &repos_to_sync {
+        self.log_info(crate::i18n::current().log.batch_syncing(safe_items.len()));
+        for r in &safe_items {
             self.loading_sync.insert(r.id.clone());
             self.sync_popup_results.push((r.id.clone(), crate::i18n::current().log.status_queued.to_string()));
         }
 
         let sender = self.async_tx.clone();
         let orchestrator = self.sync_orchestrator.clone();
+        let timeout = self.sync_timeout;
         tokio::spawn(async move {
             orchestrator
                 .run_sync(
-                    repos_to_sync,
+                    safe_items,
                     crate::sync::SyncMode::BlockUi,
                     false,
                     "auto-pull",
+                    timeout,
                     |id, summary| {
                         let _ = sender.send(AsyncNotification::SyncProgress(
                             crate::asyncgit::SyncProgressNotification {
@@ -371,12 +406,23 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::R
         if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    if app.show_sync_popup {
-                        match key.code {
-                            KeyCode::Esc | KeyCode::Enter => app.show_sync_popup = false,
-                            _ => {}
+                    match app.sync_popup_mode {
+                        SyncPopupMode::Preview => {
+                            match key.code {
+                                KeyCode::Enter => app.start_safe_sync(),
+                                KeyCode::Esc => app.sync_popup_mode = SyncPopupMode::Hidden,
+                                _ => {}
+                            }
+                            continue; // 弹窗显示时不处理其他按键
                         }
-                        continue; // 弹窗显示时不处理其他按键
+                        SyncPopupMode::Progress => {
+                            match key.code {
+                                KeyCode::Esc | KeyCode::Enter => app.sync_popup_mode = SyncPopupMode::Hidden,
+                                _ => {}
+                            }
+                            continue; // 弹窗显示时不处理其他按键
+                        }
+                        SyncPopupMode::Hidden => {}
                     }
                     match app.input_mode {
                         InputMode::Normal => match key.code {
@@ -388,7 +434,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::R
                                 }
                             }
                             KeyCode::Char('s') => app.sync_preview(),
-                            KeyCode::Char('S') => app.sync_tagged_repos(),
+                            KeyCode::Char('S') => app.safe_sync_preview(),
                             KeyCode::Char('t') => {
                                 app.input_mode = InputMode::TagInput;
                                 app.input_buffer.clear();
@@ -579,91 +625,176 @@ fn ui(frame: &mut Frame, app: &mut App) {
     frame.render_widget(logs, right_chunks[1]);
 
     // Sync popup
-    if app.show_sync_popup {
-        let popup_area = centered_rect(60, 40, frame.area());
-        let popup_inner = popup_area.inner(ratatui::layout::Margin {
-            horizontal: 1,
-            vertical: 1,
-        });
+    match app.sync_popup_mode {
+        SyncPopupMode::Preview => {
+            let popup_area = centered_rect(60, 50, frame.area());
+            let popup_inner = popup_area.inner(ratatui::layout::Margin {
+                horizontal: 1,
+                vertical: 1,
+            });
 
-        let queued = app.loading_sync.len();
-        let running = app.sync_running.len();
-        let completed = app.sync_total.saturating_sub(queued + running);
-        let elapsed_secs = app
-            .sync_start_time
-            .map(|t| t.elapsed().as_secs())
-            .unwrap_or(0);
-        let i18n = crate::i18n::current();
-        let popup_title = Line::from(vec![
-            Span::raw(i18n.tui.title_sync_progress),
-            Span::raw(" | "),
-            Span::styled(
-                format!("{}{}", completed, i18n.tui.sync_done),
-                Style::default().fg(Color::Green),
-            ),
-            Span::styled(
-                format!("{}{}", running, i18n.tui.sync_running),
-                Style::default().fg(Color::Yellow),
-            ),
-            Span::styled(
-                format!("{}{}", queued, i18n.tui.sync_queued),
+            let mut lines: Vec<Line> = Vec::new();
+            let safe: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::Safe).collect();
+            let protected: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::BlockedProtected).collect();
+            let diverged: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::BlockedDiverged).collect();
+            let dirty: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::BlockedDirty).collect();
+            let up_to_date: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::UpToDate).collect();
+            let no_upstream: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::NoUpstream).collect();
+            let unknown: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::Unknown).collect();
+
+            if !safe.is_empty() {
+                lines.push(Line::from(Span::styled(format!("将执行 ({})", safe.len()), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))));
+                for item in safe {
+                    lines.push(Line::from(format!("  [{}] behind={}", item.repo_id, item.behind)));
+                }
+                lines.push(Line::from(""));
+            }
+            if !protected.is_empty() {
+                lines.push(Line::from(Span::styled(format!("被保护跳过 ({})", protected.len()), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))));
+                for item in protected {
+                    lines.push(Line::from(format!("  [{}] ahead={} behind={} (protected)", item.repo_id, item.ahead, item.behind)));
+                }
+                lines.push(Line::from(""));
+            }
+            if !diverged.is_empty() {
+                lines.push(Line::from(Span::styled(format!("被阻塞 - 分叉 ({})", diverged.len()), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
+                for item in diverged {
+                    lines.push(Line::from(format!("  [{}] ahead={} behind={}", item.repo_id, item.ahead, item.behind)));
+                }
+                lines.push(Line::from(""));
+            }
+            if !dirty.is_empty() {
+                lines.push(Line::from(Span::styled(format!("被阻塞 - 工作目录不干净 ({})", dirty.len()), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
+                for item in dirty {
+                    lines.push(Line::from(format!("  [{}]", item.repo_id)));
+                }
+                lines.push(Line::from(""));
+            }
+            if !up_to_date.is_empty() {
+                lines.push(Line::from(Span::styled(format!("已最新 ({})", up_to_date.len()), Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD))));
+                for item in up_to_date {
+                    lines.push(Line::from(format!("  [{}]", item.repo_id)));
+                }
+                lines.push(Line::from(""));
+            }
+            if !no_upstream.is_empty() {
+                lines.push(Line::from(Span::styled(format!("无远程 ({})", no_upstream.len()), Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD))));
+                for item in no_upstream {
+                    lines.push(Line::from(format!("  [{}]", item.repo_id)));
+                }
+                lines.push(Line::from(""));
+            }
+            if !unknown.is_empty() {
+                lines.push(Line::from(Span::styled(format!("异常 ({})", unknown.len()), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
+                for item in unknown {
+                    lines.push(Line::from(format!("  [{}]", item.repo_id)));
+                }
+                lines.push(Line::from(""));
+            }
+
+            let popup_text = Text::from(lines);
+            let popup_para = Paragraph::new(popup_text)
+                .block(Block::default().borders(Borders::ALL).title("Safe Sync Preview"))
+                .wrap(Wrap { trim: true });
+
+            frame.render_widget(ratatui::widgets::Clear, popup_area);
+            frame.render_widget(popup_para, popup_area);
+
+            let hint = Paragraph::new(Span::styled(
+                "[Enter] 确认执行  [Esc] 取消",
                 Style::default().fg(Color::DarkGray),
-            ),
-            Span::raw(format!(" | {}{}s", i18n.tui.elapsed, elapsed_secs)),
-        ]);
+            ));
+            let hint_height = 1;
+            let hint_area = ratatui::layout::Rect {
+                x: popup_inner.x,
+                y: popup_inner.y + popup_inner.height.saturating_sub(hint_height),
+                width: popup_inner.width,
+                height: hint_height,
+            };
+            frame.render_widget(hint, hint_area);
+        }
+        SyncPopupMode::Progress => {
+            let popup_area = centered_rect(60, 40, frame.area());
+            let popup_inner = popup_area.inner(ratatui::layout::Margin {
+                horizontal: 1,
+                vertical: 1,
+            });
 
-        let items: Vec<ListItem> = app
-            .sync_popup_results
-            .iter()
-            .map(|(repo_id, message)| {
-                let msg_lower = message.to_lowercase();
-                let is_error = msg_lower.contains("failed")
-                    || msg_lower.contains("error")
-                    || msg_lower.contains("timeout")
-                    || msg_lower.contains("超时");
-                let is_pending = message == crate::i18n::current().log.status_queued
-                    || message == crate::i18n::current().sync.status_running;
-                let color = if is_error {
-                    Color::Red
-                } else if is_pending {
-                    Color::Yellow
-                } else {
-                    Color::Green
-                };
-                ListItem::new(Span::styled(
-                    format!("[{}] {}", repo_id, message),
-                    Style::default().fg(color),
-                ))
-            })
-            .collect();
+            let queued = app.loading_sync.len();
+            let running = app.sync_running.len();
+            let completed = app.sync_total.saturating_sub(queued + running);
+            let elapsed_secs = app
+                .sync_start_time
+                .map(|t| t.elapsed().as_secs())
+                .unwrap_or(0);
+            let i18n = crate::i18n::current();
+            let popup_title = Line::from(vec![
+                Span::raw(i18n.tui.title_sync_progress),
+                Span::raw(" | "),
+                Span::styled(
+                    format!("{}{}", completed, i18n.tui.sync_done),
+                    Style::default().fg(Color::Green),
+                ),
+                Span::styled(
+                    format!("{}{}", running, i18n.tui.sync_running),
+                    Style::default().fg(Color::Yellow),
+                ),
+                Span::styled(
+                    format!("{}{}", queued, i18n.tui.sync_queued),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::raw(format!(" | {}{}s", i18n.tui.elapsed, elapsed_secs)),
+            ]);
 
-        let popup_list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(popup_title),
-            );
+            let items: Vec<ListItem> = app
+                .sync_popup_results
+                .iter()
+                .map(|(repo_id, message)| {
+                    let msg_lower = message.to_lowercase();
+                    let is_error = msg_lower.contains("failed")
+                        || msg_lower.contains("error")
+                        || msg_lower.contains("timeout")
+                        || msg_lower.contains("超时");
+                    let is_pending = message == crate::i18n::current().log.status_queued
+                        || message == crate::i18n::current().sync.status_running;
+                    let color = if is_error {
+                        Color::Red
+                    } else if is_pending {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    };
+                    ListItem::new(Span::styled(
+                        format!("[{}] {}", repo_id, message),
+                        Style::default().fg(color),
+                    ))
+                })
+                .collect();
 
-        // Clear background and render popup
-        frame.render_widget(
-            ratatui::widgets::Clear,
-            popup_area,
-        );
-        frame.render_widget(popup_list, popup_area);
+            let popup_list = List::new(items)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(popup_title),
+                );
 
-        // Footer hint inside popup
-        let hint = Paragraph::new(Span::styled(
-            crate::i18n::current().tui.hint_popup_close,
-            Style::default().fg(Color::DarkGray),
-        ));
-        let hint_height = 1;
-        let hint_area = ratatui::layout::Rect {
-            x: popup_inner.x,
-            y: popup_inner.y + popup_inner.height.saturating_sub(hint_height),
-            width: popup_inner.width,
-            height: hint_height,
-        };
-        frame.render_widget(hint, hint_area);
+            frame.render_widget(ratatui::widgets::Clear, popup_area);
+            frame.render_widget(popup_list, popup_area);
+
+            let hint = Paragraph::new(Span::styled(
+                crate::i18n::current().tui.hint_popup_close,
+                Style::default().fg(Color::DarkGray),
+            ));
+            let hint_height = 1;
+            let hint_area = ratatui::layout::Rect {
+                x: popup_inner.x,
+                y: popup_inner.y + popup_inner.height.saturating_sub(hint_height),
+                width: popup_inner.width,
+                height: hint_height,
+            };
+            frame.render_widget(hint, hint_area);
+        }
+        SyncPopupMode::Hidden => {}
     }
 
     // Bottom bar
