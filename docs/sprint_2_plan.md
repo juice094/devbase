@@ -108,6 +108,14 @@ pub trait McpTool: Send + Sync {
 
 > syncthing-rust REST endpoint 集成 deferred 到 Sprint 3（上游未就绪）
 
+### Task 2.7: Daemon 内置 SSE Server
+
+1. `devbase daemon --sse-port 3002` 启动后台 SSE MCP Server
+2. SSE Server 与 tick loop 并行运行
+3. 默认禁用（`--sse-port 0`），保持向后兼容
+
+**状态**：✅ 完成 (`c101be8`)，48 tests passed
+
 ---
 
 ## 风险与依赖

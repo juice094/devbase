@@ -26,7 +26,7 @@
 | 4 | `devkit_health`/`devkit_query` 流式集成 | ✅ 完成 | `6fca007` |
 | 5 | `.syncdone` 文件标记 | ✅ 完成 | `5efde13` |
 | 6 | `agri_observations` schema + `devkit_agri_query` | 🟡 阻塞 | 等 agri-paper DDL PR |
-| 7 | Daemon 内置 SSE Server | 🟡 待排期 | Sprint 2 后半或 Sprint 3 |
+| 7 | Daemon 内置 SSE Server | ✅ 完成 | `c101be8` |
 
 ## 跨项目接口
 
