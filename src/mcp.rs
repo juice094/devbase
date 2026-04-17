@@ -11,7 +11,7 @@ use axum::{
     Router,
 };
 use serde::Deserialize;
-use tokio_stream::StreamExt;
+use tokio_stream::{Stream, StreamExt};
 
 // Session management for SSE transport
 #[derive(Clone)]
@@ -47,12 +47,30 @@ struct AppState {
     sessions: SseSessions,
 }
 
-pub trait McpTool: Send + Sync {
-    fn name(&self) -> &'static str;
-    fn schema(&self) -> serde_json::Value;
-    fn invoke(&self, args: serde_json::Value) -> impl std::future::Future<Output = anyhow::Result<serde_json::Value>> + Send;
+pub enum ToolEvent {
+    Progress { message: String },
+    Partial { content: serde_json::Value },
+    Done { result: serde_json::Value },
 }
 
+pub trait McpTool: Send + Sync + Clone {
+    fn name(&self) -> &'static str;
+    fn schema(&self) -> serde_json::Value;
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value>;
+
+    /// Default stream implementation: delegates to `invoke` and emits a single `Done` event.
+    async fn invoke_stream(
+        &self,
+        args: serde_json::Value,
+        tx: mpsc::Sender<ToolEvent>,
+    ) -> anyhow::Result<()> {
+        let result = self.invoke(args).await?;
+        let _ = tx.send(ToolEvent::Done { result }).await;
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
 pub(crate) enum McpToolEnum {
     Scan(DevkitScanTool),
     Health(DevkitHealthTool),
@@ -129,7 +147,7 @@ impl McpServer {
         self
     }
 
-    async fn handle_request(&self, req: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    pub async fn handle_request(&self, req: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let id = req.get("id").cloned().unwrap_or(serde_json::Value::Null);
         let method = req
             .get("method")
@@ -231,6 +249,101 @@ impl McpServer {
                     "message": format!("Method '{}' not found", method)
                 }
             })),
+        }
+    }
+
+    /// Stream handler for SSE transport. Returns a stream of JSON-RPC payloads.
+    ///
+    /// For `tools/call`, if the tool supports streaming, events are emitted as:
+    /// - `{"jsonrpc":"2.0","id":...,"method":"tools/call/progress","params":{"message":"..."}}`
+    /// - `{"jsonrpc":"2.0","id":...,"method":"tools/call/partial","params":{"content":{...}}}`
+    /// - `{"jsonrpc":"2.0","id":...,"result":{...}}`  (final Done event)
+    pub async fn handle_request_stream(
+        &self,
+        req: serde_json::Value,
+    ) -> anyhow::Result<Box<dyn Stream<Item = serde_json::Value> + Send + Unpin>> {
+        let id = req.get("id").cloned().unwrap_or(serde_json::Value::Null);
+        let method = req
+            .get("method")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        match method {
+            "tools/call" => {
+                let (tx, rx) = mpsc::channel::<ToolEvent>(100);
+                let params = req.get("params").cloned().unwrap_or(serde_json::Value::Null);
+                let name = params
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let args = params
+                    .get("arguments")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+
+                if let Some(tool) = self.tools.get(name) {
+                    let tool = tool.clone();
+                    let _id2 = id.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = tool.invoke_stream(args, tx.clone()).await {
+                            let payload = serde_json::json!({ "success": false, "error": e.to_string() });
+                            let _ = tx.send(ToolEvent::Done { result: payload }).await;
+                        }
+                    });
+                } else {
+                    let payload = serde_json::json!({ "success": false, "error": format!("Tool '{}' not found", name) });
+                    let _ = tx.send(ToolEvent::Done { result: payload }).await;
+                }
+
+                let stream = tokio_stream::wrappers::ReceiverStream::new(rx)
+                    .map(move |event| match event {
+                        ToolEvent::Progress { message } => serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": id.clone(),
+                            "method": "tools/call/progress",
+                            "params": { "message": message }
+                        }),
+                        ToolEvent::Partial { content } => serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": id.clone(),
+                            "method": "tools/call/partial",
+                            "params": { "content": content }
+                        }),
+                        ToolEvent::Done { result } => {
+                            let text = result.to_string();
+                            let is_error = !result.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
+                            let content = serde_json::json!({
+                                "type": "text",
+                                "text": text
+                            });
+                            serde_json::json!({
+                                "jsonrpc": "2.0",
+                                "id": id.clone(),
+                                "result": {
+                                    "content": [content],
+                                    "isError": is_error
+                                }
+                            })
+                        }
+                    });
+                Ok(Box::new(stream))
+            }
+            _ => {
+                // Non-tools/call methods return a single standard JSON-RPC response.
+                let resp = self.handle_request(req).await.unwrap_or_else(|e| {
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": -32603,
+                            "message": format!("Internal error: {}", e)
+                        }
+                    })
+                });
+                let (tx, rx) = mpsc::channel::<serde_json::Value>(1);
+                let _ = tx.send(resp).await;
+                Ok(Box::new(tokio_stream::wrappers::ReceiverStream::new(rx)))
+            }
         }
     }
 }
@@ -444,24 +557,68 @@ async fn messages_handler(
     let session_id = query.session_id;
     let req = body.0;
 
-    let resp = state.server.handle_request(req).await.unwrap_or_else(|e| {
-        serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": null,
-            "error": {
-                "code": -32603,
-                "message": format!("Internal error: {}", e)
+    // Detect stream mode: `"_stream": true` inside params signals a streaming request.
+    let is_stream = req
+        .get("params")
+        .and_then(|p| p.get("_stream"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if is_stream {
+        let id = req.get("id").cloned().unwrap_or(serde_json::Value::Null);
+        match state.server.handle_request_stream(req).await {
+            Ok(stream) => {
+                tokio::spawn(async move {
+                    tokio::pin!(stream);
+                    while let Some(payload) = stream.next().await {
+                        let event = Event::default()
+                            .event("message")
+                            .data(payload.to_string());
+                        if state.sessions.send(&session_id, event).await.is_err() {
+                            break;
+                        }
+                    }
+                });
+                axum::http::StatusCode::ACCEPTED
             }
-        })
-    });
+            Err(e) => {
+                let payload = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": -32603,
+                        "message": format!("Stream init error: {}", e)
+                    }
+                });
+                let event = Event::default()
+                    .event("message")
+                    .data(payload.to_string());
+                match state.sessions.send(&session_id, event).await {
+                    Ok(_) => axum::http::StatusCode::ACCEPTED,
+                    Err(_) => axum::http::StatusCode::NOT_FOUND,
+                }
+            }
+        }
+    } else {
+        let resp = state.server.handle_request(req).await.unwrap_or_else(|e| {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": null,
+                "error": {
+                    "code": -32603,
+                    "message": format!("Internal error: {}", e)
+                }
+            })
+        });
 
-    let event = Event::default()
-        .event("message")
-        .data(resp.to_string());
+        let event = Event::default()
+            .event("message")
+            .data(resp.to_string());
 
-    match state.sessions.send(&session_id, event).await {
-        Ok(_) => axum::http::StatusCode::ACCEPTED,
-        Err(_) => axum::http::StatusCode::NOT_FOUND,
+        match state.sessions.send(&session_id, event).await {
+            Ok(_) => axum::http::StatusCode::ACCEPTED,
+            Err(_) => axum::http::StatusCode::NOT_FOUND,
+        }
     }
 }
 
@@ -484,6 +641,7 @@ pub async fn run_sse(port: u16) -> anyhow::Result<()> {
 // Tools
 // ------------------------------------------------------------------
 
+#[derive(Clone)]
 pub struct DevkitScanTool;
 
 impl McpTool for DevkitScanTool {
@@ -523,6 +681,7 @@ impl McpTool for DevkitScanTool {
     }
 }
 
+#[derive(Clone)]
 pub struct DevkitHealthTool;
 
 impl McpTool for DevkitHealthTool {
@@ -553,6 +712,7 @@ impl McpTool for DevkitHealthTool {
     }
 }
 
+#[derive(Clone)]
 pub struct DevkitSyncTool;
 
 impl McpTool for DevkitSyncTool {
@@ -598,6 +758,7 @@ impl McpTool for DevkitSyncTool {
     }
 }
 
+#[derive(Clone)]
 pub struct DevkitIndexTool;
 
 impl McpTool for DevkitIndexTool {
@@ -631,6 +792,7 @@ impl McpTool for DevkitIndexTool {
     }
 }
 
+#[derive(Clone)]
 pub struct DevkitNoteTool;
 
 impl McpTool for DevkitNoteTool {
@@ -670,6 +832,7 @@ impl McpTool for DevkitNoteTool {
     }
 }
 
+#[derive(Clone)]
 pub struct DevkitDigestTool;
 
 impl McpTool for DevkitDigestTool {
@@ -692,6 +855,7 @@ impl McpTool for DevkitDigestTool {
     }
 }
 
+#[derive(Clone)]
 pub struct DevkitPaperIndexTool;
 
 impl McpTool for DevkitPaperIndexTool {
@@ -756,6 +920,7 @@ impl McpTool for DevkitPaperIndexTool {
     }
 }
 
+#[derive(Clone)]
 pub struct DevkitExperimentLogTool;
 
 impl McpTool for DevkitExperimentLogTool {
@@ -813,6 +978,7 @@ impl McpTool for DevkitExperimentLogTool {
     }
 }
 
+#[derive(Clone)]
 pub struct DevkitGithubInfoTool;
 
 impl McpTool for DevkitGithubInfoTool {
@@ -921,6 +1087,7 @@ fn parse_github_repo(url: &str) -> Option<(String, String)> {
     None
 }
 
+#[derive(Clone)]
 pub struct DevkitQueryTool;
 
 impl McpTool for DevkitQueryTool {
@@ -1100,5 +1267,78 @@ mod tests {
         assert!(body_part.ends_with("\n"));
         let parsed: serde_json::Value = serde_json::from_str(body_part.trim_end()).unwrap();
         assert_eq!(parsed, body);
+    }
+
+    #[tokio::test]
+    async fn test_handle_request_stream_fallback() {
+        // Non-streaming tools emit a single Done event via the default invoke_stream.
+        let server = build_server();
+        let req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 99,
+            "method": "tools/call",
+            "params": {
+                "name": "devkit_health",
+                "arguments": { "detail": false }
+            }
+        });
+        let mut stream = server.handle_request_stream(req).await.unwrap();
+        let mut events = Vec::new();
+        while let Some(ev) = stream.next().await {
+            events.push(ev);
+        }
+        assert_eq!(events.len(), 1);
+        let done = &events[0];
+        assert!(done.get("result").is_some());
+        let content = done["result"]["content"][0]["text"].as_str().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(content).unwrap();
+        assert_eq!(parsed["success"], true);
+    }
+
+    #[derive(Clone)]
+    struct MockStreamTool;
+
+    impl McpTool for MockStreamTool {
+        fn name(&self) -> &'static str { "mock_stream" }
+        fn schema(&self) -> serde_json::Value {
+            serde_json::json!({
+                "description": "Mock streaming tool for tests",
+                "inputSchema": { "type": "object", "properties": {} }
+            })
+        }
+        async fn invoke(&self, _args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+            Ok(serde_json::json!({ "success": true, "final": 42 }))
+        }
+        async fn invoke_stream(
+            &self,
+            _args: serde_json::Value,
+            tx: mpsc::Sender<ToolEvent>,
+        ) -> anyhow::Result<()> {
+            tx.send(ToolEvent::Progress { message: "step 1".to_string() }).await.ok();
+            tx.send(ToolEvent::Partial { content: serde_json::json!({ "partial": 1 }) }).await.ok();
+            tx.send(ToolEvent::Progress { message: "step 2".to_string() }).await.ok();
+            let result = serde_json::json!({ "success": true, "final": 42 });
+            tx.send(ToolEvent::Done { result }).await.ok();
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_invoke_stream_custom_tool() {
+        // Directly test the trait-level streaming behavior without going through McpServer.
+        let tool = MockStreamTool;
+        let (tx, mut rx) = mpsc::channel::<ToolEvent>(10);
+        tokio::spawn(async move {
+            tool.invoke_stream(serde_json::json!({}), tx).await.unwrap();
+        });
+        let mut events = Vec::new();
+        while let Some(ev) = rx.recv().await {
+            events.push(ev);
+        }
+        assert_eq!(events.len(), 4);
+        assert!(matches!(&events[0], ToolEvent::Progress { message } if message == "step 1"));
+        assert!(matches!(&events[1], ToolEvent::Partial { content } if content["partial"] == 1));
+        assert!(matches!(&events[2], ToolEvent::Progress { message } if message == "step 2"));
+        assert!(matches!(&events[3], ToolEvent::Done { .. }));
     }
 }
