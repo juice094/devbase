@@ -710,6 +710,31 @@ impl McpTool for DevkitHealthTool {
         let config = crate::config::Config::load()?;
         crate::health::run_json(detail, 0, 1, config.cache.ttl_seconds).await
     }
+
+    async fn invoke_stream(&self, args: serde_json::Value, tx: mpsc::Sender<ToolEvent>) -> anyhow::Result<()> {
+        let detail = args.get("detail").and_then(|v| v.as_bool()).unwrap_or(false);
+        let config = crate::config::Config::load()?;
+
+        tx.send(ToolEvent::Progress { message: "Starting health check...".to_string() }).await.ok();
+
+        let result = crate::health::run_json(detail, 0, 1, config.cache.ttl_seconds).await?;
+
+        // Stream repo details in batches if detail mode is on
+        if detail {
+            if let Some(repos) = result.get("repos").and_then(|v| v.as_array()) {
+                const BATCH_SIZE: usize = 5;
+                for chunk in repos.chunks(BATCH_SIZE) {
+                    let batch: Vec<serde_json::Value> = chunk.to_vec();
+                    tx.send(ToolEvent::Partial {
+                        content: serde_json::json!({ "repos": batch }),
+                    }).await.ok();
+                }
+            }
+        }
+
+        tx.send(ToolEvent::Done { result }).await.ok();
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -1130,6 +1155,41 @@ impl McpTool for DevkitQueryTool {
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
     }
+
+    async fn invoke_stream(&self, args: serde_json::Value, tx: mpsc::Sender<ToolEvent>) -> anyhow::Result<()> {
+        let expression = args
+            .get("expression")
+            .and_then(|v| v.as_str())
+            .context("Missing required argument: expression")?;
+        let expression = expression.to_string();
+
+        tx.send(ToolEvent::Progress { message: "Starting query...".to_string() }).await.ok();
+
+        let result = tokio::task::spawn_blocking({
+            let expression = expression.clone();
+            move || {
+                let rt = tokio::runtime::Handle::current();
+                let config = crate::config::Config::load()?;
+                rt.block_on(crate::query::run_json(&expression, 0, 1, &config))
+            }
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+
+        // Stream results in batches
+        if let Some(results) = result.get("results").and_then(|v| v.as_array()) {
+            const BATCH_SIZE: usize = 10;
+            for chunk in results.chunks(BATCH_SIZE) {
+                let batch: Vec<serde_json::Value> = chunk.to_vec();
+                tx.send(ToolEvent::Partial {
+                    content: serde_json::json!({ "results": batch }),
+                }).await.ok();
+            }
+        }
+
+        tx.send(ToolEvent::Done { result }).await.ok();
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1340,5 +1400,37 @@ mod tests {
         assert!(matches!(&events[1], ToolEvent::Partial { content } if content["partial"] == 1));
         assert!(matches!(&events[2], ToolEvent::Progress { message } if message == "step 2"));
         assert!(matches!(&events[3], ToolEvent::Done { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_health_tool_stream() {
+        let tool = DevkitHealthTool;
+        let (tx, mut rx) = mpsc::channel::<ToolEvent>(10);
+        tokio::spawn(async move {
+            tool.invoke_stream(serde_json::json!({ "detail": true }), tx).await.unwrap();
+        });
+        let mut events = Vec::new();
+        while let Some(ev) = rx.recv().await {
+            events.push(ev);
+        }
+        assert!(!events.is_empty());
+        assert!(matches!(&events[0], ToolEvent::Progress { .. }));
+        assert!(matches!(&events.last().unwrap(), ToolEvent::Done { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_query_tool_stream() {
+        let tool = DevkitQueryTool;
+        let (tx, mut rx) = mpsc::channel::<ToolEvent>(10);
+        tokio::spawn(async move {
+            tool.invoke_stream(serde_json::json!({ "expression": "lang:rust" }), tx).await.unwrap();
+        });
+        let mut events = Vec::new();
+        while let Some(ev) = rx.recv().await {
+            events.push(ev);
+        }
+        assert!(!events.is_empty());
+        assert!(matches!(&events[0], ToolEvent::Progress { .. }));
+        assert!(matches!(&events.last().unwrap(), ToolEvent::Done { .. }));
     }
 }

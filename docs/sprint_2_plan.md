@@ -80,7 +80,9 @@ pub trait McpTool: Send + Sync {
 2. `devbase query "tag:third-party" --limit 20`
 3. TUI 列表分页（PgUp/PgDn 翻页）
 
-**状态**：🔴 当前执行
+**状态**：✅ 完成 (`4716faf`)，44 tests passed
+
+> TUI 翻页 deferred 到 Task 2.5（与流式进度展示一起实现）
 
 ---
 
