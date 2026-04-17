@@ -4,19 +4,43 @@ use tracing::{info, warn};
 
 pub struct Daemon {
     pub interval: Duration,
+    pub sse_port: u16,
     pub config: crate::config::Config,
 }
 
 impl Daemon {
-    pub fn new(interval_seconds: u64, config: crate::config::Config) -> Self {
+    pub fn new(interval_seconds: u64, sse_port: u16, config: crate::config::Config) -> Self {
         Self {
             interval: Duration::from_secs(interval_seconds),
+            sse_port,
             config,
         }
     }
 
     pub async fn run(&self) -> anyhow::Result<()> {
         info!("devbase daemon started, interval={:?}", self.interval);
+
+        let mut sse_handle = None;
+        if self.sse_port > 0 {
+            let port = self.sse_port;
+            sse_handle = Some(tokio::spawn(async move {
+                info!("Starting built-in SSE MCP server on port {}", port);
+                if let Err(e) = crate::mcp::run_sse(port).await {
+                    warn!("SSE server error: {}", e);
+                }
+            }));
+        }
+
+        self.tick_loop().await;
+
+        if let Some(handle) = sse_handle {
+            handle.abort();
+        }
+
+        Ok(())
+    }
+
+    async fn tick_loop(&self) {
         loop {
             if let Err(e) = self.tick().await {
                 warn!("Daemon tick failed: {}", e);

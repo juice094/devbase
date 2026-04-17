@@ -122,6 +122,9 @@ enum Commands {
         /// Tick interval in seconds
         #[arg(long)]
         interval: Option<u64>,
+        /// Enable built-in SSE MCP server on this port (0 = disabled)
+        #[arg(long, default_value_t = 0)]
+        sse_port: u16,
     },
     /// Watch a directory for changes and schedule sync actions
     Watch {
@@ -321,9 +324,9 @@ async fn main() -> anyhow::Result<()> {
                 _ => anyhow::bail!("Unsupported transport: {}. Use 'stdio' or 'sse'.", transport),
             }
         }
-        Commands::Daemon { interval } => {
+        Commands::Daemon { interval, sse_port } => {
             let interval = interval.unwrap_or(config.daemon.interval_seconds);
-            let d = daemon::Daemon::new(interval, config.clone());
+            let d = daemon::Daemon::new(interval, sse_port, config.clone());
             d.run().await?;
         }
         Commands::Watch { path, duration } => {
