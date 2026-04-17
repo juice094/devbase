@@ -1,7 +1,51 @@
 use anyhow::Context;
 use rusqlite::OptionalExtension;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::sync::{mpsc, RwLock};
+use axum::{
+    extract::{Query, State},
+    response::sse::{Event, Sse},
+    routing::{get, post},
+    Router,
+};
+use serde::Deserialize;
+use tokio_stream::StreamExt;
+
+// Session management for SSE transport
+#[derive(Clone)]
+struct SseSessions {
+    inner: Arc<RwLock<HashMap<String, mpsc::Sender<Event>>>>,
+}
+
+impl SseSessions {
+    fn new() -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    async fn register(&self, session_id: String, tx: mpsc::Sender<Event>) {
+        self.inner.write().await.insert(session_id, tx);
+    }
+
+    async fn send(&self, session_id: &str, event: Event) -> anyhow::Result<()> {
+        let guard = self.inner.read().await;
+        if let Some(tx) = guard.get(session_id) {
+            tx.send(event).await.map_err(|e| anyhow::anyhow!("SSE send failed: {}", e))?;
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Session {} not found", session_id))
+        }
+    }
+}
+
+#[derive(Clone)]
+struct AppState {
+    server: Arc<McpServer>,
+    sessions: SseSessions,
+}
 
 pub trait McpTool: Send + Sync {
     fn name(&self) -> &'static str;
@@ -360,6 +404,79 @@ pub async fn run_stdio() -> anyhow::Result<()> {
         let _ = stdout.flush().await;
     }
 
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct MessagesQuery {
+    session_id: String,
+}
+
+async fn sse_handler(
+    State(state): State<AppState>,
+) -> impl axum::response::IntoResponse {
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let (tx, rx) = mpsc::channel::<Event>(100);
+
+    // Register session
+    state.sessions.register(session_id.clone(), tx.clone()).await;
+
+    // Send endpoint event first
+    let endpoint_event = Event::default()
+        .event("endpoint")
+        .data(format!("/messages?session_id={}", session_id));
+    let _ = tx.send(endpoint_event).await;
+
+    let stream = tokio_stream::wrappers::ReceiverStream::new(rx)
+        .map(Ok::<_, std::convert::Infallible>);
+    Sse::new(stream).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text(""),
+    )
+}
+
+async fn messages_handler(
+    State(state): State<AppState>,
+    Query(query): Query<MessagesQuery>,
+    body: axum::extract::Json<serde_json::Value>,
+) -> axum::http::StatusCode {
+    let session_id = query.session_id;
+    let req = body.0;
+
+    let resp = state.server.handle_request(req).await.unwrap_or_else(|e| {
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": null,
+            "error": {
+                "code": -32603,
+                "message": format!("Internal error: {}", e)
+            }
+        })
+    });
+
+    let event = Event::default()
+        .event("message")
+        .data(resp.to_string());
+
+    match state.sessions.send(&session_id, event).await {
+        Ok(_) => axum::http::StatusCode::ACCEPTED,
+        Err(_) => axum::http::StatusCode::NOT_FOUND,
+    }
+}
+
+pub async fn run_sse(port: u16) -> anyhow::Result<()> {
+    let server = Arc::new(build_server());
+    let sessions = SseSessions::new();
+
+    let app = Router::new()
+        .route("/sse", get(sse_handler))
+        .route("/messages", post(messages_handler))
+        .with_state(AppState { server, sessions });
+
+    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
+    tracing::info!("MCP SSE server listening on http://127.0.0.1:{}/sse", port);
+    axum::serve(listener, app).await?;
     Ok(())
 }
 

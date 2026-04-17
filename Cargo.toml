@@ -25,6 +25,9 @@ ratatui = "0.30"
 crossterm = "0.28"
 crossbeam-channel = "0.5"
 notify = "7"
+axum = { version = "0.8", features = ["tokio"] }
+tokio-stream = "0.1"
+uuid = { version = "1", features = ["v4"] }
 clarity-core = { path = "../../clarity/crates/clarity-core", features = ["deepseek", "dashscope"] }
 
 [dev-dependencies]

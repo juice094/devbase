@@ -101,6 +101,9 @@ enum Commands {
         /// Transport protocol: stdio or sse
         #[arg(long, default_value = "stdio")]
         transport: String,
+        /// Port for SSE transport (default: 3001)
+        #[arg(long, default_value_t = 3001)]
+        port: u16,
     },
     /// Start the background daemon for knowledge maintenance
     Daemon {
@@ -290,11 +293,11 @@ async fn main() -> anyhow::Result<()> {
             info!("{}", crate::i18n::current().cli.launching_tui);
             tui::run().await?;
         }
-        Commands::Mcp { transport } => {
-            if transport == "stdio" {
-                mcp::run_stdio().await?;
-            } else {
-                anyhow::bail!("Unsupported transport: {}", transport);
+        Commands::Mcp { transport, port } => {
+            match transport.as_str() {
+                "stdio" => mcp::run_stdio().await?,
+                "sse" => mcp::run_sse(port).await?,
+                _ => anyhow::bail!("Unsupported transport: {}. Use 'stdio' or 'sse'.", transport),
             }
         }
         Commands::Daemon { interval } => {
