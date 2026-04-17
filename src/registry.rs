@@ -68,6 +68,13 @@ pub struct ExperimentEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceSnapshot {
+    pub repo_id: String,
+    pub file_hash: String,
+    pub checked_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceRegistry {
     pub version: String,
     pub entries: Vec<RepoEntry>,
@@ -312,6 +319,17 @@ impl WorkspaceRegistry {
             [],
         )?;
 
+        // v3: workspace snapshots for non-git workspace change detection
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS workspace_snapshots (
+                repo_id TEXT PRIMARY KEY,
+                file_hash TEXT NOT NULL,
+                checked_at TEXT NOT NULL,
+                FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+
         // Schema versioning for future migrations
         let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         if user_version < 1 {
@@ -333,6 +351,27 @@ impl WorkspaceRegistry {
                 conn.execute("ALTER TABLE repos ADD COLUMN last_synced_at TEXT", [])?;
             }
             conn.execute("PRAGMA user_version = 2", [])?;
+        }
+        if user_version < 3 {
+            let snapshots_exists: bool = conn
+                .query_row(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='workspace_snapshots'",
+                    [],
+                    |_| Ok(true),
+                )
+                .unwrap_or(false);
+            if !snapshots_exists {
+                conn.execute(
+                    "CREATE TABLE workspace_snapshots (
+                        repo_id TEXT PRIMARY KEY,
+                        file_hash TEXT NOT NULL,
+                        checked_at TEXT NOT NULL,
+                        FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+                    )",
+                    [],
+                )?;
+            }
+            conn.execute("PRAGMA user_version = 3", [])?;
         }
 
         // One-time migration from legacy table
@@ -867,5 +906,41 @@ impl WorkspaceRegistry {
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    // ------------------------------------------------------------------
+    // Workspace snapshots (non-git change detection)
+    // ------------------------------------------------------------------
+    pub fn save_workspace_snapshot(
+        conn: &rusqlite::Connection,
+        snapshot: &WorkspaceSnapshot,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "INSERT OR REPLACE INTO workspace_snapshots (repo_id, file_hash, checked_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params![&snapshot.repo_id, &snapshot.file_hash, snapshot.checked_at.to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_latest_workspace_snapshot(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+    ) -> anyhow::Result<Option<WorkspaceSnapshot>> {
+        let mut stmt =
+            conn.prepare("SELECT repo_id, file_hash, checked_at FROM workspace_snapshots WHERE repo_id = ?1")?;
+        let mut rows = stmt.query([repo_id])?;
+        if let Some(row) = rows.next()? {
+            let checked_at: String = row.get(2)?;
+            let checked_at = DateTime::parse_from_rfc3339(&checked_at)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+            Ok(Some(WorkspaceSnapshot {
+                repo_id: row.get(0)?,
+                file_hash: row.get(1)?,
+                checked_at,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 }

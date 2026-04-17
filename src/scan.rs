@@ -63,11 +63,11 @@ pub async fn run(path: &str, register: bool) -> anyhow::Result<()> {
 
     let count = result["count"].as_u64().unwrap_or(0) as usize;
     if count == 0 {
-        println!("No Git repositories found under {}", path);
+        println!("No workspaces found under {}", path);
         return Ok(());
     }
 
-    println!("\nDiscovered {} Git repository(es):\n", count);
+    println!("\nDiscovered {} workspace(s):\n", count);
     for repo in result["repos"].as_array().unwrap_or(&vec![]) {
         let id = repo["id"].as_str().unwrap_or("");
         let local_path = repo["local_path"].as_str().unwrap_or("");
@@ -82,16 +82,16 @@ pub async fn run(path: &str, register: bool) -> anyhow::Result<()> {
 
     let registered = result["registered"].as_u64().unwrap_or(0);
     if registered > 0 {
-        println!("\n✅ Registered {} repositories to devbase database.", registered);
+        println!("\n✅ Registered {} workspace(s) to devbase database.", registered);
     } else {
-        println!("\nℹ️  Use --register to persist these repositories to the database.");
+        println!("\nℹ️  Use --register to persist these workspaces to the database.");
     }
 
     Ok(())
 }
 
 fn discover_repos(root: &Path) -> anyhow::Result<Vec<RepoEntry>> {
-    let mut repos = Vec::new();
+    let mut git_repos = Vec::new();
 
     for entry in WalkDir::new(root)
         .follow_links(false)
@@ -102,19 +102,51 @@ fn discover_repos(root: &Path) -> anyhow::Result<Vec<RepoEntry>> {
             let repo_path = entry.path().parent().unwrap_or(root).to_path_buf();
 
             // Skip nested .git inside submodules if possible
-            if is_nested_submodule(&repo_path, &repos) {
+            if is_nested_submodule(&repo_path, &git_repos) {
                 continue;
             }
 
             match inspect_repo(&repo_path) {
-                Ok(repo) => repos.push(repo),
+                Ok(repo) => git_repos.push(repo),
                 Err(e) => warn!("Failed to inspect {}: {}", repo_path.display(), e),
             }
         }
     }
 
+    // Discover non-git workspaces by marker files
+    let mut non_git_repos = Vec::new();
+    for entry in WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let name = entry.file_name().to_string_lossy();
+        let is_marker = (name == "SOUL.md" || name == "MEMORY.md" || name == ".devbase")
+            && entry.file_type().is_file();
+        if !is_marker {
+            continue;
+        }
+        let ws_path = entry.path().parent().unwrap_or(root).to_path_buf();
+        // Skip if already inside a known git repo
+        if is_nested_submodule(&ws_path, &git_repos) {
+            continue;
+        }
+        // Skip duplicates
+        if non_git_repos.iter().any(|r: &RepoEntry| r.local_path == ws_path) {
+            continue;
+        }
+        match inspect_non_git_workspace(&ws_path) {
+            Ok(repo) => non_git_repos.push(repo),
+            Err(e) => warn!("Failed to inspect non-git workspace {}: {}", ws_path.display(), e),
+        }
+    }
+
+    let mut repos = git_repos;
+    repos.extend(non_git_repos);
     Ok(repos)
 }
+
+
 
 pub fn detect_language(path: &Path) -> Option<String> {
     if path.join("Cargo.toml").exists() {
@@ -182,6 +214,36 @@ pub fn inspect_repo(path: &Path) -> anyhow::Result<RepoEntry> {
         data_tier: "private".to_string(),
         last_synced_at: None,
         remotes: vec![remote_entry],
+    })
+}
+
+pub fn inspect_non_git_workspace(path: &Path) -> anyhow::Result<RepoEntry> {
+    let id = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let language = detect_language(path);
+
+    let workspace_type = if path.join("SOUL.md").exists()
+        || path.join(".claude").is_dir()
+    {
+        "openclaw"
+    } else {
+        "generic"
+    };
+
+    Ok(RepoEntry {
+        id,
+        local_path: path.to_path_buf(),
+        tags: vec!["discovered".to_string()],
+        discovered_at: Utc::now(),
+        language,
+        workspace_type: workspace_type.to_string(),
+        data_tier: "private".to_string(),
+        last_synced_at: None,
+        remotes: Vec::new(),
     })
 }
 
@@ -317,5 +379,48 @@ mod tests {
 
         let entry = inspect_repo(&repo_path).unwrap();
         assert_eq!(entry.tags, vec!["discovered"]);
+    }
+
+    #[test]
+    fn test_inspect_non_git_workspace_generic() {
+        let dir = TempDir::new().unwrap();
+        let ws_path = dir.path().join("notes");
+        fs::create_dir(&ws_path).unwrap();
+        fs::write(ws_path.join(".devbase"), "").unwrap();
+
+        let entry = inspect_non_git_workspace(&ws_path).unwrap();
+        assert_eq!(entry.id, "notes");
+        assert_eq!(entry.workspace_type, "generic");
+        assert!(entry.remotes.is_empty());
+    }
+
+    #[test]
+    fn test_inspect_non_git_workspace_openclaw() {
+        let dir = TempDir::new().unwrap();
+        let ws_path = dir.path().join("claw");
+        fs::create_dir(&ws_path).unwrap();
+        fs::write(ws_path.join("SOUL.md"), "# soul").unwrap();
+
+        let entry = inspect_non_git_workspace(&ws_path).unwrap();
+        assert_eq!(entry.workspace_type, "openclaw");
+    }
+
+    #[test]
+    fn test_discover_repos_finds_non_git_workspaces() {
+        let dir = TempDir::new().unwrap();
+        let git_path = dir.path().join("gitrepo");
+        fs::create_dir(&git_path).unwrap();
+        git2::Repository::init(&git_path).unwrap();
+
+        let generic_path = dir.path().join("genericws");
+        fs::create_dir(&generic_path).unwrap();
+        fs::write(generic_path.join("MEMORY.md"), "# memory").unwrap();
+
+        let repos = discover_repos(dir.path()).unwrap();
+        assert_eq!(repos.len(), 2);
+
+        let types: std::collections::HashSet<_> = repos.iter().map(|r| r.workspace_type.as_str()).collect();
+        assert!(types.contains("git"));
+        assert!(types.contains("generic"));
     }
 }

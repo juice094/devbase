@@ -1,7 +1,43 @@
-use crate::registry::{HealthEntry, WorkspaceRegistry};
+use crate::registry::{HealthEntry, WorkspaceRegistry, WorkspaceSnapshot};
 use chrono::Utc;
 use git2::Repository;
+use std::path::Path;
 use tracing::info;
+
+const IGNORED_DIRS: &[&str] = &[
+    ".git", "node_modules", "target", "__pycache__", ".venv", "venv",
+    "dist", "build", ".tmp", ".cache", ".bun", ".cargo", ".rustup",
+];
+
+pub fn compute_workspace_hash(root: &Path) -> anyhow::Result<String> {
+    let mut hasher = blake3::Hasher::new();
+    let mut files = Vec::new();
+    if root.is_dir() {
+        for entry in walkdir::WalkDir::new(root)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
+            let path = entry.path();
+            let rel = path.strip_prefix(root).unwrap_or(path);
+            let rel_str = rel.to_string_lossy().replace('\\', "/");
+            if rel_str.split('/').any(|part| IGNORED_DIRS.iter().any(|d| *d == part)) {
+                continue;
+            }
+            files.push(rel_str);
+        }
+    }
+    files.sort();
+    for rel in files {
+        hasher.update(rel.as_bytes());
+        let full = root.join(&rel);
+        if let Ok(bytes) = std::fs::read(&full) {
+            hasher.update(&bytes);
+        }
+    }
+    Ok(hasher.finalize().to_hex().to_string())
+}
 
 pub async fn run_json(detail: bool, ttl_seconds: i64) -> anyhow::Result<serde_json::Value> {
     let (total_repos, dirty_repos, behind_upstream, no_upstream_count, repo_details) = {
@@ -20,12 +56,28 @@ pub async fn run_json(detail: bool, ttl_seconds: i64) -> anyhow::Result<serde_js
             let upstream_url = primary.and_then(|r| r.upstream_url.clone());
             let default_branch = primary.and_then(|r| r.default_branch.clone());
 
-            let (status, ahead, behind) = match WorkspaceRegistry::get_health(&conn, &repo.id) {
-                Ok(Some(health)) => {
-                    let elapsed = Utc::now().signed_duration_since(health.checked_at).num_seconds();
-                    if elapsed < ttl_seconds {
-                        (health.status, health.ahead, health.behind)
-                    } else {
+            let (status, ahead, behind) = if repo.workspace_type == "git" {
+                match WorkspaceRegistry::get_health(&conn, &repo.id) {
+                    Ok(Some(health)) => {
+                        let elapsed = Utc::now().signed_duration_since(health.checked_at).num_seconds();
+                        if elapsed < ttl_seconds {
+                            (health.status, health.ahead, health.behind)
+                        } else {
+                            let (status, ahead, behind) =
+                                analyze_repo(repo.local_path.to_string_lossy().as_ref(), upstream_url.as_deref(), default_branch.as_deref());
+                            let new_health = HealthEntry {
+                                status: status.clone(),
+                                ahead,
+                                behind,
+                                checked_at: Utc::now(),
+                            };
+                            if let Err(e) = WorkspaceRegistry::save_health(&conn, &repo.id, &new_health) {
+                                tracing::warn!("Failed to save health for {}: {}", repo.id, e);
+                            }
+                            (status, ahead, behind)
+                        }
+                    }
+                    _ => {
                         let (status, ahead, behind) =
                             analyze_repo(repo.local_path.to_string_lossy().as_ref(), upstream_url.as_deref(), default_branch.as_deref());
                         let new_health = HealthEntry {
@@ -40,24 +92,44 @@ pub async fn run_json(detail: bool, ttl_seconds: i64) -> anyhow::Result<serde_js
                         (status, ahead, behind)
                     }
                 }
-                _ => {
-                    let (status, ahead, behind) =
-                        analyze_repo(repo.local_path.to_string_lossy().as_ref(), upstream_url.as_deref(), default_branch.as_deref());
-                    let new_health = HealthEntry {
-                        status: status.clone(),
-                        ahead,
-                        behind,
-                        checked_at: Utc::now(),
-                    };
-                    if let Err(e) = WorkspaceRegistry::save_health(&conn, &repo.id, &new_health) {
-                        tracing::warn!("Failed to save health for {}: {}", repo.id, e);
+            } else {
+                // Non-git workspace: use file-hash snapshot
+                let current_hash = match compute_workspace_hash(&repo.local_path) {
+                    Ok(h) => h,
+                    Err(_) => {
+                        repo_details.push(serde_json::json!({
+                            "id": repo.id,
+                            "local_path": repo.local_path,
+                            "upstream_url": upstream_url,
+                            "default_branch": default_branch,
+                            "status": "error",
+                            "ahead": 0,
+                            "behind": 0,
+                            "workspace_type": repo.workspace_type,
+                            "data_tier": repo.data_tier
+                        }));
+                        continue;
                     }
-                    (status, ahead, behind)
-                }
+                };
+                let status = match WorkspaceRegistry::get_latest_workspace_snapshot(&conn, &repo.id) {
+                    Ok(Some(prev)) if prev.file_hash == current_hash => "ok".to_string(),
+                    _ => {
+                        let snapshot = WorkspaceSnapshot {
+                            repo_id: repo.id.clone(),
+                            file_hash: current_hash,
+                            checked_at: Utc::now(),
+                        };
+                        if let Err(e) = WorkspaceRegistry::save_workspace_snapshot(&conn, &snapshot) {
+                            tracing::warn!("Failed to save workspace snapshot for {}: {}", repo.id, e);
+                        }
+                        "changed".to_string()
+                    }
+                };
+                (status, 0, 0)
             };
 
             match status.as_str() {
-                "dirty" => dirty_repos += 1,
+                "dirty" | "changed" => dirty_repos += 1,
                 "behind" => behind_upstream += 1,
                 "no_upstream" => no_upstream_count += 1,
                 _ => {}

@@ -20,6 +20,7 @@ reqwest = { version = "0.12", features = ["json"] }
 dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
 rusqlite = { version = "0.34", features = ["bundled", "chrono"] }
+blake3 = "1.5"
 ratatui = "0.30"
 crossterm = "0.28"
 crossbeam-channel = "0.5"
