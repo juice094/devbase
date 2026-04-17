@@ -44,6 +44,12 @@ enum Commands {
         /// Show detailed per-repo status
         #[arg(long)]
         detail: bool,
+        /// Maximum number of repos to display per page (0 = unlimited)
+        #[arg(long, default_value_t = 0)]
+        limit: usize,
+        /// Page number (1-based)
+        #[arg(long, default_value_t = 1)]
+        page: usize,
     },
     /// Sync registered repositories with their upstream remotes
     Sync {
@@ -67,6 +73,12 @@ enum Commands {
     Query {
         /// Query expression, e.g. "lang:rust stale:>30"
         query: String,
+        /// Maximum number of results per page (0 = unlimited)
+        #[arg(long, default_value_t = 0)]
+        limit: usize,
+        /// Page number (1-based)
+        #[arg(long, default_value_t = 1)]
+        page: usize,
     },
     /// Index repository summaries and module structures
     Index {
@@ -206,9 +218,9 @@ async fn main() -> anyhow::Result<()> {
             info!("{}: {}", crate::i18n::current().cli.scanning, path);
             scan::run(&path, register).await?;
         }
-        Commands::Health { detail } => {
+        Commands::Health { detail, limit, page } => {
             info!("{}", crate::i18n::current().cli.health_check);
-            health::run(detail, config.cache.ttl_seconds).await?;
+            health::run(detail, limit, page, config.cache.ttl_seconds).await?;
         }
         Commands::Sync {
             dry_run,
@@ -228,9 +240,9 @@ async fn main() -> anyhow::Result<()> {
                 sync::run(dry_run, &strategy, filter_tags.as_deref(), exclude.as_deref()).await?;
             }
         }
-        Commands::Query { query } => {
+        Commands::Query { query, limit, page } => {
             info!("{}: {}", crate::i18n::current().cli.querying, query);
-            query::run(&query, &config).await?;
+            query::run(&query, limit, page, &config).await?;
         }
         Commands::Index { path } => {
             info!("{}: path='{}'", crate::i18n::current().cli.indexing, path);

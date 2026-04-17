@@ -192,7 +192,7 @@ fn eval_condition(
     }
 }
 
-pub async fn run_json(query_str: &str, config: &crate::config::Config) -> anyhow::Result<serde_json::Value> {
+pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate::config::Config) -> anyhow::Result<serde_json::Value> {
     let conn = WorkspaceRegistry::init_db()?;
 
     // Handle semantic: prefix queries directly against repo_summaries
@@ -414,27 +414,60 @@ pub async fn run_json(query_str: &str, config: &crate::config::Config) -> anyhow
         }
     }
 
-    let top_ids = results.iter().take(10).map(|r| r.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string()).collect::<Vec<_>>().join(",");
+    let total_results = results.len();
+    let paged_results = if limit > 0 {
+        let start = (page.saturating_sub(1)) * limit;
+        results.into_iter().skip(start).take(limit).collect()
+    } else {
+        results
+    };
+
+    let top_ids = paged_results.iter().take(10).map(|r| r.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string()).collect::<Vec<_>>().join(",");
     let query_type = if query_str.starts_with("semantic:") { "semantic" } else { "structured" };
-    let _ = WorkspaceRegistry::log_query(&conn, query_str, query_type, count, &top_ids);
+    let _ = WorkspaceRegistry::log_query(&conn, query_str, query_type, total_results, &top_ids);
 
     info!("Query executed: {}", query_str);
     Ok(serde_json::json!({
         "success": true,
-        "count": count,
+        "count": total_results,
         "expression": query_str,
-        "results": results
+        "pagination": if limit > 0 {
+            serde_json::json!({
+                "total": total_results,
+                "page": page,
+                "limit": limit,
+                "has_more": total_results > page * limit
+            })
+        } else {
+            serde_json::Value::Null
+        },
+        "results": paged_results
     }))
 }
 
-pub async fn run(query_str: &str, config: &crate::config::Config) -> anyhow::Result<()> {
-    let result = run_json(query_str, config).await?;
+pub async fn run(query_str: &str, limit: usize, page: usize, config: &crate::config::Config) -> anyhow::Result<()> {
+    let result = run_json(query_str, limit, page, config).await?;
     let count = result["count"].as_u64().unwrap_or(0) as usize;
 
     if count == 0 {
         println!("No repositories matched '{}'", query_str);
     } else {
-        println!("\nFound {} result(s).", count);
+        if let Some(pagination) = result.get("pagination") {
+            if pagination != &serde_json::Value::Null {
+                let total = pagination["total"].as_u64().unwrap_or(0);
+                let page_num = pagination["page"].as_u64().unwrap_or(1);
+                let limit_val = pagination["limit"].as_u64().unwrap_or(0);
+                let has_more = pagination["has_more"].as_bool().unwrap_or(false);
+                println!("\nFound {} result(s) (page {} of ~{}, limit={}).", total, page_num, (total as f64 / limit_val as f64).ceil() as u64, limit_val);
+                if has_more {
+                    println!("(more results available, use --page {})", page_num + 1);
+                }
+            } else {
+                println!("\nFound {} result(s).", count);
+            }
+        } else {
+            println!("\nFound {} result(s).", count);
+        }
         for item in result["results"].as_array().unwrap_or(&vec![]) {
             let id = item["id"].as_str().unwrap_or("");
             if let Some(summary) = item["summary"].as_str() {

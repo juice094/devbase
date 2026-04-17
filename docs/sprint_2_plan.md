@@ -50,6 +50,8 @@ pub trait McpTool: Send + Sync {
 - SSE 模式下，`initialize` 请求仍返回全量 JSON，`tools/call` 请求可返回分段 event
 - stdio transport 行为不变
 
+**状态**：✅ 完成 (`df3a908`)，44 tests passed
+
 ---
 
 ### Task 2.2: `agri_observations` schema migration
@@ -70,11 +72,15 @@ pub trait McpTool: Send + Sync {
 2. `progress` / `partial` / `done` event 的 SSE 格式标准化
 3. TUI 侧 `--stream` 标志（可选）
 
+**状态**：✅ 完成（随 Task 2.1 一起落地）
+
 ### Task 2.4: CLI pagination
 
 1. `devbase health --detail --limit 10 --page 1`
 2. `devbase query "tag:third-party" --limit 20`
 3. TUI 列表分页（PgUp/PgDn 翻页）
+
+**状态**：🔴 当前执行
 
 ---
 

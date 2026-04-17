@@ -708,7 +708,7 @@ impl McpTool for DevkitHealthTool {
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let detail = args.get("detail").and_then(|v| v.as_bool()).unwrap_or(false);
         let config = crate::config::Config::load()?;
-        crate::health::run_json(detail, config.cache.ttl_seconds).await
+        crate::health::run_json(detail, 0, 1, config.cache.ttl_seconds).await
     }
 }
 
@@ -1125,7 +1125,7 @@ impl McpTool for DevkitQueryTool {
         tokio::task::spawn_blocking(move || {
             let rt = tokio::runtime::Handle::current();
             let config = crate::config::Config::load()?;
-            rt.block_on(crate::query::run_json(&expression, &config))
+            rt.block_on(crate::query::run_json(&expression, 0, 1, &config))
         })
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?

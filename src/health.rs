@@ -39,7 +39,7 @@ pub fn compute_workspace_hash(root: &Path) -> anyhow::Result<String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
-pub async fn run_json(detail: bool, ttl_seconds: i64) -> anyhow::Result<serde_json::Value> {
+pub async fn run_json(detail: bool, limit: usize, page: usize, ttl_seconds: i64) -> anyhow::Result<serde_json::Value> {
     let (total_repos, dirty_repos, behind_upstream, no_upstream_count, repo_details) = {
         let conn = WorkspaceRegistry::init_db()?;
         let repos = WorkspaceRegistry::list_repos(&conn)?;
@@ -183,16 +183,34 @@ pub async fn run_json(detail: bool, ttl_seconds: i64) -> anyhow::Result<serde_js
         );
     }
 
+    let total_repos_detail = repo_details.len();
+    let paged_repos = if detail && limit > 0 {
+        let start = (page.saturating_sub(1)) * limit;
+        repo_details.into_iter().skip(start).take(limit).collect()
+    } else {
+        repo_details
+    };
+
     Ok(serde_json::json!({
         "success": true,
         "summary": summary,
         "environment": environment,
-        "repos": if detail { repo_details } else { vec![] }
+        "pagination": if limit > 0 {
+            serde_json::json!({
+                "total": total_repos_detail,
+                "page": page,
+                "limit": limit,
+                "has_more": total_repos_detail > page * limit
+            })
+        } else {
+            serde_json::Value::Null
+        },
+        "repos": if detail { paged_repos } else { vec![] }
     }))
 }
 
-pub async fn run(detail: bool, ttl_seconds: i64) -> anyhow::Result<()> {
-    let result = run_json(detail, ttl_seconds).await?;
+pub async fn run(detail: bool, limit: usize, page: usize, ttl_seconds: i64) -> anyhow::Result<()> {
+    let result = run_json(detail, limit, page, ttl_seconds).await?;
 
     let summary = result["summary"].as_object().unwrap();
     println!("{}:", crate::i18n::current().log.health_summary);
@@ -212,7 +230,27 @@ pub async fn run(detail: bool, ttl_seconds: i64) -> anyhow::Result<()> {
     if detail {
         let repos = result["repos"].as_array().unwrap();
         if !repos.is_empty() {
-            println!("\n{}:", crate::i18n::current().log.health_repos);
+            if let Some(pagination) = result.get("pagination") {
+                if pagination != &serde_json::Value::Null {
+                    let total = pagination["total"].as_u64().unwrap_or(0);
+                    let page_num = pagination["page"].as_u64().unwrap_or(1);
+                    let limit_val = pagination["limit"].as_u64().unwrap_or(0);
+                    let has_more = pagination["has_more"].as_bool().unwrap_or(false);
+                    println!("\n{} (page {} of ~{}, limit={}):",
+                        crate::i18n::current().log.health_repos,
+                        page_num,
+                        (total as f64 / limit_val as f64).ceil() as u64,
+                        limit_val
+                    );
+                    if has_more {
+                        println!("  (more results available, use --page {})", page_num + 1);
+                    }
+                } else {
+                    println!("\n{}:", crate::i18n::current().log.health_repos);
+                }
+            } else {
+                println!("\n{}:", crate::i18n::current().log.health_repos);
+            }
             for repo in repos {
                 let id = repo["id"].as_str().unwrap_or("");
                 let path = repo["local_path"].as_str().unwrap_or("");
