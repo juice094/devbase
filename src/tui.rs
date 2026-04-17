@@ -337,7 +337,7 @@ impl App {
                     repos_to_sync,
                     crate::sync::SyncMode::BlockUi,
                     false,
-                    "fetch-only",
+                    "auto-pull",
                     |id, summary| {
                         let _ = sender.send(AsyncNotification::SyncProgress(
                             crate::asyncgit::SyncProgressNotification {
