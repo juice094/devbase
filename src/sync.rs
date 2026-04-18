@@ -2,7 +2,7 @@ use crate::registry::{OplogEntry, WorkspaceRegistry};
 use chrono::Utc;
 use git2::Repository;
 use std::collections::HashMap;
-use std::io::{self, Write};
+
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::time::{timeout, Duration};
@@ -38,7 +38,7 @@ pub struct RepoSyncTask {
     pub path: String,
     pub upstream_url: Option<String>,
     pub default_branch: Option<String>,
-    pub tags: String,
+    pub policy: SyncPolicy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -48,27 +48,58 @@ pub enum SyncMode {
     BlockUi,
 }
 
+/// Per-repository sync policy. Determined by repository tags.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SyncPolicy {
+    /// Only fetch; never modify local branches or push.
+    Mirror,
+    /// Fast-forward merge only; block on diverge or local-ahead.
+    Conservative,
+    /// Rebase local commits onto remote, then push.
+    Rebase,
+    /// Merge remote into local (merge commit), then push.
+    Merge,
+}
+
+impl SyncPolicy {
+    /// Infer policy from repository tags.
+    pub fn from_tags(tags: &str) -> Self {
+        let tags: Vec<&str> = tags.split(',').map(|s| s.trim()).collect();
+        if tags.contains(&"mirror") || tags.contains(&"reference") || tags.contains(&"third-party") {
+            SyncPolicy::Mirror
+        } else if tags.contains(&"collaborative") || tags.contains(&"team") {
+            SyncPolicy::Merge
+        } else if tags.contains(&"own-project") || tags.contains(&"tool") || tags.contains(&"active") {
+            SyncPolicy::Rebase
+        } else {
+            // Default: conservative for unknown tags
+            SyncPolicy::Conservative
+        }
+    }
+
+    pub fn can_push(&self) -> bool {
+        matches!(self, SyncPolicy::Rebase | SyncPolicy::Merge)
+    }
+
+    pub fn can_rebase(&self) -> bool {
+        matches!(self, SyncPolicy::Rebase)
+    }
+
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SyncSafety {
     Safe,
     BlockedDirty,
     BlockedDiverged,
-    BlockedProtected,
     NoUpstream,
     UpToDate,
+    LocalAhead,
     Unknown,
 }
 
-impl SyncSafety {
-    #[allow(dead_code)]
-    pub fn is_runnable(&self) -> bool {
-        matches!(self, SyncSafety::Safe)
-    }
-}
-
-/// Pre-flight safety assessment for auto-pull strategy.
-/// Returns `Safe` only when the repo is clean and a fast-forward merge is possible.
-pub fn assess_safety(path: &str, task_tags: &str, protected_tags: &[&str]) -> SyncSafety {
+/// Pre-flight safety assessment. Returns detailed state based on repo status and policy.
+pub fn assess_safety(path: &str, policy: SyncPolicy) -> SyncSafety {
     let repo = match Repository::open(path) {
         Ok(r) => r,
         Err(_) => return SyncSafety::Unknown,
@@ -109,23 +140,23 @@ pub fn assess_safety(path: &str, task_tags: &str, protected_tags: &[&str]) -> Sy
         Err(_) => return SyncSafety::Unknown,
     };
 
-    let is_protected = protected_tags
-        .iter()
-        .any(|pt| task_tags.split(',').map(|s| s.trim()).any(|t| t == *pt));
-
     if ahead > 0 && behind > 0 {
-        if is_protected {
-            return SyncSafety::BlockedProtected;
+        // Diverged: only safe if policy allows rebase or merge
+        match policy {
+            SyncPolicy::Mirror | SyncPolicy::Conservative => SyncSafety::BlockedDiverged,
+            SyncPolicy::Rebase | SyncPolicy::Merge => SyncSafety::Safe,
         }
-        return SyncSafety::BlockedDiverged;
+    } else if behind > 0 && ahead == 0 {
+        // Local behind remote: always safe to fast-forward
+        SyncSafety::Safe
+    } else {
+        // ahead > 0, behind == 0: local ahead of remote
+        if policy.can_push() {
+            SyncSafety::LocalAhead
+        } else {
+            SyncSafety::UpToDate
+        }
     }
-
-    if behind > 0 && ahead == 0 {
-        return SyncSafety::Safe;
-    }
-
-    // ahead > 0, behind == 0
-    SyncSafety::UpToDate
 }
 
 #[derive(Clone)]
@@ -145,7 +176,6 @@ impl SyncOrchestrator {
         repos: Vec<RepoSyncTask>,
         mode: SyncMode,
         dry_run: bool,
-        strategy: &str,
         timeout_duration: Duration,
         mut on_progress: impl FnMut(String, SyncSummary) + Send,
     ) -> Vec<(String, SyncSummary)> {
@@ -161,7 +191,7 @@ impl SyncOrchestrator {
                             ..Default::default()
                         },
                     );
-                    let summary = match timeout(timeout_duration, execute_task(&task, dry_run, strategy)).await {
+                    let summary = match timeout(timeout_duration, execute_task(&task, dry_run)).await {
                         Ok(s) => s,
                         Err(_) => SyncSummary {
                             action: "TIMEOUT".to_string(),
@@ -191,9 +221,8 @@ impl SyncOrchestrator {
                         .acquire_owned()
                         .await
                         .expect("semaphore should not be closed");
-                    let strategy = strategy.to_string();
                     let handle = tokio::spawn(async move {
-                        let summary = match timeout(timeout_duration, execute_task(&task, dry_run, &strategy)).await {
+                        let summary = match timeout(timeout_duration, execute_task(&task, dry_run)).await {
                             Ok(s) => s,
                             Err(_) => SyncSummary {
                                 action: "TIMEOUT".to_string(),
@@ -218,17 +247,7 @@ impl SyncOrchestrator {
     }
 }
 
-async fn execute_task(task: &RepoSyncTask, dry_run: bool, strategy: &str) -> SyncSummary {
-    if task.tags.contains("own-project") || task.tags.contains("tool") {
-        if task.upstream_url.is_none() {
-            return SyncSummary {
-                action: "SKIP".to_string(),
-                message: crate::i18n::current().sync.skip_no_upstream.to_string(),
-                ..Default::default()
-            };
-        }
-    }
-
+async fn execute_task(task: &RepoSyncTask, dry_run: bool) -> SyncSummary {
     if dry_run {
         let url = task.upstream_url.as_deref().unwrap_or("?");
         return SyncSummary {
@@ -238,60 +257,76 @@ async fn execute_task(task: &RepoSyncTask, dry_run: bool, strategy: &str) -> Syn
         };
     }
 
-    // Pre-flight safety assessment for auto-pull
-    if strategy == "auto-pull" {
-        let path = task.path.clone();
-        let tags = task.tags.clone();
-        let safety = tokio::task::spawn_blocking(move || {
-            assess_safety(&path, &tags, &["own-project", "tool"])
-        })
-        .await
-        .unwrap_or(SyncSafety::Unknown);
-        match safety {
-            SyncSafety::BlockedDirty => {
-                return SyncSummary {
-                    action: "BLOCKED".to_string(),
-                    message: crate::i18n::current().sync.blocked_dirty.to_string(),
-                    ..Default::default()
-                };
-            }
-            SyncSafety::BlockedDiverged => {
-                return SyncSummary {
-                    action: "BLOCKED".to_string(),
-                    message: "Diverged from upstream. Manual merge required.".to_string(),
-                    ..Default::default()
-                };
-            }
-            SyncSafety::BlockedProtected => {
-                return SyncSummary {
-                    action: "BLOCKED".to_string(),
-                    message: "Protected project blocked from auto-merge.".to_string(),
-                    ..Default::default()
-                };
-            }
-            SyncSafety::UpToDate => {
+    // Pre-flight safety assessment based on per-repo policy
+    let path = task.path.clone();
+    let policy = task.policy;
+    let safety = tokio::task::spawn_blocking(move || {
+        assess_safety(&path, policy)
+    })
+    .await
+    .unwrap_or(SyncSafety::Unknown);
+
+    match safety {
+        SyncSafety::BlockedDirty => {
+            return SyncSummary {
+                action: "BLOCKED".to_string(),
+                message: crate::i18n::current().sync.blocked_dirty.to_string(),
+                ..Default::default()
+            };
+        }
+        SyncSafety::BlockedDiverged => {
+            return SyncSummary {
+                action: "BLOCKED".to_string(),
+                message: "Diverged from upstream. Policy prevents auto-resolution.".to_string(),
+                ..Default::default()
+            };
+        }
+        SyncSafety::UpToDate => {
+            return SyncSummary {
+                action: "SKIP".to_string(),
+                message: crate::i18n::current().sync.already_up_to_date.to_string(),
+                ..Default::default()
+            };
+        }
+        SyncSafety::LocalAhead => {
+            // Local ahead of remote; try to push if policy allows
+            if policy.can_push() {
+                match sync_repo_push(&task.path, &task.id).await {
+                    Ok(summary) => return summary,
+                    Err(e) => {
+                        warn!("Failed to push {}: {}", task.id, e);
+                        let kind = classify_sync_error(&e);
+                        return SyncSummary {
+                            action: "ERROR".to_string(),
+                            message: e.to_string(),
+                            error_kind: Some(kind.to_string()),
+                            ..Default::default()
+                        };
+                    }
+                }
+            } else {
                 return SyncSummary {
                     action: "SKIP".to_string(),
                     message: crate::i18n::current().sync.already_up_to_date.to_string(),
                     ..Default::default()
                 };
             }
-            SyncSafety::NoUpstream => {
-                return SyncSummary {
-                    action: "SKIP".to_string(),
-                    message: crate::i18n::current().sync.skip_no_upstream.to_string(),
-                    ..Default::default()
-                };
-            }
-            SyncSafety::Unknown => {
-                return SyncSummary {
-                    action: "ERROR".to_string(),
-                    message: "Failed to assess repository safety.".to_string(),
-                    ..Default::default()
-                };
-            }
-            SyncSafety::Safe => {}
         }
+        SyncSafety::NoUpstream => {
+            return SyncSummary {
+                action: "SKIP".to_string(),
+                message: crate::i18n::current().sync.skip_no_upstream.to_string(),
+                ..Default::default()
+            };
+        }
+        SyncSafety::Unknown => {
+            return SyncSummary {
+                action: "ERROR".to_string(),
+                message: "Failed to assess repository safety.".to_string(),
+                ..Default::default()
+            };
+        }
+        SyncSafety::Safe => {}
     }
 
     match sync_repo(
@@ -299,7 +334,7 @@ async fn execute_task(task: &RepoSyncTask, dry_run: bool, strategy: &str) -> Syn
         &task.path,
         task.upstream_url.as_deref(),
         task.default_branch.as_deref(),
-        strategy,
+        policy,
     )
     .await
     {
@@ -341,12 +376,14 @@ async fn collect_tasks(
         })
         .map(|repo| {
             let primary = repo.primary_remote().cloned();
+            let tags = repo.tags.join(",");
+            let policy = SyncPolicy::from_tags(&tags);
             RepoSyncTask {
                 id: repo.id,
                 path: repo.local_path.to_string_lossy().to_string(),
                 upstream_url: primary.as_ref().and_then(|r| r.upstream_url.clone()),
                 default_branch: primary.as_ref().and_then(|r| r.default_branch.clone()),
-                tags: repo.tags.join(","),
+                policy,
             }
         })
         .collect();
@@ -356,7 +393,6 @@ async fn collect_tasks(
 
 pub async fn run_json(
     dry_run: bool,
-    strategy: &str,
     filter_tags: Option<&str>,
     exclude: Option<&str>,
 ) -> anyhow::Result<serde_json::Value> {
@@ -368,7 +404,7 @@ pub async fn run_json(
 
     let orchestrator = SyncOrchestrator::new(1);
     let summaries = orchestrator
-        .run_sync(tasks, SyncMode::SYNC, dry_run, strategy, Duration::from_secs(60), |_id, _summary| {})
+        .run_sync(tasks, SyncMode::SYNC, dry_run, Duration::from_secs(60), |_id, _summary| {})
         .await;
 
     let results_json: Vec<serde_json::Value> = summaries
@@ -398,7 +434,7 @@ pub async fn run_json(
                 id: None,
                 operation: "sync".to_string(),
                 repo_id: None,
-                details: Some(format!("strategy={}, dry_run={}, repos={}", strategy, dry_run, repo_count)),
+                details: Some(format!("dry_run={}, repos={}", dry_run, repo_count)),
                 status: "success".to_string(),
                 timestamp: Utc::now(),
             },
@@ -408,14 +444,12 @@ pub async fn run_json(
     Ok(serde_json::json!({
         "success": true,
         "dry_run": dry_run,
-        "strategy": strategy,
         "results": results_json
     }))
 }
 
 pub async fn run(
     dry_run: bool,
-    strategy: &str,
     filter_tags: Option<&str>,
     exclude: Option<&str>,
 ) -> anyhow::Result<()> {
@@ -431,7 +465,6 @@ pub async fn run(
             tasks,
             SyncMode::ASYNC,
             dry_run,
-            strategy,
             Duration::from_secs(60),
             |id, summary| {
                 println!("  [{}] {}: {}", id, crate::i18n::current().log.progress, summary.message);
@@ -442,7 +475,7 @@ pub async fn run(
     let filter_suffix = filter_tags
         .map(|f| format!("{}{}）", crate::i18n::current().sync.filter_prefix, f))
         .unwrap_or_default();
-    println!("{}{} {}{}\n", crate::i18n::current().sync.strategy_prefix, ":", strategy, filter_suffix);
+    println!("{}{} {}{}\n", crate::i18n::current().sync.strategy_prefix, ":", "policy-per-repo", filter_suffix);
 
     let results_json: Vec<serde_json::Value> = results
         .iter()
@@ -508,7 +541,7 @@ pub async fn run(
                 id: None,
                 operation: "sync".to_string(),
                 repo_id: None,
-                details: Some(format!("strategy={}, dry_run={}, repos={}", strategy, dry_run, repo_count)),
+                details: Some(format!("dry_run={}, repos={}", dry_run, repo_count)),
                 status: "success".to_string(),
                 timestamp: Utc::now(),
             },
@@ -566,17 +599,61 @@ fn print_summary_table(results: &[serde_json::Value]) {
     println!("{:-<90}", "");
 }
 
+async fn sync_repo_push(path: &str, _id: &str) -> anyhow::Result<SyncSummary> {
+    let path = path.to_string();
+    let result = tokio::task::spawn_blocking(move || {
+        let repo = Repository::open(&path)?;
+        let head = repo.head()?;
+        let branch = head.shorthand().unwrap_or("main");
+        let local_ref = format!("refs/heads/{}", branch);
+
+        let mut remote = repo.find_remote("origin")?;
+        let mut push_opts = git2::PushOptions::new();
+        remote.push(&[&local_ref], Some(&mut push_opts)).map_err(|e| {
+            anyhow::anyhow!("Push failed: {}", e)
+        })?;
+
+        Ok::<SyncSummary, anyhow::Error>(SyncSummary {
+            action: "PUSHED".to_string(),
+            message: format!("Pushed {} to origin", branch),
+            ..Default::default()
+        })
+    }).await;
+
+    match result {
+        Ok(Ok(summary)) => Ok(summary),
+        Ok(Err(e)) => {
+            let kind = classify_sync_error(&e);
+            Ok(SyncSummary {
+                action: "ERROR".to_string(),
+                message: e.to_string(),
+                error_kind: Some(kind.to_string()),
+                ..Default::default()
+            })
+        }
+        Err(join_err) => {
+            let e = anyhow::anyhow!("Push task panicked: {}", join_err);
+            let kind = classify_sync_error(&e);
+            Ok(SyncSummary {
+                action: "ERROR".to_string(),
+                message: e.to_string(),
+                error_kind: Some(kind.to_string()),
+                ..Default::default()
+            })
+        }
+    }
+}
+
 async fn sync_repo(
     _id: &str,
     path: &str,
     upstream_url: Option<&str>,
     default_branch: Option<&str>,
-    strategy: &str,
+    policy: SyncPolicy,
 ) -> anyhow::Result<SyncSummary> {
     let path = path.to_string();
     let upstream_url = upstream_url.map(|s| s.to_string());
     let default_branch = default_branch.map(|s| s.to_string());
-    let strategy = strategy.to_string();
 
     let result = tokio::task::spawn_blocking(move || {
         let repo = Repository::open(&path)?;
@@ -672,7 +749,7 @@ async fn sync_repo(
                 } else {
                     let (ahead, behind) = repo.graph_ahead_behind(local, remote)?;
 
-                    if strategy == "fetch-only" {
+                    if matches!(policy, SyncPolicy::Mirror) {
                         SyncSummary {
                             action: "FETCH".to_string(),
                             ahead,
@@ -681,30 +758,11 @@ async fn sync_repo(
                             ..Default::default()
                         }
                     } else {
-                        // Check working directory is clean
-                        let statuses = repo.statuses(None)?;
-                        let is_clean = statuses.iter().count() == 0;
-                        if !is_clean {
-                            SyncSummary {
-                                action: "BLOCKED".to_string(),
-                                ahead,
-                                behind,
-                                message: crate::i18n::current().sync.blocked_dirty.to_string(),
-                                ..Default::default()
-                            }
-                        } else if strategy == "ask" {
-                            print!("    Merge origin/{} into {}? [y/N] ", branch, branch);
-                            io::stdout().flush()?;
-                            let mut input = String::new();
-                            io::stdin().read_line(&mut input)?;
-                            if !input.trim().eq_ignore_ascii_case("y") {
-                                SyncSummary {
-                                    action: "SKIP".to_string(),
-                                    ahead,
-                                    behind,
-                                    message: crate::i18n::current().sync.skipped_by_user.to_string(),
-                                    ..Default::default()
-                                }
+                        // Working directory cleanliness was already checked in assess_safety
+                        if ahead > 0 && behind > 0 {
+                            // Diverged: rebase or merge based on policy
+                            if policy.can_rebase() {
+                                perform_rebase(&repo, &branch, local, remote)?
                             } else {
                                 perform_merge(&repo, &branch, local, remote)?
                             }
@@ -797,6 +855,50 @@ fn write_syncdone_marker(path: &std::path::Path, action: &str, local_commit: Opt
     }
 }
 
+fn perform_rebase(
+    repo: &Repository,
+    branch: &str,
+    _local: git2::Oid,
+    _remote: git2::Oid,
+) -> anyhow::Result<SyncSummary> {
+    let local_ref = format!("refs/heads/{}", branch);
+    let remote_ref = format!("refs/remotes/origin/{}", branch);
+
+    // Rebase current branch onto origin/branch
+    let annotated_local = repo.reference_to_annotated_commit(&repo.find_reference(&local_ref)?)?;
+    let annotated_remote = repo.reference_to_annotated_commit(&repo.find_reference(&remote_ref)?)?;
+
+    let mut rebase = repo.rebase(
+        Some(&annotated_local),
+        Some(&annotated_remote),
+        None,
+        None,
+    )?;
+
+    while let Some(op) = rebase.next() {
+        let _op = op?;
+        // Check for conflicts after each operation
+        if repo.index()?.has_conflicts() {
+            rebase.abort()?;
+            return Ok(SyncSummary {
+                action: "CONFLICT".to_string(),
+                message: format!("Rebase conflict on {}. Aborted.", branch),
+                ..Default::default()
+            });
+        }
+        rebase.commit(None, &repo.signature()?, None)?;
+    }
+
+    // Finish rebase
+    rebase.finish(None)?;
+
+    Ok(SyncSummary {
+        action: "REBASED".to_string(),
+        message: format!("Rebased {} onto origin/{}", branch, branch),
+        ..Default::default()
+    })
+}
+
 fn perform_merge(
     repo: &Repository,
     branch: &str,
@@ -822,6 +924,8 @@ fn perform_merge(
     } else if analysis.is_normal() {
         repo.merge(&[&annotated], None, None)?;
         if repo.index()?.has_conflicts() {
+            // Abort the merge to leave repo in a clean state
+            let _ = repo.cleanup_state();
             Ok(SyncSummary {
                 action: "CONFLICT".to_string(),
                 message: crate::i18n::current().sync.conflict.to_string(),
@@ -958,7 +1062,7 @@ mod tests {
     #[test]
     fn test_assess_safety_safe_ff() {
         let (dir, _repo) = setup_repo_with_remote_commits(0, 2);
-        let safety = assess_safety(dir.path().to_str().unwrap(), "third-party", &["own-project"]);
+        let safety = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("third-party"));
         assert_eq!(safety, SyncSafety::Safe);
     }
 
@@ -966,28 +1070,28 @@ mod tests {
     fn test_assess_safety_blocked_dirty() {
         let (dir, _repo) = setup_repo_with_remote_commits(0, 2);
         fs::write(dir.path().join("dirty.txt"), "dirty").unwrap();
-        let safety = assess_safety(dir.path().to_str().unwrap(), "third-party", &["own-project"]);
+        let safety = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("third-party"));
         assert_eq!(safety, SyncSafety::BlockedDirty);
     }
 
     #[test]
-    fn test_assess_safety_blocked_diverged() {
+    fn test_assess_safety_blocked_diverged_conservative() {
         let (dir, _repo) = setup_repo_with_remote_commits(1, 2);
-        let safety = assess_safety(dir.path().to_str().unwrap(), "third-party", &["own-project"]);
+        let safety = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("third-party"));
         assert_eq!(safety, SyncSafety::BlockedDiverged);
     }
 
     #[test]
-    fn test_assess_safety_blocked_protected() {
+    fn test_assess_safety_diverged_rebase_allowed() {
         let (dir, _repo) = setup_repo_with_remote_commits(1, 2);
-        let safety = assess_safety(dir.path().to_str().unwrap(), "own-project", &["own-project"]);
-        assert_eq!(safety, SyncSafety::BlockedProtected);
+        let safety = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("own-project"));
+        assert_eq!(safety, SyncSafety::Safe);
     }
 
     #[test]
     fn test_assess_safety_up_to_date() {
         let (dir, _repo) = setup_repo_with_remote_commits(0, 0);
-        let safety = assess_safety(dir.path().to_str().unwrap(), "third-party", &["own-project"]);
+        let safety = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("third-party"));
         assert_eq!(safety, SyncSafety::UpToDate);
     }
 
@@ -999,7 +1103,7 @@ mod tests {
         let tree_id = _repo.index().unwrap().write_tree().unwrap();
         let tree = _repo.find_tree(tree_id).unwrap();
         _repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
-        let safety = assess_safety(dir.path().to_str().unwrap(), "", &["own-project"]);
+        let safety = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags(""));
         assert_eq!(safety, SyncSafety::NoUpstream);
     }
 

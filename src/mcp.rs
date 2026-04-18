@@ -478,12 +478,8 @@ impl McpTool for DevkitSyncTool {
 
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(true);
-        let strategy = args
-            .get("strategy")
-            .and_then(|v| v.as_str())
-            .unwrap_or("fetch-only");
         let filter_tags = args.get("filter_tags").and_then(|v| v.as_str());
-        crate::sync::run_json(dry_run, strategy, filter_tags, None).await
+        crate::sync::run_json(dry_run, filter_tags, None).await
     }
 }
 

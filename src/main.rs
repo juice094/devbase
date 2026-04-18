@@ -57,9 +57,6 @@ enum Commands {
         /// Dry-run: show what would be updated without applying
         #[arg(long)]
         dry_run: bool,
-        /// Sync strategy: auto-pull, fetch-only, or ask
-        #[arg(long, default_value = "fetch-only")]
-        strategy: String,
         /// Comma-separated list of tags to filter repositories (OR logic)
         #[arg(long)]
         filter_tags: Option<String>,
@@ -218,7 +215,6 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Sync {
             dry_run,
-            strategy,
             filter_tags,
             exclude,
             json,
@@ -226,12 +222,12 @@ async fn main() -> anyhow::Result<()> {
             if dry_run {
                 warn!("Dry-run mode enabled");
             }
-            info!("{}: {}", crate::i18n::current().cli.syncing, strategy);
+            info!("{}", crate::i18n::current().cli.syncing);
             if json {
-                let output = sync::run_json(dry_run, &strategy, filter_tags.as_deref(), exclude.as_deref()).await?;
+                let output = sync::run_json(dry_run, filter_tags.as_deref(), exclude.as_deref()).await?;
                 println!("{}", serde_json::to_string_pretty(&output)?);
             } else {
-                sync::run(dry_run, &strategy, filter_tags.as_deref(), exclude.as_deref()).await?;
+                sync::run(dry_run, filter_tags.as_deref(), exclude.as_deref()).await?;
             }
         }
         Commands::Query { query, limit, page } => {

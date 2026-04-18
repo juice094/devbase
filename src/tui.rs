@@ -1,4 +1,4 @@
-use crate::asyncgit::AsyncNotification;
+﻿use crate::asyncgit::AsyncNotification;
 use crate::registry::WorkspaceRegistry;
 use crossbeam_channel::{Receiver, bounded};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
@@ -341,7 +341,8 @@ impl App {
             if repo.upstream_url.is_none() {
                 continue;
             }
-            let safety = crate::sync::assess_safety(&repo.local_path, &repo.tags.join(","), &["own-project", "tool"]);
+            let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
+            let safety = crate::sync::assess_safety(&repo.local_path, policy);
             let ahead = repo.status_ahead.unwrap_or(0);
             let behind = repo.status_behind.unwrap_or(0);
             self.sync_preview_items.push(SyncPreviewItem {
@@ -365,12 +366,14 @@ impl App {
             .filter(|item| item.safety == crate::sync::SyncSafety::Safe)
             .filter_map(|item| {
                 self.repos.iter().find(|r| r.id == item.repo_id).map(|repo| {
+                    let tags = repo.tags.join(",");
+                    let policy = crate::sync::SyncPolicy::from_tags(&tags);
                     crate::sync::RepoSyncTask {
                         id: repo.id.clone(),
                         path: repo.local_path.clone(),
                         upstream_url: repo.upstream_url.clone(),
                         default_branch: repo.default_branch.clone(),
-                        tags: repo.tags.join(","),
+                        policy,
                     }
                 })
             })
@@ -402,7 +405,6 @@ impl App {
                     safe_items,
                     crate::sync::SyncMode::BlockUi,
                     false,
-                    "auto-pull",
                     timeout,
                     |id, summary| {
                         let _ = sender.send(AsyncNotification::SyncProgress(
@@ -703,7 +705,6 @@ fn ui(frame: &mut Frame, app: &mut App) {
 
             let mut lines: Vec<Line> = Vec::new();
             let safe: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::Safe).collect();
-            let protected: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::BlockedProtected).collect();
             let diverged: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::BlockedDiverged).collect();
             let dirty: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::BlockedDirty).collect();
             let up_to_date: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::UpToDate).collect();
@@ -714,13 +715,6 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(Span::styled(format!("将执行 ({})", safe.len()), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))));
                 for item in safe {
                     lines.push(Line::from(format!("  [{}] behind={}", item.repo_id, item.behind)));
-                }
-                lines.push(Line::from(""));
-            }
-            if !protected.is_empty() {
-                lines.push(Line::from(Span::styled(format!("被保护跳过 ({})", protected.len()), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))));
-                for item in protected {
-                    lines.push(Line::from(format!("  [{}] ahead={} behind={} (protected)", item.repo_id, item.ahead, item.behind)));
                 }
                 lines.push(Line::from(""));
             }
