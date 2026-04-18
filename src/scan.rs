@@ -1,4 +1,4 @@
-use crate::registry::{OplogEntry, RepoEntry, RemoteEntry, WorkspaceRegistry};
+use crate::registry::{CodeMetrics, OplogEntry, RepoEntry, RemoteEntry, WorkspaceRegistry};
 use chrono::Utc;
 use git2::Repository;
 use std::path::{Path, PathBuf};
@@ -30,6 +30,24 @@ pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::
             if let Some(stars) = repo.stars {
                 let _ = WorkspaceRegistry::save_stars_cache(&conn, &repo.id, stars);
             }
+            let repo_id = repo.id.clone();
+            let path_str = repo.local_path.to_string_lossy().to_string();
+            let _ = tokio::task::spawn_blocking(move || {
+                if let Some(metrics) = compute_code_metrics(&path_str) {
+                    let conn = crate::registry::WorkspaceRegistry::init_db()?;
+                    crate::registry::WorkspaceRegistry::save_code_metrics(
+                        &conn,
+                        &repo_id,
+                        metrics.total_lines,
+                        metrics.source_lines,
+                        metrics.test_lines,
+                        metrics.comment_lines,
+                        metrics.file_count,
+                        &metrics.language_breakdown.to_string(),
+                    )?;
+                }
+                Ok::<_, anyhow::Error>(())
+            }).await;
         }
         registered = repos.len();
     }
@@ -319,6 +337,58 @@ pub fn inspect_non_git_workspace(path: &Path) -> anyhow::Result<RepoEntry> {
 
 fn is_nested_submodule(path: &Path, found: &[RepoEntry]) -> bool {
     found.iter().any(|r| path.starts_with(&r.local_path) && path != r.local_path)
+}
+
+fn compute_code_metrics(path: &str) -> Option<CodeMetrics> {
+    use tokei::{Languages, Config};
+    let mut languages = Languages::new();
+    let config = Config::default();
+    languages.get_statistics(&[path], &[], &config);
+
+    let mut total_lines = 0usize;
+    let mut source_lines = 0usize;
+    let mut test_lines = 0usize;
+    let mut comment_lines = 0usize;
+    let mut file_count = 0usize;
+    let mut breakdown = serde_json::Map::new();
+
+    for (lang_type, language) in &languages {
+        let code = language.code as usize;
+        let comments = language.comments as usize;
+        let blanks = language.blanks as usize;
+        let files = language.reports.len();
+
+        total_lines += code + comments + blanks;
+        source_lines += code;
+        comment_lines += comments;
+        file_count += files;
+
+        let test_code: usize = language.reports.iter()
+            .filter(|r| {
+                let path = r.name.to_string_lossy().to_lowercase();
+                path.contains("test") || path.contains("tests/") || path.contains("__tests__")
+            })
+            .map(|r| r.stats.code as usize)
+            .sum();
+        test_lines += test_code;
+
+        let mut lang_obj = serde_json::Map::new();
+        lang_obj.insert("code".to_string(), serde_json::json!(code));
+        lang_obj.insert("comments".to_string(), serde_json::json!(comments));
+        lang_obj.insert("blanks".to_string(), serde_json::json!(blanks));
+        lang_obj.insert("files".to_string(), serde_json::json!(files));
+        breakdown.insert(lang_type.to_string(), serde_json::Value::Object(lang_obj));
+    }
+
+    Some(CodeMetrics {
+        total_lines,
+        source_lines,
+        test_lines,
+        comment_lines,
+        file_count,
+        language_breakdown: serde_json::Value::Object(breakdown),
+        updated_at: chrono::Utc::now(),
+    })
 }
 
 #[cfg(test)]

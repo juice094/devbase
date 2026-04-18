@@ -1,4 +1,4 @@
-use crate::tui::{App, InputMode, SortMode, SyncPopupMode};
+use crate::tui::{App, InputMode, SortMode, SyncPopupMode, SearchPopupMode};
 use crate::tui::render::ui;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{backend::Backend, Terminal};
@@ -35,6 +35,38 @@ pub(crate) async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut Ap
                         }
                         SyncPopupMode::Hidden => {}
                     }
+                    // Search popup intercepts keys when visible
+                    match app.search_popup_mode {
+                        SearchPopupMode::Results => {
+                            match key.code {
+                                KeyCode::Esc | KeyCode::Char('q') => {
+                                    app.search_popup_mode = SearchPopupMode::Hidden;
+                                    app.search_results.clear();
+                                    app.search_selected = 0;
+                                }
+                                KeyCode::Down => {
+                                    if app.search_selected + 1 < app.search_results.len() {
+                                        app.search_selected += 1;
+                                    }
+                                }
+                                KeyCode::Up => {
+                                    if app.search_selected > 0 {
+                                        app.search_selected -= 1;
+                                    }
+                                }
+                                KeyCode::Enter => {
+                                    if let Some(result) = app.search_results.get(app.search_selected) {
+                                        let _ = std::process::Command::new("code")
+                                            .arg(format!("{}:{}", result.file_path, result.line_number))
+                                            .spawn();
+                                    }
+                                }
+                                _ => {}
+                            }
+                            continue; // 弹窗显示时不处理其他按键
+                        }
+                        _ => {}
+                    }
                     match app.input_mode {
                         InputMode::Normal => match key.code {
                             KeyCode::Char('q') => return Ok(TuiAction::Quit),
@@ -49,6 +81,11 @@ pub(crate) async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut Ap
                             KeyCode::Char('t') => {
                                 app.input_mode = InputMode::TagInput;
                                 app.input_buffer.clear();
+                            }
+                            KeyCode::Char('/') => {
+                                app.input_mode = InputMode::SearchInput;
+                                app.input_buffer.clear();
+                                app.search_popup_mode = SearchPopupMode::Input;
                             }
                             KeyCode::Char('o') => {
                                 app.sort_mode = match app.sort_mode {
@@ -100,6 +137,30 @@ pub(crate) async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut Ap
                                 app.input_mode = InputMode::Normal;
                                 app.input_buffer.clear();
                                 app.log_info(crate::i18n::current().log.tag_input_cancelled.to_string());
+                            }
+                            KeyCode::Char(c) => app.input_buffer.push(c),
+                            KeyCode::Backspace => {
+                                app.input_buffer.pop();
+                            }
+                            _ => {}
+                        },
+                        InputMode::SearchInput => match key.code {
+                            KeyCode::Enter => {
+                                let pattern = app.input_buffer.trim().to_string();
+                                if !pattern.is_empty() {
+                                    app.search_pattern = pattern.clone();
+                                    app.execute_search();
+                                    app.search_popup_mode = SearchPopupMode::Results;
+                                }
+                                app.input_mode = InputMode::Normal;
+                                app.input_buffer.clear();
+                            }
+                            KeyCode::Esc => {
+                                app.input_mode = InputMode::Normal;
+                                app.input_buffer.clear();
+                                app.search_popup_mode = SearchPopupMode::Hidden;
+                                app.search_results.clear();
+                                app.search_selected = 0;
                             }
                             KeyCode::Char(c) => app.input_buffer.push(c),
                             KeyCode::Backspace => {

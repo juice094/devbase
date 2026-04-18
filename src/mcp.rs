@@ -22,6 +22,7 @@ pub(crate) enum McpToolEnum {
     Paper(DevkitPaperIndexTool),
     Experiment(DevkitExperimentLogTool),
     GithubInfo(DevkitGithubInfoTool),
+    CodeMetrics(DevkitCodeMetricsTool),
 }
 
 impl McpTool for McpToolEnum {
@@ -38,6 +39,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Paper(t) => t.name(),
             McpToolEnum::Experiment(t) => t.name(),
             McpToolEnum::GithubInfo(t) => t.name(),
+            McpToolEnum::CodeMetrics(t) => t.name(),
         }
     }
 
@@ -54,6 +56,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Paper(t) => t.schema(),
             McpToolEnum::Experiment(t) => t.schema(),
             McpToolEnum::GithubInfo(t) => t.schema(),
+            McpToolEnum::CodeMetrics(t) => t.schema(),
         }
     }
 
@@ -70,6 +73,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Paper(t) => t.invoke(args).await,
             McpToolEnum::Experiment(t) => t.invoke(args).await,
             McpToolEnum::GithubInfo(t) => t.invoke(args).await,
+            McpToolEnum::CodeMetrics(t) => t.invoke(args).await,
         }
     }
 }
@@ -210,6 +214,7 @@ pub fn build_server() -> McpServer {
         .register_tool(McpToolEnum::Paper(DevkitPaperIndexTool))
         .register_tool(McpToolEnum::Experiment(DevkitExperimentLogTool))
         .register_tool(McpToolEnum::GithubInfo(DevkitGithubInfoTool))
+        .register_tool(McpToolEnum::CodeMetrics(DevkitCodeMetricsTool))
 }
 
 pub fn format_mcp_message(body: &serde_json::Value) -> String {
@@ -788,6 +793,66 @@ impl McpTool for DevkitGithubInfoTool {
     }
 }
 
+#[derive(Clone)]
+pub struct DevkitCodeMetricsTool;
+
+impl McpTool for DevkitCodeMetricsTool {
+    fn name(&self) -> &'static str { "devkit_code_metrics" }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": "Get code metrics (lines, files, languages) for registered repositories",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": { "type": "string", "description": "Specific repo ID; if omitted, returns all repos", "default": "" }
+                }
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            if repo_id.is_empty() {
+                let metrics = crate::registry::WorkspaceRegistry::list_code_metrics(&conn)?;
+                let repos: Vec<serde_json::Value> = metrics.into_iter().map(|(id, m)| {
+                    serde_json::json!({
+                        "repo_id": id,
+                        "total_lines": m.total_lines,
+                        "source_lines": m.source_lines,
+                        "test_lines": m.test_lines,
+                        "comment_lines": m.comment_lines,
+                        "file_count": m.file_count,
+                        "language_breakdown": m.language_breakdown,
+                        "updated_at": m.updated_at.to_rfc3339()
+                    })
+                }).collect();
+                Ok::<_, anyhow::Error>(serde_json::json!({ "success": true, "count": repos.len(), "repos": repos }))
+            } else {
+                match crate::registry::WorkspaceRegistry::get_code_metrics(&conn, &repo_id)? {
+                    Some(m) => Ok(serde_json::json!({
+                        "success": true,
+                        "repo_id": repo_id,
+                        "total_lines": m.total_lines,
+                        "source_lines": m.source_lines,
+                        "test_lines": m.test_lines,
+                        "comment_lines": m.comment_lines,
+                        "file_count": m.file_count,
+                        "language_breakdown": m.language_breakdown,
+                        "updated_at": m.updated_at.to_rfc3339()
+                    })),
+                    None => Ok(serde_json::json!({ "success": false, "error": "No metrics found for repo" })),
+                }
+            }
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
 fn parse_github_repo(url: &str) -> Option<(String, String)> {
     let url = url.trim_end_matches(".git");
     if let Some(rest) = url.strip_prefix("https://github.com/") {
@@ -1006,7 +1071,7 @@ mod tests {
         });
         let resp = server.handle_request(req).await.unwrap();
         let tools = resp.get("result").unwrap().get("tools").unwrap().as_array().unwrap();
-        assert_eq!(tools.len(), 11);
+        assert_eq!(tools.len(), 12);
         let names: Vec<&str> = tools.iter().map(|t| t.get("name").unwrap().as_str().unwrap()).collect();
         assert!(names.contains(&"devkit_scan"));
         assert!(names.contains(&"devkit_health"));
@@ -1019,6 +1084,7 @@ mod tests {
         assert!(names.contains(&"devkit_paper_index"));
         assert!(names.contains(&"devkit_experiment_log"));
         assert!(names.contains(&"devkit_github_info"));
+        assert!(names.contains(&"devkit_code_metrics"));
         for tool in tools {
             assert!(tool.get("name").is_some());
             assert!(tool.get("description").is_some());

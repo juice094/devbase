@@ -1,4 +1,4 @@
-use crate::tui::{App, InputMode, SortMode, SyncPopupMode};
+use crate::tui::{App, InputMode, SortMode, SyncPopupMode, SearchPopupMode};
 use ratatui::{{
     layout::{{Constraint, Direction, Layout}},
     style::{{Color, Modifier, Style}},
@@ -8,7 +8,11 @@ use ratatui::{{
 }};
 
 pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
-    let bottom_height = if app.show_help || app.input_mode == InputMode::TagInput {
+    let bottom_height = if app.show_help
+        || app.input_mode == InputMode::TagInput
+        || app.input_mode == InputMode::SearchInput
+        || app.search_popup_mode != SearchPopupMode::Hidden
+    {
         1
     } else {
         0
@@ -273,6 +277,83 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
         .wrap(Wrap { trim: true });
 
     frame.render_widget(logs, right_chunks[1]);
+
+    // Search popup
+    match app.search_popup_mode {
+        SearchPopupMode::Input => {
+            let input_area = ratatui::layout::Rect {
+                x: 0,
+                y: frame.area().height.saturating_sub(1),
+                width: frame.area().width,
+                height: 1,
+            };
+            let input_text = Line::from(vec![
+                Span::styled("/", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::raw(&app.input_buffer),
+            ]);
+            frame.render_widget(Paragraph::new(input_text), input_area);
+        }
+        SearchPopupMode::Results => {
+            let popup_area = centered_rect(80, 70, frame.area());
+            let popup_inner = popup_area.inner(ratatui::layout::Margin {
+                horizontal: 1,
+                vertical: 1,
+            });
+
+            let title = if app.search_results.is_empty() {
+                format!("{}: \"{}\" - {}", crate::i18n::current().tui.search_results_title, app.search_pattern, crate::i18n::current().tui.search_no_results)
+            } else {
+                format!("{}: \"{}\" ({} results)", crate::i18n::current().tui.search_results_title, app.search_pattern, app.search_results.len())
+            };
+
+            let items: Vec<ListItem> = app.search_results.iter().enumerate().map(|(i, result)| {
+                let is_selected = i == app.search_selected;
+                let repo_line = Span::styled(
+                    format!("[{}] {}:{}", result.repo_id, result.file_path, result.line_number),
+                    Style::default().fg(Color::Cyan),
+                );
+                let content_line = Span::styled(
+                    format!("  > {}", result.line_content),
+                    if is_selected {
+                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::Gray)
+                    },
+                );
+                ListItem::new(Text::from(vec![
+                    Line::from(repo_line),
+                    Line::from(content_line),
+                ]))
+            }).collect();
+
+            let popup_list = List::new(items)
+                .block(Block::default().borders(Borders::ALL).title(title))
+                .highlight_style(
+                    Style::default()
+                        .bg(Color::Rgb(40, 40, 80))
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .highlight_symbol("> ");
+
+            frame.render_widget(ratatui::widgets::Clear, popup_area);
+            frame.render_widget(popup_list, popup_area);
+
+            let hint = Paragraph::new(Span::styled(
+                crate::i18n::current().tui.hint_search_results,
+                Style::default().fg(Color::DarkGray),
+            ));
+            let hint_height = 1;
+            let hint_area = ratatui::layout::Rect {
+                x: popup_inner.x,
+                y: popup_inner.y + popup_inner.height.saturating_sub(hint_height),
+                width: popup_inner.width,
+                height: hint_height,
+            };
+            frame.render_widget(hint, hint_area);
+        }
+        SearchPopupMode::Hidden => {}
+    }
 
     // Sync popup
     match app.sync_popup_mode {
@@ -540,6 +621,12 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 }
                 Line::from(spans)
             }
+            InputMode::SearchInput => Line::from(vec![
+                Span::styled(crate::i18n::current().tui.search_prompt, Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::raw(" "),
+                Span::raw(&app.input_buffer),
+                Span::styled(crate::i18n::current().tui.hint_tag_input, Style::default().fg(Color::DarkGray)),
+            ]),
         };
         let bottom_bar = Paragraph::new(bottom_text);
         frame.render_widget(bottom_bar, main_vertical[1]);

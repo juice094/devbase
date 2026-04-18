@@ -28,6 +28,7 @@ pub(crate) struct RepoItem {
 pub(crate) enum InputMode {
     Normal,
     TagInput,
+    SearchInput,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -35,6 +36,21 @@ pub(crate) enum SyncPopupMode {
     Hidden,
     Preview,
     Progress,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum SearchPopupMode {
+    Hidden,
+    Input,
+    Results,
+}
+
+#[derive(Clone)]
+pub(crate) struct SearchResult {
+    pub(crate) repo_id: String,
+    pub(crate) file_path: String,
+    pub(crate) line_number: usize,
+    pub(crate) line_content: String,
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +86,10 @@ pub struct App {
     pub(crate) sort_mode: SortMode,
     pub(crate) config: crate::config::Config,
     pub(crate) dry_run: bool,
+    pub(crate) search_popup_mode: SearchPopupMode,
+    pub(crate) search_results: Vec<SearchResult>,
+    pub(crate) search_selected: usize,
+    pub(crate) search_pattern: String,
 }
 
 pub mod state;

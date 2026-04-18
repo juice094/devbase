@@ -1,6 +1,6 @@
 use crate::asyncgit::AsyncNotification;
 use crate::registry::WorkspaceRegistry;
-use crate::tui::{App, InputMode, ListState, RepoItem, SortMode, SyncPopupMode, SyncPreviewItem};
+use crate::tui::{App, InputMode, ListState, RepoItem, SortMode, SyncPopupMode, SyncPreviewItem, SearchPopupMode, SearchResult};
 use crossbeam_channel::bounded;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -37,6 +37,10 @@ impl App {
             sort_mode: SortMode::Status,
             config,
             dry_run: false,
+            search_popup_mode: SearchPopupMode::Hidden,
+            search_results: Vec::new(),
+            search_selected: 0,
+            search_pattern: String::new(),
         };
         app.log_info(crate::i18n::current().log.tui_started.to_string());
         app.load_repos()?;
@@ -438,6 +442,52 @@ impl App {
         });
     }
 
+    pub(crate) fn execute_search(&mut self) {
+        self.search_results.clear();
+        self.search_selected = 0;
+
+        let repo_paths: Vec<(String, String)> = self.repos.iter()
+            .map(|r| (r.id.clone(), r.local_path.clone()))
+            .collect();
+
+        let pattern = self.search_pattern.clone();
+
+        for (repo_id, path) in repo_paths {
+            if which::which("rg").is_ok() {
+                if let Ok(output) = std::process::Command::new("rg")
+                    .args(&["-n", "--no-heading", "--with-filename", "-C", "1", &pattern, &path])
+                    .output()
+                {
+                    let text = String::from_utf8_lossy(&output.stdout);
+                    for line in text.lines() {
+                        let parts: Vec<&str> = line.splitn(3, ':').collect();
+                        if parts.len() >= 3 {
+                            if let Ok(line_num) = parts[1].parse::<usize>() {
+                                self.search_results.push(SearchResult {
+                                    repo_id: repo_id.clone(),
+                                    file_path: parts[0].to_string(),
+                                    line_number: line_num,
+                                    line_content: parts[2].to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+            } else {
+                search_repo_fallback(&path, &pattern, &repo_id, &mut self.search_results);
+            }
+
+            if self.search_results.len() >= 200 {
+                break;
+            }
+        }
+
+        if self.search_results.len() > 200 {
+            self.search_results.truncate(200);
+            self.log_info("Search truncated to 200 results".to_string());
+        }
+    }
+
     pub(crate) fn start_safe_sync(&mut self) {
         self.dry_run = false;
         // If preview is stale/empty, regenerate it on-the-fly
@@ -503,5 +553,42 @@ impl App {
                 )
                 .await;
         });
+    }
+}
+
+fn search_repo_fallback(repo_path: &str, pattern: &str, repo_id: &str, results: &mut Vec<SearchResult>) {
+    use std::collections::HashSet;
+
+    let excluded_dirs: HashSet<&str> = [".git", "target", "node_modules", ".venv", "venv", "dist", "build"].iter().cloned().collect();
+
+    for entry in walkdir::WalkDir::new(repo_path).max_depth(10) {
+        let entry = match entry { Ok(e) => e, Err(_) => continue };
+        if !entry.file_type().is_file() { continue; }
+
+        let path = entry.path();
+        if path.components().any(|c| {
+            if let Some(name) = c.as_os_str().to_str() {
+                excluded_dirs.contains(name)
+            } else { false }
+        }) { continue; }
+
+        if let Ok(content) = std::fs::read(path) {
+            if content.len() > 8 * 1024 * 1024 { continue; }
+            if content.contains(&0) { continue; }
+
+            let path_str = path.to_string_lossy().to_string();
+            for (line_num, line) in content.split(|&b| b == b'\n').enumerate() {
+                let line_str = String::from_utf8_lossy(line);
+                if line_str.contains(pattern) {
+                    results.push(SearchResult {
+                        repo_id: repo_id.to_string(),
+                        file_path: path_str.clone(),
+                        line_number: line_num + 1,
+                        line_content: line_str.to_string(),
+                    });
+                    if results.len() >= 200 { return; }
+                }
+            }
+        }
     }
 }
