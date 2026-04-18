@@ -372,6 +372,10 @@ fn fetch_single_repo(path: &str, upstream_url: Option<&str>) -> anyhow::Result<(
         })?;
     }
 
+    // Write syncdone marker so health indicators reflect the fetch
+    let head_oid = repo.head().ok().and_then(|h| h.target());
+    write_syncdone_marker(std::path::Path::new(path), "FETCH", head_oid.map(|o| o.to_string()).as_deref());
+
     Ok(())
 }
 

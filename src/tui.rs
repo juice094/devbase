@@ -126,15 +126,35 @@ impl App {
                 status_behind: None,
             });
         }
-        // Sort: group by primary tag, then by id
-        self.repos.sort_by(|a, b| {
-            let tag_a = a.tags.first().map(|s| s.as_str()).unwrap_or("zzz");
-            let tag_b = b.tags.first().map(|s| s.as_str()).unwrap_or("zzz");
-            let tag_cmp = tag_a.cmp(tag_b);
-            if tag_cmp != std::cmp::Ordering::Equal {
-                return tag_cmp;
+        // Initial status assessment for better sorting and display
+        for repo in &mut self.repos {
+            if repo.upstream_url.is_some() {
+                let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
+                let (safety, ahead, behind) = crate::sync::assess_safety(&repo.local_path, policy);
+                repo.status_dirty = Some(safety == crate::sync::SyncSafety::BlockedDirty);
+                repo.status_ahead = Some(ahead);
+                repo.status_behind = Some(behind);
             }
-            a.id.cmp(&b.id)
+        }
+
+        // Sort by status priority: needs action first, then by tag, then id
+        self.repos.sort_by(|a, b| {
+            let priority = |repo: &RepoItem| -> i32 {
+                match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
+                    (Some(true), _, _) => 0,                              // dirty
+                    (Some(false), Some(a), Some(b)) if a > 0 && b > 0 => 1, // diverged
+                    (Some(false), _, Some(b)) if b > 0 => 2,              // behind
+                    (Some(false), Some(a), _) if a > 0 => 3,              // ahead
+                    _ => 4,                                               // up-to-date / unknown
+                }
+            };
+            let pa = priority(a);
+            let pb = priority(b);
+            pa.cmp(&pb).then_with(|| {
+                let tag_a = a.tags.first().map(|s| s.as_str()).unwrap_or("zzz");
+                let tag_b = b.tags.first().map(|s| s.as_str()).unwrap_or("zzz");
+                tag_a.cmp(tag_b)
+            }).then_with(|| a.id.cmp(&b.id))
         });
         if self.selected >= self.repos.len() && !self.repos.is_empty() {
             self.selected = self.repos.len() - 1;
@@ -544,27 +564,32 @@ fn ui(frame: &mut Frame, app: &mut App) {
         .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
         .split(main_vertical[0]);
 
-    // Left: repo list (sorted by primary tag for implicit clustering)
+    // Left: repo list (sorted by status priority)
     let items: Vec<ListItem> = app
         .repos
         .iter()
         .map(|repo| {
-            let mut prefix = String::new();
-            if repo.upstream_url.is_some() {
-                prefix.push_str("🔗 ");
-            } else {
-                prefix.push_str("📁 ");
-            }
+            let status_icon = match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
+                (Some(true), _, _) => "🔴",
+                (Some(false), Some(a), Some(b)) if a > 0 && b > 0 => "🟡",
+                (Some(false), _, Some(b)) if b > 0 => "🟡",
+                (Some(false), Some(a), _) if a > 0 => "🔵",
+                _ if repo.upstream_url.is_none() => "⚪",
+                _ => "🟢",
+            };
+            let mut prefix = format!("{} ", status_icon);
             if app.loading_repo_status.contains(&repo.id)
                 || app.loading_sync.contains(&repo.id)
             {
                 prefix.push_str("⏳ ");
             }
 
-            let base_fg = if repo.upstream_url.is_some() {
-                Color::Cyan
-            } else {
-                Color::Yellow
+            let base_fg = match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
+                (Some(true), _, _) => Color::Red,
+                (Some(false), _, Some(b)) if b > 0 => Color::Yellow,
+                (Some(false), Some(a), _) if a > 0 => Color::Blue,
+                _ if repo.upstream_url.is_none() => Color::DarkGray,
+                _ => Color::Green,
             };
 
             let fg = if app.loading_repo_status.contains(&repo.id)
@@ -575,6 +600,13 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 base_fg
             };
 
+            // Status suffix: behind/ahead count
+            let status_suffix = match (repo.status_ahead, repo.status_behind) {
+                (Some(_), Some(b)) if b > 0 => format!(" ↓{}", b),
+                (Some(a), _) if a > 0 => format!(" ↑{}", a),
+                _ => String::new(),
+            };
+
             // Tag cluster indicator: show primary tag in muted color
             let tag_indicator = if let Some(first_tag) = repo.tags.first() {
                 format!(" [{}]", first_tag)
@@ -582,10 +614,11 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 String::new()
             };
 
-            ListItem::new(Span::styled(
-                format!("{}{}{}", prefix, repo.id, tag_indicator),
-                Style::default().fg(fg),
-            ))
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("{}{}", prefix, repo.id), Style::default().fg(fg)),
+                Span::styled(status_suffix, Style::default().fg(Color::DarkGray)),
+                Span::styled(tag_indicator, Style::default().fg(Color::DarkGray)),
+            ]))
         })
         .collect();
 
@@ -641,8 +674,8 @@ fn ui(frame: &mut Frame, app: &mut App) {
 
         // Git HEAD + sync history
         let head_short = read_head_commit(&repo.local_path).unwrap_or_else(|| "—".to_string());
-        let (last_sync_human, last_sync_action, last_sync_commit, health_color, health_icon) =
-            read_syncdone_info(&repo.local_path);
+        let (last_sync_human, last_sync_action, last_sync_commit) = read_syncdone_info(&repo.local_path);
+        let summary_text = read_repo_summary(&repo.id).unwrap_or_else(|| "暂无描述".to_string());
 
         let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
         let policy_text = format!("{:?}", policy);
@@ -671,6 +704,13 @@ fn ui(frame: &mut Frame, app: &mut App) {
             ]),
             Line::from(""),
 
+            // === Layer 1.5: What is this repo? ===
+            Line::from(vec![
+                Span::styled("描述: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(summary_text.clone(), Style::default().fg(Color::White)),
+            ]),
+            Line::from(""),
+
             // === Layer 2: Connection metadata ===
             Line::from(vec![
                 Span::styled("分支: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
@@ -688,16 +728,12 @@ fn ui(frame: &mut Frame, app: &mut App) {
             Line::from(tag_line),
             Line::from(""),
 
-            // === Layer 3: Sync history (context for humans, raw data for AI) ===
+            // === Layer 3: Sync history ===
             Line::from(vec![
-                Span::styled(format!("{} 同步健康: ", health_icon), Style::default().fg(health_color)),
-                Span::styled(last_sync_human, Style::default().fg(health_color)),
-            ]),
-            Line::from(vec![
-                Span::styled("上次结果: ", Style::default().fg(Color::DarkGray)),
-                Span::styled(last_sync_action.clone(), Style::default().fg(Color::White)),
-                Span::styled("  commit: ", Style::default().fg(Color::DarkGray)),
-                Span::styled(last_sync_commit.clone(), Style::default().fg(Color::White)),
+                Span::styled("上次同步: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(last_sync_human.clone(), Style::default().fg(Color::White)),
+                Span::styled(format!(" ({}) ", last_sync_action.clone()), Style::default().fg(Color::DarkGray)),
+                Span::styled(last_sync_commit.clone(), Style::default().fg(Color::DarkGray)),
             ]),
             Line::from(""),
 
@@ -1041,8 +1077,8 @@ fn read_head_commit(path: &str) -> Option<String> {
     Some(oid.to_string().chars().take(7).collect())
 }
 
-fn read_syncdone_info(path: &str) -> (String, String, String, Color, &'static str) {
-    let default = || ("从未同步".to_string(), "—".to_string(), "—".to_string(), Color::Red, "⚠");
+fn read_syncdone_info(path: &str) -> (String, String, String) {
+    let default = || ("从未同步".to_string(), "—".to_string(), "—".to_string());
 
     let content = match std::fs::read_to_string(std::path::Path::new(path).join(".devbase").join("syncdone")) {
         Ok(c) => c,
@@ -1079,15 +1115,17 @@ fn read_syncdone_info(path: &str) -> (String, String, String, Color, &'static st
         format!("{}周前", duration.num_days() / 7)
     };
 
-    let (color, icon) = if duration.num_days() < 1 {
-        (Color::Green, "✓")
-    } else if duration.num_days() < 3 {
-        (Color::Yellow, "●")
-    } else {
-        (Color::Red, "⚠")
-    };
+    (human, action, commit_short)
+}
 
-    (human, action, commit_short, color, icon)
+fn read_repo_summary(repo_id: &str) -> Option<String> {
+    let conn = crate::registry::WorkspaceRegistry::init_db().ok()?;
+    conn.query_row(
+        "SELECT summary FROM repo_summaries WHERE repo_id = ?1",
+        [repo_id],
+        |row| row.get::<_, String>(0),
+    )
+    .ok()
 }
 
 fn format_log_line(line: &str) -> Line<'_> {
