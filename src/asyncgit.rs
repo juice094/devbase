@@ -76,12 +76,13 @@ impl AsyncJob for AsyncRepoStatus {
         let result = (|| -> anyhow::Result<(bool, usize, usize)> {
             let repo = Repository::open(&self.local_path)?;
 
-            let mut opts = git2::StatusOptions::new();
-            let statuses = repo.statuses(Some(&mut opts))?;
+            // Use default options (same as assess_safety) to include untracked files
+            let statuses = repo.statuses(None)?;
             let dirty = statuses.iter().any(|entry| entry.status() != git2::Status::CURRENT);
 
             let (ahead, behind) = if let Ok(head) = repo.head() {
                 let local_oid = head.target();
+                let branch = head.shorthand();
                 let upstream = head.resolve().ok().and_then(|local_ref| {
                     let name = local_ref.name()?;
                     repo.find_branch(name, git2::BranchType::Local)
@@ -89,14 +90,15 @@ impl AsyncJob for AsyncRepoStatus {
                         .upstream()
                         .ok()
                 });
+                // Fall back to origin/{branch} if no tracking branch is set
+                let upstream_oid = upstream.and_then(|up| up.get().target()).or_else(|| {
+                    let b = branch?;
+                    repo.revparse_single(&format!("refs/remotes/origin/{}", b)).ok().map(|o| o.id())
+                });
 
-                match (local_oid, upstream) {
+                match (local_oid, upstream_oid) {
                     (Some(local), Some(up)) => {
-                        if let Some(up_oid) = up.get().target() {
-                            repo.graph_ahead_behind(local, up_oid).unwrap_or((0, 0))
-                        } else {
-                            (0, 0)
-                        }
+                        repo.graph_ahead_behind(local, up).unwrap_or((0, 0))
                     }
                     _ => (0, 0),
                 }

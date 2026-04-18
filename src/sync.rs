@@ -98,11 +98,11 @@ pub enum SyncSafety {
     Unknown,
 }
 
-/// Pre-flight safety assessment. Returns detailed state based on repo status and policy.
-pub fn assess_safety(path: &str, policy: SyncPolicy) -> SyncSafety {
+/// Pre-flight safety assessment. Returns (safety, ahead, behind).
+pub fn assess_safety(path: &str, policy: SyncPolicy) -> (SyncSafety, usize, usize) {
     let repo = match Repository::open(path) {
         Ok(r) => r,
-        Err(_) => return SyncSafety::Unknown,
+        Err(_) => return (SyncSafety::Unknown, 0, 0),
     };
 
     let dirty = match repo.statuses(None) {
@@ -110,37 +110,37 @@ pub fn assess_safety(path: &str, policy: SyncPolicy) -> SyncSafety {
         Err(_) => false,
     };
     if dirty {
-        return SyncSafety::BlockedDirty;
+        return (SyncSafety::BlockedDirty, 0, 0);
     }
 
     let head = match repo.head() {
         Ok(h) => h,
-        Err(_) => return SyncSafety::Unknown,
+        Err(_) => return (SyncSafety::Unknown, 0, 0),
     };
     let local_oid = match head.target() {
         Some(o) => o,
-        None => return SyncSafety::Unknown,
+        None => return (SyncSafety::Unknown, 0, 0),
     };
     let branch = match head.shorthand() {
         Some(b) => b,
-        None => return SyncSafety::Unknown,
+        None => return (SyncSafety::Unknown, 0, 0),
     };
 
     let remote_oid = match repo.revparse_single(&format!("refs/remotes/origin/{}", branch)) {
         Ok(obj) => obj.id(),
-        Err(_) => return SyncSafety::NoUpstream,
+        Err(_) => return (SyncSafety::NoUpstream, 0, 0),
     };
 
     if local_oid == remote_oid {
-        return SyncSafety::UpToDate;
+        return (SyncSafety::UpToDate, 0, 0);
     }
 
     let (ahead, behind) = match repo.graph_ahead_behind(local_oid, remote_oid) {
         Ok(ab) => ab,
-        Err(_) => return SyncSafety::Unknown,
+        Err(_) => return (SyncSafety::Unknown, 0, 0),
     };
 
-    if ahead > 0 && behind > 0 {
+    let safety = if ahead > 0 && behind > 0 {
         // Diverged: only safe if policy allows rebase or merge
         match policy {
             SyncPolicy::Mirror | SyncPolicy::Conservative => SyncSafety::BlockedDiverged,
@@ -156,7 +156,8 @@ pub fn assess_safety(path: &str, policy: SyncPolicy) -> SyncSafety {
         } else {
             SyncSafety::UpToDate
         }
-    }
+    };
+    (safety, ahead, behind)
 }
 
 #[derive(Clone)]
@@ -260,11 +261,11 @@ async fn execute_task(task: &RepoSyncTask, dry_run: bool) -> SyncSummary {
     // Pre-flight safety assessment based on per-repo policy
     let path = task.path.clone();
     let policy = task.policy;
-    let safety = tokio::task::spawn_blocking(move || {
+    let (safety, _ahead, _behind) = tokio::task::spawn_blocking(move || {
         assess_safety(&path, policy)
     })
     .await
-    .unwrap_or(SyncSafety::Unknown);
+    .unwrap_or((SyncSafety::Unknown, 0, 0));
 
     match safety {
         SyncSafety::BlockedDirty => {
@@ -1062,7 +1063,7 @@ mod tests {
     #[test]
     fn test_assess_safety_safe_ff() {
         let (dir, _repo) = setup_repo_with_remote_commits(0, 2);
-        let safety = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("third-party"));
+        let (safety, _, _) = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("third-party"));
         assert_eq!(safety, SyncSafety::Safe);
     }
 
@@ -1070,28 +1071,28 @@ mod tests {
     fn test_assess_safety_blocked_dirty() {
         let (dir, _repo) = setup_repo_with_remote_commits(0, 2);
         fs::write(dir.path().join("dirty.txt"), "dirty").unwrap();
-        let safety = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("third-party"));
+        let (safety, _, _) = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("third-party"));
         assert_eq!(safety, SyncSafety::BlockedDirty);
     }
 
     #[test]
     fn test_assess_safety_blocked_diverged_conservative() {
         let (dir, _repo) = setup_repo_with_remote_commits(1, 2);
-        let safety = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("third-party"));
+        let (safety, _, _) = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("third-party"));
         assert_eq!(safety, SyncSafety::BlockedDiverged);
     }
 
     #[test]
     fn test_assess_safety_diverged_rebase_allowed() {
         let (dir, _repo) = setup_repo_with_remote_commits(1, 2);
-        let safety = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("own-project"));
+        let (safety, _, _) = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("own-project"));
         assert_eq!(safety, SyncSafety::Safe);
     }
 
     #[test]
     fn test_assess_safety_up_to_date() {
         let (dir, _repo) = setup_repo_with_remote_commits(0, 0);
-        let safety = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("third-party"));
+        let (safety, _, _) = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("third-party"));
         assert_eq!(safety, SyncSafety::UpToDate);
     }
 
@@ -1103,7 +1104,7 @@ mod tests {
         let tree_id = _repo.index().unwrap().write_tree().unwrap();
         let tree = _repo.find_tree(tree_id).unwrap();
         _repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
-        let safety = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags(""));
+        let (safety, _, _) = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags(""));
         assert_eq!(safety, SyncSafety::NoUpstream);
     }
 

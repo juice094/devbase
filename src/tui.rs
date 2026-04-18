@@ -342,9 +342,7 @@ impl App {
                 continue;
             }
             let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
-            let safety = crate::sync::assess_safety(&repo.local_path, policy);
-            let ahead = repo.status_ahead.unwrap_or(0);
-            let behind = repo.status_behind.unwrap_or(0);
+            let (safety, ahead, behind) = crate::sync::assess_safety(&repo.local_path, policy);
             self.sync_preview_items.push(SyncPreviewItem {
                 repo_id: repo.id.clone(),
                 safety,
