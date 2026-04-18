@@ -105,8 +105,26 @@ pub fn assess_safety(path: &str, policy: SyncPolicy) -> (SyncSafety, usize, usiz
         Err(_) => return (SyncSafety::Unknown, 0, 0),
     };
 
-    let dirty = match repo.statuses(None) {
-        Ok(statuses) => statuses.iter().any(|entry| entry.status() != git2::Status::CURRENT),
+    let mut opts = git2::StatusOptions::new();
+    opts.include_untracked(false);
+    let dirty = match repo.statuses(Some(&mut opts)) {
+        Ok(statuses) => statuses.iter().any(|entry| {
+            let s = entry.status();
+            // Only care about tracked-file changes that would block merge/rebase.
+            // Untracked files (WT_NEW) are ignored — they don't block ff-merge.
+            s.intersects(
+                git2::Status::INDEX_NEW
+                    | git2::Status::INDEX_MODIFIED
+                    | git2::Status::INDEX_DELETED
+                    | git2::Status::INDEX_RENAMED
+                    | git2::Status::INDEX_TYPECHANGE
+                    | git2::Status::WT_MODIFIED
+                    | git2::Status::WT_DELETED
+                    | git2::Status::WT_RENAMED
+                    | git2::Status::WT_TYPECHANGE
+                    | git2::Status::CONFLICTED,
+            )
+        }),
         Err(_) => false,
     };
     if dirty {
@@ -1070,7 +1088,8 @@ mod tests {
     #[test]
     fn test_assess_safety_blocked_dirty() {
         let (dir, _repo) = setup_repo_with_remote_commits(0, 2);
-        fs::write(dir.path().join("dirty.txt"), "dirty").unwrap();
+        // Modify an existing tracked file in the worktree
+        fs::write(dir.path().join("file.txt"), "dirty").unwrap();
         let (safety, _, _) = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags("third-party"));
         assert_eq!(safety, SyncSafety::BlockedDirty);
     }

@@ -63,9 +63,24 @@ impl AsyncJob for AsyncRepoStatus {
         let result = (|| -> anyhow::Result<(bool, usize, usize)> {
             let repo = Repository::open(&self.local_path)?;
 
-            // Use default options (same as assess_safety) to include untracked files
-            let statuses = repo.statuses(None)?;
-            let dirty = statuses.iter().any(|entry| entry.status() != git2::Status::CURRENT);
+            let mut opts = git2::StatusOptions::new();
+            opts.include_untracked(false);
+            let statuses = repo.statuses(Some(&mut opts))?;
+            let dirty = statuses.iter().any(|entry| {
+                let s = entry.status();
+                s.intersects(
+                    git2::Status::INDEX_NEW
+                        | git2::Status::INDEX_MODIFIED
+                        | git2::Status::INDEX_DELETED
+                        | git2::Status::INDEX_RENAMED
+                        | git2::Status::INDEX_TYPECHANGE
+                        | git2::Status::WT_MODIFIED
+                        | git2::Status::WT_DELETED
+                        | git2::Status::WT_RENAMED
+                        | git2::Status::WT_TYPECHANGE
+                        | git2::Status::CONFLICTED,
+                )
+            });
 
             let (ahead, behind) = if let Ok(head) = repo.head() {
                 let local_oid = head.target();
