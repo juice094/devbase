@@ -583,7 +583,7 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
             vec![repo]
         } else {
             info!("Registering {} before indexing", path);
-            let repo = crate::scan::inspect_repo(&p)?;
+            let repo = crate::scan::inspect_repo(&p, None)?;
             WorkspaceRegistry::save_repo(&mut conn, &repo)?;
             vec![repo]
         }

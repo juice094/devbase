@@ -21,6 +21,7 @@ pub struct SyncProgressNotification {
 pub enum AsyncNotification {
     RepoStatus(RepoStatusNotification),
     SyncProgress(SyncProgressNotification),
+    StarsUpdated { repo_id: String, stars: Option<u64> },
 }
 
 pub trait AsyncJob: Send + Clone + 'static {

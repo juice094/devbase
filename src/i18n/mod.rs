@@ -38,8 +38,10 @@ pub struct TuiStrings {
     pub help_preview: &'static str,
     pub help_batch: &'static str,
     pub help_tag: &'static str,
+    pub help_sort: &'static str,
     pub help_help: &'static str,
     pub help_navigate: &'static str,
+    pub sort_status: &'static str,
 }
 
 #[allow(dead_code)]
@@ -90,6 +92,7 @@ pub struct SyncStrings {
     pub neither_branch_exists: &'static str,
     pub already_up_to_date: &'static str,
     pub unhandled_merge_state: &'static str,
+    pub no_safe_repos: &'static str,
 }
 
 #[allow(dead_code)]

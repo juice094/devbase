@@ -31,8 +31,10 @@ pub fn build() -> I18n {
             help_preview: "获取预览",
             help_batch: "批量同步",
             help_tag: "编辑标签",
+            help_sort: "排序",
             help_help: "帮助",
             help_navigate: "导航",
+            sort_status: "状态",
         },
         cli: CliStrings {
             scanning: "正在扫描目录",
@@ -79,6 +81,7 @@ pub fn build() -> I18n {
             neither_branch_exists: "本地和远程分支 '{}' 均不存在",
             already_up_to_date: "已经是最新",
             unhandled_merge_state: "未处理的合并状态",
+            no_safe_repos: "没有可安全同步的仓库。",
         },
         log: LogStrings {
             tui_started: "devbase TUI 已启动。按 'h' 查看帮助，'q' 退出。",

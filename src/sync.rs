@@ -528,15 +528,17 @@ pub async fn run_json(
     filter_tags: Option<&str>,
     exclude: Option<&str>,
 ) -> anyhow::Result<serde_json::Value> {
+    let config = crate::config::Config::load().unwrap_or_default();
     let tasks = collect_tasks(filter_tags, exclude).await?;
     let mut path_map = HashMap::new();
     for task in &tasks {
         path_map.insert(task.id.clone(), task.path.clone());
     }
 
-    let orchestrator = SyncOrchestrator::new(1);
+    let orchestrator = SyncOrchestrator::new(config.sync.concurrency.max(1));
+    let timeout = Duration::from_secs(config.sync.timeout_seconds);
     let summaries = orchestrator
-        .run_sync(tasks, SyncMode::SYNC, dry_run, Duration::from_secs(60), |_id, _summary| {})
+        .run_sync(tasks, SyncMode::SYNC, dry_run, timeout, |_id, _summary| {})
         .await;
 
     let results_json: Vec<serde_json::Value> = summaries
@@ -585,19 +587,21 @@ pub async fn run(
     filter_tags: Option<&str>,
     exclude: Option<&str>,
 ) -> anyhow::Result<()> {
+    let config = crate::config::Config::load().unwrap_or_default();
     let tasks = collect_tasks(filter_tags, exclude).await?;
     let mut path_map = HashMap::new();
     for task in &tasks {
         path_map.insert(task.id.clone(), task.path.clone());
     }
 
-    let orchestrator = SyncOrchestrator::new(8);
+    let orchestrator = SyncOrchestrator::new(config.sync.concurrency.max(1));
+    let timeout = Duration::from_secs(config.sync.timeout_seconds);
     let results = orchestrator
         .run_sync(
             tasks,
             SyncMode::ASYNC,
             dry_run,
-            Duration::from_secs(60),
+            timeout,
             |id, summary| {
                 println!("  [{}] {}: {}", id, crate::i18n::current().log.progress, summary.message);
             },

@@ -31,8 +31,10 @@ pub fn build() -> I18n {
             help_preview: "preview",
             help_batch: "sync-batch",
             help_tag: "tag",
+            help_sort: "sort",
             help_help: "help",
             help_navigate: "navigate",
+            sort_status: "Status",
         },
         cli: CliStrings {
             scanning: "Scanning directory",
@@ -79,6 +81,7 @@ pub fn build() -> I18n {
             neither_branch_exists: "Neither local nor remote branch '{}' exists",
             already_up_to_date: "Already up to date",
             unhandled_merge_state: "Unhandled merge state",
+            no_safe_repos: "No safe repositories to sync.",
         },
         log: LogStrings {
             tui_started: "devbase TUI started. Press 'h' for help, 'q' to quit.",

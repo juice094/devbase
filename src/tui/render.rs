@@ -1,550 +1,13 @@
-﻿use crate::asyncgit::AsyncNotification;
-use crate::registry::WorkspaceRegistry;
-use crossbeam_channel::{Receiver, bounded};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use ratatui::{
-    backend::Backend,
-    layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    text::{Line, Span, Text},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
-    Frame, Terminal,
-};
-use std::collections::HashSet;
-use std::io;
-use std::time::{Duration, Instant};
+use crate::tui::{App, InputMode, SortMode, SyncPopupMode};
+use ratatui::{{
+    layout::{{Constraint, Direction, Layout}},
+    style::{{Color, Modifier, Style}},
+    text::{{Line, Span, Text}},
+    widgets::{{Block, Borders, List, ListItem, Paragraph, Wrap}},
+    Frame,
+}};
 
-#[derive(Debug, Clone)]
-struct RepoItem {
-    id: String,
-    local_path: String,
-    upstream_url: Option<String>,
-    default_branch: Option<String>,
-    tags: Vec<String>,
-    language: Option<String>,
-    status_dirty: Option<bool>,
-    status_ahead: Option<usize>,
-    status_behind: Option<usize>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum InputMode {
-    Normal,
-    TagInput,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum SyncPopupMode {
-    Hidden,
-    Preview,
-    Progress,
-}
-
-#[derive(Debug, Clone)]
-struct SyncPreviewItem {
-    repo_id: String,
-    safety: crate::sync::SyncSafety,
-    policy: crate::sync::SyncPolicy,
-    ahead: usize,
-    behind: usize,
-}
-
-pub struct App {
-    repos: Vec<RepoItem>,
-    selected: usize,
-    logs: Vec<String>,
-    show_help: bool,
-    input_mode: InputMode,
-    input_buffer: String,
-    list_state: ListState,
-    async_rx: Receiver<AsyncNotification>,
-    async_tx: crossbeam_channel::Sender<AsyncNotification>,
-    repo_status_job: crate::asyncgit::AsyncSingleJob<crate::asyncgit::AsyncRepoStatus>,
-    loading_repo_status: HashSet<String>,
-    loading_sync: HashSet<String>,
-    sync_orchestrator: crate::sync::SyncOrchestrator,
-    sync_popup_mode: SyncPopupMode,
-    sync_preview_items: Vec<SyncPreviewItem>,
-    sync_popup_results: Vec<(String, String)>, // (repo_id, message)
-    sync_total: usize,
-    sync_start_time: Option<Instant>,
-    sync_running: HashSet<String>,
-    sync_timeout: Duration,
-}
-
-impl App {
-    fn new() -> anyhow::Result<Self> {
-        let (async_tx, async_rx) = bounded::<AsyncNotification>(100);
-        let repo_status_job = crate::asyncgit::AsyncSingleJob::new(async_tx.clone());
-
-        let timeout_secs = crate::config::Config::load()
-            .map(|c| c.sync.timeout_seconds)
-            .unwrap_or(60);
-        let mut app = Self {
-            repos: Vec::new(),
-            selected: 0,
-            logs: Vec::new(),
-            show_help: false,
-            input_mode: InputMode::Normal,
-            input_buffer: String::new(),
-            list_state: ListState::default(),
-            async_rx,
-            async_tx: async_tx.clone(),
-            repo_status_job,
-            loading_repo_status: HashSet::new(),
-            loading_sync: HashSet::new(),
-            sync_orchestrator: crate::sync::SyncOrchestrator::new(8),
-            sync_popup_mode: SyncPopupMode::Hidden,
-            sync_preview_items: Vec::new(),
-            sync_popup_results: Vec::new(),
-            sync_total: 0,
-            sync_start_time: None,
-            sync_running: HashSet::new(),
-            sync_timeout: Duration::from_secs(timeout_secs),
-        };
-        app.log_info(crate::i18n::current().log.tui_started.to_string());
-        app.load_repos()?;
-        Ok(app)
-    }
-
-    fn load_repos(&mut self) -> anyhow::Result<()> {
-        let conn = WorkspaceRegistry::init_db()?;
-        let repos = WorkspaceRegistry::list_repos(&conn)?;
-
-        self.repos.clear();
-        for repo in repos {
-            let primary = repo.primary_remote().cloned();
-            self.repos.push(RepoItem {
-                id: repo.id,
-                local_path: repo.local_path.to_string_lossy().to_string(),
-                upstream_url: primary.as_ref().and_then(|r| r.upstream_url.clone()),
-                default_branch: primary.as_ref().and_then(|r| r.default_branch.clone()),
-                tags: repo.tags.clone(),
-                language: repo.language,
-                status_dirty: None,
-                status_ahead: None,
-                status_behind: None,
-            });
-        }
-        // Initial status assessment for better sorting and display
-        for repo in &mut self.repos {
-            if repo.upstream_url.is_some() {
-                let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
-                let (safety, ahead, behind) = crate::sync::assess_safety(&repo.local_path, policy);
-                repo.status_dirty = Some(safety == crate::sync::SyncSafety::BlockedDirty);
-                repo.status_ahead = Some(ahead);
-                repo.status_behind = Some(behind);
-            }
-        }
-
-        // Sort by status priority: needs action first, then by tag, then id
-        self.repos.sort_by(|a, b| {
-            let priority = |repo: &RepoItem| -> i32 {
-                match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
-                    (Some(true), _, _) => 0,                              // dirty
-                    (Some(false), Some(a), Some(b)) if a > 0 && b > 0 => 1, // diverged
-                    (Some(false), _, Some(b)) if b > 0 => 2,              // behind
-                    (Some(false), Some(a), _) if a > 0 => 3,              // ahead
-                    _ => 4,                                               // up-to-date / unknown
-                }
-            };
-            let pa = priority(a);
-            let pb = priority(b);
-            pa.cmp(&pb).then_with(|| {
-                let tag_a = a.tags.first().map(|s| s.as_str()).unwrap_or("zzz");
-                let tag_b = b.tags.first().map(|s| s.as_str()).unwrap_or("zzz");
-                tag_a.cmp(tag_b)
-            }).then_with(|| a.id.cmp(&b.id))
-        });
-        if self.selected >= self.repos.len() && !self.repos.is_empty() {
-            self.selected = self.repos.len() - 1;
-        }
-        self.list_state.select(Some(self.selected));
-        self.log_info(crate::i18n::current().log.loaded_repos(self.repos.len()));
-        self.spawn_repo_status_for_current();
-        Ok(())
-    }
-
-    fn log_info(&mut self, msg: String) {
-        self.log_with_level("INFO", msg);
-    }
-
-    fn log_warn(&mut self, msg: String) {
-        self.log_with_level("WARN", msg);
-    }
-
-    fn log_error(&mut self, msg: String) {
-        self.log_with_level("ERROR", msg);
-    }
-
-    fn log_with_level(&mut self, level: &str, msg: String) {
-        let time = chrono::Local::now().format("%H:%M:%S").to_string();
-        self.logs.push(format!("[{}] [{}] {}", time, level, msg));
-        if self.logs.len() > 100 {
-            self.logs.remove(0);
-        }
-    }
-
-    fn spawn_repo_status_for_current(&mut self) {
-        let repo = self.current_repo().cloned();
-        if let Some(repo) = repo {
-            if repo.status_dirty.is_none() {
-                let id = repo.id.clone();
-                self.loading_repo_status.insert(id);
-                self.repo_status_job.spawn(crate::asyncgit::AsyncRepoStatus {
-                    repo_id: repo.id,
-                    local_path: repo.local_path,
-                });
-            }
-        }
-    }
-
-    fn next(&mut self) {
-        if !self.repos.is_empty() {
-            self.selected = (self.selected + 1) % self.repos.len();
-            self.list_state.select(Some(self.selected));
-            self.spawn_repo_status_for_current();
-        }
-    }
-
-    fn previous(&mut self) {
-        if !self.repos.is_empty() {
-            self.selected = (self.selected + self.repos.len() - 1) % self.repos.len();
-            self.list_state.select(Some(self.selected));
-            self.spawn_repo_status_for_current();
-        }
-    }
-
-    fn jump_to_top(&mut self) {
-        if !self.repos.is_empty() {
-            self.selected = 0;
-            self.list_state.select(Some(self.selected));
-            self.spawn_repo_status_for_current();
-        }
-    }
-
-    fn jump_to_bottom(&mut self) {
-        if !self.repos.is_empty() {
-            self.selected = self.repos.len() - 1;
-            self.list_state.select(Some(self.selected));
-            self.spawn_repo_status_for_current();
-        }
-    }
-
-    fn current_repo(&self) -> Option<&RepoItem> {
-        self.repos.get(self.selected)
-    }
-
-    fn update_async(&mut self, notification: AsyncNotification) {
-        match notification {
-            AsyncNotification::RepoStatus(n) => {
-                self.loading_repo_status.remove(&n.repo_id);
-                if let Some(repo) = self.repos.iter_mut().find(|r| r.id == n.repo_id) {
-                    repo.status_dirty = Some(n.dirty);
-                    repo.status_ahead = Some(n.ahead);
-                    repo.status_behind = Some(n.behind);
-                }
-                self.log_info(crate::i18n::current().log.status_fmt(
-                    &n.repo_id, n.dirty, n.ahead, n.behind
-                ));
-            }
-            AsyncNotification::SyncProgress(n) => {
-                if n.repo_id == "__fetch_all_done__" && n.action == "FETCH_ALL_DONE" {
-                    self.safe_sync_preview();
-                    return;
-                }
-                if n.action == "RUNNING" || n.action == "FETCHING" {
-                    self.loading_sync.remove(&n.repo_id);
-                    self.sync_running.insert(n.repo_id.clone());
-                } else {
-                    self.sync_running.remove(&n.repo_id);
-                }
-                if let Some(entry) = self.sync_popup_results.iter_mut().find(|(id, _)| id == &n.repo_id) {
-                    entry.1 = n.message.clone();
-                } else {
-                    self.sync_popup_results.push((n.repo_id.clone(), n.message.clone()));
-                }
-                self.log_info(crate::i18n::current().log.sync_progress_fmt(
-                    &n.repo_id, &n.action, &n.message
-                ));
-            }
-        }
-    }
-
-    fn update_tags(&mut self, new_tags: &str) {
-        let repo_id = match self.current_repo() {
-            Some(r) => r.id.clone(),
-            None => {
-                self.log_warn(crate::i18n::current().log.no_repo_selected.to_string());
-                return;
-            }
-        };
-
-        match (|| -> anyhow::Result<()> {
-            let mut conn = WorkspaceRegistry::init_db()?;
-            let tx = conn.transaction()?;
-            tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1", [&repo_id])?;
-            for tag in new_tags.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
-                tx.execute(
-                    "INSERT OR REPLACE INTO repo_tags (repo_id, tag) VALUES (?1, ?2)",
-                    rusqlite::params![&repo_id, tag],
-                )?;
-            }
-            tx.commit()?;
-            Ok(())
-        })() {
-            Ok(()) => {
-                self.log_info(crate::i18n::current().log.updated_tags(&repo_id, new_tags));
-                if let Err(e) = self.load_repos() {
-                    self.log_error(crate::i18n::current().log.reload_repos_failed(e));
-                }
-            }
-            Err(e) => self.log_error(crate::i18n::current().log.update_tags_failed(e)),
-        }
-    }
-
-    fn safe_sync_preview(&mut self) {
-        self.sync_popup_mode = SyncPopupMode::Preview;
-        self.sync_preview_items.clear();
-        self.sync_popup_results.clear();
-        self.sync_total = 0;
-        self.sync_start_time = None;
-        self.sync_running.clear();
-
-        for repo in &self.repos {
-            if repo.upstream_url.is_none() {
-                continue;
-            }
-            let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
-            let (safety, ahead, behind) = crate::sync::assess_safety(&repo.local_path, policy);
-            self.sync_preview_items.push(SyncPreviewItem {
-                repo_id: repo.id.clone(),
-                safety,
-                policy,
-                ahead,
-                behind,
-            });
-        }
-
-        if self.sync_preview_items.is_empty() {
-            self.sync_popup_results.push(("system".to_string(), "No repositories eligible for safe sync.".to_string()));
-            self.sync_popup_mode = SyncPopupMode::Progress;
-        }
-    }
-
-    fn fetch_all_and_preview(&mut self) {
-        let tasks: Vec<_> = self.repos.iter()
-            .filter(|r| r.upstream_url.is_some())
-            .map(|repo| {
-                let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
-                crate::sync::RepoSyncTask {
-                    id: repo.id.clone(),
-                    path: repo.local_path.clone(),
-                    upstream_url: repo.upstream_url.clone(),
-                    default_branch: repo.default_branch.clone(),
-                    policy,
-                }
-            })
-            .collect();
-
-        if tasks.is_empty() {
-            self.log_info("No repositories with upstream to fetch.".to_string());
-            return;
-        }
-
-        self.sync_popup_mode = SyncPopupMode::Preview;
-        self.sync_preview_items.clear();
-        self.sync_popup_results.clear();
-        self.sync_total = tasks.len();
-        self.sync_start_time = Some(Instant::now());
-        self.sync_running.clear();
-        self.loading_sync.clear();
-
-        for t in &tasks {
-            self.sync_popup_results.push((t.id.clone(), crate::i18n::current().log.status_queued.to_string()));
-        }
-
-        let sender = self.async_tx.clone();
-        let orchestrator = self.sync_orchestrator.clone();
-        let timeout = self.sync_timeout;
-
-        tokio::spawn(async move {
-            orchestrator
-                .run_fetch_all(tasks, timeout, |id, summary| {
-                    let _ = sender.send(AsyncNotification::SyncProgress(
-                        crate::asyncgit::SyncProgressNotification {
-                            repo_id: id,
-                            action: summary.action,
-                            message: summary.message,
-                        },
-                    ));
-                })
-                .await;
-            // Signal completion to trigger preview refresh
-            let _ = sender.send(AsyncNotification::SyncProgress(
-                crate::asyncgit::SyncProgressNotification {
-                    repo_id: "__fetch_all_done__".to_string(),
-                    action: "FETCH_ALL_DONE".to_string(),
-                    message: String::new(),
-                },
-            ));
-        });
-    }
-
-    fn start_safe_sync(&mut self) {
-        let safe_items: Vec<crate::sync::RepoSyncTask> = self
-            .sync_preview_items
-            .iter()
-            .filter(|item| item.safety == crate::sync::SyncSafety::Safe)
-            .filter_map(|item| {
-                self.repos.iter().find(|r| r.id == item.repo_id).map(|repo| {
-                    let tags = repo.tags.join(",");
-                    let policy = crate::sync::SyncPolicy::from_tags(&tags);
-                    crate::sync::RepoSyncTask {
-                        id: repo.id.clone(),
-                        path: repo.local_path.clone(),
-                        upstream_url: repo.upstream_url.clone(),
-                        default_branch: repo.default_branch.clone(),
-                        policy,
-                    }
-                })
-            })
-            .collect();
-
-        self.sync_popup_mode = SyncPopupMode::Progress;
-        self.sync_popup_results.clear();
-        self.sync_total = safe_items.len();
-        self.sync_start_time = Some(Instant::now());
-        self.sync_running.clear();
-
-        if safe_items.is_empty() {
-            self.sync_popup_results.push(("system".to_string(), "No safe repositories to sync.".to_string()));
-            return;
-        }
-
-        self.log_info(crate::i18n::current().log.batch_syncing(safe_items.len()));
-        for r in &safe_items {
-            self.loading_sync.insert(r.id.clone());
-            self.sync_popup_results.push((r.id.clone(), crate::i18n::current().log.status_queued.to_string()));
-        }
-
-        let sender = self.async_tx.clone();
-        let orchestrator = self.sync_orchestrator.clone();
-        let timeout = self.sync_timeout;
-        tokio::spawn(async move {
-            orchestrator
-                .run_sync(
-                    safe_items,
-                    crate::sync::SyncMode::BlockUi,
-                    false,
-                    timeout,
-                    |id, summary| {
-                        let _ = sender.send(AsyncNotification::SyncProgress(
-                            crate::asyncgit::SyncProgressNotification {
-                                repo_id: id,
-                                action: summary.action,
-                                message: summary.message,
-                            },
-                        ));
-                    },
-                )
-                .await;
-        });
-    }
-}
-
-pub async fn run() -> anyhow::Result<()> {
-    let mut terminal = ratatui::init();
-    terminal.clear()?;
-
-    let mut app = App::new()?;
-    let res = run_app(&mut terminal, &mut app).await;
-
-    ratatui::restore();
-    Ok(res?)
-}
-
-async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
-    loop {
-        terminal.draw(|f| ui(f, app)).map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-
-        if event::poll(Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    match app.sync_popup_mode {
-                        SyncPopupMode::Preview => {
-                            match key.code {
-                                KeyCode::Enter => app.start_safe_sync(),
-                                KeyCode::Esc => app.sync_popup_mode = SyncPopupMode::Hidden,
-                                _ => {}
-                            }
-                            continue; // 弹窗显示时不处理其他按键
-                        }
-                        SyncPopupMode::Progress => {
-                            match key.code {
-                                KeyCode::Esc | KeyCode::Enter => app.sync_popup_mode = SyncPopupMode::Hidden,
-                                _ => {}
-                            }
-                            continue; // 弹窗显示时不处理其他按键
-                        }
-                        SyncPopupMode::Hidden => {}
-                    }
-                    match app.input_mode {
-                        InputMode::Normal => match key.code {
-                            KeyCode::Char('q') => return Ok(()),
-                            KeyCode::Char('r') => {
-                                app.log_info(crate::i18n::current().log.refreshing.to_string());
-                                if let Err(e) = app.load_repos() {
-                                    app.log_error(crate::i18n::current().log.refresh_failed(e));
-                                }
-                            }
-                            KeyCode::Char('s') => app.fetch_all_and_preview(),
-                            KeyCode::Char('S') => app.start_safe_sync(),
-                            KeyCode::Char('t') => {
-                                app.input_mode = InputMode::TagInput;
-                                app.input_buffer.clear();
-                            }
-                            KeyCode::Char('h') => app.show_help = !app.show_help,
-                            KeyCode::Down => app.next(),
-                            KeyCode::Up => app.previous(),
-                            KeyCode::Home | KeyCode::PageUp => app.jump_to_top(),
-                            KeyCode::End | KeyCode::PageDown => app.jump_to_bottom(),
-                            _ => {}
-                        },
-                        InputMode::TagInput => match key.code {
-                            KeyCode::Enter => {
-                                let tags = app.input_buffer.trim().to_string();
-                                if !tags.is_empty() {
-                                    app.update_tags(&tags);
-                                } else {
-                                    app.log_warn(crate::i18n::current().log.empty_tag_ignored.to_string());
-                                }
-                                app.input_mode = InputMode::Normal;
-                                app.input_buffer.clear();
-                            }
-                            KeyCode::Esc => {
-                                app.input_mode = InputMode::Normal;
-                                app.input_buffer.clear();
-                                app.log_info(crate::i18n::current().log.tag_input_cancelled.to_string());
-                            }
-                            KeyCode::Char(c) => app.input_buffer.push(c),
-                            KeyCode::Backspace => {
-                                app.input_buffer.pop();
-                            }
-                            _ => {}
-                        },
-                    }
-                }
-            }
-        }
-
-        while let Ok(notification) = app.async_rx.try_recv() {
-            app.update_async(notification);
-        }
-    }
-}
-
-fn ui(frame: &mut Frame, app: &mut App) {
+pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
     let bottom_height = if app.show_help || app.input_mode == InputMode::TagInput {
         1
     } else {
@@ -607,6 +70,13 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 _ => String::new(),
             };
 
+            // Star count indicator
+            let star_indicator = if let Some(stars) = repo.stars {
+                format!(" ★{}", stars)
+            } else {
+                String::new()
+            };
+
             // Tag cluster indicator: show primary tag in muted color
             let tag_indicator = if let Some(first_tag) = repo.tags.first() {
                 format!(" [{}]", first_tag)
@@ -616,21 +86,51 @@ fn ui(frame: &mut Frame, app: &mut App) {
 
             ListItem::new(Line::from(vec![
                 Span::styled(format!("{}{}", prefix, repo.id), Style::default().fg(fg)),
+                Span::styled(star_indicator, Style::default().fg(Color::Rgb(255, 215, 0))),
                 Span::styled(status_suffix, Style::default().fg(Color::DarkGray)),
                 Span::styled(tag_indicator, Style::default().fg(Color::DarkGray)),
             ]))
         })
         .collect();
 
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(crate::i18n::current().tui.title_repos))
-        .highlight_style(
-            Style::default()
-                .bg(Color::Rgb(40, 40, 80))
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("> ");
+    let list_title = format!(
+        "{} [{}]",
+        crate::i18n::current().tui.title_repos,
+        match app.sort_mode {
+            SortMode::Status => crate::i18n::current().tui.sort_status,
+            SortMode::Stars => "Stars",
+        }
+    );
+
+    let list = if items.is_empty() {
+        let onboarding = vec![
+            ListItem::new(Line::from(Span::styled("", Style::default()))),
+            ListItem::new(Line::from(vec![
+                Span::styled("  还没有注册任何仓库", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            ])),
+            ListItem::new(Line::from(Span::styled("", Style::default()))),
+            ListItem::new(Line::from(vec![
+                Span::styled("  运行: ", Style::default().fg(Color::DarkGray)),
+                Span::styled("devbase scan <路径> --register", Style::default().fg(Color::Cyan)),
+            ])),
+            ListItem::new(Line::from(vec![
+                Span::styled("  示例: ", Style::default().fg(Color::DarkGray)),
+                Span::styled("devbase scan . --register", Style::default().fg(Color::Green)),
+            ])),
+        ];
+        List::new(onboarding)
+            .block(Block::default().borders(Borders::ALL).title(list_title))
+    } else {
+        List::new(items)
+            .block(Block::default().borders(Borders::ALL).title(list_title))
+            .highlight_style(
+                Style::default()
+                    .bg(Color::Rgb(40, 40, 80))
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("> ")
+    };
 
     frame.render_stateful_widget(list, main_chunks[0], &mut app.list_state);
 
@@ -987,23 +487,30 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 Span::styled(crate::i18n::current().tui.hint_tag_input, Style::default().fg(Color::DarkGray)),
             ]),
             InputMode::Normal => {
+                let i18n = &crate::i18n::current().tui;
+                let sort_label = match app.sort_mode {
+                    SortMode::Status => i18n.sort_status,
+                    SortMode::Stars => "Stars",
+                };
                 let mut spans = vec![
                     Span::styled("q", Style::default().fg(Color::Cyan)),
-                    Span::raw("=退出 "),
+                    Span::raw(format!("={} ", i18n.help_quit)),
                     Span::styled("r", Style::default().fg(Color::Cyan)),
-                    Span::raw("=刷新 "),
+                    Span::raw(format!("={} ", i18n.help_refresh)),
                     Span::styled("s", Style::default().fg(Color::Cyan)),
-                    Span::raw("=获取预览 "),
+                    Span::raw(format!("={} ", i18n.help_preview)),
                     Span::styled("S", Style::default().fg(Color::Cyan)),
-                    Span::raw("=批量同步 "),
+                    Span::raw(format!("={} ", i18n.help_batch)),
                     Span::styled("t", Style::default().fg(Color::Cyan)),
-                    Span::raw("=编辑标签 "),
+                    Span::raw(format!("={} ", i18n.help_tag)),
+                    Span::styled("o", Style::default().fg(Color::Cyan)),
+                    Span::raw(format!("={}({}) ", i18n.help_sort, sort_label)),
                     Span::styled("h", Style::default().fg(Color::Cyan)),
-                    Span::raw("=帮助 "),
+                    Span::raw(format!("={} ", i18n.help_help)),
                     Span::styled("↑↓", Style::default().fg(Color::Cyan)),
                     Span::raw("/"),
                     Span::styled("PgUp/PgDn", Style::default().fg(Color::Cyan)),
-                    Span::raw("=首末"),
+                    Span::raw(format!("={}", i18n.help_navigate)),
                 ];
                 if app.sync_total > 0 {
                     let queued = app.loading_sync.len();

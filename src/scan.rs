@@ -17,7 +17,8 @@ pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::
         }));
     }
 
-    let repos = discover_repos(&root)?;
+    let config = crate::config::Config::load().unwrap_or_default();
+    let repos = discover_repos(&root, Some(&config.github))?;
     let count = repos.len();
 
     let mut registered = 0usize;
@@ -26,6 +27,9 @@ pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::
         let mut conn = WorkspaceRegistry::init_db()?;
         for repo in &repos {
             WorkspaceRegistry::save_repo(&mut conn, repo)?;
+            if let Some(stars) = repo.stars {
+                let _ = WorkspaceRegistry::save_stars_cache(&conn, &repo.id, stars);
+            }
         }
         registered = repos.len();
     }
@@ -105,7 +109,10 @@ pub async fn run(path: &str, register: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn discover_repos(root: &Path) -> anyhow::Result<Vec<RepoEntry>> {
+fn discover_repos(
+    root: &Path,
+    github: Option<&crate::config::GithubConfig>,
+) -> anyhow::Result<Vec<RepoEntry>> {
     let mut git_repos = Vec::new();
 
     for entry in WalkDir::new(root)
@@ -121,7 +128,7 @@ fn discover_repos(root: &Path) -> anyhow::Result<Vec<RepoEntry>> {
                 continue;
             }
 
-            match inspect_repo(&repo_path) {
+            match inspect_repo(&repo_path, github) {
                 Ok(repo) => git_repos.push(repo),
                 Err(e) => warn!("Failed to inspect {}: {}", repo_path.display(), e),
             }
@@ -179,7 +186,51 @@ pub fn detect_language(path: &Path) -> Option<String> {
     }
 }
 
-pub fn inspect_repo(path: &Path) -> anyhow::Result<RepoEntry> {
+fn parse_github_owner_repo(upstream_url: &str) -> Option<(String, String)> {
+    let url = upstream_url.trim_end_matches(".git");
+    let path_part = if let Some(idx) = url.find("github.com/") {
+        &url[idx + "github.com/".len()..]
+    } else if let Some(idx) = url.find("github.com:") {
+        &url[idx + "github.com:".len()..]
+    } else {
+        return None;
+    };
+    let parts: Vec<&str> = path_part.split('/').collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    Some((parts[0].to_string(), parts[1].to_string()))
+}
+
+pub fn fetch_github_stars(
+    upstream_url: &str,
+    github: Option<&crate::config::GithubConfig>,
+) -> Option<u64> {
+    let (owner, repo) = parse_github_owner_repo(upstream_url)?;
+
+    let timeout_secs = github.map(|g| g.timeout_seconds).unwrap_or(5);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(timeout_secs))
+        .build()
+        .ok()?;
+    let mut request = client
+        .get(format!("https://api.github.com/repos/{}/{}", owner, repo))
+        .header("User-Agent", "devbase-cli");
+    if let Some(token) = github.and_then(|g| g.token.as_deref()) {
+        request = request.header("Authorization", format!("Bearer {}", token));
+    }
+    let response = request.send().ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let json: serde_json::Value = response.json().ok()?;
+    json.get("stargazers_count")?.as_u64()
+}
+
+pub fn inspect_repo(
+    path: &Path,
+    github: Option<&crate::config::GithubConfig>,
+) -> anyhow::Result<RepoEntry> {
     let repo = Repository::open(path)?;
 
     let id = path
@@ -194,6 +245,8 @@ pub fn inspect_repo(path: &Path) -> anyhow::Result<RepoEntry> {
         .and_then(|remotes| remotes.get(0).map(String::from))
         .and_then(|name| repo.find_remote(&name).ok())
         .and_then(|remote| remote.url().map(String::from));
+
+    let stars = upstream_url.as_deref().and_then(|u| fetch_github_stars(u, github));
 
     let default_branch = repo
         .head()
@@ -228,6 +281,7 @@ pub fn inspect_repo(path: &Path) -> anyhow::Result<RepoEntry> {
         workspace_type: "git".to_string(),
         data_tier: "private".to_string(),
         last_synced_at: None,
+        stars,
         remotes: vec![remote_entry],
     })
 }
@@ -258,6 +312,7 @@ pub fn inspect_non_git_workspace(path: &Path) -> anyhow::Result<RepoEntry> {
         workspace_type: workspace_type.to_string(),
         data_tier: "private".to_string(),
         last_synced_at: None,
+        stars: None,
         remotes: Vec::new(),
     })
 }
@@ -331,6 +386,7 @@ mod tests {
             workspace_type: "git".to_string(),
             data_tier: "private".to_string(),
             last_synced_at: None,
+            stars: None,
             remotes: vec![],
         };
         let child = Path::new("/workspace/parent/sub");
@@ -348,6 +404,7 @@ mod tests {
             workspace_type: "git".to_string(),
             data_tier: "private".to_string(),
             last_synced_at: None,
+            stars: None,
             remotes: vec![],
         };
         let same = Path::new("/workspace/parent");
@@ -364,7 +421,7 @@ mod tests {
         fs::create_dir(&repo_path).unwrap();
         git2::Repository::init(&repo_path).unwrap();
 
-        let entry = inspect_repo(&repo_path).unwrap();
+        let entry = inspect_repo(&repo_path, None).unwrap();
         assert_eq!(
             entry.tags,
             vec!["discovered", "zip-snapshot", "needs-migration"]
@@ -378,7 +435,7 @@ mod tests {
         fs::create_dir(&repo_path).unwrap();
         git2::Repository::init(&repo_path).unwrap();
 
-        let entry = inspect_repo(&repo_path).unwrap();
+        let entry = inspect_repo(&repo_path, None).unwrap();
         assert_eq!(
             entry.tags,
             vec!["discovered", "zip-snapshot", "needs-migration"]
@@ -392,7 +449,7 @@ mod tests {
         fs::create_dir(&repo_path).unwrap();
         git2::Repository::init(&repo_path).unwrap();
 
-        let entry = inspect_repo(&repo_path).unwrap();
+        let entry = inspect_repo(&repo_path, None).unwrap();
         assert_eq!(entry.tags, vec!["discovered"]);
     }
 
@@ -431,11 +488,53 @@ mod tests {
         fs::create_dir(&generic_path).unwrap();
         fs::write(generic_path.join("MEMORY.md"), "# memory").unwrap();
 
-        let repos = discover_repos(dir.path()).unwrap();
+        let repos = discover_repos(dir.path(), None).unwrap();
         assert_eq!(repos.len(), 2);
 
         let types: std::collections::HashSet<_> = repos.iter().map(|r| r.workspace_type.as_str()).collect();
         assert!(types.contains("git"));
         assert!(types.contains("generic"));
+    }
+
+    #[test]
+    fn test_parse_github_owner_repo_https() {
+        assert_eq!(
+            parse_github_owner_repo("https://github.com/rust-lang/rust.git"),
+            Some(("rust-lang".to_string(), "rust".to_string()))
+        );
+        assert_eq!(
+            parse_github_owner_repo("https://github.com/rust-lang/rust"),
+            Some(("rust-lang".to_string(), "rust".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_github_owner_repo_ssh() {
+        assert_eq!(
+            parse_github_owner_repo("git@github.com:rust-lang/rust.git"),
+            Some(("rust-lang".to_string(), "rust".to_string()))
+        );
+        assert_eq!(
+            parse_github_owner_repo("git@github.com:rust-lang/rust"),
+            Some(("rust-lang".to_string(), "rust".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_github_owner_repo_non_github() {
+        assert_eq!(
+            parse_github_owner_repo("https://gitlab.com/rust-lang/rust.git"),
+            None
+        );
+        assert_eq!(
+            parse_github_owner_repo("https://bitbucket.org/rust-lang/rust.git"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_parse_github_owner_repo_invalid() {
+        assert_eq!(parse_github_owner_repo("not-a-url"), None);
+        assert_eq!(parse_github_owner_repo("https://github.com/short"), None);
     }
 }

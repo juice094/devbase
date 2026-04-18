@@ -28,6 +28,7 @@ pub struct RepoEntry {
     pub workspace_type: String,
     pub data_tier: String,
     pub last_synced_at: Option<DateTime<Utc>>,
+    pub stars: Option<u64>,
     pub remotes: Vec<RemoteEntry>,
 }
 
@@ -142,10 +143,16 @@ impl WorkspaceRegistry {
                 discovered_at TEXT NOT NULL,
                 workspace_type TEXT DEFAULT 'git',
                 data_tier TEXT DEFAULT 'private',
-                last_synced_at TEXT
+                last_synced_at TEXT,
+                stars INTEGER
             )",
             [],
         )?;
+        conn.execute(
+            "ALTER TABLE repos ADD COLUMN stars INTEGER",
+            [],
+        ).ok();
+
         conn.execute(
             "CREATE TABLE IF NOT EXISTS repo_tags (
                 repo_id TEXT NOT NULL,
@@ -204,6 +211,15 @@ impl WorkspaceRegistry {
                 ahead INTEGER DEFAULT 0,
                 behind INTEGER DEFAULT 0,
                 checked_at TEXT,
+                FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS repo_stars_cache (
+                repo_id TEXT PRIMARY KEY,
+                stars INTEGER,
+                fetched_at TEXT,
                 FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
             )",
             [],
@@ -506,11 +522,12 @@ impl WorkspaceRegistry {
                 row.get::<_, Option<String>>(9)?,
                 row.get::<_, Option<String>>(10)?,
                 row.get::<_, Option<String>>(11)?,
+                row.get::<_, Option<i64>>(12)?,
             ))
         })?;
         let mut entries = Vec::new();
         for row in rows {
-            let (id, local_path, tags, language, discovered_at, workspace_type, data_tier, last_synced_at, remote_name, upstream_url, default_branch, last_sync) = row?;
+            let (id, local_path, tags, language, discovered_at, workspace_type, data_tier, last_synced_at, remote_name, upstream_url, default_branch, last_sync, stars) = row?;
             let local_path = PathBuf::from(local_path);
             let discovered_at = DateTime::parse_from_rfc3339(&discovered_at)?.with_timezone(&Utc);
             let tags: Vec<String> = tags
@@ -520,6 +537,7 @@ impl WorkspaceRegistry {
             let data_tier = data_tier.unwrap_or_else(|| "private".to_string());
             let last_synced_at = last_synced_at
                 .and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc)));
+            let stars = stars.map(|s| s as u64);
             let remote = remote_name.map(|name| RemoteEntry {
                 remote_name: name,
                 upstream_url,
@@ -544,6 +562,7 @@ impl WorkspaceRegistry {
                     workspace_type,
                     data_tier,
                     last_synced_at,
+                    stars,
                     discovered_at,
                     remotes,
                 });
@@ -555,7 +574,7 @@ impl WorkspaceRegistry {
     pub fn list_repos(conn: &rusqlite::Connection) -> anyhow::Result<Vec<RepoEntry>> {
         let stmt = conn.prepare(
             "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
-                    r.workspace_type, r.data_tier, r.last_synced_at,
+                    r.workspace_type, r.data_tier, r.last_synced_at, r.stars,
                     rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
              FROM repos r
              LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
@@ -570,7 +589,7 @@ impl WorkspaceRegistry {
     ) -> anyhow::Result<Vec<RepoEntry>> {
         let stmt = conn.prepare(
             "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
-                    r.workspace_type, r.data_tier, r.last_synced_at,
+                    r.workspace_type, r.data_tier, r.last_synced_at, r.stars,
                     rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
              FROM repos r
              LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
@@ -590,7 +609,7 @@ impl WorkspaceRegistry {
     ) -> anyhow::Result<Vec<RepoEntry>> {
         let stmt = conn.prepare(
             "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
-                    r.workspace_type, r.data_tier, r.last_synced_at,
+                    r.workspace_type, r.data_tier, r.last_synced_at, r.stars,
                     rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
              FROM repos r
              LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
@@ -607,7 +626,7 @@ impl WorkspaceRegistry {
     pub fn save_repo(conn: &mut rusqlite::Connection, repo: &RepoEntry) -> anyhow::Result<()> {
         let tx = conn.transaction()?;
         tx.execute(
-            "INSERT OR REPLACE INTO repos (id, local_path, language, discovered_at, workspace_type, data_tier, last_synced_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT OR REPLACE INTO repos (id, local_path, language, discovered_at, workspace_type, data_tier, last_synced_at, stars) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
                 &repo.id,
                 repo.local_path.to_string_lossy().to_string(),
@@ -615,7 +634,8 @@ impl WorkspaceRegistry {
                 repo.discovered_at.to_rfc3339(),
                 &repo.workspace_type,
                 &repo.data_tier,
-                repo.last_synced_at.map(|dt| dt.to_rfc3339())
+                repo.last_synced_at.map(|dt| dt.to_rfc3339()),
+                repo.stars.map(|s| s as i64)
             ],
         )?;
         tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1", [&repo.id])?;
@@ -698,7 +718,7 @@ impl WorkspaceRegistry {
     ) -> anyhow::Result<Vec<RepoEntry>> {
         let stmt = conn.prepare(
             "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
-                    r.workspace_type, r.data_tier, r.last_synced_at,
+                    r.workspace_type, r.data_tier, r.last_synced_at, r.stars,
                     rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
              FROM repos r
              LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
@@ -748,6 +768,38 @@ impl WorkspaceRegistry {
                 behind: behind as usize,
                 checked_at,
             }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn save_stars_cache(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        stars: u64,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "INSERT OR REPLACE INTO repo_stars_cache (repo_id, stars, fetched_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params![repo_id, stars as i64, Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_stars_cache(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+    ) -> anyhow::Result<Option<(u64, DateTime<Utc>)>> {
+        let mut stmt =
+            conn.prepare("SELECT stars, fetched_at FROM repo_stars_cache WHERE repo_id = ?1")?;
+        let mut rows = stmt.query([repo_id])?;
+        if let Some(row) = rows.next()? {
+            let stars: i64 = row.get(0)?;
+            let fetched_at: String = row.get(1)?;
+            let fetched_at = match DateTime::parse_from_rfc3339(&fetched_at) {
+                Ok(dt) => dt.with_timezone(&Utc),
+                Err(_) => return Ok(None),
+            };
+            Ok(Some((stars as u64, fetched_at)))
         } else {
             Ok(None)
         }
@@ -1059,5 +1111,79 @@ impl WorkspaceRegistry {
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    #[test]
+    fn test_stars_cache_roundtrip() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE repo_stars_cache (
+                repo_id TEXT PRIMARY KEY,
+                stars INTEGER,
+                fetched_at TEXT
+            )",
+            [],
+        )
+        .unwrap();
+
+        // Save
+        WorkspaceRegistry::save_stars_cache(&conn, "test-repo", 42).unwrap();
+
+        // Read back
+        let (stars, fetched_at) = WorkspaceRegistry::get_stars_cache(&conn, "test-repo")
+            .unwrap()
+            .expect("cache entry should exist");
+        assert_eq!(stars, 42);
+        let elapsed = Utc::now().signed_duration_since(fetched_at).num_seconds();
+        assert!(elapsed >= 0 && elapsed < 5, "fetched_at should be very recent");
+    }
+
+    #[test]
+    fn test_stars_cache_miss() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE repo_stars_cache (
+                repo_id TEXT PRIMARY KEY,
+                stars INTEGER,
+                fetched_at TEXT
+            )",
+            [],
+        )
+        .unwrap();
+
+        let result = WorkspaceRegistry::get_stars_cache(&conn, "nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_stars_cache_update() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE repo_stars_cache (
+                repo_id TEXT PRIMARY KEY,
+                stars INTEGER,
+                fetched_at TEXT
+            )",
+            [],
+        )
+        .unwrap();
+
+        WorkspaceRegistry::save_stars_cache(&conn, "repo-a", 10).unwrap();
+        let (stars1, at1) = WorkspaceRegistry::get_stars_cache(&conn, "repo-a").unwrap().unwrap();
+        assert_eq!(stars1, 10);
+
+        // Small sleep to ensure timestamp changes
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        WorkspaceRegistry::save_stars_cache(&conn, "repo-a", 20).unwrap();
+        let (stars2, at2) = WorkspaceRegistry::get_stars_cache(&conn, "repo-a").unwrap().unwrap();
+        assert_eq!(stars2, 20);
+        assert!(at2 > at1, "updated timestamp should be newer");
     }
 }
