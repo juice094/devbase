@@ -36,6 +36,7 @@ impl App {
             sync_timeout: Duration::from_secs(timeout_secs),
             sort_mode: SortMode::Status,
             config,
+            dry_run: false,
         };
         app.log_info(crate::i18n::current().log.tui_started.to_string());
         app.load_repos()?;
@@ -348,6 +349,7 @@ impl App {
     }
 
     pub(crate) fn safe_sync_preview(&mut self) {
+        self.dry_run = true;
         self.sync_popup_mode = SyncPopupMode::Preview;
         self.sync_preview_items.clear();
         self.sync_popup_results.clear();
@@ -377,6 +379,7 @@ impl App {
     }
 
     pub(crate) fn fetch_all_and_preview(&mut self) {
+        self.dry_run = true;
         let tasks: Vec<_> = self.repos.iter()
             .filter(|r| r.upstream_url.is_some())
             .map(|repo| {
@@ -436,6 +439,7 @@ impl App {
     }
 
     pub(crate) fn start_safe_sync(&mut self) {
+        self.dry_run = false;
         // If preview is stale/empty, regenerate it on-the-fly
         if self.sync_preview_items.is_empty() {
             self.safe_sync_preview();

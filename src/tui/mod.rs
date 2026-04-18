@@ -69,21 +69,39 @@ pub struct App {
     pub(crate) sync_timeout: Duration,
     pub(crate) sort_mode: SortMode,
     pub(crate) config: crate::config::Config,
+    pub(crate) dry_run: bool,
 }
 
 pub mod state;
 pub mod event;
 pub mod render;
 
-use self::event::run_app;
+use self::event::{run_app, TuiAction};
 
 pub async fn run() -> anyhow::Result<()> {
     let mut terminal = ratatui::init();
     terminal.clear()?;
 
     let mut app = App::new()?;
-    let res = run_app(&mut terminal, &mut app).await;
+    let mut action = run_app(&mut terminal, &mut app).await;
+
+    loop {
+        match action {
+            Ok(TuiAction::Quit) => break,
+            Ok(TuiAction::LaunchExternal { cmd, cwd }) => {
+                ratatui::restore();
+                let _ = std::process::Command::new(&cmd).current_dir(&cwd).status();
+                terminal = ratatui::init();
+                terminal.clear()?;
+                action = run_app(&mut terminal, &mut app).await;
+            }
+            Err(e) => {
+                ratatui::restore();
+                return Err(e.into());
+            }
+        }
+    }
 
     ratatui::restore();
-    Ok(res?)
+    Ok(())
 }

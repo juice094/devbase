@@ -15,6 +15,7 @@ pub(crate) enum McpToolEnum {
     Health(DevkitHealthTool),
     Sync(DevkitSyncTool),
     Query(DevkitQueryTool),
+    QueryRepos(DevkitQueryReposTool),
     Index(DevkitIndexTool),
     Note(DevkitNoteTool),
     Digest(DevkitDigestTool),
@@ -30,6 +31,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Health(t) => t.name(),
             McpToolEnum::Sync(t) => t.name(),
             McpToolEnum::Query(t) => t.name(),
+            McpToolEnum::QueryRepos(t) => t.name(),
             McpToolEnum::Index(t) => t.name(),
             McpToolEnum::Note(t) => t.name(),
             McpToolEnum::Digest(t) => t.name(),
@@ -45,6 +47,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Health(t) => t.schema(),
             McpToolEnum::Sync(t) => t.schema(),
             McpToolEnum::Query(t) => t.schema(),
+            McpToolEnum::QueryRepos(t) => t.schema(),
             McpToolEnum::Index(t) => t.schema(),
             McpToolEnum::Note(t) => t.schema(),
             McpToolEnum::Digest(t) => t.schema(),
@@ -60,6 +63,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Health(t) => t.invoke(args).await,
             McpToolEnum::Sync(t) => t.invoke(args).await,
             McpToolEnum::Query(t) => t.invoke(args).await,
+            McpToolEnum::QueryRepos(t) => t.invoke(args).await,
             McpToolEnum::Index(t) => t.invoke(args).await,
             McpToolEnum::Note(t) => t.invoke(args).await,
             McpToolEnum::Digest(t) => t.invoke(args).await,
@@ -199,6 +203,7 @@ pub fn build_server() -> McpServer {
         .register_tool(McpToolEnum::Health(DevkitHealthTool))
         .register_tool(McpToolEnum::Sync(DevkitSyncTool))
         .register_tool(McpToolEnum::Query(DevkitQueryTool))
+        .register_tool(McpToolEnum::QueryRepos(DevkitQueryReposTool))
         .register_tool(McpToolEnum::Index(DevkitIndexTool))
         .register_tool(McpToolEnum::Note(DevkitNoteTool))
         .register_tool(McpToolEnum::Digest(DevkitDigestTool))
@@ -451,7 +456,7 @@ impl McpTool for DevkitSyncTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Sync registered repositories with their upstream remotes",
+            "description": "Syncs registered repos according to their inferred SyncPolicy (Mirror/Conservative/Rebase/Merge based on tags). dry_run=true by default for safety.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -459,12 +464,6 @@ impl McpTool for DevkitSyncTool {
                         "type": "boolean",
                         "description": "Preview mode: do not modify any files",
                         "default": true
-                    },
-                    "strategy": {
-                        "type": "string",
-                        "enum": ["fetch-only", "auto-pull", "ask"],
-                        "description": "Sync strategy",
-                        "default": "fetch-only"
                     },
                     "filter_tags": {
                         "type": "string",
@@ -813,6 +812,125 @@ fn parse_github_repo(url: &str) -> Option<(String, String)> {
 }
 
 #[derive(Clone)]
+pub struct DevkitQueryReposTool;
+
+impl McpTool for DevkitQueryReposTool {
+    fn name(&self) -> &'static str { "devkit_query_repos" }
+    
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": "Query registered repositories with filters. Returns structured metadata including Git status, tags, language, and health.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "language": { "type": "string", "description": "Filter by programming language (e.g., 'rust', 'go', 'python')", "default": "" },
+                    "tag": { "type": "string", "description": "Filter by tag", "default": "" },
+                    "status": { "type": "string", "enum": ["dirty", "ahead", "behind", "diverged", "up_to_date", ""], "description": "Filter by Git status", "default": "" },
+                    "limit": { "type": "integer", "description": "Max results", "default": 50 }
+                }
+            }
+        })
+    }
+    
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let language = args.get("language").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let tag = args.get("tag").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let status = args.get("status").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(50) as usize;
+        
+        tokio::task::spawn_blocking(move || {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
+            
+            let mut results = Vec::new();
+            for repo in repos {
+                // Filter by language (case-insensitive)
+                if !language.is_empty() {
+                    match &repo.language {
+                        Some(lang) if lang.eq_ignore_ascii_case(&language) => {},
+                        _ => continue,
+                    }
+                }
+                
+                // Filter by tag (case-insensitive)
+                if !tag.is_empty() {
+                    if !repo.tags.iter().any(|t| t.eq_ignore_ascii_case(&tag)) {
+                        continue;
+                    }
+                }
+                
+                // Gather status
+                let (ahead, behind, dirty) = if repo.workspace_type == "git" {
+                    let (st, ah, bh) = match crate::registry::WorkspaceRegistry::get_health(&conn, &repo.id)? {
+                        Some(health) => (health.status.clone(), health.ahead, health.behind),
+                        None => {
+                            let path = repo.local_path.to_string_lossy();
+                            let primary = repo.primary_remote();
+                            let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
+                            let default_branch = primary.and_then(|r| r.default_branch.as_deref());
+                            crate::health::analyze_repo(&path, upstream_url, default_branch)
+                        }
+                    };
+                    let dirty = st == "dirty" || st == "changed";
+                    (ah, bh, dirty)
+                } else {
+                    let dirty = match crate::health::compute_workspace_hash(&repo.local_path) {
+                        Ok(current_hash) => {
+                            match crate::registry::WorkspaceRegistry::get_latest_workspace_snapshot(&conn, &repo.id)? {
+                                Some(prev) => prev.file_hash != current_hash,
+                                None => true,
+                            }
+                        }
+                        Err(_) => false,
+                    };
+                    (0, 0, dirty)
+                };
+                
+                // Filter by conceptual status
+                if !status.is_empty() {
+                    let matches = match status.as_str() {
+                        "dirty" => dirty,
+                        "ahead" => !dirty && ahead > 0 && behind == 0,
+                        "behind" => !dirty && behind > 0 && ahead == 0,
+                        "diverged" => !dirty && ahead > 0 && behind > 0,
+                        "up_to_date" => !dirty && ahead == 0 && behind == 0,
+                        _ => true,
+                    };
+                    if !matches {
+                        continue;
+                    }
+                }
+                
+                results.push(serde_json::json!({
+                    "id": repo.id,
+                    "path": repo.local_path,
+                    "language": repo.language,
+                    "tags": repo.tags,
+                    "status": {
+                        "dirty": dirty,
+                        "ahead": ahead,
+                        "behind": behind,
+                    },
+                    "stars": repo.stars,
+                }));
+                
+                if limit > 0 && results.len() >= limit {
+                    break;
+                }
+            }
+            
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "success": true,
+                "count": results.len(),
+                "repos": results,
+            }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
+#[derive(Clone)]
 pub struct DevkitQueryTool;
 
 impl McpTool for DevkitQueryTool {
@@ -888,12 +1006,13 @@ mod tests {
         });
         let resp = server.handle_request(req).await.unwrap();
         let tools = resp.get("result").unwrap().get("tools").unwrap().as_array().unwrap();
-        assert_eq!(tools.len(), 10);
+        assert_eq!(tools.len(), 11);
         let names: Vec<&str> = tools.iter().map(|t| t.get("name").unwrap().as_str().unwrap()).collect();
         assert!(names.contains(&"devkit_scan"));
         assert!(names.contains(&"devkit_health"));
         assert!(names.contains(&"devkit_sync"));
         assert!(names.contains(&"devkit_query"));
+        assert!(names.contains(&"devkit_query_repos"));
         assert!(names.contains(&"devkit_index"));
         assert!(names.contains(&"devkit_note"));
         assert!(names.contains(&"devkit_digest"));

@@ -76,6 +76,8 @@ pub fn build() -> I18n {
             status_running: "同步中...",
             up_to_date: "{} 已是最新",
             skipped_by_user: "用户已跳过",
+            mirror_policy_warning: "Mirror 策略：reset --hard 可能导致工作丢失",
+            dry_run_badge: "[预览模式]",
             local_branch_missing: "本地分支 '{}' 尚不存在",
             remote_branch_missing: "获取后未找到远程分支 'origin/{}'",
             neither_branch_exists: "本地和远程分支 '{}' 均不存在",
@@ -109,6 +111,7 @@ pub fn build() -> I18n {
             digest_overall: "📈 总体",
             digest_failed: "生成日报失败",
             digest_panic: "日报任务崩溃",
+            external_tui_not_found: "未在 PATH 中找到 gitui 或 lazygit。请安装其中之一以进行深度仓库操作。",
         },
     }
 }

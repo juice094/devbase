@@ -180,7 +180,7 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
         let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
         let policy_text = format!("{:?}", policy);
         let policy_color = match policy {
-            crate::sync::SyncPolicy::Mirror => Color::Blue,
+            crate::sync::SyncPolicy::Mirror => Color::Red,
             crate::sync::SyncPolicy::Conservative => Color::Yellow,
             crate::sync::SyncPolicy::Rebase => Color::Green,
             crate::sync::SyncPolicy::Merge => Color::Magenta,
@@ -202,6 +202,14 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 Span::styled("  策略: ", Style::default().fg(Color::DarkGray)),
                 Span::styled(policy_text, Style::default().fg(policy_color)),
             ]),
+            if policy == crate::sync::SyncPolicy::Mirror {
+                Line::from(vec![
+                    Span::styled("  ⚠ ", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+                    Span::styled(crate::i18n::current().sync.mirror_policy_warning, Style::default().fg(Color::Red)),
+                ])
+            } else {
+                Line::from("")
+            },
             Line::from(""),
 
             // === Layer 1.5: What is this repo? ===
@@ -276,6 +284,14 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
             });
 
             let mut lines: Vec<Line> = Vec::new();
+
+            if app.dry_run {
+                lines.push(Line::from(Span::styled(
+                    crate::i18n::current().sync.dry_run_badge,
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                )));
+                lines.push(Line::from(""));
+            }
 
             // If preview items are empty but popup results exist, we're in fetch-progress mode
             if app.sync_preview_items.is_empty() && !app.sync_popup_results.is_empty() {

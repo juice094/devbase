@@ -26,6 +26,7 @@ ratatui = "0.30"
 crossterm = "0.28"
 crossbeam-channel = "0.5"
 notify = "7"
+which = "7"
 
 
 

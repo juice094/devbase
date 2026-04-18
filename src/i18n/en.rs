@@ -76,6 +76,8 @@ pub fn build() -> I18n {
             status_running: "Syncing...",
             up_to_date: "Up to date on {}",
             skipped_by_user: "Skipped by user",
+            mirror_policy_warning: "Mirror policy: reset --hard may lose work",
+            dry_run_badge: "[DRY RUN]",
             local_branch_missing: "Local branch '{}' does not exist yet",
             remote_branch_missing: "Remote branch 'origin/{}' not found after fetch",
             neither_branch_exists: "Neither local nor remote branch '{}' exists",
@@ -109,6 +111,7 @@ pub fn build() -> I18n {
             digest_overall: "📈 Overall",
             digest_failed: "Failed to generate digest",
             digest_panic: "Digest task panicked",
+            external_tui_not_found: "Neither gitui nor lazygit found in PATH. Install one for deep repo operations.",
         },
     }
 }

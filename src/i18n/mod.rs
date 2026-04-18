@@ -87,6 +87,8 @@ pub struct SyncStrings {
     pub status_running: &'static str,
     pub up_to_date: &'static str,
     pub skipped_by_user: &'static str,
+    pub mirror_policy_warning: &'static str,
+    pub dry_run_badge: &'static str,
     pub local_branch_missing: &'static str,
     pub remote_branch_missing: &'static str,
     pub neither_branch_exists: &'static str,
@@ -122,6 +124,7 @@ pub struct LogStrings {
     pub digest_overall: &'static str,
     pub digest_failed: &'static str,
     pub digest_panic: &'static str,
+    pub external_tui_not_found: &'static str,
 }
 
 #[allow(dead_code)]

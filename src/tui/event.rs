@@ -5,7 +5,12 @@ use ratatui::{backend::Backend, Terminal};
 use std::io;
 use std::time::Duration;
 
-pub(crate) async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
+pub(crate) enum TuiAction {
+    Quit,
+    LaunchExternal { cmd: String, cwd: String },
+}
+
+pub(crate) async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<TuiAction> {
     loop {
         terminal.draw(|f| ui(f, app)).map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
@@ -32,7 +37,7 @@ pub(crate) async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut Ap
                     }
                     match app.input_mode {
                         InputMode::Normal => match key.code {
-                            KeyCode::Char('q') => return Ok(()),
+                            KeyCode::Char('q') => return Ok(TuiAction::Quit),
                             KeyCode::Char('r') => {
                                 app.log_info(crate::i18n::current().log.refreshing.to_string());
                                 if let Err(e) = app.load_repos() {
@@ -59,6 +64,25 @@ pub(crate) async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut Ap
                             KeyCode::Up => app.previous(),
                             KeyCode::Home | KeyCode::PageUp => app.jump_to_top(),
                             KeyCode::End | KeyCode::PageDown => app.jump_to_bottom(),
+                            KeyCode::Enter => {
+                                let cwd = app.repos.get(app.selected).map(|r| r.local_path.clone());
+                                if let Some(cwd) = cwd {
+                                    let cmd = if which::which("gitui").is_ok() {
+                                        Some("gitui")
+                                    } else if which::which("lazygit").is_ok() {
+                                        Some("lazygit")
+                                    } else {
+                                        app.log_warn(crate::i18n::current().log.external_tui_not_found.to_string());
+                                        None
+                                    };
+                                    if let Some(cmd) = cmd {
+                                        return Ok(TuiAction::LaunchExternal {
+                                            cmd: cmd.to_string(),
+                                            cwd,
+                                        });
+                                    }
+                                }
+                            }
                             _ => {}
                         },
                         InputMode::TagInput => match key.code {
