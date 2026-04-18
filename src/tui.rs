@@ -93,7 +93,7 @@ impl App {
             repo_status_job,
             loading_repo_status: HashSet::new(),
             loading_sync: HashSet::new(),
-            sync_orchestrator: crate::sync::SyncOrchestrator::new(4),
+            sync_orchestrator: crate::sync::SyncOrchestrator::new(8),
             sync_popup_mode: SyncPopupMode::Hidden,
             sync_preview_items: Vec::new(),
             sync_popup_results: Vec::new(),

@@ -224,7 +224,8 @@ impl SyncOrchestrator {
                 results
             }
             SyncMode::ASYNC | SyncMode::BlockUi => {
-                let mut handles = Vec::with_capacity(repos.len());
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, SyncSummary)>();
+                let total = repos.len();
                 for task in repos {
                     on_progress(
                         task.id.clone(),
@@ -240,7 +241,8 @@ impl SyncOrchestrator {
                         .acquire_owned()
                         .await
                         .expect("semaphore should not be closed");
-                    let handle = tokio::spawn(async move {
+                    let tx = tx.clone();
+                    tokio::spawn(async move {
                         let summary = match timeout(timeout_duration, execute_task(&task, dry_run)).await {
                             Ok(s) => s,
                             Err(_) => SyncSummary {
@@ -249,14 +251,15 @@ impl SyncOrchestrator {
                                 ..Default::default()
                             },
                         };
-                        (task.id, summary, permit)
+                        let _ = tx.send((task.id, summary));
+                        drop(permit);
                     });
-                    handles.push(handle);
                 }
 
-                let mut results = Vec::with_capacity(handles.len());
-                for handle in handles {
-                    let (id, summary, _permit) = handle.await.unwrap();
+                drop(tx);
+
+                let mut results = Vec::with_capacity(total);
+                while let Some((id, summary)) = rx.recv().await {
                     on_progress(id.clone(), summary.clone());
                     results.push((id, summary));
                 }
@@ -268,10 +271,12 @@ impl SyncOrchestrator {
     pub async fn run_fetch_all(
         &self,
         repos: Vec<RepoSyncTask>,
-        timeout_duration: Duration,
+        _timeout_duration: Duration,
         mut on_progress: impl FnMut(String, SyncSummary) + Send,
     ) -> Vec<(String, SyncSummary)> {
-        let mut handles = Vec::with_capacity(repos.len());
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, SyncSummary)>();
+        let total = repos.len();
+
         for task in repos {
             on_progress(
                 task.id.clone(),
@@ -290,41 +295,30 @@ impl SyncOrchestrator {
             let path = task.path.clone();
             let upstream = task.upstream_url.clone();
             let id = task.id.clone();
-            let handle = tokio::spawn(async move {
-                let result = tokio::time::timeout(
-                    timeout_duration,
-                    tokio::task::spawn_blocking(move || fetch_single_repo(&path, upstream.as_deref()))
-                ).await;
-                let summary = match result {
-                    Ok(Ok(Ok(()))) => SyncSummary {
+            let tx = tx.clone();
+
+            tokio::task::spawn_blocking(move || {
+                let _permit = permit;
+                let summary = match fetch_single_repo(&path, upstream.as_deref()) {
+                    Ok(()) => SyncSummary {
                         action: "FETCHED".to_string(),
                         message: format!("Fetched {}", id),
                         ..Default::default()
                     },
-                    Ok(Ok(Err(e))) => SyncSummary {
+                    Err(e) => SyncSummary {
                         action: "ERROR".to_string(),
                         message: e.to_string(),
                         ..Default::default()
                     },
-                    Ok(Err(_)) => SyncSummary {
-                        action: "ERROR".to_string(),
-                        message: "Fetch task panicked".to_string(),
-                        ..Default::default()
-                    },
-                    Err(_) => SyncSummary {
-                        action: "TIMEOUT".to_string(),
-                        message: "Fetch timed out".to_string(),
-                        ..Default::default()
-                    },
                 };
-                (id, summary, permit)
+                let _ = tx.send((id, summary));
             });
-            handles.push(handle);
         }
 
-        let mut results = Vec::with_capacity(handles.len());
-        for handle in handles {
-            let (id, summary, _permit) = handle.await.unwrap();
+        drop(tx);
+
+        let mut results = Vec::with_capacity(total);
+        while let Some((id, summary)) = rx.recv().await {
             on_progress(id.clone(), summary.clone());
             results.push((id, summary));
         }
@@ -593,7 +587,7 @@ pub async fn run(
         path_map.insert(task.id.clone(), task.path.clone());
     }
 
-    let orchestrator = SyncOrchestrator::new(4);
+    let orchestrator = SyncOrchestrator::new(8);
     let results = orchestrator
         .run_sync(
             tasks,
