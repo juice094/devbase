@@ -264,6 +264,121 @@ impl SyncOrchestrator {
             }
         }
     }
+
+    pub async fn run_fetch_all(
+        &self,
+        repos: Vec<RepoSyncTask>,
+        timeout_duration: Duration,
+        mut on_progress: impl FnMut(String, SyncSummary) + Send,
+    ) -> Vec<(String, SyncSummary)> {
+        let mut handles = Vec::with_capacity(repos.len());
+        for task in repos {
+            on_progress(
+                task.id.clone(),
+                SyncSummary {
+                    action: "FETCHING".to_string(),
+                    message: format!("Fetching {}", task.id),
+                    ..Default::default()
+                },
+            );
+            let permit = self
+                .semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .expect("semaphore should not be closed");
+            let path = task.path.clone();
+            let upstream = task.upstream_url.clone();
+            let id = task.id.clone();
+            let handle = tokio::spawn(async move {
+                let result = tokio::time::timeout(
+                    timeout_duration,
+                    tokio::task::spawn_blocking(move || fetch_single_repo(&path, upstream.as_deref()))
+                ).await;
+                let summary = match result {
+                    Ok(Ok(Ok(()))) => SyncSummary {
+                        action: "FETCHED".to_string(),
+                        message: format!("Fetched {}", id),
+                        ..Default::default()
+                    },
+                    Ok(Ok(Err(e))) => SyncSummary {
+                        action: "ERROR".to_string(),
+                        message: e.to_string(),
+                        ..Default::default()
+                    },
+                    Ok(Err(_)) => SyncSummary {
+                        action: "ERROR".to_string(),
+                        message: "Fetch task panicked".to_string(),
+                        ..Default::default()
+                    },
+                    Err(_) => SyncSummary {
+                        action: "TIMEOUT".to_string(),
+                        message: "Fetch timed out".to_string(),
+                        ..Default::default()
+                    },
+                };
+                (id, summary, permit)
+            });
+            handles.push(handle);
+        }
+
+        let mut results = Vec::with_capacity(handles.len());
+        for handle in handles {
+            let (id, summary, _permit) = handle.await.unwrap();
+            on_progress(id.clone(), summary.clone());
+            results.push((id, summary));
+        }
+        results
+    }
+}
+
+fn fetch_single_repo(path: &str, upstream_url: Option<&str>) -> anyhow::Result<()> {
+    let repo = Repository::open(path)?;
+
+    let mut remote = match repo.find_remote("origin") {
+        Ok(r) => r,
+        Err(_) => {
+            let url = upstream_url.ok_or_else(|| anyhow::anyhow!("no upstream URL"))?;
+            repo.remote("origin", url)?;
+            repo.find_remote("origin")?
+        }
+    };
+
+    if let Some(url) = upstream_url {
+        if remote.url() != Some(url) {
+            repo.remote_set_url("origin", url)?;
+            remote = repo.find_remote("origin")?;
+        }
+    }
+
+    let remote_url_str = remote.url().map(|s| s.to_string());
+    let needs_auth = remote_url_str.as_deref().map(|u| {
+        u.contains("github.com") || u.contains("gitlab.com") || u.starts_with("git@") || u.starts_with("ssh://") || u.starts_with("https://")
+    }).unwrap_or(false);
+
+    if needs_auth {
+        let mut callbacks = git2::RemoteCallbacks::new();
+        callbacks.credentials(|_url, username_from_url, _allowed_types| {
+            git2::Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
+        });
+        let mut fetch_opts = git2::FetchOptions::new();
+        fetch_opts.remote_callbacks(callbacks);
+        remote.fetch(&[] as &[&str], Some(&mut fetch_opts), None).map_err(|e| {
+            anyhow::anyhow!(
+                "{}",
+                crate::i18n::format_template(crate::i18n::current().sync.fetch_failed, &[&e.to_string()])
+            )
+        })?;
+    } else {
+        remote.fetch(&[] as &[&str], None, None).map_err(|e| {
+            anyhow::anyhow!(
+                "{}",
+                crate::i18n::format_template(crate::i18n::current().sync.fetch_failed, &[&e.to_string()])
+            )
+        })?;
+    }
+
+    Ok(())
 }
 
 async fn execute_task(task: &RepoSyncTask, dry_run: bool) -> SyncSummary {
@@ -677,60 +792,13 @@ async fn sync_repo(
     let result = tokio::task::spawn_blocking(move || {
         let repo = Repository::open(&path)?;
 
-        // Ensure origin remote points to the expected URL
-        {
-            let mut remote = match repo.find_remote("origin") {
-                Ok(r) => r,
-                Err(_) => {
-                    match upstream_url.as_deref() {
-                        Some(url) => {
-                            repo.remote("origin", url)?;
-                            repo.find_remote("origin")?
-                        }
-                        None => {
-                            return Ok(SyncSummary {
-                                action: "SKIP".to_string(),
-                                message: crate::i18n::current().sync.no_origin.to_string(),
-                                ..Default::default()
-                            });
-                        }
-                    }
-                }
-            };
-            if let Some(ref url) = upstream_url {
-                if remote.url() != Some(url) {
-                    repo.remote_set_url("origin", url)?;
-                    remote = repo.find_remote("origin")?;
-                }
-            }
-
-            // Fetch with friendly error message
-            let remote_url_str = remote.url().map(|s| s.to_string());
-            let needs_auth = remote_url_str.as_deref().map(|u| {
-                u.contains("github.com") || u.contains("gitlab.com") || u.starts_with("git@") || u.starts_with("ssh://") || u.starts_with("https://")
-            }).unwrap_or(false);
-
-            if needs_auth {
-                let mut callbacks = git2::RemoteCallbacks::new();
-                callbacks.credentials(|_url, username_from_url, _allowed_types| {
-                    git2::Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
-                });
-                let mut fetch_opts = git2::FetchOptions::new();
-                fetch_opts.remote_callbacks(callbacks);
-                remote.fetch(&[] as &[&str], Some(&mut fetch_opts), None).map_err(|e| {
-                    anyhow::anyhow!(
-                        "{}",
-                        crate::i18n::format_template(crate::i18n::current().sync.fetch_failed, &[&e.to_string()])
-                    )
-                })?;
-            } else {
-                remote.fetch(&[] as &[&str], None, None).map_err(|e| {
-                    anyhow::anyhow!(
-                        "{}",
-                        crate::i18n::format_template(crate::i18n::current().sync.fetch_failed, &[&e.to_string()])
-                    )
-                })?;
-            }
+        // Fetch latest remote state
+        if let Err(e) = fetch_single_repo(&path, upstream_url.as_deref()) {
+            return Ok(SyncSummary {
+                action: "ERROR".to_string(),
+                message: e.to_string(),
+                ..Default::default()
+            });
         }
 
         // Determine default branch

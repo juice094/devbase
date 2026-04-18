@@ -229,7 +229,11 @@ impl App {
                 ));
             }
             AsyncNotification::SyncProgress(n) => {
-                if n.action == "RUNNING" {
+                if n.repo_id == "__fetch_all_done__" && n.action == "FETCH_ALL_DONE" {
+                    self.safe_sync_preview();
+                    return;
+                }
+                if n.action == "RUNNING" || n.action == "FETCHING" {
                     self.loading_sync.remove(&n.repo_id);
                     self.sync_running.insert(n.repo_id.clone());
                 } else {
@@ -306,6 +310,65 @@ impl App {
             self.sync_popup_results.push(("system".to_string(), "No repositories eligible for safe sync.".to_string()));
             self.sync_popup_mode = SyncPopupMode::Progress;
         }
+    }
+
+    fn fetch_all_and_preview(&mut self) {
+        let tasks: Vec<_> = self.repos.iter()
+            .filter(|r| r.upstream_url.is_some())
+            .map(|repo| {
+                let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
+                crate::sync::RepoSyncTask {
+                    id: repo.id.clone(),
+                    path: repo.local_path.clone(),
+                    upstream_url: repo.upstream_url.clone(),
+                    default_branch: repo.default_branch.clone(),
+                    policy,
+                }
+            })
+            .collect();
+
+        if tasks.is_empty() {
+            self.log_info("No repositories with upstream to fetch.".to_string());
+            return;
+        }
+
+        self.sync_popup_mode = SyncPopupMode::Preview;
+        self.sync_preview_items.clear();
+        self.sync_popup_results.clear();
+        self.sync_total = tasks.len();
+        self.sync_start_time = Some(Instant::now());
+        self.sync_running.clear();
+        self.loading_sync.clear();
+
+        for t in &tasks {
+            self.sync_popup_results.push((t.id.clone(), crate::i18n::current().log.status_queued.to_string()));
+        }
+
+        let sender = self.async_tx.clone();
+        let orchestrator = self.sync_orchestrator.clone();
+        let timeout = self.sync_timeout;
+
+        tokio::spawn(async move {
+            orchestrator
+                .run_fetch_all(tasks, timeout, |id, summary| {
+                    let _ = sender.send(AsyncNotification::SyncProgress(
+                        crate::asyncgit::SyncProgressNotification {
+                            repo_id: id,
+                            action: summary.action,
+                            message: summary.message,
+                        },
+                    ));
+                })
+                .await;
+            // Signal completion to trigger preview refresh
+            let _ = sender.send(AsyncNotification::SyncProgress(
+                crate::asyncgit::SyncProgressNotification {
+                    repo_id: "__fetch_all_done__".to_string(),
+                    action: "FETCH_ALL_DONE".to_string(),
+                    message: String::new(),
+                },
+            ));
+        });
     }
 
     fn start_safe_sync(&mut self) {
@@ -415,7 +478,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::R
                                     app.log_error(crate::i18n::current().log.refresh_failed(e));
                                 }
                             }
-                            KeyCode::Char('s') => app.safe_sync_preview(),
+                            KeyCode::Char('s') => app.fetch_all_and_preview(),
                             KeyCode::Char('S') => app.start_safe_sync(),
                             KeyCode::Char('t') => {
                                 app.input_mode = InputMode::TagInput;
@@ -643,6 +706,39 @@ fn ui(frame: &mut Frame, app: &mut App) {
             });
 
             let mut lines: Vec<Line> = Vec::new();
+
+            // If preview items are empty but popup results exist, we're in fetch-progress mode
+            if app.sync_preview_items.is_empty() && !app.sync_popup_results.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    "正在获取远程状态...",
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                )));
+                lines.push(Line::from(""));
+                for (repo_id, msg) in &app.sync_popup_results {
+                    if repo_id == "system" { continue; }
+                    let color = if msg.contains("Fetched") {
+                        Color::Green
+                    } else if msg.contains("Error") || msg.contains("TIMEOUT") {
+                        Color::Red
+                    } else {
+                        Color::Yellow
+                    };
+                    lines.push(Line::from(vec![
+                        Span::raw(format!("  [{}] ", repo_id)),
+                        Span::styled(msg, Style::default().fg(color)),
+                    ]));
+                }
+
+                let popup_text = Text::from(lines);
+                let popup_para = Paragraph::new(popup_text)
+                    .block(Block::default().borders(Borders::ALL).title("Safe Sync Preview"))
+                    .wrap(Wrap { trim: true });
+
+                frame.render_widget(ratatui::widgets::Clear, popup_area);
+                frame.render_widget(popup_para, popup_area);
+                return;
+            }
+
             let safe: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::Safe).collect();
             let diverged: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::BlockedDiverged).collect();
             let dirty: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::BlockedDirty).collect();
