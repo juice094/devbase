@@ -646,6 +646,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
             let safe: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::Safe).collect();
             let diverged: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::BlockedDiverged).collect();
             let dirty: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::BlockedDirty).collect();
+            let local_ahead: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::LocalAhead).collect();
             let up_to_date: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::UpToDate).collect();
             let no_upstream: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::NoUpstream).collect();
             let unknown: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::Unknown).collect();
@@ -668,6 +669,13 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(Span::styled(format!("被阻塞 - 工作目录不干净 ({})", dirty.len()), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
                 for item in dirty {
                     lines.push(Line::from(format!("  [{}] {:?}", item.repo_id, item.policy)));
+                }
+                lines.push(Line::from(""));
+            }
+            if !local_ahead.is_empty() {
+                lines.push(Line::from(Span::styled(format!("本地超前 - 将推送 ({})", local_ahead.len()), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))));
+                for item in local_ahead {
+                    lines.push(Line::from(format!("  [{}] {:?} ahead={}", item.repo_id, item.policy, item.ahead)));
                 }
                 lines.push(Line::from(""));
             }
