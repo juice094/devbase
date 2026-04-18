@@ -60,6 +60,7 @@ pub enum SyncSafety {
 }
 
 impl SyncSafety {
+    #[allow(dead_code)]
     pub fn is_runnable(&self) -> bool {
         matches!(self, SyncSafety::Safe)
     }

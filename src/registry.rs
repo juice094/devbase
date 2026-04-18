@@ -775,6 +775,7 @@ impl WorkspaceRegistry {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn update_repo_last_synced_at(
         conn: &rusqlite::Connection,
         repo_id: &str,
@@ -787,6 +788,7 @@ impl WorkspaceRegistry {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn list_workspaces_by_tier(
         conn: &rusqlite::Connection,
         tier: &str,
@@ -1068,6 +1070,7 @@ impl WorkspaceRegistry {
     // ------------------------------------------------------------------
     // Agricultural observations (agri-paper domain extension)
     // ------------------------------------------------------------------
+    #[allow(dead_code)]
     pub fn save_agri_observation(
         conn: &rusqlite::Connection,
         obs: &AgriObservationEntry,
@@ -1096,6 +1099,7 @@ impl WorkspaceRegistry {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn query_agri_observations(
         conn: &rusqlite::Connection,
         crop: Option<&str>,

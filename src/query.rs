@@ -352,7 +352,6 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
         }
     }
 
-    let mut count = 0;
     let mut results: Vec<serde_json::Value> = Vec::new();
 
     for repo in repos {
@@ -401,7 +400,6 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
         }
 
         if matched {
-            count += 1;
             results.push(serde_json::json!({
                 "id": repo.id,
                 "local_path": repo.local_path,

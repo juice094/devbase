@@ -117,6 +117,7 @@ pub struct FolderScheduler {
 }
 
 impl FolderScheduler {
+    #[allow(dead_code)]
     pub fn new(root: PathBuf) -> Self {
         FolderScheduler {
             root,
