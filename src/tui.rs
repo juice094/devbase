@@ -610,51 +610,40 @@ fn ui(frame: &mut Frame, app: &mut App) {
     // Detail panel
     let detail_text = if let Some(repo) = app.current_repo() {
         let mut tag_line = vec![
-            Span::styled("本地标签: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled("标签: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
         ];
         tag_line.extend(tag_spans(&repo.tags));
 
-        let status_text = match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
-            (Some(d), Some(a), Some(b)) => format!("未提交={} 超前={} 落后={}", d, a, b),
-            _ => crate::i18n::current().tui.status_loading.to_string(),
+        // ── Core status block ──
+        let (dirty, ahead, behind) = match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
+            (Some(d), Some(a), Some(b)) => (d, a, b),
+            _ => (false, 0, 0),
+        };
+        let status_color = if dirty {
+            Color::Red
+        } else if behind > 0 || ahead > 0 {
+            Color::Yellow
+        } else {
+            Color::Green
+        };
+        let status_icon = if dirty { "⚠" } else if behind > 0 || ahead > 0 { "●" } else { "✓" };
+        let status_desc = if dirty {
+            "工作目录不干净".to_string()
+        } else if behind > 0 && ahead > 0 {
+            format!("分叉  ahead={} behind={}", ahead, behind)
+        } else if behind > 0 {
+            format!("落后远程 {} commit", behind)
+        } else if ahead > 0 {
+            format!("超前远程 {} commit", ahead)
+        } else {
+            "已最新".to_string()
         };
 
-        let mut lines: Vec<Line> = vec![
-            Line::from(vec![
-                Span::styled(crate::i18n::current().tui.label_id, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::raw(&repo.id),
-            ]),
-            Line::from(vec![
-                Span::styled(crate::i18n::current().tui.label_path, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::raw(&repo.local_path),
-            ]),
-            Line::from(vec![
-                Span::styled(crate::i18n::current().tui.label_branch, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::raw(repo.default_branch.as_deref().unwrap_or(crate::i18n::current().tui.status_unknown)),
-            ]),
-            Line::from(tag_line),
-            Line::from(vec![
-                Span::styled(crate::i18n::current().tui.label_language, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::raw(repo.language.as_deref().unwrap_or("—")),
-            ]),
-            Line::from(vec![
-                Span::styled(crate::i18n::current().tui.label_upstream, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::styled(
-                    repo.upstream_url.as_deref().unwrap_or("(无)"),
-                    if repo.upstream_url.is_some() {
-                        Style::default().fg(Color::Green)
-                    } else {
-                        Style::default().fg(Color::Yellow)
-                    },
-                ),
-            ]),
-            Line::from(vec![
-                Span::styled(crate::i18n::current().tui.label_status, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::raw(status_text),
-            ]),
-        ];
+        // Git HEAD + sync history
+        let head_short = read_head_commit(&repo.local_path).unwrap_or_else(|| "—".to_string());
+        let (last_sync_human, last_sync_action, last_sync_commit, health_color, health_icon) =
+            read_syncdone_info(&repo.local_path);
 
-        // Sync policy hint
         let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
         let policy_text = format!("{:?}", policy);
         let policy_color = match policy {
@@ -663,16 +652,61 @@ fn ui(frame: &mut Frame, app: &mut App) {
             crate::sync::SyncPolicy::Rebase => Color::Green,
             crate::sync::SyncPolicy::Merge => Color::Magenta,
         };
-        lines.push(Line::from(vec![
-            Span::styled("同步策略: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            Span::styled(policy_text, Style::default().fg(policy_color)),
-        ]));
-        if repo.upstream_url.is_some() {
-            lines.push(Line::from(vec![
-                Span::styled("提示: ", Style::default().fg(Color::DarkGray)),
-                Span::styled("按 s 预览同步, S 直接执行", Style::default().fg(Color::DarkGray)),
-            ]));
-        }
+
+        let lines: Vec<Line> = vec![
+            // === Layer 1: Core status (human decision-making) ===
+            Line::from(vec![
+                Span::styled(format!("{} ", status_icon), Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
+                Span::styled(&repo.id, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(vec![
+                Span::raw("    "),
+                Span::styled(status_desc, Style::default().fg(status_color)),
+            ]),
+            Line::from(vec![
+                Span::styled("HEAD: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(head_short.clone(), Style::default().fg(Color::White)),
+                Span::styled("  策略: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(policy_text, Style::default().fg(policy_color)),
+            ]),
+            Line::from(""),
+
+            // === Layer 2: Connection metadata ===
+            Line::from(vec![
+                Span::styled("分支: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::raw(repo.default_branch.as_deref().unwrap_or("—")),
+                Span::styled("  语言: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::raw(repo.language.as_deref().unwrap_or("—")),
+            ]),
+            Line::from(vec![
+                Span::styled("远程: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    repo.upstream_url.as_deref().unwrap_or("(无)"),
+                    if repo.upstream_url.is_some() { Style::default().fg(Color::Green) } else { Style::default().fg(Color::Yellow) },
+                ),
+            ]),
+            Line::from(tag_line),
+            Line::from(""),
+
+            // === Layer 3: Sync history (context for humans, raw data for AI) ===
+            Line::from(vec![
+                Span::styled(format!("{} 同步健康: ", health_icon), Style::default().fg(health_color)),
+                Span::styled(last_sync_human, Style::default().fg(health_color)),
+            ]),
+            Line::from(vec![
+                Span::styled("上次结果: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(last_sync_action.clone(), Style::default().fg(Color::White)),
+                Span::styled("  commit: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(last_sync_commit.clone(), Style::default().fg(Color::White)),
+            ]),
+            Line::from(""),
+
+            // === Layer 4: Action hint ===
+            Line::from(vec![
+                Span::styled("操作: ", Style::default().fg(Color::DarkGray)),
+                Span::styled("s 预览  S 执行  r 刷新", Style::default().fg(Color::DarkGray)),
+            ]),
+        ];
 
         Text::from(lines)
     } else {
@@ -998,6 +1032,62 @@ fn tag_spans(tags: &[String]) -> Vec<Span<'_>> {
         spans.push(Span::raw("(无)"));
     }
     spans
+}
+
+fn read_head_commit(path: &str) -> Option<String> {
+    let repo = git2::Repository::open(path).ok()?;
+    let head = repo.head().ok()?;
+    let oid = head.target()?;
+    Some(oid.to_string().chars().take(7).collect())
+}
+
+fn read_syncdone_info(path: &str) -> (String, String, String, Color, &'static str) {
+    let default = || ("从未同步".to_string(), "—".to_string(), "—".to_string(), Color::Red, "⚠");
+
+    let content = match std::fs::read_to_string(std::path::Path::new(path).join(".devbase").join("syncdone")) {
+        Ok(c) => c,
+        Err(_) => return default(),
+    };
+    let json: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(j) => j,
+        Err(_) => return default(),
+    };
+
+    let timestamp_str = match json.get("timestamp").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => return default(),
+    };
+    let action = json.get("action").and_then(|v| v.as_str()).unwrap_or("—").to_string();
+    let commit = json.get("local_commit").and_then(|v| v.as_str()).unwrap_or("—").to_string();
+    let commit_short: String = commit.chars().take(7).collect();
+
+    let dt = match chrono::DateTime::parse_from_rfc3339(timestamp_str) {
+        Ok(d) => d.with_timezone(&chrono::Utc),
+        Err(_) => return default(),
+    };
+    let duration = chrono::Utc::now().signed_duration_since(dt);
+
+    let human = if duration.num_seconds() < 60 {
+        "刚刚".to_string()
+    } else if duration.num_minutes() < 60 {
+        format!("{}分钟前", duration.num_minutes())
+    } else if duration.num_hours() < 24 {
+        format!("{}小时前", duration.num_hours())
+    } else if duration.num_days() < 7 {
+        format!("{}天前", duration.num_days())
+    } else {
+        format!("{}周前", duration.num_days() / 7)
+    };
+
+    let (color, icon) = if duration.num_days() < 1 {
+        (Color::Green, "✓")
+    } else if duration.num_days() < 3 {
+        (Color::Yellow, "●")
+    } else {
+        (Color::Red, "⚠")
+    };
+
+    (human, action, commit_short, color, icon)
 }
 
 fn format_log_line(line: &str) -> Line<'_> {
