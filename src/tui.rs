@@ -25,13 +25,6 @@ struct RepoItem {
     status_dirty: Option<bool>,
     status_ahead: Option<usize>,
     status_behind: Option<usize>,
-    // Fetch preview cache
-    local_commit: Option<String>,
-    remote_commit: Option<String>,
-    last_preview_branch: Option<String>,
-    last_preview_ahead: Option<usize>,
-    last_preview_behind: Option<usize>,
-    last_preview_synced: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -51,6 +44,7 @@ enum SyncPopupMode {
 struct SyncPreviewItem {
     repo_id: String,
     safety: crate::sync::SyncSafety,
+    policy: crate::sync::SyncPolicy,
     ahead: usize,
     behind: usize,
 }
@@ -66,9 +60,7 @@ pub struct App {
     async_rx: Receiver<AsyncNotification>,
     async_tx: crossbeam_channel::Sender<AsyncNotification>,
     repo_status_job: crate::asyncgit::AsyncSingleJob<crate::asyncgit::AsyncRepoStatus>,
-    fetch_preview_job: crate::asyncgit::AsyncSingleJob<crate::asyncgit::AsyncFetchPreview>,
     loading_repo_status: HashSet<String>,
-    loading_preview: HashSet<String>,
     loading_sync: HashSet<String>,
     sync_orchestrator: crate::sync::SyncOrchestrator,
     sync_popup_mode: SyncPopupMode,
@@ -84,7 +76,6 @@ impl App {
     fn new() -> anyhow::Result<Self> {
         let (async_tx, async_rx) = bounded::<AsyncNotification>(100);
         let repo_status_job = crate::asyncgit::AsyncSingleJob::new(async_tx.clone());
-        let fetch_preview_job = crate::asyncgit::AsyncSingleJob::new(async_tx.clone());
 
         let timeout_secs = crate::config::Config::load()
             .map(|c| c.sync.timeout_seconds)
@@ -100,9 +91,7 @@ impl App {
             async_rx,
             async_tx: async_tx.clone(),
             repo_status_job,
-            fetch_preview_job,
             loading_repo_status: HashSet::new(),
-            loading_preview: HashSet::new(),
             loading_sync: HashSet::new(),
             sync_orchestrator: crate::sync::SyncOrchestrator::new(4),
             sync_popup_mode: SyncPopupMode::Hidden,
@@ -135,12 +124,6 @@ impl App {
                 status_dirty: None,
                 status_ahead: None,
                 status_behind: None,
-                local_commit: None,
-                remote_commit: None,
-                last_preview_branch: None,
-                last_preview_ahead: None,
-                last_preview_behind: None,
-                last_preview_synced: None,
             });
         }
         // Sort: group by primary tag, then by id
@@ -232,27 +215,6 @@ impl App {
         self.repos.get(self.selected)
     }
 
-    fn sync_preview(&mut self) {
-        let repo = match self.current_repo().cloned() {
-            Some(r) => r,
-            None => {
-                self.log_warn(crate::i18n::current().log.no_repo_selected.to_string());
-                return;
-            }
-        };
-
-        self.log_info(crate::i18n::current().log.fetching_preview(&repo.id));
-        self.loading_preview.insert(repo.id.clone());
-
-        self.fetch_preview_job
-            .spawn(crate::asyncgit::AsyncFetchPreview {
-                repo_id: repo.id,
-                local_path: repo.local_path,
-                upstream_url: repo.upstream_url,
-                default_branch: repo.default_branch,
-            });
-    }
-
     fn update_async(&mut self, notification: AsyncNotification) {
         match notification {
             AsyncNotification::RepoStatus(n) => {
@@ -265,18 +227,6 @@ impl App {
                 self.log_info(crate::i18n::current().log.status_fmt(
                     &n.repo_id, n.dirty, n.ahead, n.behind
                 ));
-            }
-            AsyncNotification::FetchPreview(n) => {
-                self.loading_preview.remove(&n.repo_id);
-                self.log_info(n.msg);
-                if let Some(repo) = self.repos.iter_mut().find(|r| r.id == n.repo_id) {
-                    repo.local_commit = n.local_commit;
-                    repo.remote_commit = n.remote_commit;
-                    repo.last_preview_branch = n.branch;
-                    repo.last_preview_ahead = n.ahead;
-                    repo.last_preview_behind = n.behind;
-                    repo.last_preview_synced = n.is_synced;
-                }
             }
             AsyncNotification::SyncProgress(n) => {
                 if n.action == "RUNNING" {
@@ -346,6 +296,7 @@ impl App {
             self.sync_preview_items.push(SyncPreviewItem {
                 repo_id: repo.id.clone(),
                 safety,
+                policy,
                 ahead,
                 behind,
             });
@@ -464,8 +415,8 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::R
                                     app.log_error(crate::i18n::current().log.refresh_failed(e));
                                 }
                             }
-                            KeyCode::Char('s') => app.sync_preview(),
-                            KeyCode::Char('S') => app.safe_sync_preview(),
+                            KeyCode::Char('s') => app.safe_sync_preview(),
+                            KeyCode::Char('S') => app.start_safe_sync(),
                             KeyCode::Char('t') => {
                                 app.input_mode = InputMode::TagInput;
                                 app.input_buffer.clear();
@@ -542,7 +493,6 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 prefix.push_str("📁 ");
             }
             if app.loading_repo_status.contains(&repo.id)
-                || app.loading_preview.contains(&repo.id)
                 || app.loading_sync.contains(&repo.id)
             {
                 prefix.push_str("⏳ ");
@@ -555,7 +505,6 @@ fn ui(frame: &mut Frame, app: &mut App) {
             };
 
             let fg = if app.loading_repo_status.contains(&repo.id)
-                || app.loading_preview.contains(&repo.id)
                 || app.loading_sync.contains(&repo.id)
             {
                 Color::LightCyan
@@ -642,31 +591,23 @@ fn ui(frame: &mut Frame, app: &mut App) {
             ]),
         ];
 
-        // Commit comparison line (from fetch preview)
-        if let (Some(local), Some(remote)) = (&repo.local_commit, &repo.remote_commit) {
-            let local_short = &local[..local.len().min(7)];
-            let remote_short = &remote[..remote.len().min(7)];
-            let synced = repo.last_preview_synced.unwrap_or(false);
-            let cmp_text = if synced {
-                format!("{} == {} ✓", local_short, remote_short)
-            } else {
-                format!("{} ≠ {}", local_short, remote_short)
-            };
-            let cmp_color = if synced { Color::Green } else { Color::Yellow };
+        // Sync policy hint
+        let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
+        let policy_text = format!("{:?}", policy);
+        let policy_color = match policy {
+            crate::sync::SyncPolicy::Mirror => Color::Blue,
+            crate::sync::SyncPolicy::Conservative => Color::Yellow,
+            crate::sync::SyncPolicy::Rebase => Color::Green,
+            crate::sync::SyncPolicy::Merge => Color::Magenta,
+        };
+        lines.push(Line::from(vec![
+            Span::styled("同步策略: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(policy_text, Style::default().fg(policy_color)),
+        ]));
+        if repo.upstream_url.is_some() {
             lines.push(Line::from(vec![
-                Span::styled("版本对比: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::styled(cmp_text, Style::default().fg(cmp_color)),
-            ]));
-            if let Some(branch) = &repo.last_preview_branch {
-                lines.push(Line::from(vec![
-                    Span::styled("对比分支: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                    Span::raw(branch),
-                ]));
-            }
-        } else if repo.upstream_url.is_some() {
-            lines.push(Line::from(vec![
-                Span::styled("版本对比: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::styled("按 s 获取远程版本对比", Style::default().fg(Color::DarkGray)),
+                Span::styled("提示: ", Style::default().fg(Color::DarkGray)),
+                Span::styled("按 s 预览同步, S 直接执行", Style::default().fg(Color::DarkGray)),
             ]));
         }
 
@@ -712,45 +653,51 @@ fn ui(frame: &mut Frame, app: &mut App) {
             if !safe.is_empty() {
                 lines.push(Line::from(Span::styled(format!("将执行 ({})", safe.len()), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))));
                 for item in safe {
-                    lines.push(Line::from(format!("  [{}] behind={}", item.repo_id, item.behind)));
+                    lines.push(Line::from(format!("  [{}] {:?} behind={}", item.repo_id, item.policy, item.behind)));
                 }
                 lines.push(Line::from(""));
             }
             if !diverged.is_empty() {
                 lines.push(Line::from(Span::styled(format!("被阻塞 - 分叉 ({})", diverged.len()), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
                 for item in diverged {
-                    lines.push(Line::from(format!("  [{}] ahead={} behind={}", item.repo_id, item.ahead, item.behind)));
+                    lines.push(Line::from(format!("  [{}] {:?} ahead={} behind={}", item.repo_id, item.policy, item.ahead, item.behind)));
                 }
                 lines.push(Line::from(""));
             }
             if !dirty.is_empty() {
                 lines.push(Line::from(Span::styled(format!("被阻塞 - 工作目录不干净 ({})", dirty.len()), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
                 for item in dirty {
-                    lines.push(Line::from(format!("  [{}]", item.repo_id)));
+                    lines.push(Line::from(format!("  [{}] {:?}", item.repo_id, item.policy)));
                 }
                 lines.push(Line::from(""));
             }
             if !up_to_date.is_empty() {
                 lines.push(Line::from(Span::styled(format!("已最新 ({})", up_to_date.len()), Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD))));
                 for item in up_to_date {
-                    lines.push(Line::from(format!("  [{}]", item.repo_id)));
+                    lines.push(Line::from(format!("  [{}] {:?}", item.repo_id, item.policy)));
                 }
                 lines.push(Line::from(""));
             }
             if !no_upstream.is_empty() {
                 lines.push(Line::from(Span::styled(format!("无远程 ({})", no_upstream.len()), Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD))));
                 for item in no_upstream {
-                    lines.push(Line::from(format!("  [{}]", item.repo_id)));
+                    lines.push(Line::from(format!("  [{}] {:?}", item.repo_id, item.policy)));
                 }
                 lines.push(Line::from(""));
             }
             if !unknown.is_empty() {
                 lines.push(Line::from(Span::styled(format!("异常 ({})", unknown.len()), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
                 for item in unknown {
-                    lines.push(Line::from(format!("  [{}]", item.repo_id)));
+                    lines.push(Line::from(format!("  [{}] {:?}", item.repo_id, item.policy)));
                 }
                 lines.push(Line::from(""));
             }
+
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "注：基于本地缓存评估，同步前会重新获取远程状态",
+                Style::default().fg(Color::DarkGray),
+            )));
 
             let popup_text = Text::from(lines);
             let popup_para = Paragraph::new(popup_text)
