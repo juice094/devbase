@@ -175,7 +175,10 @@ impl SyncOrchestrator {
                 results
             }
             SyncMode::ASYNC | SyncMode::BlockUi => {
-                let mut handles = Vec::with_capacity(repos.len());
+                // FIXME: ASYNC branch temporarily falls back to sequential execution
+                // to avoid tokio::spawn scheduling deadlock on Windows multi-repo sync.
+                // Re-enable true concurrency once root cause is identified.
+                let mut results = Vec::with_capacity(repos.len());
                 for task in repos {
                     on_progress(
                         task.id.clone(),
@@ -185,32 +188,16 @@ impl SyncOrchestrator {
                             ..Default::default()
                         },
                     );
-                    let permit = self
-                        .semaphore
-                        .clone()
-                        .acquire_owned()
-                        .await
-                        .expect("semaphore should not be closed");
-                    let strategy = strategy.to_string();
-                    let handle = tokio::spawn(async move {
-                        let summary = match timeout(timeout_duration, execute_task(&task, dry_run, &strategy)).await {
-                            Ok(s) => s,
-                            Err(_) => SyncSummary {
-                                action: "TIMEOUT".to_string(),
-                                message: crate::i18n::current().sync.network_timeout.to_string(),
-                                ..Default::default()
-                            },
-                        };
-                        (task.id, summary, permit)
-                    });
-                    handles.push(handle);
-                }
-
-                let mut results = Vec::with_capacity(handles.len());
-                for handle in handles {
-                    let (id, summary, _permit) = handle.await.unwrap();
-                    on_progress(id.clone(), summary.clone());
-                    results.push((id, summary));
+                    let summary = match timeout(timeout_duration, execute_task(&task, dry_run, strategy)).await {
+                        Ok(s) => s,
+                        Err(_) => SyncSummary {
+                            action: "TIMEOUT".to_string(),
+                            message: crate::i18n::current().sync.network_timeout.to_string(),
+                            ..Default::default()
+                        },
+                    };
+                    on_progress(task.id.clone(), summary.clone());
+                    results.push((task.id, summary));
                 }
                 results
             }
