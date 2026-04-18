@@ -14,6 +14,7 @@ mod mcp;
 mod query;
 mod registry;
 mod scan;
+mod search;
 mod sync;
 mod sync_protocol;
 mod syncthing_client;
@@ -108,23 +109,13 @@ enum Commands {
     },
     /// Launch interactive TUI
     Tui,
-    /// Run as an MCP server
-    Mcp {
-        /// Transport protocol: stdio or sse
-        #[arg(long, default_value = "stdio")]
-        transport: String,
-        /// Port for SSE transport (default: 3001)
-        #[arg(long, default_value_t = 3001)]
-        port: u16,
-    },
+    /// Run as an MCP server (stdio transport)
+    Mcp,
     /// Start the background daemon for knowledge maintenance
     Daemon {
         /// Tick interval in seconds
         #[arg(long)]
         interval: Option<u64>,
-        /// Enable built-in SSE MCP server on this port (0 = disabled)
-        #[arg(long, default_value_t = 0)]
-        sse_port: u16,
     },
     /// Watch a directory for changes and schedule sync actions
     Watch {
@@ -317,16 +308,12 @@ async fn main() -> anyhow::Result<()> {
             info!("{}", crate::i18n::current().cli.launching_tui);
             tui::run().await?;
         }
-        Commands::Mcp { transport, port } => {
-            match transport.as_str() {
-                "stdio" => mcp::run_stdio().await?,
-                "sse" => mcp::run_sse(port).await?,
-                _ => anyhow::bail!("Unsupported transport: {}. Use 'stdio' or 'sse'.", transport),
-            }
+        Commands::Mcp => {
+            mcp::run_stdio().await?;
         }
-        Commands::Daemon { interval, sse_port } => {
+        Commands::Daemon { interval } => {
             let interval = interval.unwrap_or(config.daemon.interval_seconds);
-            let d = daemon::Daemon::new(interval, sse_port, config.clone());
+            let d = daemon::Daemon::new(interval, config.clone());
             d.run().await?;
         }
         Commands::Watch { path, duration } => {

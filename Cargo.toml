@@ -17,6 +17,7 @@ walkdir = "2"
 anyhow = "1"
 serde_json = "1"
 reqwest = { version = "0.12", features = ["json"] }
+tantivy = "0.26"
 dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
 rusqlite = { version = "0.34", features = ["bundled", "chrono"] }
@@ -25,10 +26,8 @@ ratatui = "0.30"
 crossterm = "0.28"
 crossbeam-channel = "0.5"
 notify = "7"
-axum = { version = "0.8", features = ["tokio"] }
-tokio-stream = "0.1"
-uuid = { version = "1", features = ["v4"] }
-clarity-core = { path = "../../clarity/crates/clarity-core", features = ["deepseek", "dashscope"] }
+
+
 
 [dev-dependencies]
 tempfile = "3"

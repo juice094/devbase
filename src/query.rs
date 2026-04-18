@@ -244,8 +244,6 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
             }));
         }
 
-        let top_ids = results.iter().take(10).map(|r| r.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string()).collect::<Vec<_>>().join(",");
-        let _ = WorkspaceRegistry::log_query(&conn, query_str, "semantic", count, &top_ids);
         return Ok(serde_json::json!({
             "success": true,
             "count": count,
@@ -286,8 +284,6 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
             "tags": p.tags.join(","),
             "match_reasons": ["paper"]
         })).collect();
-        let top_ids = results.iter().take(10).map(|r| r.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string()).collect::<Vec<_>>().join(",");
-        let _ = WorkspaceRegistry::log_query(&conn, query_str, "paper", count, &top_ids);
         return Ok(serde_json::json!({
             "success": true,
             "count": count,
@@ -325,8 +321,6 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
             "timestamp": e.timestamp.to_rfc3339(),
             "match_reasons": ["experiment"]
         })).collect();
-        let top_ids = results.iter().take(10).map(|r| r.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string()).collect::<Vec<_>>().join(",");
-        let _ = WorkspaceRegistry::log_query(&conn, query_str, "experiment", count, &top_ids);
         return Ok(serde_json::json!({
             "success": true,
             "count": count,
@@ -419,10 +413,6 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
     } else {
         results
     };
-
-    let top_ids = paged_results.iter().take(10).map(|r| r.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string()).collect::<Vec<_>>().join(",");
-    let query_type = if query_str.starts_with("semantic:") { "semantic" } else { "structured" };
-    let _ = WorkspaceRegistry::log_query(&conn, query_str, query_type, total_results, &top_ids);
 
     info!("Query executed: {}", query_str);
     Ok(serde_json::json!({

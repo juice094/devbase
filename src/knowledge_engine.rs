@@ -428,6 +428,35 @@ fn parse_llm_json(text: &str) -> Option<(String, String)> {
     Some((summary, keywords))
 }
 
+async fn call_llm(api_key: &str, base_url: &str, model: &str, prompt: &str, max_tokens: u32) -> anyhow::Result<String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()?;
+    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+    });
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+    let status = response.status();
+    let json: serde_json::Value = response.json().await?;
+    if !status.is_success() {
+        anyhow::bail!("LLM API error: {}", json["error"]["message"].as_str().unwrap_or("unknown"));
+    }
+    let content = json["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    Ok(content)
+}
+
 fn try_llm_summary(path: &Path, config: &crate::config::LlmConfig) -> Option<(String, String)> {
     if !config.enabled {
         return None;
@@ -455,67 +484,39 @@ fn try_llm_summary(path: &Path, config: &crate::config::LlmConfig) -> Option<(St
         };
     }
 
-    let mut registry = clarity_core::llm::ProviderRegistry::default();
-
-    if config.provider == "deepseek" {
-        if let Some(ref key) = config.api_key {
-            if let Ok(provider) = clarity_core::llm::ProviderConfigBuilder::new()
-                .api_key(key)
-                .build_deepseek()
-            {
-                registry.register(provider);
-            }
-        }
-    } else if config.provider == "dashscope" {
-        if let Some(ref key) = config.api_key {
-            if let Ok(provider) = clarity_core::llm::ProviderConfigBuilder::new()
-                .api_key(key)
-                .build_dashscope()
-            {
-                registry.register(provider);
-            }
-        }
-    } else if config.provider == "kimi" {
-        if let Some(ref key) = config.api_key {
-            let base_url = config.base_url.as_deref()
-                .unwrap_or("https://api.moonshot.cn/v1");
-            let default_model = config.model.as_deref()
-                .unwrap_or("kimi-k2-07132k");
-            let kimi_config = clarity_core::llm::kimi::KimiConfig {
-                api_key: key.clone(),
-                base_url: base_url.to_string(),
-                default_model: default_model.to_string(),
-            };
-            registry.register(clarity_core::llm::kimi::KimiProvider::new(kimi_config));
-        }
-    } else if config.provider == "openai" {
-        if let Some(ref key) = config.api_key {
-            let base_url = config.base_url.as_deref()
-                .unwrap_or("https://api.openai.com/v1");
-            let default_model = config.model.as_deref()
-                .unwrap_or("gpt-4o");
-            let openai_config = clarity_core::llm::openai::OpenAiProviderConfig {
-                api_key: key.clone(),
-                base_url: base_url.to_string(),
-                default_model: default_model.to_string(),
-                organization: None,
-            };
-            registry.register(clarity_core::llm::openai::OpenAiProvider::new(openai_config));
-        }
-    }
-
-    let provider = registry.get(&config.provider).ok()?;
-    let request = clarity_core::llm::LlmRequest::new(build_llm_prompt(&context))
-        .with_max_tokens(config.max_tokens);
+    let api_key = config.api_key.as_deref()?;
+    let (base_url, model) = match config.provider.as_str() {
+        "deepseek" => (
+            config.base_url.as_deref().unwrap_or("https://api.deepseek.com/v1"),
+            config.model.as_deref().unwrap_or("deepseek-chat"),
+        ),
+        "kimi" => (
+            config.base_url.as_deref().unwrap_or("https://api.moonshot.cn/v1"),
+            config.model.as_deref().unwrap_or("kimi-k2-07132k"),
+        ),
+        "openai" => (
+            config.base_url.as_deref().unwrap_or("https://api.openai.com/v1"),
+            config.model.as_deref().unwrap_or("gpt-4o"),
+        ),
+        "dashscope" => (
+            config.base_url.as_deref().unwrap_or("https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            config.model.as_deref().unwrap_or("qwen-max"),
+        ),
+        _ => return None,
+    };
 
     let rt = tokio::runtime::Runtime::new().ok()?;
-    let future = provider.complete(request);
+    let prompt = build_llm_prompt(&context);
     let result = rt.block_on(async {
-        tokio::time::timeout(Duration::from_secs(config.timeout_seconds), future).await
+        tokio::time::timeout(
+            Duration::from_secs(config.timeout_seconds),
+            call_llm(api_key, base_url, model, &prompt, config.max_tokens),
+        )
+        .await
     });
 
     match result {
-        Ok(Ok(response)) => parse_llm_json(&response.content),
+        Ok(Ok(content)) => parse_llm_json(&content),
         Ok(Err(e)) => {
             tracing::debug!("LLM completion error: {}", e);
             None

@@ -175,10 +175,7 @@ impl SyncOrchestrator {
                 results
             }
             SyncMode::ASYNC | SyncMode::BlockUi => {
-                // FIXME: ASYNC branch temporarily falls back to sequential execution
-                // to avoid tokio::spawn scheduling deadlock on Windows multi-repo sync.
-                // Re-enable true concurrency once root cause is identified.
-                let mut results = Vec::with_capacity(repos.len());
+                let mut handles = Vec::with_capacity(repos.len());
                 for task in repos {
                     on_progress(
                         task.id.clone(),
@@ -188,16 +185,32 @@ impl SyncOrchestrator {
                             ..Default::default()
                         },
                     );
-                    let summary = match timeout(timeout_duration, execute_task(&task, dry_run, strategy)).await {
-                        Ok(s) => s,
-                        Err(_) => SyncSummary {
-                            action: "TIMEOUT".to_string(),
-                            message: crate::i18n::current().sync.network_timeout.to_string(),
-                            ..Default::default()
-                        },
-                    };
-                    on_progress(task.id.clone(), summary.clone());
-                    results.push((task.id, summary));
+                    let permit = self
+                        .semaphore
+                        .clone()
+                        .acquire_owned()
+                        .await
+                        .expect("semaphore should not be closed");
+                    let strategy = strategy.to_string();
+                    let handle = tokio::spawn(async move {
+                        let summary = match timeout(timeout_duration, execute_task(&task, dry_run, &strategy)).await {
+                            Ok(s) => s,
+                            Err(_) => SyncSummary {
+                                action: "TIMEOUT".to_string(),
+                                message: crate::i18n::current().sync.network_timeout.to_string(),
+                                ..Default::default()
+                            },
+                        };
+                        (task.id, summary, permit)
+                    });
+                    handles.push(handle);
+                }
+
+                let mut results = Vec::with_capacity(handles.len());
+                for handle in handles {
+                    let (id, summary, _permit) = handle.await.unwrap();
+                    on_progress(id.clone(), summary.clone());
+                    results.push((id, summary));
                 }
                 results
             }
@@ -227,7 +240,13 @@ async fn execute_task(task: &RepoSyncTask, dry_run: bool, strategy: &str) -> Syn
 
     // Pre-flight safety assessment for auto-pull
     if strategy == "auto-pull" {
-        let safety = assess_safety(&task.path, &task.tags, &["own-project", "tool"]);
+        let path = task.path.clone();
+        let tags = task.tags.clone();
+        let safety = tokio::task::spawn_blocking(move || {
+            assess_safety(&path, &tags, &["own-project", "tool"])
+        })
+        .await
+        .unwrap_or(SyncSafety::Unknown);
         match safety {
             SyncSafety::BlockedDirty => {
                 return SyncSummary {

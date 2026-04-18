@@ -74,24 +74,6 @@ pub struct WorkspaceSnapshot {
     pub checked_at: DateTime<Utc>,
 }
 
-/// Agricultural observation record for devbase domain extension.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgriObservationEntry {
-    pub id: String,
-    pub repo_id: Option<String>,
-    pub crop: String,
-    pub disease: Option<String>,
-    pub symptoms: Option<String>,
-    pub treatment: Option<String>,
-    pub region: Option<String>,
-    pub severity: Option<String>,
-    pub confidence: Option<f64>,
-    pub source: Option<String>,
-    pub observed_at: Option<DateTime<Utc>>,
-    pub lat: Option<f64>,
-    pub lon: Option<f64>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OplogEntry {
     pub id: Option<i64>,
@@ -265,17 +247,6 @@ impl WorkspaceRegistry {
 
         // 学习痕迹
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS ai_queries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                query_text TEXT NOT NULL,
-                query_type TEXT,
-                results_count INTEGER DEFAULT 0,
-                top_result_ids TEXT,
-                timestamp TEXT NOT NULL
-            )",
-            [],
-        )?;
-        conn.execute(
             "CREATE TABLE IF NOT EXISTS ai_discoveries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 repo_id TEXT,
@@ -379,50 +350,9 @@ impl WorkspaceRegistry {
             [],
         )?;
 
-        // v5: agricultural observations (agri-paper domain extension)
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS agri_observations (
-                id TEXT PRIMARY KEY,
-                repo_id TEXT,
-                crop TEXT NOT NULL,
-                disease TEXT,
-                symptoms TEXT,
-                treatment TEXT,
-                region TEXT,
-                severity TEXT CHECK (severity IN ('mild', 'moderate', 'severe', 'critical')),
-                confidence REAL CHECK (confidence >= 0.0 AND confidence <= 1.0),
-                source TEXT,
-                observed_at TEXT,
-                lat REAL,
-                lon REAL,
-                FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
-            )",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_agri_crop ON agri_observations(crop)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_agri_disease ON agri_observations(disease)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_agri_region ON agri_observations(region)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_agri_crop_region ON agri_observations(crop, region)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_agri_source ON agri_observations(source)",
-            [],
-        )?;
-
         // Schema versioning for future migrations
         let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        const CURRENT_SCHEMA_VERSION: i32 = 5;
+        const CURRENT_SCHEMA_VERSION: i32 = 6;
         if user_version < CURRENT_SCHEMA_VERSION && path.exists() {
             if let Err(e) = crate::backup::auto_backup_before_migration(&path) {
                 tracing::warn!("Failed to auto-backup registry before migration: {}", e);
@@ -495,40 +425,13 @@ impl WorkspaceRegistry {
             conn.execute("PRAGMA user_version = 4", [])?;
         }
         if user_version < 5 {
-            let agri_exists: bool = conn
-                .query_row(
-                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agri_observations'",
-                    [],
-                    |_| Ok(true),
-                )
-                .unwrap_or(false);
-            if !agri_exists {
-                conn.execute(
-                    "CREATE TABLE agri_observations (
-                        id TEXT PRIMARY KEY,
-                        repo_id TEXT,
-                        crop TEXT NOT NULL,
-                        disease TEXT,
-                        symptoms TEXT,
-                        treatment TEXT,
-                        region TEXT,
-                        severity TEXT CHECK (severity IN ('mild', 'moderate', 'severe', 'critical')),
-                        confidence REAL CHECK (confidence >= 0.0 AND confidence <= 1.0),
-                        source TEXT,
-                        observed_at TEXT,
-                        lat REAL,
-                        lon REAL,
-                        FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
-                    )",
-                    [],
-                )?;
-                conn.execute("CREATE INDEX idx_agri_crop ON agri_observations(crop)", [])?;
-                conn.execute("CREATE INDEX idx_agri_disease ON agri_observations(disease)", [])?;
-                conn.execute("CREATE INDEX idx_agri_region ON agri_observations(region)", [])?;
-                conn.execute("CREATE INDEX idx_agri_crop_region ON agri_observations(crop, region)", [])?;
-                conn.execute("CREATE INDEX idx_agri_source ON agri_observations(source)", [])?;
-            }
             conn.execute("PRAGMA user_version = 5", [])?;
+        }
+        if user_version < 6 {
+            // Drop unused tables from earlier schema versions
+            let _ = conn.execute("DROP TABLE IF EXISTS ai_queries", []);
+            let _ = conn.execute("DROP TABLE IF EXISTS agri_observations", []);
+            conn.execute("PRAGMA user_version = 6", [])?;
         }
 
         // One-time migration from legacy table
@@ -893,20 +796,6 @@ impl WorkspaceRegistry {
         Ok(())
     }
 
-    pub fn log_query(
-        conn: &rusqlite::Connection,
-        text: &str,
-        qtype: &str,
-        count: usize,
-        top_ids: &str,
-    ) -> anyhow::Result<()> {
-        conn.execute(
-            "INSERT INTO ai_queries (query_text, query_type, results_count, top_result_ids, timestamp) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![text, qtype, count as i64, top_ids, Utc::now().to_rfc3339()],
-        )?;
-        Ok(())
-    }
-
     pub fn save_discovery(
         conn: &rusqlite::Connection,
         repo_id: Option<&str>,
@@ -1062,94 +951,6 @@ impl WorkspaceRegistry {
                 timestamp: DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
                     .map(|dt| dt.with_timezone(&Utc))
                     .unwrap_or_else(|_| Utc::now()),
-            })
-        })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-    }
-
-    // ------------------------------------------------------------------
-    // Agricultural observations (agri-paper domain extension)
-    // ------------------------------------------------------------------
-    #[allow(dead_code)]
-    pub fn save_agri_observation(
-        conn: &rusqlite::Connection,
-        obs: &AgriObservationEntry,
-    ) -> anyhow::Result<()> {
-        conn.execute(
-            "INSERT OR REPLACE INTO agri_observations (
-                id, repo_id, crop, disease, symptoms, treatment, region,
-                severity, confidence, source, observed_at, lat, lon
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-            rusqlite::params![
-                &obs.id,
-                obs.repo_id.as_ref(),
-                &obs.crop,
-                obs.disease.as_ref(),
-                obs.symptoms.as_ref(),
-                obs.treatment.as_ref(),
-                obs.region.as_ref(),
-                obs.severity.as_ref(),
-                obs.confidence,
-                obs.source.as_ref(),
-                obs.observed_at.map(|dt| dt.to_rfc3339()),
-                obs.lat,
-                obs.lon,
-            ],
-        )?;
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    pub fn query_agri_observations(
-        conn: &rusqlite::Connection,
-        crop: Option<&str>,
-        region: Option<&str>,
-        disease: Option<&str>,
-        limit: usize,
-    ) -> anyhow::Result<Vec<AgriObservationEntry>> {
-        let mut conditions = Vec::new();
-        let mut param_vals: Vec<String> = Vec::new();
-        if let Some(c) = crop {
-            conditions.push("crop = ?".to_string());
-            param_vals.push(c.to_string());
-        }
-        if let Some(r) = region {
-            conditions.push("region = ?".to_string());
-            param_vals.push(r.to_string());
-        }
-        if let Some(d) = disease {
-            conditions.push("disease = ?".to_string());
-            param_vals.push(d.to_string());
-        }
-        let where_clause = if conditions.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", conditions.join(" AND "))
-        };
-        let sql = format!(
-            "SELECT id, repo_id, crop, disease, symptoms, treatment, region, severity, confidence, source, observed_at, lat, lon FROM agri_observations {} ORDER BY observed_at DESC LIMIT {}",
-            where_clause,
-            limit
-        );
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(rusqlite::params_from_iter(param_vals.iter()), |row| {
-            let observed_at: Option<String> = row.get(10)?;
-            Ok(AgriObservationEntry {
-                id: row.get(0)?,
-                repo_id: row.get(1)?,
-                crop: row.get(2)?,
-                disease: row.get(3)?,
-                symptoms: row.get(4)?,
-                treatment: row.get(5)?,
-                region: row.get(6)?,
-                severity: row.get(7)?,
-                confidence: row.get(8)?,
-                source: row.get(9)?,
-                observed_at: observed_at
-                    .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                    .map(|dt| dt.with_timezone(&Utc)),
-                lat: row.get(11)?,
-                lon: row.get(12)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
