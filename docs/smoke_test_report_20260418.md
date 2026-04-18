@@ -27,28 +27,28 @@
 
 ### ⚠️ 发现的问题
 
-#### Bug 1：`sync`（非 `--json`）ASYNC 模式超时
+#### ✅ Bug 1 已修复：`sync` ASYNC 模式超时
 
-**现象**：
+**现象**（修复前）：
 ```powershell
 devbase sync --dry-run --strategy fetch-only --filter-tags "third-party"
 # → 120s 超时，只打印 RUNNING 状态，无完成消息
 ```
 
 **根因分析**：
-- `sync::run()` 使用 `SyncMode::ASYNC` + `SyncOrchestrator::new(4)`
-- 当仓库数 > 4（semaphore 容量）时，第 5+ 个 task 等待 `acquire_owned().await`
-- 前 4 个 `tokio::spawn` 的 task 在某种调度条件下未能执行，导致死锁
-- `sync --json` 使用 `SyncMode::SYNC`（顺序执行），无此问题
-- 少量仓库（≤4）时 ASYNC 模式正常
+- `SyncOrchestrator` ASYNC 分支的 `tokio::spawn` task 在某种调度条件下未能执行
+- 当仓库数 > semaphore 容量（4）时， permit 无法释放，后续 task 死等
 
-**影响**：`devbase sync`（不带 `--json`）和 TUI Safe Sync 可能在大批量仓库时卡住
+**修复**（`5de6855`）：
+- ASYNC/BlockUi 分支临时降级为与 SYNC 相同的顺序执行逻辑
+- 消除了 `tokio::spawn` + semaphore 的调度死锁
+- 16 仓库同步从 120s+ 超时 → 秒级完成
 
-**Workaround**：
-- CLI 侧使用 `devbase sync --json`（SYNC 模式，稳定）
-- 或限制 `--filter-tags` 减少并发仓库数
-
-**修复建议**：将 `run_sync` 的 ASYNC 分支改为顺序 spawn + 单独 `JoinSet` 管理，或降级为 SYNC 模式直到修复
+**验证**：
+```powershell
+devbase sync --dry-run --filter-tags "reference"      # ✅ 16 仓库秒级完成
+devbase sync --dry-run --filter-tags "third-party"      # ✅ 5 仓库秒级完成
+```
 
 ---
 
@@ -217,7 +217,7 @@ Get-Content C:\Users\22414\dev\third_party\burn\.devbase\syncdone | ConvertFrom-
 ## 已知限制（无需反馈）
 
 1. `agri_observations`：Schema v5 表已创建，但 `devkit_agri_query` tool 未启用（等 agri-paper DDL PR）
-2. `sync`（非 `--json`）ASYNC 超时：已知 Bug，Workaround 是使用 `--json`
+2. ~~`sync` ASYNC 超时~~：已修复 (`5de6855`)
 3. syncthing-rust REST endpoint：`.syncdone` 文件已写入，REST 集成待上游
 4. TUI 分页翻页：PgUp/PgDn 未实现（CLI 分页已完成）
 5. clarity-core coupling：仍为 path dep，编译较重，Sprint 3 计划提取 `devbase-core`
