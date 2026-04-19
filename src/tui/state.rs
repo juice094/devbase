@@ -68,35 +68,65 @@ impl App {
                 stars: repo.stars,
             });
         }
-        // Initial status assessment for better sorting and display
-        for repo in &mut self.repos {
-            let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
-            let (safety, ahead, behind) = crate::sync::assess_safety(&repo.local_path, policy);
-            repo.status_dirty = Some(safety == crate::sync::SyncSafety::BlockedDirty);
-            repo.status_ahead = Some(ahead);
-            repo.status_behind = Some(behind);
+        // Mark all repos as loading status
+        self.loading_repo_status.clear();
+        for repo in &self.repos {
+            self.loading_repo_status.insert(repo.id.clone());
         }
 
-        // Sort based on current sort mode
+        // Batch async safety assessment
+        for repo in &self.repos {
+            let path = repo.local_path.clone();
+            let id = repo.id.clone();
+            let tags = repo.tags.join(",");
+            let tx = self.async_tx.clone();
+            std::thread::spawn(move || {
+                let policy = crate::sync::SyncPolicy::from_tags(&tags);
+                let (safety, ahead, behind) = crate::sync::assess_safety(&path, policy);
+                let dirty = safety == crate::sync::SyncSafety::BlockedDirty;
+                let _ = tx.send(crate::asyncgit::AsyncNotification::RepoStatus(
+                    crate::asyncgit::RepoStatusNotification { repo_id: id, dirty, ahead, behind }
+                ));
+            });
+        }
+
+        // Initial sort by registry data only (tags alphabetical)
+        self.sort_repos_by_registry();
+        self.log_info(crate::i18n::current().log.loaded_repos(self.repos.len()));
+        Ok(())
+    }
+
+    pub(crate) fn sort_repos_by_registry(&mut self) {
+        self.repos.sort_by(|a, b| {
+            let tag_a = a.tags.first().map(|s| s.as_str()).unwrap_or("zzz");
+            let tag_b = b.tags.first().map(|s| s.as_str()).unwrap_or("zzz");
+            tag_a.cmp(tag_b).then_with(|| a.id.cmp(&b.id))
+        });
+        self.sync_list_state();
+    }
+
+    pub(crate) fn sort_repos(&mut self) {
         match self.sort_mode {
             SortMode::Status => {
                 self.repos.sort_by(|a, b| {
                     let priority = |repo: &RepoItem| -> i32 {
                         match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
-                            (Some(true), _, _) => 0,                              // dirty
-                            (Some(false), Some(a), Some(b)) if a > 0 && b > 0 => 1, // diverged
-                            (Some(false), _, Some(b)) if b > 0 => 2,              // behind
-                            (Some(false), Some(a), _) if a > 0 => 3,              // ahead
-                            _ => 4,                                               // up-to-date / unknown
+                            (Some(true), _, _) => 0,
+                            (Some(false), Some(a), Some(b)) if a > 0 && b > 0 => 1,
+                            (Some(false), _, Some(b)) if b > 0 => 2,
+                            (Some(false), Some(a), _) if a > 0 => 3,
+                            _ => 4,
                         }
                     };
                     let pa = priority(a);
                     let pb = priority(b);
-                    pa.cmp(&pb).then_with(|| {
-                        let tag_a = a.tags.first().map(|s| s.as_str()).unwrap_or("zzz");
-                        let tag_b = b.tags.first().map(|s| s.as_str()).unwrap_or("zzz");
-                        tag_a.cmp(tag_b)
-                    }).then_with(|| a.id.cmp(&b.id))
+                    pa.cmp(&pb)
+                        .then_with(|| {
+                            let tag_a = a.tags.first().map(|s| s.as_str()).unwrap_or("zzz");
+                            let tag_b = b.tags.first().map(|s| s.as_str()).unwrap_or("zzz");
+                            tag_a.cmp(tag_b)
+                        })
+                        .then_with(|| a.id.cmp(&b.id))
                 });
             }
             SortMode::Stars => {
@@ -106,13 +136,14 @@ impl App {
                 });
             }
         }
+        self.sync_list_state();
+    }
+
+    fn sync_list_state(&mut self) {
         if self.selected >= self.repos.len() && !self.repos.is_empty() {
             self.selected = self.repos.len() - 1;
         }
         self.list_state.select(Some(self.selected));
-        self.log_info(crate::i18n::current().log.loaded_repos(self.repos.len()));
-        self.spawn_repo_status_for_current();
-        Ok(())
     }
 
     pub(crate) fn log_info(&mut self, msg: String) {
@@ -279,6 +310,10 @@ impl App {
                 self.log_info(crate::i18n::current().log.status_fmt(
                     &n.repo_id, n.dirty, n.ahead, n.behind
                 ));
+                // Trigger re-sort when all statuses are loaded
+                if self.loading_repo_status.is_empty() && self.sort_mode == SortMode::Status {
+                    self.sort_repos();
+                }
             }
             AsyncNotification::SyncProgress(n) => {
                 if n.repo_id == "__fetch_all_done__" && n.action == "FETCH_ALL_DONE" {
@@ -367,12 +402,16 @@ impl App {
             }
             let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
             let (safety, ahead, behind) = crate::sync::assess_safety(&repo.local_path, policy);
+            let recommendation = crate::sync::recommend_sync_action(
+                safety, ahead, behind, policy, repo.upstream_url.is_some()
+            );
             self.sync_preview_items.push(SyncPreviewItem {
                 repo_id: repo.id.clone(),
                 safety,
                 policy,
                 ahead,
                 behind,
+                recommendation,
             });
         }
 

@@ -37,6 +37,7 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
         .iter()
         .map(|repo| {
             let status_icon = match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
+                (None, _, _) => "⏳",
                 (Some(true), _, _) => "🔴",
                 (Some(false), Some(a), Some(b)) if a > 0 && b > 0 => "🟡",
                 (Some(false), _, Some(b)) if b > 0 => "🟡",
@@ -493,6 +494,12 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(Span::styled(format!("将执行 ({})", safe.len()), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))));
                 for item in safe {
                     lines.push(Line::from(format!("  [{}] {:?} behind={}", item.repo_id, item.policy, item.behind)));
+                    if let Some(rec) = &item.recommendation {
+                        lines.push(Line::from(Span::styled(
+                            format!("    → {}", rec),
+                            Style::default().fg(Color::Green),
+                        )));
+                    }
                 }
                 lines.push(Line::from(""));
             }
@@ -500,6 +507,12 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(Span::styled(format!("被阻塞 - 分叉 ({})", diverged.len()), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
                 for item in diverged {
                     lines.push(Line::from(format!("  [{}] {:?} ahead={} behind={}", item.repo_id, item.policy, item.ahead, item.behind)));
+                    if let Some(rec) = &item.recommendation {
+                        lines.push(Line::from(Span::styled(
+                            format!("    → {}", rec),
+                            Style::default().fg(Color::Yellow),
+                        )));
+                    }
                 }
                 lines.push(Line::from(""));
             }
@@ -507,6 +520,12 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(Span::styled(format!("被阻塞 - 工作目录不干净 ({})", dirty.len()), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
                 for item in dirty {
                     lines.push(Line::from(format!("  [{}] {:?}", item.repo_id, item.policy)));
+                    if let Some(rec) = &item.recommendation {
+                        lines.push(Line::from(Span::styled(
+                            format!("    → {}", rec),
+                            Style::default().fg(Color::Red),
+                        )));
+                    }
                 }
                 lines.push(Line::from(""));
             }
@@ -514,6 +533,12 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(Span::styled(format!("本地超前 - 将推送 ({})", local_ahead.len()), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))));
                 for item in local_ahead {
                     lines.push(Line::from(format!("  [{}] {:?} ahead={}", item.repo_id, item.policy, item.ahead)));
+                    if let Some(rec) = &item.recommendation {
+                        lines.push(Line::from(Span::styled(
+                            format!("    → {}", rec),
+                            Style::default().fg(Color::Yellow),
+                        )));
+                    }
                 }
                 lines.push(Line::from(""));
             }
@@ -521,6 +546,12 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(Span::styled(format!("已最新 ({})", up_to_date.len()), Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD))));
                 for item in up_to_date {
                     lines.push(Line::from(format!("  [{}] {:?}", item.repo_id, item.policy)));
+                    if let Some(rec) = &item.recommendation {
+                        lines.push(Line::from(Span::styled(
+                            format!("    → {}", rec),
+                            Style::default().fg(Color::DarkGray),
+                        )));
+                    }
                 }
                 lines.push(Line::from(""));
             }
@@ -528,6 +559,12 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(Span::styled(format!("无远程 ({})", no_upstream.len()), Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD))));
                 for item in no_upstream {
                     lines.push(Line::from(format!("  [{}] {:?}", item.repo_id, item.policy)));
+                    if let Some(rec) = &item.recommendation {
+                        lines.push(Line::from(Span::styled(
+                            format!("    → {}", rec),
+                            Style::default().fg(Color::DarkGray),
+                        )));
+                    }
                 }
                 lines.push(Line::from(""));
             }
@@ -535,6 +572,12 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(Span::styled(format!("异常 ({})", unknown.len()), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
                 for item in unknown {
                     lines.push(Line::from(format!("  [{}] {:?}", item.repo_id, item.policy)));
+                    if let Some(rec) = &item.recommendation {
+                        lines.push(Line::from(Span::styled(
+                            format!("    → {}", rec),
+                            Style::default().fg(Color::Red),
+                        )));
+                    }
                 }
                 lines.push(Line::from(""));
             }

@@ -60,6 +60,7 @@ pub(crate) struct SyncPreviewItem {
     pub(crate) policy: crate::sync::SyncPolicy,
     pub(crate) ahead: usize,
     pub(crate) behind: usize,
+    pub(crate) recommendation: Option<String>,
 }
 
 pub struct App {

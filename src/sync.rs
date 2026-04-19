@@ -178,6 +178,39 @@ pub fn assess_safety(path: &str, policy: SyncPolicy) -> (SyncSafety, usize, usiz
     (safety, ahead, behind)
 }
 
+pub fn recommend_sync_action(
+    safety: SyncSafety,
+    ahead: usize,
+    behind: usize,
+    _policy: SyncPolicy,
+    has_upstream: bool,
+) -> Option<String> {
+    if !has_upstream {
+        return Some("No remote — cannot sync".to_string());
+    }
+    match safety {
+        SyncSafety::BlockedDirty => {
+            Some("Working tree dirty — commit or stash before sync".to_string())
+        }
+        SyncSafety::BlockedDiverged => {
+            Some(format!("Diverged ({} ahead, {} behind) — switch to Rebase/Merge policy", ahead, behind))
+        }
+        SyncSafety::Safe if behind > 0 && ahead == 0 => {
+            Some(format!("Safe to fast-forward {} commit(s)", behind))
+        }
+        SyncSafety::Safe if behind > 0 && ahead > 0 => {
+            Some(format!("Can rebase/merge {} commit(s)", behind))
+        }
+        SyncSafety::LocalAhead if ahead > 0 => {
+            Some(format!("Local ahead by {} — ready to push", ahead))
+        }
+        SyncSafety::UpToDate => {
+            Some("Up to date — nothing to do".to_string())
+        }
+        _ => None,
+    }
+}
+
 #[derive(Clone)]
 pub struct SyncOrchestrator {
     semaphore: Arc<Semaphore>,
