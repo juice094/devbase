@@ -3,7 +3,7 @@ use ratatui::{{
     layout::{{Constraint, Direction, Layout}},
     style::{{Color, Modifier, Style}},
     text::{{Line, Span, Text}},
-    widgets::{{Block, Borders, List, ListItem, Paragraph, Wrap}},
+    widgets::{{Block, Borders, List, ListItem, Paragraph, Sparkline, Wrap}},
     Frame,
 }};
 
@@ -145,7 +145,15 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
         .split(main_chunks[1]);
 
     // Detail panel
-    let detail_text = if let Some(repo) = app.current_repo() {
+    let (detail_text, stars_height, stars_opt) = if let Some(repo) = app.current_repo() {
+        let history = if let Ok(conn) = crate::registry::WorkspaceRegistry::init_db() {
+            crate::registry::WorkspaceRegistry::get_stars_history(&conn, &repo.id, 30).unwrap_or_default()
+        } else {
+            vec![]
+        };
+        let has_enough = history.len() >= 2;
+        let stars_height = if has_enough { 4 } else { 3 };
+
         let mut tag_line = vec![
             Span::styled("标签: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
         ];
@@ -256,16 +264,67 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
             ]),
         ];
 
-        Text::from(lines)
+        (Text::from(lines), stars_height, Some((history, has_enough)))
     } else {
-        Text::raw(crate::i18n::current().log.no_repos_registered)
+        (Text::raw(crate::i18n::current().log.no_repos_registered), 0, None)
     };
+
+    let detail_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(stars_height),
+        ])
+        .split(right_chunks[0]);
 
     let detail = Paragraph::new(detail_text)
         .block(Block::default().borders(Borders::ALL).title(crate::i18n::current().tui.title_details))
         .wrap(Wrap { trim: true });
 
-    frame.render_widget(detail, right_chunks[0]);
+    frame.render_widget(detail, detail_chunks[0]);
+
+    if let Some((history, has_enough)) = stars_opt {
+        let stars_block = Block::default().borders(Borders::ALL).title("Stars Trend");
+        let stars_inner = stars_block.inner(detail_chunks[1]);
+        frame.render_widget(stars_block, detail_chunks[1]);
+
+        if has_enough {
+            let spark_data: Vec<u64> = history.iter().map(|(s, _)| *s).collect();
+            let max_stars = spark_data.iter().max().copied().unwrap_or(1).max(1);
+
+            let spark_text_chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Min(1),
+                    Constraint::Length(1),
+                ])
+                .split(stars_inner);
+
+            let sparkline = Sparkline::default()
+                .data(&spark_data)
+                .max(max_stars)
+                .style(Style::default().fg(Color::Yellow));
+            frame.render_widget(sparkline, spark_text_chunks[0]);
+
+            let current = spark_data.last().copied().unwrap_or(0);
+            let first = spark_data.first().copied().unwrap_or(0);
+            let delta = current as i64 - first as i64;
+            let delta_text = if delta >= 0 { format!("(+{})", delta) } else { format!("({})", delta) };
+            let delta_color = if delta >= 0 { Color::Green } else { Color::Red };
+
+            let stars_label = Paragraph::new(Line::from(vec![
+                Span::styled(format!("★{} ", current), Style::default().fg(Color::Rgb(255, 215, 0))),
+                Span::styled(delta_text, Style::default().fg(delta_color)),
+            ]));
+            frame.render_widget(stars_label, spark_text_chunks[1]);
+        } else {
+            let no_data = Paragraph::new(Line::from(Span::styled(
+                "Stars history: not enough data (need 2+ fetches)",
+                Style::default().fg(Color::DarkGray),
+            )));
+            frame.render_widget(no_data, stars_inner);
+        }
+    }
 
     // Logs panel
     let log_visible = right_chunks[1].height.saturating_sub(2) as usize;
