@@ -32,6 +32,7 @@ pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::
             }
             let repo_id = repo.id.clone();
             let path_str = repo.local_path.to_string_lossy().to_string();
+            let is_rust = repo.language.as_deref() == Some("Rust");
             let _ = tokio::task::spawn_blocking(move || {
                 if let Some(metrics) = compute_code_metrics(&path_str) {
                     let conn = crate::registry::WorkspaceRegistry::init_db()?;
@@ -45,6 +46,17 @@ pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::
                         metrics.file_count,
                         &metrics.language_breakdown.to_string(),
                     )?;
+                }
+                if is_rust {
+                    if let Ok(modules) = extract_rust_modules(&path_str) {
+                        let conn = crate::registry::WorkspaceRegistry::init_db()?;
+                        let _ = crate::registry::WorkspaceRegistry::clear_modules(&conn, &repo_id);
+                        for (name, kind, src_path) in modules {
+                            let _ = crate::registry::WorkspaceRegistry::save_module(
+                                &conn, &repo_id, &name, &kind, &src_path,
+                            );
+                        }
+                    }
                 }
                 Ok::<_, anyhow::Error>(())
             }).await;
@@ -243,6 +255,44 @@ pub fn fetch_github_stars(
     }
     let json: serde_json::Value = response.json().ok()?;
     json.get("stargazers_count")?.as_u64()
+}
+
+fn extract_rust_modules(repo_path: &str) -> anyhow::Result<Vec<(String, String, String)>> {
+    let cargo_toml = std::path::Path::new(repo_path).join("Cargo.toml");
+    if !cargo_toml.exists() {
+        return Ok(vec![]);
+    }
+
+    let output = std::process::Command::new("cargo")
+        .args(&["metadata", "--format-version", "1", "--no-deps"])
+        .current_dir(repo_path)
+        .output()?;
+
+    if !output.status.success() {
+        return Ok(vec![]);
+    }
+
+    let metadata: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    let mut modules = vec![];
+
+    if let Some(packages) = metadata.get("packages").and_then(|v| v.as_array()) {
+        for package in packages {
+            if let Some(targets) = package.get("targets").and_then(|v| v.as_array()) {
+                for target in targets {
+                    let name = target.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    let src_path = target.get("src_path").and_then(|v| v.as_str()).unwrap_or("");
+                    let empty_kinds: Vec<serde_json::Value> = vec![];
+                    let kinds = target.get("kind").and_then(|v| v.as_array()).unwrap_or(&empty_kinds);
+                    let kind = kinds.first().and_then(|v| v.as_str()).unwrap_or("unknown");
+                    if !name.is_empty() {
+                        modules.push((name.to_string(), kind.to_string(), src_path.to_string()));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(modules)
 }
 
 pub fn inspect_repo(

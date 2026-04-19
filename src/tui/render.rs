@@ -145,7 +145,7 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
         .split(main_chunks[1]);
 
     // Detail panel
-    let (detail_text, stars_height, stars_opt) = if let Some(repo) = app.current_repo() {
+    let (detail_text, insights_opt, stars_height, stars_opt) = if let Some(repo) = app.current_repo() {
         let history = if let Ok(conn) = crate::registry::WorkspaceRegistry::init_db() {
             crate::registry::WorkspaceRegistry::get_stars_history(&conn, &repo.id, 30).unwrap_or_default()
         } else {
@@ -264,15 +264,19 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
             ]),
         ];
 
-        (Text::from(lines), stars_height, Some((history, has_enough)))
+        let insights = app.generate_insights(repo);
+        (Text::from(lines), Some(insights), stars_height, Some((history, has_enough)))
     } else {
-        (Text::raw(crate::i18n::current().log.no_repos_registered), 0, None)
+        (Text::raw(crate::i18n::current().log.no_repos_registered), None, 0, None)
     };
+
+    let insights_height = insights_opt.as_ref().map_or(0, |v| if v.is_empty() { 0 } else { v.len().min(3) as u16 + 2 });
 
     let detail_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(0),
+            Constraint::Length(insights_height),
             Constraint::Length(stars_height),
         ])
         .split(right_chunks[0]);
@@ -283,10 +287,22 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
 
     frame.render_widget(detail, detail_chunks[0]);
 
+    if let Some(insights) = insights_opt {
+        if !insights.is_empty() {
+            let insight_lines: Vec<Line> = insights.iter().take(3)
+                .map(|text| Line::from(Span::styled(text.clone(), Style::default().fg(Color::Cyan))))
+                .collect();
+            let insights_widget = Paragraph::new(Text::from(insight_lines))
+                .block(Block::default().borders(Borders::ALL).title("Insights"))
+                .wrap(Wrap { trim: true });
+            frame.render_widget(insights_widget, detail_chunks[1]);
+        }
+    }
+
     if let Some((history, has_enough)) = stars_opt {
         let stars_block = Block::default().borders(Borders::ALL).title("Stars Trend");
-        let stars_inner = stars_block.inner(detail_chunks[1]);
-        frame.render_widget(stars_block, detail_chunks[1]);
+        let stars_inner = stars_block.inner(detail_chunks[2]);
+        frame.render_widget(stars_block, detail_chunks[2]);
 
         if has_enough {
             let spark_data: Vec<u64> = history.iter().map(|(s, _)| *s).collect();

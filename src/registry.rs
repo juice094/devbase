@@ -487,6 +487,30 @@ impl WorkspaceRegistry {
             [],
         )?;
 
+        // Migrate old repo_modules (used by knowledge_engine) to repo_modules_legacy if needed,
+        // then create new repo_modules for cargo metadata indexing.
+        let repo_modules_cols: Vec<String> = {
+            let mut stmt = conn.prepare("PRAGMA table_info(repo_modules)")?;
+            let rows = stmt.query_map([], |row| Ok(row.get::<_, String>(1)?))?;
+            rows.filter_map(Result::ok).collect()
+        };
+        if repo_modules_cols.iter().any(|c| c == "module_path")
+            && !repo_modules_cols.iter().any(|c| c == "module_name")
+        {
+            let _ = conn.execute("DROP TABLE IF EXISTS repo_modules_legacy", []);
+            conn.execute("ALTER TABLE repo_modules RENAME TO repo_modules_legacy", [])?;
+        }
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS repo_modules (
+                repo_id TEXT,
+                module_name TEXT,
+                module_type TEXT,
+                module_path TEXT,
+                PRIMARY KEY (repo_id, module_name)
+            )",
+            [],
+        )?;
+
         // One-time migration from legacy table
         let legacy_exists: bool = conn
             .query_row(
@@ -894,11 +918,41 @@ impl WorkspaceRegistry {
         let tx = conn.transaction()?;
         for (module_path, public_apis) in modules {
             tx.execute(
-                "INSERT OR REPLACE INTO repo_modules (repo_id, module_path, public_apis, extracted_at) VALUES (?1, ?2, ?3, ?4)",
+                "INSERT OR REPLACE INTO repo_modules_legacy (repo_id, module_path, public_apis, extracted_at) VALUES (?1, ?2, ?3, ?4)",
                 rusqlite::params![repo_id, module_path, public_apis, Utc::now().to_rfc3339()],
             )?;
         }
         tx.commit()?;
+        Ok(())
+    }
+
+    pub fn save_module(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        module_name: &str,
+        module_type: &str,
+        module_path: &str,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "INSERT OR REPLACE INTO repo_modules (repo_id, module_name, module_type, module_path)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![repo_id, module_name, module_type, module_path],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_modules(conn: &rusqlite::Connection, repo_id: &str) -> anyhow::Result<Vec<(String, String, String)>> {
+        let mut stmt = conn.prepare(
+            "SELECT module_name, module_type, module_path FROM repo_modules WHERE repo_id = ?1"
+        )?;
+        let rows = stmt.query_map([repo_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn clear_modules(conn: &rusqlite::Connection, repo_id: &str) -> anyhow::Result<()> {
+        conn.execute("DELETE FROM repo_modules WHERE repo_id = ?1", [repo_id])?;
         Ok(())
     }
 

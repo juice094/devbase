@@ -23,6 +23,7 @@ pub(crate) enum McpToolEnum {
     Experiment(DevkitExperimentLogTool),
     GithubInfo(DevkitGithubInfoTool),
     CodeMetrics(DevkitCodeMetricsTool),
+    ModuleGraph(DevkitModuleGraphTool),
 }
 
 impl McpTool for McpToolEnum {
@@ -40,6 +41,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Experiment(t) => t.name(),
             McpToolEnum::GithubInfo(t) => t.name(),
             McpToolEnum::CodeMetrics(t) => t.name(),
+            McpToolEnum::ModuleGraph(t) => t.name(),
         }
     }
 
@@ -57,6 +59,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Experiment(t) => t.schema(),
             McpToolEnum::GithubInfo(t) => t.schema(),
             McpToolEnum::CodeMetrics(t) => t.schema(),
+            McpToolEnum::ModuleGraph(t) => t.schema(),
         }
     }
 
@@ -74,6 +77,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Experiment(t) => t.invoke(args).await,
             McpToolEnum::GithubInfo(t) => t.invoke(args).await,
             McpToolEnum::CodeMetrics(t) => t.invoke(args).await,
+            McpToolEnum::ModuleGraph(t) => t.invoke(args).await,
         }
     }
 }
@@ -215,6 +219,7 @@ pub fn build_server() -> McpServer {
         .register_tool(McpToolEnum::Experiment(DevkitExperimentLogTool))
         .register_tool(McpToolEnum::GithubInfo(DevkitGithubInfoTool))
         .register_tool(McpToolEnum::CodeMetrics(DevkitCodeMetricsTool))
+        .register_tool(McpToolEnum::ModuleGraph(DevkitModuleGraphTool))
 }
 
 pub fn format_mcp_message(body: &serde_json::Value) -> String {
@@ -853,6 +858,62 @@ impl McpTool for DevkitCodeMetricsTool {
     }
 }
 
+#[derive(Clone)]
+pub struct DevkitModuleGraphTool;
+
+impl McpTool for DevkitModuleGraphTool {
+    fn name(&self) -> &'static str { "devkit_module_graph" }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": "Get module/target structure for Rust repositories (from cargo metadata)",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": { "type": "string", "description": "Repository ID", "default": "" }
+                }
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            if repo_id.is_empty() {
+                let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
+                let mut all_modules = vec![];
+                for repo in repos {
+                    if repo.language.as_deref() == Some("Rust") {
+                        let modules = crate::registry::WorkspaceRegistry::list_modules(&conn, &repo.id)?;
+                        if !modules.is_empty() {
+                            all_modules.push(serde_json::json!({
+                                "repo_id": repo.id,
+                                "modules": modules.iter().map(|(n, t, p)| serde_json::json!({
+                                    "name": n, "type": t, "path": p
+                                })).collect::<Vec<_>>()
+                            }));
+                        }
+                    }
+                }
+                Ok::<_, anyhow::Error>(serde_json::json!({ "success": true, "count": all_modules.len(), "repos": all_modules }))
+            } else {
+                let modules = crate::registry::WorkspaceRegistry::list_modules(&conn, &repo_id)?;
+                Ok(serde_json::json!({
+                    "success": true,
+                    "repo_id": repo_id,
+                    "modules": modules.iter().map(|(n, t, p)| serde_json::json!({
+                        "name": n, "type": t, "path": p
+                    })).collect::<Vec<_>>()
+                }))
+            }
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
 fn parse_github_repo(url: &str) -> Option<(String, String)> {
     let url = url.trim_end_matches(".git");
     if let Some(rest) = url.strip_prefix("https://github.com/") {
@@ -1071,7 +1132,7 @@ mod tests {
         });
         let resp = server.handle_request(req).await.unwrap();
         let tools = resp.get("result").unwrap().get("tools").unwrap().as_array().unwrap();
-        assert_eq!(tools.len(), 12);
+        assert_eq!(tools.len(), 13);
         let names: Vec<&str> = tools.iter().map(|t| t.get("name").unwrap().as_str().unwrap()).collect();
         assert!(names.contains(&"devkit_scan"));
         assert!(names.contains(&"devkit_health"));
@@ -1085,6 +1146,7 @@ mod tests {
         assert!(names.contains(&"devkit_experiment_log"));
         assert!(names.contains(&"devkit_github_info"));
         assert!(names.contains(&"devkit_code_metrics"));
+        assert!(names.contains(&"devkit_module_graph"));
         for tool in tools {
             assert!(tool.get("name").is_some());
             assert!(tool.get("description").is_some());

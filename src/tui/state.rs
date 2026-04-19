@@ -554,6 +554,55 @@ impl App {
                 .await;
         });
     }
+
+    pub(crate) fn generate_insights(&self, repo: &RepoItem) -> Vec<String> {
+        let mut insights = vec![];
+
+        // 1. 未同步检查
+        if let (Some(ahead), Some(behind)) = (repo.status_ahead, repo.status_behind) {
+            if ahead > 0 && behind > 0 {
+                insights.push("⚠️ Local and remote have diverged — needs manual review".to_string());
+            } else if behind > 0 {
+                insights.push(format!("📥 Behind remote by {} commits — consider syncing", behind));
+            } else if ahead > 0 {
+                insights.push(format!("📤 Ahead of remote by {} commits — ready to push", ahead));
+            }
+        }
+
+        // 2. Dirty 检查
+        if repo.status_dirty == Some(true) {
+            insights.push("📝 Working tree has uncommitted changes".to_string());
+        }
+
+        // 3. 无远程检查
+        if repo.upstream_url.is_none() {
+            insights.push("🔗 No upstream remote — local-only repository".to_string());
+        }
+
+        // 4. Stars 检查（如果有历史数据）
+        if let Ok(conn) = crate::registry::WorkspaceRegistry::init_db() {
+            if let Ok(history) = crate::registry::WorkspaceRegistry::get_stars_history(&conn, &repo.id, 7) {
+                if history.len() >= 2 {
+                    let first = history.first().map(|(s, _)| *s).unwrap_or(0);
+                    let last = history.last().map(|(s, _)| *s).unwrap_or(0);
+                    let delta = last as i64 - first as i64;
+                    if delta > 0 {
+                        insights.push(format!("⭐ Stars gained {} this week", delta));
+                    } else if delta < 0 {
+                        insights.push(format!("⭐ Stars lost {} this week", delta.abs()));
+                    }
+                }
+            }
+        }
+
+        // 5. 策略检查
+        let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
+        if matches!(policy, crate::sync::SyncPolicy::Mirror) {
+            insights.push("🛡️ Mirror policy — sync will never modify local branches".to_string());
+        }
+
+        insights
+    }
 }
 
 fn search_repo_fallback(repo_path: &str, pattern: &str, repo_id: &str, results: &mut Vec<SearchResult>) {
