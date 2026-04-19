@@ -24,6 +24,7 @@ pub(crate) enum McpToolEnum {
     GithubInfo(DevkitGithubInfoTool),
     CodeMetrics(DevkitCodeMetricsTool),
     ModuleGraph(DevkitModuleGraphTool),
+    NaturalLanguageQuery(DevkitNaturalLanguageQueryTool),
 }
 
 impl McpTool for McpToolEnum {
@@ -42,6 +43,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::GithubInfo(t) => t.name(),
             McpToolEnum::CodeMetrics(t) => t.name(),
             McpToolEnum::ModuleGraph(t) => t.name(),
+            McpToolEnum::NaturalLanguageQuery(t) => t.name(),
         }
     }
 
@@ -60,6 +62,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::GithubInfo(t) => t.schema(),
             McpToolEnum::CodeMetrics(t) => t.schema(),
             McpToolEnum::ModuleGraph(t) => t.schema(),
+            McpToolEnum::NaturalLanguageQuery(t) => t.schema(),
         }
     }
 
@@ -78,6 +81,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::GithubInfo(t) => t.invoke(args).await,
             McpToolEnum::CodeMetrics(t) => t.invoke(args).await,
             McpToolEnum::ModuleGraph(t) => t.invoke(args).await,
+            McpToolEnum::NaturalLanguageQuery(t) => t.invoke(args).await,
         }
     }
 }
@@ -220,6 +224,7 @@ pub fn build_server() -> McpServer {
         .register_tool(McpToolEnum::GithubInfo(DevkitGithubInfoTool))
         .register_tool(McpToolEnum::CodeMetrics(DevkitCodeMetricsTool))
         .register_tool(McpToolEnum::ModuleGraph(DevkitModuleGraphTool))
+        .register_tool(McpToolEnum::NaturalLanguageQuery(DevkitNaturalLanguageQueryTool))
 }
 
 pub fn format_mcp_message(body: &serde_json::Value) -> String {
@@ -1102,6 +1107,153 @@ impl McpTool for DevkitQueryTool {
 
 }
 
+#[derive(Clone)]
+pub struct DevkitNaturalLanguageQueryTool;
+
+impl McpTool for DevkitNaturalLanguageQueryTool {
+    fn name(&self) -> &'static str { "devkit_natural_language_query" }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": "Query repositories using natural language (e.g., 'show dirty rust repos', 'repos with more than 100 stars')",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "Natural language query" }
+                },
+                "required": ["query"]
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let query = args.get("query").and_then(|v| v.as_str()).context("Missing required argument: query")?;
+        let query = query.to_string();
+        
+        tokio::task::spawn_blocking(move || {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
+            let filtered = nl_filter_repos(&query, &repos, &conn)?;
+            
+            let results: Vec<serde_json::Value> = filtered.into_iter().map(|repo| {
+                serde_json::json!({
+                    "id": repo.id,
+                    "path": repo.local_path,
+                    "language": repo.language,
+                    "tags": repo.tags,
+                    "stars": repo.stars,
+                })
+            }).collect();
+            
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "success": true,
+                "count": results.len(),
+                "query": query,
+                "repos": results,
+            }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
+fn nl_filter_repos(query: &str, repos: &[crate::registry::RepoEntry], conn: &rusqlite::Connection) -> anyhow::Result<Vec<crate::registry::RepoEntry>> {
+    let q = query.to_lowercase();
+    let stars_cond = parse_stars_condition(&q);
+    let explicit_tag = extract_tag_from_query(&q);
+    
+    let mut results = Vec::new();
+    for repo in repos {
+        // Language filter
+        let lang_keywords = [
+            ("rust", "rust"), ("go", "go"), ("golang", "go"),
+            ("python", "python"), ("typescript", "typescript"), ("ts", "typescript"),
+            ("javascript", "javascript"), ("js", "javascript"),
+            ("cpp", "c++"), ("c++", "c++"), ("java", "java"),
+        ];
+        let mut lang_matched = true;
+        for &(kw, expected) in &lang_keywords {
+            if q.contains(kw) && repo.language.as_deref() != Some(expected) {
+                lang_matched = false;
+                break;
+            }
+        }
+        if !lang_matched { continue; }
+        
+        // Tag filter
+        if let Some(ref tag) = explicit_tag {
+            if !repo.tags.iter().any(|t| t.eq_ignore_ascii_case(tag)) {
+                continue;
+            }
+        }
+        
+        // Stars filter
+        if let Some((op, val)) = stars_cond {
+            let stars = repo.stars.unwrap_or(0);
+            match op {
+                '>' => if stars <= val { continue; },
+                '<' => if stars >= val { continue; },
+                '=' => if stars != val { continue; },
+                _ => {}
+            }
+        }
+        
+        // Status filters (need health data)
+        if q.contains("dirty") || q.contains("behind") || q.contains("ahead") || q.contains("diverged") || q.contains("up to date") {
+            let (st, ah, bh) = match crate::registry::WorkspaceRegistry::get_health(conn, &repo.id)? {
+                Some(h) => (h.status.clone(), h.ahead, h.behind),
+                None => {
+                    let path = repo.local_path.to_string_lossy();
+                    let primary = repo.primary_remote();
+                    let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
+                    let default_branch = primary.and_then(|r| r.default_branch.as_deref());
+                    crate::health::analyze_repo(&path, upstream_url, default_branch)
+                }
+            };
+            let dirty = st == "dirty" || st == "changed";
+            
+            if q.contains("dirty") && !dirty { continue; }
+            if q.contains("behind") && !q.contains("ahead") && bh == 0 { continue; }
+            if q.contains("ahead") && !q.contains("behind") && ah == 0 { continue; }
+            if q.contains("diverged") && (ah == 0 || bh == 0) { continue; }
+            if (q.contains("up to date") || q.contains("uptodate")) && (dirty || ah > 0 || bh > 0) { continue; }
+        }
+        
+        results.push(repo.clone());
+    }
+    
+    Ok(results)
+}
+
+fn parse_stars_condition(query: &str) -> Option<(char, u64)> {
+    let lower = query.to_lowercase();
+    if !lower.contains("stars") && !lower.contains("star") {
+        return None;
+    }
+    let digits: String = lower.chars().skip_while(|c| !c.is_ascii_digit()).take_while(|c| c.is_ascii_digit()).collect();
+    let num = digits.parse::<u64>().ok()?;
+    
+    if lower.contains(">") || lower.contains("more than") || lower.contains("over") {
+        Some(('>', num))
+    } else if lower.contains("<") || lower.contains("less than") || lower.contains("under") {
+        Some(('<', num))
+    } else {
+        Some(('=', num))
+    }
+}
+
+fn extract_tag_from_query(q: &str) -> Option<String> {
+    if let Some(pos) = q.find("tag ") {
+        let rest = &q[pos + 4..];
+        rest.split_whitespace().next().map(|s| s.to_string())
+    } else if let Some(pos) = q.find("with tag ") {
+        let rest = &q[pos + 9..];
+        rest.split_whitespace().next().map(|s| s.to_string())
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1132,7 +1284,7 @@ mod tests {
         });
         let resp = server.handle_request(req).await.unwrap();
         let tools = resp.get("result").unwrap().get("tools").unwrap().as_array().unwrap();
-        assert_eq!(tools.len(), 13);
+        assert_eq!(tools.len(), 14);
         let names: Vec<&str> = tools.iter().map(|t| t.get("name").unwrap().as_str().unwrap()).collect();
         assert!(names.contains(&"devkit_scan"));
         assert!(names.contains(&"devkit_health"));
@@ -1147,6 +1299,7 @@ mod tests {
         assert!(names.contains(&"devkit_github_info"));
         assert!(names.contains(&"devkit_code_metrics"));
         assert!(names.contains(&"devkit_module_graph"));
+        assert!(names.contains(&"devkit_natural_language_query"));
         for tool in tools {
             assert!(tool.get("name").is_some());
             assert!(tool.get("description").is_some());
