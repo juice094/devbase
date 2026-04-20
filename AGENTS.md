@@ -2,16 +2,16 @@
 
 ## 项目概述
 
-`devbase` 是本地优先的开发者工作区与知识库管理器。当前处于 **v0.1.0 稳定期**，技术债务已清理，架构具备可持续演进能力。
+`devbase` 是本地优先的开发者工作区与知识库管理器。当前处于 **v0.2.0**，技术债务已清理，架构具备可持续演进能力。
 
 - **技术栈**：Rust 2024, SQLite, tokio, ratatui, git2, reqwest, tantivy
 - **Registry DB**：`%LOCALAPPDATA%\devbase\registry.db`（轻量索引，用户本地，永不进入版本控制）
 - **Workspace**：`%LOCALAPPDATA%\devbase\workspace/` —— 文件系统 = source of truth
   - `vault/` —— PARA 结构：00-Inbox, 01-Projects, 02-Areas, 03-Resources, 04-Archives, 99-Meta
   - `assets/` —— 二进制资源
-- **MCP Server**：stdio 传输，14 个 tools；配置见 `mcp.json`
+- **MCP Server**：stdio 传输，17 个 tools（含 3 个 vault tools）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：156 passed / 0 failed / 2 ignored
+- **当前测试**：157 passed / 0 failed / 2 ignored
 - **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
 
 ## 关键约定
