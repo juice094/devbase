@@ -4,7 +4,7 @@ use tracing::{info, warn};
 use devbase::*;
 
 #[derive(Parser)]
-#[command(name = "devbase")]
+#[command(name = "devbase", version)]
 #[command(about = "Developer workspace database and knowledge-base manager")]
 struct Cli {
     #[command(subcommand)]
