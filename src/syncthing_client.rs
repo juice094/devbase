@@ -66,3 +66,20 @@ impl SyncthingClient {
         Ok(resp.json().await?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_client_new_with_trailing_slash() {
+        let client = SyncthingClient::new("http://localhost:8384/", Some("key123"));
+        let _ = client;
+    }
+
+    #[test]
+    fn test_client_new_without_trailing_slash() {
+        let client = SyncthingClient::new("http://localhost:8384", None);
+        let _ = client;
+    }
+}

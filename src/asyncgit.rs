@@ -114,3 +114,74 @@ impl AsyncJob for AsyncRepoStatus {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_repo_status_notification_clone() {
+        let n = RepoStatusNotification {
+            repo_id: "foo".into(),
+            dirty: true,
+            ahead: 2,
+            behind: 1,
+        };
+        let cloned = n.clone();
+        assert_eq!(cloned.repo_id, "foo");
+        assert!(cloned.dirty);
+        assert_eq!(cloned.ahead, 2);
+        assert_eq!(cloned.behind, 1);
+    }
+
+    #[test]
+    fn test_sync_progress_notification_clone() {
+        let n = SyncProgressNotification {
+            repo_id: "bar".into(),
+            action: "fetch".into(),
+            message: "done".into(),
+        };
+        let cloned = n.clone();
+        assert_eq!(cloned.action, "fetch");
+    }
+
+    #[test]
+    fn test_async_notification_variants() {
+        let n1 = AsyncNotification::RepoStatus(RepoStatusNotification {
+            repo_id: "a".into(),
+            dirty: false,
+            ahead: 0,
+            behind: 0,
+        });
+        let n2 = AsyncNotification::SyncProgress(SyncProgressNotification {
+            repo_id: "b".into(),
+            action: "pull".into(),
+            message: "ok".into(),
+        });
+        let n3 = AsyncNotification::StarsUpdated {
+            repo_id: "c".into(),
+            stars: Some(42),
+        };
+        // Just ensure they construct and debug-print
+        let _ = format!("{:?}", n1);
+        let _ = format!("{:?}", n2);
+        let _ = format!("{:?}", n3);
+    }
+
+    #[test]
+    fn test_async_single_job_new() {
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        let job: AsyncSingleJob<AsyncRepoStatus> = AsyncSingleJob::new(tx);
+        let _ = job;
+    }
+
+    #[test]
+    fn test_async_repo_status_clone() {
+        let job = AsyncRepoStatus {
+            repo_id: "test".into(),
+            local_path: "/tmp".into(),
+        };
+        let cloned = job.clone();
+        assert_eq!(cloned.repo_id, "test");
+    }
+}

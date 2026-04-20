@@ -42,12 +42,12 @@ pub fn get_writer(index: &Index) -> Result<IndexWriter, TantivyError> {
 
 pub fn add_repo_doc(
     writer: &mut IndexWriter,
+    schema: &Schema,
     repo_id: &str,
     title: &str,
     content: &str,
     tags: &[String],
 ) -> Result<(), TantivyError> {
-    let schema = open_index().0.schema();
     let id = schema.get_field("id").unwrap();
     let title_f = schema.get_field("title").unwrap();
     let content_f = schema.get_field("content").unwrap();
@@ -113,4 +113,99 @@ fn open_index() -> (Index, Schema) {
     )
     .expect("open or create index");
     (idx, schema)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    static SEARCH_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_temp_index<F>(f: F)
+    where
+        F: FnOnce(&Index, &Schema, &mut IndexWriter),
+    {
+        let _guard = SEARCH_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let old = std::env::var("LOCALAPPDATA").ok();
+        unsafe {
+            std::env::set_var("LOCALAPPDATA", tmp.path());
+        }
+        // Rebuild index path inside temp dir
+        let schema = build_schema();
+        let index_dir = tmp.path().join(INDEX_DIR);
+        std::fs::create_dir_all(&index_dir).unwrap();
+        let idx = Index::create_in_dir(&index_dir, schema.clone()).unwrap();
+        let mut writer = idx.writer(15_000_000).unwrap();
+        f(&idx, &schema, &mut writer);
+        if let Some(v) = old {
+            unsafe {
+                std::env::set_var("LOCALAPPDATA", v);
+            }
+        } else {
+            unsafe {
+                std::env::remove_var("LOCALAPPDATA");
+            }
+        }
+    }
+
+    #[test]
+    fn test_build_schema() {
+        let schema = build_schema();
+        assert!(schema.get_field("id").is_ok());
+        assert!(schema.get_field("title").is_ok());
+        assert!(schema.get_field("content").is_ok());
+        assert!(schema.get_field("tags").is_ok());
+    }
+
+    #[test]
+    fn test_add_and_search_repo() {
+        with_temp_index(|_idx, schema, writer| {
+            add_repo_doc(
+                writer,
+                schema,
+                "repo1",
+                "devbase",
+                "A developer workspace manager",
+                &["rust".into(), "cli".into()],
+            )
+            .unwrap();
+            writer.commit().unwrap();
+
+            let reader = _idx.reader().unwrap();
+            let searcher = reader.searcher();
+            let title = schema.get_field("title").unwrap();
+            let content = schema.get_field("content").unwrap();
+            let tags = schema.get_field("tags").unwrap();
+            let parser = QueryParser::for_index(_idx, vec![title, content, tags]);
+            let query = parser.parse_query("workspace").unwrap();
+            let top_docs: Vec<(f32, tantivy::DocAddress)> =
+                searcher.search(&query, &TopDocs::with_limit(10).order_by_score()).unwrap();
+            assert_eq!(top_docs.len(), 1);
+        });
+    }
+
+    #[test]
+    fn test_delete_repo_doc() {
+        with_temp_index(|_idx, schema, writer| {
+            add_repo_doc(writer, schema, "repo1", "devbase", "A developer workspace manager", &[])
+                .unwrap();
+            writer.commit().unwrap();
+
+            delete_repo_doc(writer, schema, "repo1").unwrap();
+            writer.commit().unwrap();
+
+            let reader = _idx.reader().unwrap();
+            let searcher = reader.searcher();
+            let title = schema.get_field("title").unwrap();
+            let content = schema.get_field("content").unwrap();
+            let tags = schema.get_field("tags").unwrap();
+            let parser = QueryParser::for_index(_idx, vec![title, content, tags]);
+            let query = parser.parse_query("devbase").unwrap();
+            let top_docs: Vec<(f32, tantivy::DocAddress)> =
+                searcher.search(&query, &TopDocs::with_limit(10).order_by_score()).unwrap();
+            assert!(top_docs.is_empty());
+        });
+    }
 }

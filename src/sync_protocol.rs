@@ -165,3 +165,115 @@ pub fn scan_directory(path: &Path) -> anyhow::Result<SyncIndex> {
         files,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_counter_default() {
+        let c = Counter::default();
+        assert_eq!(c.id, 0);
+        assert_eq!(c.value, 0);
+    }
+
+    #[test]
+    fn test_version_vector_update_new() {
+        let vv = VersionVector::default().update(1);
+        assert_eq!(vv.counters.len(), 1);
+        assert_eq!(vv.counters[0].id, 1);
+        assert_eq!(vv.counters[0].value, 1);
+    }
+
+    #[test]
+    fn test_version_vector_update_existing() {
+        let vv = VersionVector::default().update(1).update(1);
+        assert_eq!(vv.counters.len(), 1);
+        assert_eq!(vv.counters[0].value, 2);
+    }
+
+    #[test]
+    fn test_version_vector_merge() {
+        let a = VersionVector::default().update(1);
+        let b = VersionVector::default().update(2);
+        let merged = a.merge(&b);
+        assert_eq!(merged.counters.len(), 2);
+        assert!(merged.counters.iter().any(|c| c.id == 1 && c.value == 1));
+        assert!(merged.counters.iter().any(|c| c.id == 2 && c.value == 1));
+    }
+
+    #[test]
+    fn test_version_vector_merge_max() {
+        let a = VersionVector::default().update(1).update(1); // id=1, value=2
+        let b = VersionVector::default().update(1); // id=1, value=1
+        let merged = a.merge(&b);
+        assert_eq!(merged.counters.len(), 1);
+        assert_eq!(merged.counters[0].value, 2);
+    }
+
+    #[test]
+    fn test_version_vector_compare_equal() {
+        let a = VersionVector::default().update(1);
+        let b = VersionVector::default().update(1);
+        assert_eq!(a.compare(&b), Ordering::Equal);
+    }
+
+    #[test]
+    fn test_version_vector_compare_greater() {
+        let a = VersionVector::default().update(1).update(1);
+        let b = VersionVector::default().update(1);
+        assert_eq!(a.compare(&b), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_version_vector_compare_less() {
+        let a = VersionVector::default().update(1);
+        let b = VersionVector::default().update(1).update(1);
+        assert_eq!(a.compare(&b), Ordering::Less);
+    }
+
+    #[test]
+    fn test_version_vector_compare_conflict() {
+        // Concurrent: a has higher id=1, b has higher id=2
+        let a = VersionVector::default().update(1).update(1);
+        let b = VersionVector::default().update(2).update(2);
+        assert_eq!(a.compare(&b), Ordering::Equal);
+    }
+
+    #[test]
+    fn test_version_vector_compare_empty() {
+        let a = VersionVector::default();
+        let b = VersionVector::default().update(1);
+        assert_eq!(a.compare(&b), Ordering::Less);
+        assert_eq!(b.compare(&a), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_scan_directory() {
+        let tmp = std::env::temp_dir().join(format!("devbase_test_sync_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("a.txt"), "hello").unwrap();
+        std::fs::write(tmp.join("b.txt"), "world").unwrap();
+        std::fs::create_dir_all(tmp.join(".git")).unwrap();
+        std::fs::write(tmp.join(".git").join("ignore"), "x").unwrap();
+
+        let idx = scan_directory(&tmp).unwrap();
+        assert_eq!(idx.path, tmp);
+        assert_eq!(idx.files.len(), 2);
+        assert!(idx.files.iter().any(|f| f.name == "a.txt"));
+        assert!(idx.files.iter().any(|f| f.name == "b.txt"));
+        assert!(!idx.files.iter().any(|f| f.name.contains(".git")));
+
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn test_scan_directory_empty() {
+        let tmp =
+            std::env::temp_dir().join(format!("devbase_test_sync_empty_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let idx = scan_directory(&tmp).unwrap();
+        assert!(idx.files.is_empty());
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
+}

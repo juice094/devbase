@@ -17,3 +17,6 @@ pub mod sync_protocol;
 pub mod syncthing_client;
 pub mod tui;
 pub mod watch;
+
+#[cfg(test)]
+pub mod test_utils;

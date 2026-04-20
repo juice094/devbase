@@ -246,3 +246,63 @@ pub fn detect_system_language() -> String {
         .replace('_', "-")
         .to_lowercase()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_template_basic() {
+        assert_eq!(format_template("Hello {}", &["world"]), "Hello world");
+    }
+
+    #[test]
+    fn test_format_template_multiple() {
+        assert_eq!(format_template("{} + {} = {}", &["1", "2", "3"]), "1 + 2 = 3");
+    }
+
+    #[test]
+    fn test_format_template_no_placeholder() {
+        assert_eq!(format_template("no placeholders", &["x"]), "no placeholders");
+    }
+
+    #[test]
+    fn test_format_template_extra_args_ignored() {
+        assert_eq!(format_template("only {}", &["one", "two"]), "only one");
+    }
+
+    #[test]
+    fn test_en_build() {
+        let i18n = en::build();
+        assert_eq!(i18n.tui.title_repos, "Repositories");
+        assert_eq!(i18n.tui.status_ok, "OK");
+        assert_eq!(i18n.cli.scanning, "Scanning directory");
+    }
+
+    #[test]
+    fn test_zh_build() {
+        let i18n = zh_cn::build();
+        assert_eq!(i18n.tui.title_repos, "仓库列表");
+        assert_eq!(i18n.tui.status_ok, "正常");
+        assert_eq!(i18n.cli.scanning, "正在扫描目录");
+    }
+
+    #[test]
+    fn test_init_and_current() {
+        init("en");
+        let cur = current();
+        assert_eq!(cur.tui.title_repos, "Repositories");
+    }
+
+    #[test]
+    fn test_log_strings_loaded_repos() {
+        let i18n = en::build();
+        assert_eq!(i18n.log.loaded_repos(5), "已加载 5 个仓库。");
+    }
+
+    #[test]
+    fn test_log_strings_status_fmt() {
+        let i18n = zh_cn::build();
+        assert_eq!(i18n.log.status_fmt("foo", true, 2, 1), "[foo] 状态: 未提交=true 超前=2 落后=1");
+    }
+}

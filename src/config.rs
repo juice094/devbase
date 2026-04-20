@@ -289,3 +289,81 @@ concurrency = 8
         Ok(dir.join("config.toml"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_default() {
+        let cfg = Config::default();
+        assert_eq!(cfg.general.language, "auto");
+        assert_eq!(cfg.daemon.interval_seconds, 3600);
+        assert!(cfg.daemon.incremental);
+        assert_eq!(cfg.daemon.health_stale_hours, 24);
+        assert_eq!(cfg.cache.ttl_seconds, 300);
+        assert_eq!(cfg.watch.max_files, 512);
+        assert_eq!(cfg.digest.window_hours, 24);
+        assert_eq!(cfg.github.timeout_seconds, 5);
+        assert!(!cfg.llm.enabled);
+        assert_eq!(cfg.llm.provider, "ollama");
+        assert_eq!(cfg.llm.max_tokens, 200);
+        assert_eq!(cfg.llm.timeout_seconds, 30);
+        assert_eq!(cfg.sync.timeout_seconds, 60);
+        assert_eq!(cfg.sync.concurrency, 8);
+    }
+
+    #[test]
+    fn test_config_serialize_roundtrip() {
+        let cfg = Config::default();
+        let toml_str = toml::to_string_pretty(&cfg).unwrap();
+        let parsed: Config = toml::from_str(&toml_str).unwrap();
+        assert_eq!(parsed.general.language, cfg.general.language);
+        assert_eq!(parsed.daemon.interval_seconds, cfg.daemon.interval_seconds);
+        assert_eq!(parsed.llm.provider, cfg.llm.provider);
+    }
+
+    #[test]
+    fn test_config_custom_values() {
+        let toml_str = r#"
+[general]
+language = "en"
+
+[daemon]
+interval_seconds = 1800
+incremental = false
+health_stale_hours = 12
+
+[github]
+token = "ghp_test"
+timeout_seconds = 10
+
+[llm]
+enabled = true
+provider = "openai"
+model = "gpt-4"
+max_tokens = 400
+"#;
+        let cfg: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.general.language, "en");
+        assert_eq!(cfg.daemon.interval_seconds, 1800);
+        assert!(!cfg.daemon.incremental);
+        assert_eq!(cfg.daemon.health_stale_hours, 12);
+        assert_eq!(cfg.github.token, Some("ghp_test".to_string()));
+        assert_eq!(cfg.github.timeout_seconds, 10);
+        assert!(cfg.llm.enabled);
+        assert_eq!(cfg.llm.provider, "openai");
+        assert_eq!(cfg.llm.model, Some("gpt-4".to_string()));
+        assert_eq!(cfg.llm.max_tokens, 400);
+        // Fields not set should use defaults
+        assert_eq!(cfg.cache.ttl_seconds, 300);
+        assert_eq!(cfg.sync.concurrency, 8);
+    }
+
+    #[test]
+    fn test_config_empty_uses_defaults() {
+        let cfg: Config = toml::from_str("").unwrap();
+        assert_eq!(cfg.general.language, "auto");
+        assert_eq!(cfg.daemon.interval_seconds, 3600);
+    }
+}
