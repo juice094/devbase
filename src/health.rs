@@ -453,3 +453,85 @@ fn fmt_version(raw: Option<String>) -> String {
         None => crate::i18n::current().log.not_installed.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_workspace_hash_empty_dir() {
+        let tmp = std::env::temp_dir().join(format!("devbase_health_empty_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let hash1 = compute_workspace_hash(&tmp).unwrap();
+        let hash2 = compute_workspace_hash(&tmp).unwrap();
+        assert_eq!(hash1, hash2, "same empty dir should produce same hash");
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn test_compute_workspace_hash_changes_with_content() {
+        let tmp =
+            std::env::temp_dir().join(format!("devbase_health_content_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("a.txt"), "hello").unwrap();
+        let hash1 = compute_workspace_hash(&tmp).unwrap();
+
+        std::fs::write(tmp.join("a.txt"), "world").unwrap();
+        let hash2 = compute_workspace_hash(&tmp).unwrap();
+
+        assert_ne!(hash1, hash2, "changing file content should change hash");
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn test_compute_workspace_hash_ignores_dirs() {
+        let tmp =
+            std::env::temp_dir().join(format!("devbase_health_ignore_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::create_dir_all(tmp.join(".git")).unwrap();
+        std::fs::write(tmp.join(".git").join("config"), "x").unwrap();
+        std::fs::write(tmp.join("real.txt"), "y").unwrap();
+
+        let hash = compute_workspace_hash(&tmp).unwrap();
+        // If .git was ignored, hash should be based only on real.txt
+        let tmp2 =
+            std::env::temp_dir().join(format!("devbase_health_ignore2_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp2).unwrap();
+        std::fs::write(tmp2.join("real.txt"), "y").unwrap();
+        let hash2 = compute_workspace_hash(&tmp2).unwrap();
+
+        assert_eq!(hash, hash2, ".git contents should be ignored");
+        std::fs::remove_dir_all(&tmp).unwrap();
+        std::fs::remove_dir_all(&tmp2).unwrap();
+    }
+
+    #[test]
+    fn test_fmt_version_rustc() {
+        assert_eq!(fmt_version(Some("rustc 1.70.0".to_string())), "1.70.0");
+    }
+
+    #[test]
+    fn test_fmt_version_cargo() {
+        assert_eq!(fmt_version(Some("cargo 1.70.0".to_string())), "1.70.0");
+    }
+
+    #[test]
+    fn test_fmt_version_cmake() {
+        assert_eq!(fmt_version(Some("cmake version 3.26".to_string())), "3.26");
+    }
+
+    #[test]
+    fn test_fmt_version_go() {
+        assert_eq!(fmt_version(Some("go version go1.20".to_string())), "go1.20");
+    }
+
+    #[test]
+    fn test_fmt_version_unknown() {
+        assert_eq!(fmt_version(Some("foo bar".to_string())), "foo bar");
+    }
+
+    #[test]
+    fn test_fmt_version_single_word() {
+        assert_eq!(fmt_version(Some("v1.0".to_string())), "v1.0");
+    }
+}
