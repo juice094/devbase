@@ -204,3 +204,95 @@ pub fn discover_similar_projects(conn: &rusqlite::Connection) -> anyhow::Result<
     });
     Ok(discoveries)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_normalize_dep_name() {
+        assert_eq!(normalize_dep_name("serde_json"), "serde-json");
+        assert_eq!(normalize_dep_name("tokio"), "tokio");
+        assert_eq!(normalize_dep_name("My_Crate"), "my-crate");
+    }
+
+    #[test]
+    fn test_discover_dependencies_cargo() {
+        let tmp1 = std::env::temp_dir().join(format!("devbase_discover1_{}", std::process::id()));
+        let tmp2 = std::env::temp_dir().join(format!("devbase_discover2_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp1).unwrap();
+        std::fs::create_dir_all(&tmp2).unwrap();
+        std::fs::write(
+            tmp1.join("Cargo.toml"),
+            r#"
+[package]
+name = "app"
+version = "0.1.0"
+
+[dependencies]
+serde = "1.0"
+my-lib = { path = "../my-lib" }
+"#,
+        )
+        .unwrap();
+
+        let repo1 = RepoEntry {
+            id: "app".to_string(),
+            local_path: tmp1.clone(),
+            tags: vec![],
+            discovered_at: chrono::Utc::now(),
+            language: Some("rust".to_string()),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        };
+        let repo2 = RepoEntry {
+            id: "my-lib".to_string(),
+            local_path: tmp2.clone(),
+            tags: vec![],
+            discovered_at: chrono::Utc::now(),
+            language: Some("rust".to_string()),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        };
+
+        let discoveries = discover_dependencies(&[repo1, repo2]);
+        assert!(!discoveries.is_empty());
+        assert_eq!(discoveries[0].from, "app");
+        assert_eq!(discoveries[0].to, "my-lib");
+        assert_eq!(discoveries[0].relation_type, "depends_on");
+
+        std::fs::remove_dir_all(&tmp1).unwrap();
+        std::fs::remove_dir_all(&tmp2).unwrap();
+    }
+
+    #[test]
+    fn test_discover_dependencies_no_manifest() {
+        let tmp =
+            std::env::temp_dir().join(format!("devbase_discover_empty_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        let repo = RepoEntry {
+            id: "empty-repo".to_string(),
+            local_path: tmp.clone(),
+            tags: vec![],
+            discovered_at: chrono::Utc::now(),
+            language: None,
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        };
+
+        let discoveries = discover_dependencies(&[repo]);
+        assert!(discoveries.is_empty());
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
+}
