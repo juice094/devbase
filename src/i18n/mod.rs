@@ -46,6 +46,17 @@ pub struct TuiStrings {
     pub help_help: &'static str,
     pub help_navigate: &'static str,
     pub sort_status: &'static str,
+    pub tab_overview: &'static str,
+    pub tab_health: &'static str,
+    pub tab_insights: &'static str,
+    pub help_title: &'static str,
+    pub help_category_nav: &'static str,
+    pub help_category_repo: &'static str,
+    pub help_category_sync: &'static str,
+    pub help_category_search: &'static str,
+    pub help_category_system: &'static str,
+    pub search_mode_repo: &'static str,
+    pub search_mode_code: &'static str,
 }
 
 #[allow(dead_code)]

@@ -20,7 +20,6 @@ impl App {
             repos: Vec::new(),
             selected: 0,
             logs: Vec::new(),
-            show_help: false,
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
             list_state: ListState::default(),
@@ -44,6 +43,9 @@ impl App {
             search_results: Vec::new(),
             search_selected: 0,
             search_pattern: String::new(),
+            detail_tab: crate::tui::DetailTab::Overview,
+            help_popup_mode: crate::tui::HelpPopupMode::Hidden,
+            search_mode: crate::tui::SearchMode::Code,
         };
         app.log_info(crate::i18n::current().log.tui_started.to_string());
         app.load_repos()?;
@@ -296,6 +298,28 @@ impl App {
         }
     }
 
+    pub(crate) fn next_tab(&mut self) {
+        self.detail_tab = self.detail_tab.next();
+    }
+
+    pub(crate) fn prev_tab(&mut self) {
+        self.detail_tab = self.detail_tab.prev();
+    }
+
+    pub(crate) fn toggle_help(&mut self) {
+        self.help_popup_mode = match self.help_popup_mode {
+            crate::tui::HelpPopupMode::Hidden => crate::tui::HelpPopupMode::Visible,
+            crate::tui::HelpPopupMode::Visible => crate::tui::HelpPopupMode::Hidden,
+        };
+    }
+
+    pub(crate) fn toggle_search_mode(&mut self) {
+        self.search_mode = match self.search_mode {
+            crate::tui::SearchMode::Repo => crate::tui::SearchMode::Code,
+            crate::tui::SearchMode::Code => crate::tui::SearchMode::Repo,
+        };
+    }
+
     pub(crate) fn current_repo(&self) -> Option<&RepoItem> {
         self.repos.get(self.selected)
     }
@@ -501,16 +525,50 @@ impl App {
     pub(crate) fn execute_search(&mut self) {
         self.search_results.clear();
         self.search_selected = 0;
+        let pattern = self.search_pattern.clone();
 
+        match self.search_mode {
+            crate::tui::SearchMode::Repo => {
+                // Try Tantivy semantic/repo search first
+                match crate::search::search_repos(&pattern, 50) {
+                    Ok(results) => {
+                        for (repo_id, score) in results {
+                            self.search_results.push(SearchResult {
+                                repo_id: repo_id.clone(),
+                                file_path: format!("[score: {:.2}]", score),
+                                line_number: 0,
+                                line_content: repo_id,
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        self.log_warn(format!(
+                            "Tantivy search failed, falling back to code search: {}",
+                            e
+                        ));
+                        self.execute_code_search(&pattern);
+                    }
+                }
+            }
+            crate::tui::SearchMode::Code => {
+                self.execute_code_search(&pattern);
+            }
+        }
+
+        if self.search_results.len() > 200 {
+            self.search_results.truncate(200);
+            self.log_info("Search truncated to 200 results".to_string());
+        }
+    }
+
+    fn execute_code_search(&mut self, pattern: &str) {
         let repo_paths: Vec<(String, String)> =
             self.repos.iter().map(|r| (r.id.clone(), r.local_path.clone())).collect();
-
-        let pattern = self.search_pattern.clone();
 
         for (repo_id, path) in repo_paths {
             if which::which("rg").is_ok() {
                 if let Ok(output) = std::process::Command::new("rg")
-                    .args(["-n", "--no-heading", "--with-filename", "-C", "1", &pattern, &path])
+                    .args(["-n", "--no-heading", "--with-filename", "-C", "1", pattern, &path])
                     .output()
                 {
                     let text = String::from_utf8_lossy(&output.stdout);
@@ -529,17 +587,12 @@ impl App {
                     }
                 }
             } else {
-                search_repo_fallback(&path, &pattern, &repo_id, &mut self.search_results);
+                search_repo_fallback(&path, pattern, &repo_id, &mut self.search_results);
             }
 
             if self.search_results.len() >= 200 {
                 break;
             }
-        }
-
-        if self.search_results.len() > 200 {
-            self.search_results.truncate(200);
-            self.log_info("Search truncated to 200 results".to_string());
         }
     }
 

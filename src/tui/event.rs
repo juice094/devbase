@@ -1,6 +1,6 @@
 use crate::tui::render::ui;
 use crate::tui::{App, InputMode, SearchPopupMode, SortMode, SyncPopupMode};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{Terminal, backend::Backend};
 use std::io;
 use std::time::Duration;
@@ -41,6 +41,20 @@ pub(crate) async fn run_app<B: Backend>(
                 }
                 SyncPopupMode::Hidden => {}
             }
+            // Help popup intercepts keys when visible
+            if app.help_popup_mode == crate::tui::HelpPopupMode::Visible {
+                match key.code {
+                    KeyCode::Esc
+                    | KeyCode::Char('q')
+                    | KeyCode::Char('h')
+                    | KeyCode::Char('?')
+                    | KeyCode::F(1) => {
+                        app.toggle_help();
+                    }
+                    _ => {}
+                }
+                continue;
+            }
             // Search popup intercepts keys when visible
             if app.search_popup_mode == SearchPopupMode::Results {
                 match key.code {
@@ -73,6 +87,18 @@ pub(crate) async fn run_app<B: Backend>(
             match app.input_mode {
                 InputMode::Normal => match key.code {
                     KeyCode::Char('q') => return Ok(TuiAction::Quit),
+                    KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.toggle_search_mode();
+                        let mode_label = match app.search_mode {
+                            crate::tui::SearchMode::Repo => {
+                                crate::i18n::current().tui.search_mode_repo
+                            }
+                            crate::tui::SearchMode::Code => {
+                                crate::i18n::current().tui.search_mode_code
+                            }
+                        };
+                        app.log_info(format!("搜索模式已切换为: {}", mode_label));
+                    }
                     KeyCode::Char('r') => {
                         app.log_info(crate::i18n::current().log.refreshing.to_string());
                         if let Err(e) = app.load_repos() {
@@ -99,7 +125,10 @@ pub(crate) async fn run_app<B: Backend>(
                             app.log_error(crate::i18n::current().log.refresh_failed(e));
                         }
                     }
-                    KeyCode::Char('h') => app.show_help = !app.show_help,
+                    KeyCode::Char('h') | KeyCode::Char('?') => app.toggle_help(),
+                    KeyCode::F(1) => app.toggle_help(),
+                    KeyCode::Tab => app.next_tab(),
+                    KeyCode::BackTab => app.prev_tab(),
                     KeyCode::Down => app.next(),
                     KeyCode::Up => app.previous(),
                     KeyCode::Home | KeyCode::PageUp => app.jump_to_top(),
