@@ -138,6 +138,23 @@ enum Commands {
         #[command(subcommand)]
         cmd: RegistryCommands,
     },
+    /// Vault note management
+    Vault {
+        #[command(subcommand)]
+        cmd: VaultCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum VaultCommands {
+    /// Scan a directory for Markdown notes and sync into the vault
+    Scan {
+        /// Directory to scan (defaults to default vault dir)
+        #[arg(default_value = "")]
+        path: String,
+    },
+    /// Rebuild the Tantivy search index for all vault notes
+    Reindex,
 }
 
 #[derive(Subcommand)]
@@ -558,6 +575,25 @@ async fn main() -> anyhow::Result<()> {
             }
             RegistryCommands::Clean => {
                 backup::run_clean()?;
+            }
+        },
+        Commands::Vault { cmd } => match cmd {
+            VaultCommands::Scan { path } => {
+                let dir = if path.is_empty() {
+                    None
+                } else {
+                    Some(std::path::Path::new(&path))
+                };
+                let count = tokio::task::spawn_blocking(move || vault::scanner::scan_vault(dir))
+                    .await
+                    .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+                println!("Synced {} vault notes.", count);
+            }
+            VaultCommands::Reindex => {
+                tokio::task::spawn_blocking(|| vault::indexer::reindex_vault())
+                    .await
+                    .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+                println!("Vault search index rebuilt.");
             }
         },
     }
