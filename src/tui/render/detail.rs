@@ -112,7 +112,14 @@ fn render_overview(frame: &mut Frame, repo: &crate::tui::RepoItem, area: Rect, s
     let mut tag_line = vec![Span::styled("标签: ", styles.label)];
     tag_line.extend(crate::tui::tag_spans(&repo.tags));
 
-    let lines: Vec<Line> = vec![
+    // Horizontal rule for visual separation between layers.
+    let hr = Span::styled(
+        "─".repeat(area.width.saturating_sub(2) as usize),
+        Style::default().fg(styles.theme.border),
+    );
+
+    let mut lines: Vec<Line> = vec![
+        // === Layer 1: Identity + core status ===
         Line::from(vec![
             Span::styled(
                 format!("{} ", status_icon),
@@ -127,32 +134,40 @@ fn render_overview(frame: &mut Frame, repo: &crate::tui::RepoItem, area: Rect, s
             Span::raw("    "),
             Span::styled(status_desc, Style::default().fg(status_color)),
         ]),
+        Line::from(vec![hr.clone()]),
+        // === Layer 2: Commit + policy ===
         Line::from(vec![
             Span::styled("HEAD: ", styles.dim),
             Span::styled(head_short, Style::default().fg(styles.theme.text)),
             Span::styled("  策略: ", styles.dim),
             Span::styled(policy_text, Style::default().fg(policy_color)),
         ]),
-        if policy == crate::sync::SyncPolicy::Mirror {
-            Line::from(vec![
-                Span::styled(
-                    "  ⚠ ",
-                    Style::default().fg(styles.theme.danger).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    crate::i18n::current().sync.mirror_policy_warning,
-                    Style::default().fg(styles.theme.danger),
-                ),
-            ])
-        } else {
-            Line::from("")
-        },
-        Line::from(""),
+    ];
+
+    // Mirror policy callout — separated from the policy line so it doesn't
+    // feel visually cramped.
+    if policy == crate::sync::SyncPolicy::Mirror {
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::styled("  ▐ ", Style::default().fg(styles.theme.danger)),
+            Span::styled(
+                crate::i18n::current().sync.mirror_policy_warning,
+                Style::default().fg(styles.theme.danger),
+            ),
+        ]));
+        lines.push(Line::from(""));
+    } else {
+        lines.push(Line::from(""));
+    }
+
+    lines.extend(vec![
+        // === Layer 3: Description ===
         Line::from(vec![
             Span::styled("描述: ", styles.label),
             Span::styled(summary_text, Style::default().fg(styles.theme.text)),
         ]),
-        Line::from(""),
+        Line::from(vec![hr.clone()]),
+        // === Layer 4: Connection metadata ===
         Line::from(vec![
             Span::styled("分支: ", styles.label),
             Span::raw(repo.default_branch.as_deref().unwrap_or("—")),
@@ -171,7 +186,8 @@ fn render_overview(frame: &mut Frame, repo: &crate::tui::RepoItem, area: Rect, s
             ),
         ]),
         Line::from(tag_line),
-        Line::from(""),
+        Line::from(vec![hr.clone()]),
+        // === Layer 5: Sync history ===
         Line::from(vec![
             Span::styled("上次同步: ", styles.dim),
             Span::styled(last_sync_human, Style::default().fg(styles.theme.text)),
@@ -179,11 +195,12 @@ fn render_overview(frame: &mut Frame, repo: &crate::tui::RepoItem, area: Rect, s
             Span::styled(last_sync_commit, styles.dim),
         ]),
         Line::from(""),
+        // === Layer 6: Action hint ===
         Line::from(vec![
             Span::styled("操作: ", styles.dim),
             Span::styled("s 预览  S 执行  r 刷新", styles.dim),
         ]),
-    ];
+    ]);
 
     let para = Paragraph::new(Text::from(lines))
         .block(Block::default().borders(Borders::ALL).border_style(styles.border))

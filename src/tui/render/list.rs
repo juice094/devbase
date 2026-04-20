@@ -50,16 +50,17 @@ pub(crate) fn render_list(frame: &mut Frame, app: &mut App, area: Rect, styles: 
                 _ => String::new(),
             };
 
-            // Star count indicator
+            // Star count indicator — right-aligned to a fixed visual column
+            // so that 5-digit stars don't crowd adjacent elements.
             let star_indicator = if let Some(stars) = repo.stars {
-                format!(" ★{}", stars)
+                format!("  ★{stars}")
             } else {
                 String::new()
             };
 
             // Tag cluster indicator: show primary tag in muted color
             let tag_indicator = if let Some(first_tag) = repo.tags.first() {
-                format!(" [{}]", first_tag)
+                format!("  [{first_tag}]")
             } else {
                 String::new()
             };
@@ -118,7 +119,8 @@ pub(crate) fn render_list(frame: &mut Frame, app: &mut App, area: Rect, styles: 
                 Block::default()
                     .borders(Borders::ALL)
                     .title(list_title)
-                    .border_style(styles.border),
+                    .border_style(styles.border)
+                    .padding(ratatui::widgets::Padding::horizontal(1)),
             )
             .highlight_style(styles.highlight)
             .highlight_symbol("> ")
