@@ -1,5 +1,5 @@
 use crate::tui::theme::Styles;
-use crate::tui::{App, DetailTab};
+use crate::tui::{App, DetailTab, MainView};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -10,6 +10,13 @@ use ratatui::{
 };
 
 pub(crate) fn render_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &Styles) {
+    match app.main_view {
+        MainView::RepoList => render_repo_detail(frame, app, area, styles),
+        MainView::VaultList => render_vault_detail(frame, app, area, styles),
+    }
+}
+
+fn render_repo_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &Styles) {
     let repo = match app.current_repo() {
         Some(r) => r.clone(),
         None => {
@@ -368,4 +375,83 @@ fn render_insights(
         ]));
         frame.render_widget(label, spark_text_chunks[1]);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Vault detail
+// ---------------------------------------------------------------------------
+
+fn render_vault_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &Styles) {
+    let vault = match app.current_vault() {
+        Some(v) => v.clone(),
+        None => {
+            let msg = Paragraph::new("没有选中的笔记").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("笔记详情")
+                    .border_style(styles.border),
+            );
+            frame.render_widget(msg, area);
+            return;
+        }
+    };
+
+    let title = vault.title.as_deref().unwrap_or(&vault.id);
+
+    // Read content from filesystem
+    let content_preview = crate::vault::fs_io::read_note_body(&vault.path)
+        .map(|(body, _fm)| {
+            let preview: String = body.lines().take(20).collect::<Vec<_>>().join("\n");
+            preview
+        })
+        .unwrap_or_else(|| "无法读取笔记内容".to_string());
+
+    let tags_text = if vault.tags.is_empty() {
+        "(无标签)".to_string()
+    } else {
+        vault.tags.join(", ")
+    };
+
+    let links_text = if vault.outgoing_links.is_empty() {
+        "(无出站链接)".to_string()
+    } else {
+        vault.outgoing_links.join(", ")
+    };
+
+    let text = Text::from(vec![
+        Line::from(vec![
+            Span::styled("标题: ", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+            Span::raw(title),
+        ]),
+        Line::from(vec![
+            Span::styled("路径: ", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+            Span::styled(&vault.path, styles.dim),
+        ]),
+        Line::from(vec![
+            Span::styled("标签: ", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+            Span::raw(&tags_text),
+        ]),
+        Line::from(vec![
+            Span::styled("链接: ", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+            Span::raw(&links_text),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("预览:", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(&content_preview, styles.dim)),
+    ]);
+
+    let paragraph = Paragraph::new(text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!("笔记: {}", title))
+                .border_style(styles.border)
+                .padding(ratatui::widgets::Padding::horizontal(1)),
+        )
+        .wrap(Wrap { trim: true });
+
+    frame.render_widget(paragraph, area);
 }

@@ -1,5 +1,5 @@
 use crate::tui::theme::Styles;
-use crate::tui::{App, SortMode};
+use crate::tui::{App, MainView, SortMode};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -9,6 +9,13 @@ use ratatui::{
 };
 
 pub(crate) fn render_list(frame: &mut Frame, app: &mut App, area: Rect, styles: &Styles) {
+    match app.main_view {
+        MainView::RepoList => render_repo_list(frame, app, area, styles),
+        MainView::VaultList => render_vault_list(frame, app, area, styles),
+    }
+}
+
+fn render_repo_list(frame: &mut Frame, app: &mut App, area: Rect, styles: &Styles) {
     let items: Vec<ListItem> = app
         .repos
         .iter()
@@ -50,15 +57,14 @@ pub(crate) fn render_list(frame: &mut Frame, app: &mut App, area: Rect, styles: 
                 _ => String::new(),
             };
 
-            // Star count indicator — right-aligned to a fixed visual column
-            // so that 5-digit stars don't crowd adjacent elements.
+            // Star count indicator
             let star_indicator = if let Some(stars) = repo.stars {
                 format!("  ★{stars}")
             } else {
                 String::new()
             };
 
-            // Tag cluster indicator: show primary tag in muted color
+            // Tag cluster indicator
             let tag_indicator = if let Some(first_tag) = repo.tags.first() {
                 format!("  [{first_tag}]")
             } else {
@@ -127,4 +133,62 @@ pub(crate) fn render_list(frame: &mut Frame, app: &mut App, area: Rect, styles: 
     };
 
     frame.render_stateful_widget(list, area, &mut app.list_state);
+}
+
+fn render_vault_list(frame: &mut Frame, app: &mut App, area: Rect, styles: &Styles) {
+    let items: Vec<ListItem> = app
+        .vaults
+        .iter()
+        .map(|vault| {
+            let title = vault.title.as_deref().unwrap_or(&vault.id);
+            let tag_indicator = if let Some(first_tag) = vault.tags.first() {
+                format!("  [{first_tag}]")
+            } else {
+                String::new()
+            };
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("📄 {}", title), Style::default().fg(styles.theme.text)),
+                Span::styled(tag_indicator, styles.dim),
+            ]))
+        })
+        .collect();
+
+    let list_title = format!("Vault [{}]", app.vaults.len());
+
+    let list = if items.is_empty() {
+        let onboarding = vec![
+            ListItem::new(Line::from(Span::styled("", Style::default()))),
+            ListItem::new(Line::from(vec![Span::styled(
+                "  还没有 Vault 笔记",
+                Style::default().fg(styles.theme.warning).add_modifier(Modifier::BOLD),
+            )])),
+            ListItem::new(Line::from(Span::styled("", Style::default()))),
+            ListItem::new(Line::from(vec![
+                Span::styled("  运行: ", Style::default().fg(styles.theme.muted)),
+                Span::styled(
+                    "devbase vault scan <路径>",
+                    Style::default().fg(styles.theme.primary),
+                ),
+            ])),
+        ];
+        List::new(onboarding).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(list_title)
+                .border_style(styles.border),
+        )
+    } else {
+        List::new(items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(list_title)
+                    .border_style(styles.border)
+                    .padding(ratatui::widgets::Padding::horizontal(1)),
+            )
+            .highlight_style(styles.highlight)
+            .highlight_symbol("> ")
+    };
+
+    frame.render_stateful_widget(list, area, &mut app.vault_list_state);
 }

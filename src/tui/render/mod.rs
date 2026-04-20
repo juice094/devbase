@@ -2,6 +2,7 @@ use crate::tui::layout::AppLayout;
 use crate::tui::theme::{Styles, Theme};
 use crate::tui::{App, HelpPopupMode};
 use ratatui::Frame;
+use ratatui::style::{Modifier, Style};
 
 mod detail;
 mod help;
@@ -67,7 +68,15 @@ fn render_bottom_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect, 
             Span::styled(i18n.tui.hint_tag_input, styles.hint),
         ]),
         crate::tui::InputMode::Normal => {
+            let view_label = match app.main_view {
+                crate::tui::MainView::RepoList => "[Repos]",
+                crate::tui::MainView::VaultList => "[Vault]",
+            };
             let mut spans = vec![
+                Span::styled(view_label, Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+                Span::raw(" "),
+                Span::styled("Tab", styles.selected),
+                Span::raw("=切换 "),
                 Span::styled("q", styles.selected),
                 Span::raw(format!("={} ", i18n.tui.help_quit)),
                 Span::styled("r", styles.selected),

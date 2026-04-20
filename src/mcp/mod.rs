@@ -26,6 +26,9 @@ pub enum McpToolEnum {
     CodeMetrics(DevkitCodeMetricsTool),
     ModuleGraph(DevkitModuleGraphTool),
     NaturalLanguageQuery(DevkitNaturalLanguageQueryTool),
+    VaultSearch(DevkitVaultSearchTool),
+    VaultRead(DevkitVaultReadTool),
+    VaultWrite(DevkitVaultWriteTool),
 }
 
 impl McpTool for McpToolEnum {
@@ -45,6 +48,9 @@ impl McpTool for McpToolEnum {
             McpToolEnum::CodeMetrics(t) => t.name(),
             McpToolEnum::ModuleGraph(t) => t.name(),
             McpToolEnum::NaturalLanguageQuery(t) => t.name(),
+            McpToolEnum::VaultSearch(t) => t.name(),
+            McpToolEnum::VaultRead(t) => t.name(),
+            McpToolEnum::VaultWrite(t) => t.name(),
         }
     }
 
@@ -64,6 +70,9 @@ impl McpTool for McpToolEnum {
             McpToolEnum::CodeMetrics(t) => t.schema(),
             McpToolEnum::ModuleGraph(t) => t.schema(),
             McpToolEnum::NaturalLanguageQuery(t) => t.schema(),
+            McpToolEnum::VaultSearch(t) => t.schema(),
+            McpToolEnum::VaultRead(t) => t.schema(),
+            McpToolEnum::VaultWrite(t) => t.schema(),
         }
     }
 
@@ -83,6 +92,9 @@ impl McpTool for McpToolEnum {
             McpToolEnum::CodeMetrics(t) => t.invoke(args).await,
             McpToolEnum::ModuleGraph(t) => t.invoke(args).await,
             McpToolEnum::NaturalLanguageQuery(t) => t.invoke(args).await,
+            McpToolEnum::VaultSearch(t) => t.invoke(args).await,
+            McpToolEnum::VaultRead(t) => t.invoke(args).await,
+            McpToolEnum::VaultWrite(t) => t.invoke(args).await,
         }
     }
 }
@@ -227,6 +239,9 @@ pub fn build_server() -> McpServer {
         .register_tool(McpToolEnum::CodeMetrics(DevkitCodeMetricsTool))
         .register_tool(McpToolEnum::ModuleGraph(DevkitModuleGraphTool))
         .register_tool(McpToolEnum::NaturalLanguageQuery(DevkitNaturalLanguageQueryTool))
+        .register_tool(McpToolEnum::VaultSearch(DevkitVaultSearchTool))
+        .register_tool(McpToolEnum::VaultRead(DevkitVaultReadTool))
+        .register_tool(McpToolEnum::VaultWrite(DevkitVaultWriteTool))
 }
 
 pub fn format_mcp_message(body: &serde_json::Value) -> String {

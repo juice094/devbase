@@ -1,8 +1,8 @@
 use crate::asyncgit::AsyncNotification;
 use crate::registry::WorkspaceRegistry;
 use crate::tui::{
-    App, InputMode, ListState, RepoItem, SearchPopupMode, SearchResult, SortMode, SyncPopupMode,
-    SyncPreviewItem,
+    App, InputMode, ListState, MainView, RepoItem, SearchPopupMode, SearchResult, SortMode,
+    SyncPopupMode, SyncPreviewItem, VaultItem,
 };
 use chrono::Utc;
 use crossbeam_channel::bounded;
@@ -46,6 +46,10 @@ impl App {
             detail_tab: crate::tui::DetailTab::Overview,
             help_popup_mode: crate::tui::HelpPopupMode::Hidden,
             search_mode: crate::tui::SearchMode::Code,
+            main_view: crate::tui::MainView::RepoList,
+            vaults: Vec::new(),
+            vault_selected: 0,
+            vault_list_state: ListState::default(),
         };
         app.log_info(crate::i18n::current().log.tui_started.to_string());
         app.load_repos()?;
@@ -55,7 +59,19 @@ impl App {
 
     pub(crate) fn load_repos(&mut self) -> anyhow::Result<()> {
         let conn = WorkspaceRegistry::init_db()?;
-        let repos = WorkspaceRegistry::list_repos(&conn)?;
+        let mut repos = WorkspaceRegistry::list_repos(&conn)?;
+
+        // P2-lite: apply static overrides from workspace/repos.toml
+        if let Some(ot) = crate::registry::repos_toml::load_repos_toml() {
+            for repo in &mut repos {
+                if let Some(o) = ot.repos.iter().find(|o| {
+                    repo.local_path.to_string_lossy().contains(&o.path)
+                        || repo.id.contains(&o.path)
+                }) {
+                    crate::registry::repos_toml::apply_overrides(repo, o);
+                }
+            }
+        }
 
         self.repos.clear();
         for repo in repos {
@@ -267,43 +283,92 @@ impl App {
     }
 
     pub(crate) fn next(&mut self) {
-        if !self.repos.is_empty() {
-            self.selected = (self.selected + 1) % self.repos.len();
-            self.list_state.select(Some(self.selected));
-            self.spawn_repo_status_for_current();
+        match self.main_view {
+            MainView::RepoList => {
+                if !self.repos.is_empty() {
+                    self.selected = (self.selected + 1) % self.repos.len();
+                    self.list_state.select(Some(self.selected));
+                    self.spawn_repo_status_for_current();
+                }
+            }
+            MainView::VaultList => {
+                if !self.vaults.is_empty() {
+                    self.vault_selected = (self.vault_selected + 1) % self.vaults.len();
+                    self.vault_list_state.select(Some(self.vault_selected));
+                }
+            }
         }
     }
 
     pub(crate) fn previous(&mut self) {
-        if !self.repos.is_empty() {
-            self.selected = (self.selected + self.repos.len() - 1) % self.repos.len();
-            self.list_state.select(Some(self.selected));
-            self.spawn_repo_status_for_current();
+        match self.main_view {
+            MainView::RepoList => {
+                if !self.repos.is_empty() {
+                    self.selected = (self.selected + self.repos.len() - 1) % self.repos.len();
+                    self.list_state.select(Some(self.selected));
+                    self.spawn_repo_status_for_current();
+                }
+            }
+            MainView::VaultList => {
+                if !self.vaults.is_empty() {
+                    self.vault_selected =
+                        (self.vault_selected + self.vaults.len() - 1) % self.vaults.len();
+                    self.vault_list_state.select(Some(self.vault_selected));
+                }
+            }
         }
     }
 
     pub(crate) fn jump_to_top(&mut self) {
-        if !self.repos.is_empty() {
-            self.selected = 0;
-            self.list_state.select(Some(self.selected));
-            self.spawn_repo_status_for_current();
+        match self.main_view {
+            MainView::RepoList => {
+                if !self.repos.is_empty() {
+                    self.selected = 0;
+                    self.list_state.select(Some(self.selected));
+                    self.spawn_repo_status_for_current();
+                }
+            }
+            MainView::VaultList => {
+                if !self.vaults.is_empty() {
+                    self.vault_selected = 0;
+                    self.vault_list_state.select(Some(self.vault_selected));
+                }
+            }
         }
     }
 
     pub(crate) fn jump_to_bottom(&mut self) {
-        if !self.repos.is_empty() {
-            self.selected = self.repos.len() - 1;
-            self.list_state.select(Some(self.selected));
-            self.spawn_repo_status_for_current();
+        match self.main_view {
+            MainView::RepoList => {
+                if !self.repos.is_empty() {
+                    self.selected = self.repos.len() - 1;
+                    self.list_state.select(Some(self.selected));
+                    self.spawn_repo_status_for_current();
+                }
+            }
+            MainView::VaultList => {
+                if !self.vaults.is_empty() {
+                    self.vault_selected = self.vaults.len() - 1;
+                    self.vault_list_state.select(Some(self.vault_selected));
+                }
+            }
         }
     }
 
     pub(crate) fn next_tab(&mut self) {
-        self.detail_tab = self.detail_tab.next();
+        if self.main_view == MainView::RepoList {
+            self.detail_tab = self.detail_tab.next();
+        }
     }
 
     pub(crate) fn prev_tab(&mut self) {
-        self.detail_tab = self.detail_tab.prev();
+        if self.main_view == MainView::RepoList {
+            self.detail_tab = self.detail_tab.prev();
+        }
+    }
+
+    pub(crate) fn toggle_main_view(&mut self) {
+        self.main_view = self.main_view.toggle();
     }
 
     pub(crate) fn toggle_help(&mut self) {
@@ -322,6 +387,29 @@ impl App {
 
     pub(crate) fn current_repo(&self) -> Option<&RepoItem> {
         self.repos.get(self.selected)
+    }
+
+    pub(crate) fn current_vault(&self) -> Option<&VaultItem> {
+        self.vaults.get(self.vault_selected)
+    }
+
+    pub(crate) fn load_vaults(&mut self) -> anyhow::Result<()> {
+        let conn = WorkspaceRegistry::init_db()?;
+        let notes = WorkspaceRegistry::list_vault_notes(&conn)?;
+        self.vaults.clear();
+        for note in notes {
+            self.vaults.push(VaultItem {
+                id: note.id,
+                path: note.path,
+                title: note.title,
+                tags: note.tags,
+                outgoing_links: note.outgoing_links,
+            });
+        }
+        self.vault_selected = 0;
+        self.vault_list_state.select(Some(0));
+        self.log_info(crate::i18n::current().log.loaded_vaults(self.vaults.len()));
+        Ok(())
     }
 
     pub(crate) fn update_async(&mut self, notification: AsyncNotification) {

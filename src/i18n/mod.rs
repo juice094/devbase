@@ -147,6 +147,9 @@ impl LogStrings {
     pub fn loaded_repos(&self, count: usize) -> String {
         format!("已加载 {} 个仓库。", count)
     }
+    pub fn loaded_vaults(&self, count: usize) -> String {
+        format!("已加载 {} 个笔记。", count)
+    }
     pub fn fetching_preview(&self, repo_id: &str) -> String {
         format!("正在为 {} 获取预览...", repo_id)
     }

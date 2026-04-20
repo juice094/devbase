@@ -19,6 +19,22 @@ impl WorkspaceRegistry {
         std::fs::create_dir_all(&ws)?;
         std::fs::create_dir_all(ws.join("vault"))?;
         std::fs::create_dir_all(ws.join("assets"))?;
+
+        // P2-lite: create sample repos.toml if not exists
+        let repos_toml = ws.join("repos.toml");
+        if !repos_toml.exists() {
+            let sample = r#"# Static repository configuration overrides.
+# devbase auto-discovers repos, but you can declare tags/tier here.
+#
+# [[repo]]
+# path = "devbase"
+# tags = ["rust", "cli"]
+# tier = "hot"
+# workspace_type = "rust"
+"#;
+            let _ = std::fs::write(&repos_toml, sample);
+        }
+
         Ok(ws)
     }
 

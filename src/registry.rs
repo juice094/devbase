@@ -128,6 +128,7 @@ mod core;
 mod health;
 mod knowledge;
 mod metrics;
+pub mod repos_toml;
 mod workspace;
 
 #[cfg(test)]

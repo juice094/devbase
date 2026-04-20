@@ -1,5 +1,5 @@
 use crate::tui::render::ui;
-use crate::tui::{App, InputMode, SearchPopupMode, SortMode, SyncPopupMode};
+use crate::tui::{App, InputMode, MainView, SearchPopupMode, SortMode, SyncPopupMode};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{Terminal, backend::Backend};
 use std::io;
@@ -104,6 +104,9 @@ pub(crate) async fn run_app<B: Backend>(
                         if let Err(e) = app.load_repos() {
                             app.log_error(crate::i18n::current().log.refresh_failed(e));
                         }
+                        if let Err(e) = app.load_vaults() {
+                            app.log_error(format!("刷新 Vault 失败: {}", e));
+                        }
                     }
                     KeyCode::Char('s') => app.fetch_all_and_preview(),
                     KeyCode::Char('S') => app.start_safe_sync(),
@@ -127,27 +130,35 @@ pub(crate) async fn run_app<B: Backend>(
                     }
                     KeyCode::Char('h') | KeyCode::Char('?') => app.toggle_help(),
                     KeyCode::F(1) => app.toggle_help(),
-                    KeyCode::Tab => app.next_tab(),
-                    KeyCode::BackTab => app.prev_tab(),
+                    KeyCode::Tab => app.toggle_main_view(),
+                    KeyCode::BackTab => app.toggle_main_view(),
                     KeyCode::Down => app.next(),
                     KeyCode::Up => app.previous(),
                     KeyCode::Home | KeyCode::PageUp => app.jump_to_top(),
                     KeyCode::End | KeyCode::PageDown => app.jump_to_bottom(),
-                    KeyCode::Enter => {
-                        let cwd = app.repos.get(app.selected).map(|r| r.local_path.clone());
-                        if let Some(cwd) = cwd {
-                            let cmd = if which::which("gitui").is_ok() {
-                                Some("gitui")
-                            } else if which::which("lazygit").is_ok() {
-                                Some("lazygit")
-                            } else {
-                                app.log_warn(
-                                    crate::i18n::current().log.external_tui_not_found.to_string(),
-                                );
-                                None
-                            };
-                            if let Some(cmd) = cmd {
-                                return Ok(TuiAction::LaunchExternal { cmd: cmd.to_string(), cwd });
+                    KeyCode::Enter => match app.main_view {
+                        MainView::RepoList => {
+                            let cwd = app.repos.get(app.selected).map(|r| r.local_path.clone());
+                            if let Some(cwd) = cwd {
+                                let cmd = if which::which("gitui").is_ok() {
+                                    Some("gitui")
+                                } else if which::which("lazygit").is_ok() {
+                                    Some("lazygit")
+                                } else {
+                                    app.log_warn(
+                                        crate::i18n::current().log.external_tui_not_found.to_string(),
+                                    );
+                                    None
+                                };
+                                if let Some(cmd) = cmd {
+                                    return Ok(TuiAction::LaunchExternal { cmd: cmd.to_string(), cwd });
+                                }
+                            }
+                        }
+                        MainView::VaultList => {
+                            if let Some(vault) = app.current_vault() {
+                                let path = vault.path.clone();
+                                let _ = std::process::Command::new("code").arg(&path).spawn();
                             }
                         }
                     }

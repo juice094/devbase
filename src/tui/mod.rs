@@ -14,6 +14,28 @@ pub(crate) enum SortMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum MainView {
+    RepoList,
+    VaultList,
+}
+
+impl MainView {
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::RepoList => Self::VaultList,
+            Self::VaultList => Self::RepoList,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::RepoList => "Repos",
+            Self::VaultList => "Vault",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum DetailTab {
     Overview,
     Health,
@@ -71,6 +93,15 @@ pub(crate) struct RepoItem {
     pub(crate) status_ahead: Option<usize>,
     pub(crate) status_behind: Option<usize>,
     pub(crate) stars: Option<u64>,
+}
+
+#[derive(Clone)]
+pub(crate) struct VaultItem {
+    pub(crate) id: String,
+    pub(crate) path: String,
+    pub(crate) title: Option<String>,
+    pub(crate) tags: Vec<String>,
+    pub(crate) outgoing_links: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -142,6 +173,10 @@ pub struct App {
     pub(crate) detail_tab: DetailTab,
     pub(crate) help_popup_mode: HelpPopupMode,
     pub(crate) search_mode: SearchMode,
+    pub(crate) main_view: MainView,
+    pub(crate) vaults: Vec<VaultItem>,
+    pub(crate) vault_selected: usize,
+    pub(crate) vault_list_state: ListState,
 }
 
 pub mod event;
