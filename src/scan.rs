@@ -1,4 +1,4 @@
-use crate::registry::{CodeMetrics, OplogEntry, RepoEntry, RemoteEntry, WorkspaceRegistry};
+use crate::registry::{CodeMetrics, OplogEntry, RemoteEntry, RepoEntry, WorkspaceRegistry};
 use chrono::Utc;
 use git2::Repository;
 use std::path::{Path, PathBuf};
@@ -37,29 +37,21 @@ pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::
                 if let Some(metrics) = compute_code_metrics(&path_str) {
                     let conn = crate::registry::WorkspaceRegistry::init_db()?;
                     crate::registry::WorkspaceRegistry::save_code_metrics(
-                        &conn,
-                        &repo_id,
-                        metrics.total_lines,
-                        metrics.source_lines,
-                        metrics.test_lines,
-                        metrics.comment_lines,
-                        metrics.file_count,
-                        &metrics.language_breakdown.to_string(),
+                        &conn, &repo_id, &metrics,
                     )?;
                 }
-                if is_rust {
-                    if let Ok(modules) = extract_rust_modules(&path_str) {
-                        let conn = crate::registry::WorkspaceRegistry::init_db()?;
-                        let _ = crate::registry::WorkspaceRegistry::clear_modules(&conn, &repo_id);
-                        for (name, kind, src_path) in modules {
-                            let _ = crate::registry::WorkspaceRegistry::save_module(
-                                &conn, &repo_id, &name, &kind, &src_path,
-                            );
-                        }
+                if is_rust && let Ok(modules) = extract_rust_modules(&path_str) {
+                    let conn = crate::registry::WorkspaceRegistry::init_db()?;
+                    let _ = crate::registry::WorkspaceRegistry::clear_modules(&conn, &repo_id);
+                    for (name, kind, src_path) in modules {
+                        let _ = crate::registry::WorkspaceRegistry::save_module(
+                            &conn, &repo_id, &name, &kind, &src_path,
+                        );
                     }
                 }
                 Ok::<_, anyhow::Error>(())
-            }).await;
+            })
+            .await;
         }
         registered = repos.len();
     }
@@ -87,7 +79,10 @@ pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::
                 id: None,
                 operation: "scan".to_string(),
                 repo_id: None,
-                details: Some(format!("path={}, discovered={}, registered={}", path, count, registered)),
+                details: Some(format!(
+                    "path={}, discovered={}, registered={}",
+                    path, count, registered
+                )),
                 status: "success".to_string(),
                 timestamp: Utc::now(),
             },
@@ -145,11 +140,7 @@ fn discover_repos(
 ) -> anyhow::Result<Vec<RepoEntry>> {
     let mut git_repos = Vec::new();
 
-    for entry in WalkDir::new(root)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
+    for entry in WalkDir::new(root).follow_links(false).into_iter().filter_map(|e| e.ok()) {
         if entry.file_name() == ".git" && entry.file_type().is_dir() {
             let repo_path = entry.path().parent().unwrap_or(root).to_path_buf();
 
@@ -167,11 +158,7 @@ fn discover_repos(
 
     // Discover non-git workspaces by marker files
     let mut non_git_repos = Vec::new();
-    for entry in WalkDir::new(root)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
+    for entry in WalkDir::new(root).follow_links(false).into_iter().filter_map(|e| e.ok()) {
         let name = entry.file_name().to_string_lossy();
         let is_marker = (name == "SOUL.md" || name == "MEMORY.md" || name == ".devbase")
             && entry.file_type().is_file();
@@ -197,8 +184,6 @@ fn discover_repos(
     repos.extend(non_git_repos);
     Ok(repos)
 }
-
-
 
 pub fn detect_language(path: &Path) -> Option<String> {
     if path.join("Cargo.toml").exists() {
@@ -264,7 +249,7 @@ fn extract_rust_modules(repo_path: &str) -> anyhow::Result<Vec<(String, String, 
     }
 
     let output = std::process::Command::new("cargo")
-        .args(&["metadata", "--format-version", "1", "--no-deps"])
+        .args(["metadata", "--format-version", "1", "--no-deps"])
         .current_dir(repo_path)
         .output()?;
 
@@ -282,7 +267,8 @@ fn extract_rust_modules(repo_path: &str) -> anyhow::Result<Vec<(String, String, 
                     let name = target.get("name").and_then(|v| v.as_str()).unwrap_or("");
                     let src_path = target.get("src_path").and_then(|v| v.as_str()).unwrap_or("");
                     let empty_kinds: Vec<serde_json::Value> = vec![];
-                    let kinds = target.get("kind").and_then(|v| v.as_array()).unwrap_or(&empty_kinds);
+                    let kinds =
+                        target.get("kind").and_then(|v| v.as_array()).unwrap_or(&empty_kinds);
                     let kind = kinds.first().and_then(|v| v.as_str()).unwrap_or("unknown");
                     if !name.is_empty() {
                         modules.push((name.to_string(), kind.to_string(), src_path.to_string()));
@@ -301,11 +287,7 @@ pub fn inspect_repo(
 ) -> anyhow::Result<RepoEntry> {
     let repo = Repository::open(path)?;
 
-    let id = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("unknown")
-        .to_string();
+    let id = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
 
     let upstream_url = repo
         .remotes()
@@ -316,10 +298,7 @@ pub fn inspect_repo(
 
     let stars = upstream_url.as_deref().and_then(|u| fetch_github_stars(u, github));
 
-    let default_branch = repo
-        .head()
-        .ok()
-        .and_then(|head| head.shorthand().map(String::from));
+    let default_branch = repo.head().ok().and_then(|head| head.shorthand().map(String::from));
 
     let language = detect_language(path);
 
@@ -355,17 +334,11 @@ pub fn inspect_repo(
 }
 
 pub fn inspect_non_git_workspace(path: &Path) -> anyhow::Result<RepoEntry> {
-    let id = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("unknown")
-        .to_string();
+    let id = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
 
     let language = detect_language(path);
 
-    let workspace_type = if path.join("SOUL.md").exists()
-        || path.join(".claude").is_dir()
-    {
+    let workspace_type = if path.join("SOUL.md").exists() || path.join(".claude").is_dir() {
         "openclaw"
     } else {
         "generic"
@@ -390,7 +363,7 @@ fn is_nested_submodule(path: &Path, found: &[RepoEntry]) -> bool {
 }
 
 fn compute_code_metrics(path: &str) -> Option<CodeMetrics> {
-    use tokei::{Languages, Config};
+    use tokei::{Config, Languages};
     let mut languages = Languages::new();
     let config = Config::default();
     languages.get_statistics(&[path], &[], &config);
@@ -403,9 +376,9 @@ fn compute_code_metrics(path: &str) -> Option<CodeMetrics> {
     let mut breakdown = serde_json::Map::new();
 
     for (lang_type, language) in &languages {
-        let code = language.code as usize;
-        let comments = language.comments as usize;
-        let blanks = language.blanks as usize;
+        let code = language.code;
+        let comments = language.comments;
+        let blanks = language.blanks;
         let files = language.reports.len();
 
         total_lines += code + comments + blanks;
@@ -413,12 +386,14 @@ fn compute_code_metrics(path: &str) -> Option<CodeMetrics> {
         comment_lines += comments;
         file_count += files;
 
-        let test_code: usize = language.reports.iter()
+        let test_code: usize = language
+            .reports
+            .iter()
             .filter(|r| {
                 let path = r.name.to_string_lossy().to_lowercase();
                 path.contains("test") || path.contains("tests/") || path.contains("__tests__")
             })
-            .map(|r| r.stats.code as usize)
+            .map(|r| r.stats.code)
             .sum();
         test_lines += test_code;
 
@@ -528,7 +503,7 @@ mod tests {
             remotes: vec![],
         };
         let same = Path::new("/workspace/parent");
-        assert!(!is_nested_submodule(same, &[parent.clone()]));
+        assert!(!is_nested_submodule(same, std::slice::from_ref(&parent)));
 
         let sibling = Path::new("/workspace/other");
         assert!(!is_nested_submodule(sibling, &[parent]));
@@ -542,10 +517,7 @@ mod tests {
         git2::Repository::init(&repo_path).unwrap();
 
         let entry = inspect_repo(&repo_path, None).unwrap();
-        assert_eq!(
-            entry.tags,
-            vec!["discovered", "zip-snapshot", "needs-migration"]
-        );
+        assert_eq!(entry.tags, vec!["discovered", "zip-snapshot", "needs-migration"]);
     }
 
     #[test]
@@ -556,10 +528,7 @@ mod tests {
         git2::Repository::init(&repo_path).unwrap();
 
         let entry = inspect_repo(&repo_path, None).unwrap();
-        assert_eq!(
-            entry.tags,
-            vec!["discovered", "zip-snapshot", "needs-migration"]
-        );
+        assert_eq!(entry.tags, vec!["discovered", "zip-snapshot", "needs-migration"]);
     }
 
     #[test]
@@ -611,7 +580,8 @@ mod tests {
         let repos = discover_repos(dir.path(), None).unwrap();
         assert_eq!(repos.len(), 2);
 
-        let types: std::collections::HashSet<_> = repos.iter().map(|r| r.workspace_type.as_str()).collect();
+        let types: std::collections::HashSet<_> =
+            repos.iter().map(|r| r.workspace_type.as_str()).collect();
         assert!(types.contains("git"));
         assert!(types.contains("generic"));
     }
@@ -642,14 +612,8 @@ mod tests {
 
     #[test]
     fn test_parse_github_owner_repo_non_github() {
-        assert_eq!(
-            parse_github_owner_repo("https://gitlab.com/rust-lang/rust.git"),
-            None
-        );
-        assert_eq!(
-            parse_github_owner_repo("https://bitbucket.org/rust-lang/rust.git"),
-            None
-        );
+        assert_eq!(parse_github_owner_repo("https://gitlab.com/rust-lang/rust.git"), None);
+        assert_eq!(parse_github_owner_repo("https://bitbucket.org/rust-lang/rust.git"), None);
     }
 
     #[test]

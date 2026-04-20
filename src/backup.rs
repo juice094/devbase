@@ -115,14 +115,10 @@ pub fn import_db(source: &Path, dry_run: bool) -> anyhow::Result<()> {
 
     let current_ids: std::collections::HashSet<String> =
         current_repos.iter().map(|r| r.id.clone()).collect();
-    let new_repos: Vec<&RepoEntry> = src_repos
-        .iter()
-        .filter(|r| !current_ids.contains(&r.id))
-        .collect();
-    let existing_repos: Vec<&RepoEntry> = src_repos
-        .iter()
-        .filter(|r| current_ids.contains(&r.id))
-        .collect();
+    let new_repos: Vec<&RepoEntry> =
+        src_repos.iter().filter(|r| !current_ids.contains(&r.id)).collect();
+    let existing_repos: Vec<&RepoEntry> =
+        src_repos.iter().filter(|r| current_ids.contains(&r.id)).collect();
 
     println!("导入统计:");
     println!("  源文件中的工作区: {}", src_repos.len());
@@ -221,7 +217,7 @@ mod tests {
         fs::write(&b3, "x").unwrap();
 
         // Temporarily override backup dir by constructing paths manually
-        let mut backups = vec![b1.clone(), b2.clone(), b3.clone()];
+        let mut backups = [b1.clone(), b2.clone(), b3.clone()];
         backups.sort();
         assert_eq!(backups.len(), 3);
 

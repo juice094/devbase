@@ -1,25 +1,7 @@
 use clap::{Parser, Subcommand};
 use tracing::{info, warn};
 
-mod asyncgit;
-mod backup;
-mod config;
-mod daemon;
-mod digest;
-mod health;
-mod discovery_engine;
-mod i18n;
-mod knowledge_engine;
-mod mcp;
-mod query;
-mod registry;
-mod scan;
-mod search;
-mod sync;
-mod sync_protocol;
-mod syncthing_client;
-mod tui;
-mod watch;
+use devbase::*;
 
 #[derive(Parser)]
 #[command(name = "devbase")]
@@ -191,7 +173,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut config = config::Config::load()?;
     let lang = if config.general.language == "auto" || config.general.language.is_empty() {
-        let detected = crate::i18n::detect_system_language();
+        let detected = i18n::detect_system_language();
         config.general.language = detected.clone();
         if let Err(e) = config.save() {
             eprintln!("警告: 无法保存语言配置: {}", e);
@@ -200,17 +182,17 @@ async fn main() -> anyhow::Result<()> {
     } else {
         config.general.language.clone()
     };
-    crate::i18n::init(&lang);
+    i18n::init(&lang);
 
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Scan { path, register } => {
-            info!("{}: {}", crate::i18n::current().cli.scanning, path);
+            info!("{}: {}", i18n::current().cli.scanning, path);
             scan::run(&path, register).await?;
         }
         Commands::Health { detail, limit, page } => {
-            info!("{}", crate::i18n::current().cli.health_check);
+            info!("{}", i18n::current().cli.health_check);
             health::run(detail, limit, page, config.cache.ttl_seconds).await?;
         }
         Commands::Sync {
@@ -222,22 +204,23 @@ async fn main() -> anyhow::Result<()> {
             if dry_run {
                 warn!("Dry-run mode enabled");
             }
-            info!("{}", crate::i18n::current().cli.syncing);
+            info!("{}", i18n::current().cli.syncing);
             if json {
-                let output = sync::run_json(dry_run, filter_tags.as_deref(), exclude.as_deref()).await?;
+                let output =
+                    sync::run_json(dry_run, filter_tags.as_deref(), exclude.as_deref()).await?;
                 println!("{}", serde_json::to_string_pretty(&output)?);
             } else {
                 sync::run(dry_run, filter_tags.as_deref(), exclude.as_deref()).await?;
             }
         }
         Commands::Query { query, limit, page } => {
-            info!("{}: {}", crate::i18n::current().cli.querying, query);
+            info!("{}: {}", i18n::current().cli.querying, query);
             query::run(&query, limit, page, &config).await?;
         }
         Commands::Index { path } => {
-            info!("{}: path='{}'", crate::i18n::current().cli.indexing, path);
+            info!("{}: path='{}'", i18n::current().cli.indexing, path);
             let path = path.clone();
-            let count = tokio::task::spawn_blocking(move || crate::knowledge_engine::run_index(&path))
+            let count = tokio::task::spawn_blocking(move || knowledge_engine::run_index(&path))
                 .await
                 .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
             info!("已索引 {} 个仓库", count);
@@ -252,9 +235,8 @@ async fn main() -> anyhow::Result<()> {
             println!("已从 devbase 注册表中删除 {} 个备份条目。", deleted);
             println!("\n剩余已注册仓库:");
             let mut stmt = conn.prepare("SELECT id, local_path FROM repos")?;
-            let rows = stmt.query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })?;
+            let rows =
+                stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
             for row in rows {
                 let (id, path) = row?;
                 println!("  [{}] {}", id, path);
@@ -263,9 +245,12 @@ async fn main() -> anyhow::Result<()> {
         Commands::Tag { repo_id, tags } => {
             info!("为 {} 打标签: {}", repo_id, tags);
             let mut conn = registry::WorkspaceRegistry::init_db()?;
-            let tag_list: Vec<&str> = tags.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            let tag_list: Vec<&str> =
+                tags.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
             let tx = conn.transaction()?;
-            let exists: bool = tx.query_row("SELECT 1 FROM repos WHERE id = ?1", [&repo_id], |_| Ok(true)).unwrap_or(false);
+            let exists: bool = tx
+                .query_row("SELECT 1 FROM repos WHERE id = ?1", [&repo_id], |_| Ok(true))
+                .unwrap_or(false);
             if !exists {
                 println!("注册表中未找到仓库 '{}'。", repo_id);
             } else {
@@ -283,7 +268,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Meta { repo_id, tier, workspace_type } => {
             info!("更新 {} 的元数据", repo_id);
             let conn = registry::WorkspaceRegistry::init_db()?;
-            let exists: bool = conn.query_row("SELECT 1 FROM repos WHERE id = ?1", [&repo_id], |_| Ok(true)).unwrap_or(false);
+            let exists: bool = conn
+                .query_row("SELECT 1 FROM repos WHERE id = ?1", [&repo_id], |_| Ok(true))
+                .unwrap_or(false);
             if !exists {
                 println!("注册表中未找到仓库 '{}'。", repo_id);
             } else {
@@ -301,7 +288,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Tui => {
-            info!("{}", crate::i18n::current().cli.launching_tui);
+            info!("{}", i18n::current().cli.launching_tui);
             tui::run().await?;
         }
         Commands::Mcp => {
@@ -322,7 +309,8 @@ async fn main() -> anyhow::Result<()> {
                 max_files: config.watch.max_files,
                 ..Default::default()
             };
-            let mut scheduler = FolderScheduler::with_max_files(root.clone(), config.watch.max_files);
+            let mut scheduler =
+                FolderScheduler::with_max_files(root.clone(), config.watch.max_files);
 
             println!("Watching {} for {} seconds...", path, duration);
             let start = std::time::Instant::now();
@@ -334,10 +322,7 @@ async fn main() -> anyhow::Result<()> {
                     let aggregated = aggregator.aggregate(events);
                     let actions = scheduler.check_and_schedule(aggregated)?;
                     if !actions.is_empty() {
-                        println!(
-                            "Detected changes, actions: {:?}",
-                            actions
-                        );
+                        println!("Detected changes, actions: {:?}", actions);
                     }
                 }
             }
@@ -378,7 +363,8 @@ async fn main() -> anyhow::Result<()> {
 
             let filtered_repos: Vec<_> = if let Some(ref exp_id) = experiment {
                 let exps = WorkspaceRegistry::list_experiments(&conn).unwrap_or_default();
-                let target_repo = exps.into_iter().find(|e| e.id == *exp_id).and_then(|e| e.repo_id);
+                let target_repo =
+                    exps.into_iter().find(|e| e.id == *exp_id).and_then(|e| e.repo_id);
                 match target_repo {
                     Some(repo_id) => repos.into_iter().filter(|r| r.id == repo_id).collect(),
                     None => {
@@ -390,7 +376,8 @@ async fn main() -> anyhow::Result<()> {
                 repos
                     .into_iter()
                     .filter(|repo| {
-                        filter_list.is_empty() || filter_list.iter().any(|f| repo.tags.contains(&f.to_string()))
+                        filter_list.is_empty()
+                            || filter_list.iter().any(|f| repo.tags.contains(&f.to_string()))
                     })
                     .collect()
             };
@@ -409,21 +396,25 @@ async fn main() -> anyhow::Result<()> {
                     Ok(()) => {
                         println!("  [{}] Pushed {} -> {}", repo.id, folder_id, path);
                         // Update experiment record if --experiment was provided
-                        if let Some(ref exp_id) = experiment {
-                            if let Ok(mut exps) = WorkspaceRegistry::list_experiments(&conn) {
-                                if let Some(exp) = exps.iter_mut().find(|e| e.id == *exp_id) {
-                                    exp.syncthing_folder_id = Some(folder_id.clone());
-                                    let _ = WorkspaceRegistry::save_experiment(&conn, exp);
-                                }
-                            }
+                        if let Some(ref exp_id) = experiment
+                            && let Ok(mut exps) = WorkspaceRegistry::list_experiments(&conn)
+                            && let Some(exp) = exps.iter_mut().find(|e| e.id == *exp_id)
+                        {
+                            exp.syncthing_folder_id = Some(folder_id.clone());
+                            let _ = WorkspaceRegistry::save_experiment(&conn, exp);
                         }
                         pushed.push((repo.id.clone(), folder_id));
                     }
                     Err(e) => {
                         let msg = e.to_string().to_lowercase();
-                        if msg.contains("connection") || msg.contains("connect") || msg.contains("error sending request") {
+                        if msg.contains("connection")
+                            || msg.contains("connect")
+                            || msg.contains("error sending request")
+                        {
                             if !connection_failed {
-                                println!("无法连接到 Syncthing API，请确认 Syncthing 正在运行且 API 地址正确。");
+                                println!(
+                                    "无法连接到 Syncthing API，请确认 Syncthing 正在运行且 API 地址正确。"
+                                );
                                 connection_failed = true;
                             }
                         } else {
@@ -439,13 +430,19 @@ async fn main() -> anyhow::Result<()> {
                 for (repo_id, folder_id) in &pushed {
                     match client.get_folder_status(folder_id).await {
                         Ok(status) => {
-                            let state = status.get("state").and_then(|v| v.as_str()).unwrap_or("unknown");
+                            let state =
+                                status.get("state").and_then(|v| v.as_str()).unwrap_or("unknown");
                             println!("  [{}] state: {}", repo_id, state);
                         }
                         Err(e) => {
                             let msg = e.to_string().to_lowercase();
-                            if msg.contains("connection") || msg.contains("connect") || msg.contains("error sending request") {
-                                println!("无法连接到 Syncthing API，请确认 Syncthing 正在运行且 API 地址正确。");
+                            if msg.contains("connection")
+                                || msg.contains("connect")
+                                || msg.contains("error sending request")
+                            {
+                                println!(
+                                    "无法连接到 Syncthing API，请确认 Syncthing 正在运行且 API 地址正确。"
+                                );
                                 break;
                             } else {
                                 println!("  [{}] status query failed: {}", repo_id, e);
@@ -459,8 +456,8 @@ async fn main() -> anyhow::Result<()> {
             let digest_config = config.digest.clone();
             match tokio::task::spawn_blocking(move || {
                 let conn = registry::WorkspaceRegistry::init_db()?;
-                let cfg = crate::config::Config {
-                    general: crate::config::GeneralConfig::default(),
+                let cfg = config::Config {
+                    general: config::GeneralConfig::default(),
                     digest: digest_config,
                     ..Default::default()
                 };
@@ -469,8 +466,8 @@ async fn main() -> anyhow::Result<()> {
             .await
             {
                 Ok(Ok(text)) => println!("{}", text),
-                Ok(Err(e)) => println!("{}: {}", crate::i18n::current().log.digest_failed, e),
-                Err(e) => println!("{}: {}", crate::i18n::current().log.digest_panic, e),
+                Ok(Err(e)) => println!("{}: {}", i18n::current().log.digest_failed, e),
+                Err(e) => println!("{}: {}", i18n::current().log.digest_panic, e),
             }
         }
         Commands::Oplog { limit, repo } => {
@@ -498,7 +495,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Discover => {
-            use discovery_engine::{discover_dependencies, discover_similar_projects, Discovery};
+            use discovery_engine::{Discovery, discover_dependencies, discover_similar_projects};
             use registry::WorkspaceRegistry;
             use std::collections::HashMap;
 
@@ -521,11 +518,19 @@ async fn main() -> anyhow::Result<()> {
             }
 
             for d in merged.values() {
-                WorkspaceRegistry::save_relation(&conn, &d.from, &d.to, &d.relation_type, d.confidence)?;
+                WorkspaceRegistry::save_relation(
+                    &conn,
+                    &d.from,
+                    &d.to,
+                    &d.relation_type,
+                    d.confidence,
+                )?;
             }
 
             let mut all: Vec<Discovery> = merged.into_values().collect();
-            all.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+            all.sort_by(|a, b| {
+                b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal)
+            });
 
             let dep_count = all.iter().filter(|d| d.relation_type == "depends_on").count();
             let sim_count = all.iter().filter(|d| d.relation_type == "similar_to").count();

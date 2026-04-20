@@ -106,11 +106,7 @@ fn compute_behind(path: &str, default_branch: Option<&str>) -> anyhow::Result<Op
         .revparse_single(&format!("refs/remotes/origin/{}", branch))
         .ok()
         .map(|obj| obj.id())
-        .or_else(|| {
-            repo.revparse_single("origin/HEAD")
-                .ok()
-                .map(|obj| obj.id())
-        });
+        .or_else(|| repo.revparse_single("origin/HEAD").ok().map(|obj| obj.id()));
 
     match remote_oid {
         Some(remote) => {
@@ -175,14 +171,24 @@ fn eval_condition(
             }
         }
         Condition::Note(note) => {
-            if notes.get(&repo.id).map(|vec| vec.iter().any(|n| n.to_lowercase().contains(note))).unwrap_or(false) {
+            if notes
+                .get(&repo.id)
+                .map(|vec| vec.iter().any(|n| n.to_lowercase().contains(note)))
+                .unwrap_or(false)
+            {
                 Some(format!("note={}", note))
             } else {
                 None
             }
         }
         Condition::Keyword(kw) => {
-            let haystack = format!("{} {} {}", repo.id, repo.local_path.to_string_lossy(), repo.tags.join(",")).to_lowercase();
+            let haystack = format!(
+                "{} {} {}",
+                repo.id,
+                repo.local_path.to_string_lossy(),
+                repo.tags.join(",")
+            )
+            .to_lowercase();
             if haystack.contains(kw) {
                 Some(format!("keyword={}", kw))
             } else {
@@ -192,7 +198,12 @@ fn eval_condition(
     }
 }
 
-pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate::config::Config) -> anyhow::Result<serde_json::Value> {
+pub async fn run_json(
+    query_str: &str,
+    limit: usize,
+    page: usize,
+    config: &crate::config::Config,
+) -> anyhow::Result<serde_json::Value> {
     let conn = WorkspaceRegistry::init_db()?;
 
     // Handle semantic: prefix queries directly against repo_summaries
@@ -207,7 +218,10 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
             }));
         }
 
-        let clauses: Vec<String> = keywords.iter().map(|_| "(s.summary LIKE ? OR s.keywords LIKE ?)".to_string()).collect();
+        let clauses: Vec<String> = keywords
+            .iter()
+            .map(|_| "(s.summary LIKE ? OR s.keywords LIKE ?)".to_string())
+            .collect();
         let sql = format!(
             "SELECT r.id, r.local_path, s.summary, s.keywords FROM repo_summaries s JOIN repos r ON r.id = s.repo_id WHERE {}",
             clauses.join(" OR ")
@@ -253,8 +267,7 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
     }
 
     // Handle paper: prefix queries
-    if query_str.starts_with("paper:") {
-        let rest = &query_str["paper:".len()..];
+    if let Some(rest) = query_str.strip_prefix("paper:") {
         let papers = if let Some((field, value)) = rest.split_once(':') {
             match field {
                 "venue" => WorkspaceRegistry::find_papers_by_venue(&conn, value)?,
@@ -275,15 +288,20 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
             WorkspaceRegistry::find_papers_by_venue(&conn, venue)?
         };
         let count = papers.len();
-        let results: Vec<serde_json::Value> = papers.into_iter().map(|p| serde_json::json!({
-            "id": p.id,
-            "title": p.title,
-            "venue": p.venue,
-            "year": p.year,
-            "pdf_path": p.pdf_path,
-            "tags": p.tags.join(","),
-            "match_reasons": ["paper"]
-        })).collect();
+        let results: Vec<serde_json::Value> = papers
+            .into_iter()
+            .map(|p| {
+                serde_json::json!({
+                    "id": p.id,
+                    "title": p.title,
+                    "venue": p.venue,
+                    "year": p.year,
+                    "pdf_path": p.pdf_path,
+                    "tags": p.tags.join(","),
+                    "match_reasons": ["paper"]
+                })
+            })
+            .collect();
         return Ok(serde_json::json!({
             "success": true,
             "count": count,
@@ -293,8 +311,7 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
     }
 
     // Handle experiment: prefix queries
-    if query_str.starts_with("experiment:") {
-        let rest = &query_str["experiment:".len()..];
+    if let Some(rest) = query_str.strip_prefix("experiment:") {
         let exps = if let Some((field, value)) = rest.split_once(':') {
             match field {
                 "repo" => WorkspaceRegistry::find_experiments_by_repo(&conn, value)?,
@@ -312,15 +329,20 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
             WorkspaceRegistry::list_experiments(&conn)?
         };
         let count = exps.len();
-        let results: Vec<serde_json::Value> = exps.into_iter().map(|e| serde_json::json!({
-            "id": e.id,
-            "repo_id": e.repo_id,
-            "paper_id": e.paper_id,
-            "status": e.status,
-            "syncthing_folder_id": e.syncthing_folder_id,
-            "timestamp": e.timestamp.to_rfc3339(),
-            "match_reasons": ["experiment"]
-        })).collect();
+        let results: Vec<serde_json::Value> = exps
+            .into_iter()
+            .map(|e| {
+                serde_json::json!({
+                    "id": e.id,
+                    "repo_id": e.repo_id,
+                    "paper_id": e.paper_id,
+                    "status": e.status,
+                    "syncthing_folder_id": e.syncthing_folder_id,
+                    "timestamp": e.timestamp.to_rfc3339(),
+                    "match_reasons": ["experiment"]
+                })
+            })
+            .collect();
         return Ok(serde_json::json!({
             "success": true,
             "count": count,
@@ -337,9 +359,8 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
     let mut notes_map: HashMap<String, Vec<String>> = HashMap::new();
     if needs_notes {
         let mut stmt = conn.prepare("SELECT repo_id, note_text FROM repo_notes")?;
-        let rows = stmt.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?;
+        let rows =
+            stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
         for row in rows {
             let (repo_id, note_text) = row?;
             notes_map.entry(repo_id).or_default().push(note_text);
@@ -361,19 +382,35 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
                 if elapsed < config.cache.ttl_seconds {
                     Some(health.behind as i32)
                 } else {
-                    match compute_behind(repo.local_path.to_string_lossy().as_ref(), default_branch.as_deref()) {
+                    match compute_behind(
+                        repo.local_path.to_string_lossy().as_ref(),
+                        default_branch.as_deref(),
+                    ) {
                         Ok(b) => b,
                         Err(e) => {
-                            warn!("Failed to open repo {} at {}: {}", repo.id, repo.local_path.display(), e);
+                            warn!(
+                                "Failed to open repo {} at {}: {}",
+                                repo.id,
+                                repo.local_path.display(),
+                                e
+                            );
                             None
                         }
                     }
                 }
             } else {
-                match compute_behind(repo.local_path.to_string_lossy().as_ref(), default_branch.as_deref()) {
+                match compute_behind(
+                    repo.local_path.to_string_lossy().as_ref(),
+                    default_branch.as_deref(),
+                ) {
                     Ok(b) => b,
                     Err(e) => {
-                        warn!("Failed to open repo {} at {}: {}", repo.id, repo.local_path.display(), e);
+                        warn!(
+                            "Failed to open repo {} at {}: {}",
+                            repo.id,
+                            repo.local_path.display(),
+                            e
+                        );
                         None
                     }
                 }
@@ -385,7 +422,9 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
         let mut reasons = Vec::new();
         let mut matched = true;
         for cond in &conditions {
-            if let Some(reason) = eval_condition(&repo, cond, last_sync.as_deref(), behind, &notes_map) {
+            if let Some(reason) =
+                eval_condition(&repo, cond, last_sync.as_deref(), behind, &notes_map)
+            {
                 reasons.push(reason);
             } else {
                 matched = false;
@@ -433,7 +472,12 @@ pub async fn run_json(query_str: &str, limit: usize, page: usize, config: &crate
     }))
 }
 
-pub async fn run(query_str: &str, limit: usize, page: usize, config: &crate::config::Config) -> anyhow::Result<()> {
+pub async fn run(
+    query_str: &str,
+    limit: usize,
+    page: usize,
+    config: &crate::config::Config,
+) -> anyhow::Result<()> {
     let result = run_json(query_str, limit, page, config).await?;
     let count = result["count"].as_u64().unwrap_or(0) as usize;
 
@@ -446,7 +490,13 @@ pub async fn run(query_str: &str, limit: usize, page: usize, config: &crate::con
                 let page_num = pagination["page"].as_u64().unwrap_or(1);
                 let limit_val = pagination["limit"].as_u64().unwrap_or(0);
                 let has_more = pagination["has_more"].as_bool().unwrap_or(false);
-                println!("\nFound {} result(s) (page {} of ~{}, limit={}).", total, page_num, (total as f64 / limit_val as f64).ceil() as u64, limit_val);
+                println!(
+                    "\nFound {} result(s) (page {} of ~{}, limit={}).",
+                    total,
+                    page_num,
+                    (total as f64 / limit_val as f64).ceil() as u64,
+                    limit_val
+                );
                 if has_more {
                     println!("(more results available, use --page {})", page_num + 1);
                 }

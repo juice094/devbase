@@ -40,11 +40,8 @@ fn find_readme(path: &Path) -> Option<std::path::PathBuf> {
 
 fn extract_summary(content: &str) -> Option<String> {
     let normalized = content.replace("\r\n", "\n");
-    let paragraphs: Vec<&str> = normalized
-        .split("\n\n")
-        .map(|p| p.trim())
-        .filter(|p| !p.is_empty())
-        .collect();
+    let paragraphs: Vec<&str> =
+        normalized.split("\n\n").map(|p| p.trim()).filter(|p| !p.is_empty()).collect();
 
     for para in paragraphs {
         let trimmed = para.trim();
@@ -211,16 +208,107 @@ fn preprocess_for_keywords(content: &str) -> String {
 fn extract_keywords(content: &str) -> Vec<String> {
     let content = preprocess_for_keywords(content);
     let stop_words: std::collections::HashSet<&str> = [
-        "the", "a", "is", "to", "and", "of", "in", "for", "with", "on", "at", "by", "from",
-        "as", "it", "this", "that", "be", "are", "was", "were", "has", "have", "had", "not",
-        "but", "or", "an", "you", "we", "they", "he", "she", "will", "can", "may", "should",
-        "would", "could", "project", "repository", "repo", "code", "software", "tool",
-        "library", "crate", "package", "http", "https", "github", "gitlab", "com", "org",
-        "net", "io", "www", "there", "here", "when", "where", "what", "how", "why", "who",
-        "which", "their", "them", "then", "than", "also", "into", "out", "up", "only", "just",
-        "now", "get", "use", "using", "used", "make", "made", "way", "new", "like", "over",
-        "your", "our", "its", "see", "top", "via", "every", "being", "before", "after",
-        "above", "below", "blob", "tree",
+        "the",
+        "a",
+        "is",
+        "to",
+        "and",
+        "of",
+        "in",
+        "for",
+        "with",
+        "on",
+        "at",
+        "by",
+        "from",
+        "as",
+        "it",
+        "this",
+        "that",
+        "be",
+        "are",
+        "was",
+        "were",
+        "has",
+        "have",
+        "had",
+        "not",
+        "but",
+        "or",
+        "an",
+        "you",
+        "we",
+        "they",
+        "he",
+        "she",
+        "will",
+        "can",
+        "may",
+        "should",
+        "would",
+        "could",
+        "project",
+        "repository",
+        "repo",
+        "code",
+        "software",
+        "tool",
+        "library",
+        "crate",
+        "package",
+        "http",
+        "https",
+        "github",
+        "gitlab",
+        "com",
+        "org",
+        "net",
+        "io",
+        "www",
+        "there",
+        "here",
+        "when",
+        "where",
+        "what",
+        "how",
+        "why",
+        "who",
+        "which",
+        "their",
+        "them",
+        "then",
+        "than",
+        "also",
+        "into",
+        "out",
+        "up",
+        "only",
+        "just",
+        "now",
+        "get",
+        "use",
+        "using",
+        "used",
+        "make",
+        "made",
+        "way",
+        "new",
+        "like",
+        "over",
+        "your",
+        "our",
+        "its",
+        "see",
+        "top",
+        "via",
+        "every",
+        "being",
+        "before",
+        "after",
+        "above",
+        "below",
+        "blob",
+        "tree",
     ]
     .iter()
     .cloned()
@@ -269,7 +357,8 @@ pub fn generate_fallback_summary(path: &Path) -> (String, String) {
     }
     let mut pairs: Vec<(String, usize)> = counts.into_iter().collect();
     pairs.sort_by(|a, b| b.1.cmp(&a.1));
-    let top: Vec<String> = pairs.into_iter().take(3).map(|(e, c)| format!("{}({})", e, c)).collect();
+    let top: Vec<String> =
+        pairs.into_iter().take(3).map(|(e, c)| format!("{}({})", e, c)).collect();
     if top.is_empty() {
         ("Unclassified project".to_string(), "unknown".to_string())
     } else {
@@ -291,11 +380,17 @@ fn try_cargo_toml(path: &Path) -> Option<(String, String)> {
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         .unwrap_or_default();
     let summary = if workspace_members.len() > 1 {
-        format!("Rust workspace '{}' with {} crates: {}", name, workspace_members.len(), workspace_members.join(", "))
+        format!(
+            "Rust workspace '{}' with {} crates: {}",
+            name,
+            workspace_members.len(),
+            workspace_members.join(", ")
+        )
     } else {
         format!("Rust crate '{}' - {}", name, desc)
     };
-    let keywords = format!("rust, {}, {}", name, workspace_members.first().cloned().unwrap_or_default());
+    let keywords =
+        format!("rust, {}, {}", name, workspace_members.first().cloned().unwrap_or_default());
     Some((summary, keywords))
 }
 
@@ -328,7 +423,10 @@ fn try_pyproject(path: &Path) -> Option<(String, String)> {
     let name = project.get("name")?.as_str()?;
     let desc = project.get("description")?.as_str().unwrap_or("Python project");
     let summary = format!("Python project '{}' - {}", name, desc);
-    Some((summary, format!("python, {}, {}", name, desc.split_whitespace().next().unwrap_or(""))))
+    Some((
+        summary,
+        format!("python, {}, {}", name, desc.split_whitespace().next().unwrap_or("")),
+    ))
 }
 
 /// 从 Rust 项目中提取模块结构
@@ -363,23 +461,11 @@ pub fn extract_module_structure(path: &Path) -> Vec<ModuleInfo> {
     };
 
     let mut modules = Vec::new();
-    let packages = json
-        .get("packages")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
+    let packages = json.get("packages").and_then(|v| v.as_array()).cloned().unwrap_or_default();
     for pkg in packages {
-        let targets = pkg
-            .get("targets")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
+        let targets = pkg.get("targets").and_then(|v| v.as_array()).cloned().unwrap_or_default();
         for target in targets {
-            let name = target
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+            let name = target.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
             let kind = target
                 .get("kind")
                 .and_then(|v| v.as_array())
@@ -409,13 +495,9 @@ Respond with only the JSON object, no extra text."#,
 fn parse_llm_json(text: &str) -> Option<(String, String)> {
     let trimmed = text.trim();
     let json_str = if trimmed.starts_with("```json") {
-        trimmed.strip_prefix("```json")
-            .and_then(|s| s.strip_suffix("```"))?
-            .trim()
+        trimmed.strip_prefix("```json").and_then(|s| s.strip_suffix("```"))?.trim()
     } else if trimmed.starts_with("```") {
-        trimmed.strip_prefix("```")
-            .and_then(|s| s.strip_suffix("```"))?
-            .trim()
+        trimmed.strip_prefix("```").and_then(|s| s.strip_suffix("```"))?.trim()
     } else {
         trimmed
     };
@@ -428,10 +510,14 @@ fn parse_llm_json(text: &str) -> Option<(String, String)> {
     Some((summary, keywords))
 }
 
-async fn call_llm(api_key: &str, base_url: &str, model: &str, prompt: &str, max_tokens: u32) -> anyhow::Result<String> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(60))
-        .build()?;
+async fn call_llm(
+    api_key: &str,
+    base_url: &str,
+    model: &str,
+    prompt: &str,
+    max_tokens: u32,
+) -> anyhow::Result<String> {
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(60)).build()?;
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let body = serde_json::json!({
         "model": model,
@@ -450,10 +536,7 @@ async fn call_llm(api_key: &str, base_url: &str, model: &str, prompt: &str, max_
     if !status.is_success() {
         anyhow::bail!("LLM API error: {}", json["error"]["message"].as_str().unwrap_or("unknown"));
     }
-    let content = json["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let content = json["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string();
     Ok(content)
 }
 
@@ -499,7 +582,10 @@ fn try_llm_summary(path: &Path, config: &crate::config::LlmConfig) -> Option<(St
             config.model.as_deref().unwrap_or("gpt-4o"),
         ),
         "dashscope" => (
-            config.base_url.as_deref().unwrap_or("https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            config
+                .base_url
+                .as_deref()
+                .unwrap_or("https://dashscope.aliyuncs.com/compatible-mode/v1"),
             config.model.as_deref().unwrap_or("qwen-max"),
         ),
         _ => return None,
@@ -547,10 +633,8 @@ pub fn index_repo(repo: &crate::registry::RepoEntry) -> anyhow::Result<()> {
 
     WorkspaceRegistry::save_summary(&conn, &repo.id, &summary, &keywords)?;
 
-    let modules_tuple: Vec<(String, String)> = modules
-        .into_iter()
-        .map(|m| (m.name, m.kind))
-        .collect();
+    let modules_tuple: Vec<(String, String)> =
+        modules.into_iter().map(|m| (m.name, m.kind)).collect();
     WorkspaceRegistry::save_modules(&mut conn, &repo.id, &modules_tuple)?;
 
     let detected_lang = crate::scan::detect_language(&repo.local_path);
@@ -605,10 +689,8 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
 
         WorkspaceRegistry::save_summary(&conn, &repo.id, &summary, &keywords)?;
 
-        let modules_tuple: Vec<(String, String)> = modules
-            .into_iter()
-            .map(|m| (m.name, m.kind))
-            .collect();
+        let modules_tuple: Vec<(String, String)> =
+            modules.into_iter().map(|m| (m.name, m.kind)).collect();
         WorkspaceRegistry::save_modules(&mut conn, &repo.id, &modules_tuple)?;
 
         let detected_lang = crate::scan::detect_language(&repo.local_path);
@@ -656,9 +738,8 @@ This is a blazing fast terminal user interface for git. It provides an intuitive
         assert!(summary.len() <= 210); // 允许一些余量
         assert!(!keywords.is_empty() && keywords.len() <= 5);
         // 验证关键词是从有效词汇中提取的（至少包含一些内容词）
-        let content_words = [
-            "git", "fast", "terminal", "branches", "commits", "features", "custom",
-        ];
+        let content_words =
+            ["git", "fast", "terminal", "branches", "commits", "features", "custom"];
         assert!(keywords.iter().any(|k| content_words.contains(&k.as_str())));
     }
 
@@ -723,12 +804,21 @@ version = "0.1.0"
 edition = "2021"
 description = "A test crate for semantic fallback without README."
 "#
-        ).unwrap();
+        )
+        .unwrap();
 
         let (summary, keywords) = generate_fallback_summary(dir.path());
         assert!(summary.contains("test-fallback-crate"), "summary: {}", summary);
-        assert!(summary.contains("A test crate for semantic fallback without README"), "summary: {}", summary);
-        assert!(keywords.contains("rust") || keywords.contains("test-fallback-crate"), "keywords: {}", keywords);
+        assert!(
+            summary.contains("A test crate for semantic fallback without README"),
+            "summary: {}",
+            summary
+        );
+        assert!(
+            keywords.contains("rust") || keywords.contains("test-fallback-crate"),
+            "keywords: {}",
+            keywords
+        );
     }
 
     #[test]
@@ -823,7 +913,10 @@ description = "A test crate for semantic fallback without README."
         println!("syncthing summary: {}", summary);
         println!("syncthing keywords: {:?}", keywords);
         let modules = extract_module_structure(path);
-        println!("syncthing modules (first 10): {:?}", modules.iter().take(10).collect::<Vec<_>>());
+        println!(
+            "syncthing modules (first 10): {:?}",
+            modules.iter().take(10).collect::<Vec<_>>()
+        );
         assert!(!summary.is_empty());
     }
 }

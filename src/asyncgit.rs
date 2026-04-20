@@ -35,10 +35,7 @@ pub struct AsyncSingleJob<J> {
 
 impl<J> AsyncSingleJob<J> {
     pub fn new(sender: Sender<AsyncNotification>) -> Self {
-        Self {
-            sender,
-            _phantom: PhantomData,
-        }
+        Self { sender, _phantom: PhantomData }
     }
 
     pub fn spawn(&self, job: J)
@@ -88,10 +85,7 @@ impl AsyncJob for AsyncRepoStatus {
                 let branch = head.shorthand();
                 let upstream = head.resolve().ok().and_then(|local_ref| {
                     let name = local_ref.name()?;
-                    repo.find_branch(name, git2::BranchType::Local)
-                        .ok()?
-                        .upstream()
-                        .ok()
+                    repo.find_branch(name, git2::BranchType::Local).ok()?.upstream().ok()
                 });
                 // Fall back to origin/{branch} if no tracking branch is set
                 let upstream_oid = upstream.and_then(|up| up.get().target()).or_else(|| {
@@ -100,9 +94,7 @@ impl AsyncJob for AsyncRepoStatus {
                 });
 
                 match (local_oid, upstream_oid) {
-                    (Some(local), Some(up)) => {
-                        repo.graph_ahead_behind(local, up).unwrap_or((0, 0))
-                    }
+                    (Some(local), Some(up)) => repo.graph_ahead_behind(local, up).unwrap_or((0, 0)),
                     _ => (0, 0),
                 }
             } else {
@@ -112,10 +104,7 @@ impl AsyncJob for AsyncRepoStatus {
             Ok((dirty, ahead, behind))
         })();
 
-        let (dirty, ahead, behind) = match result {
-            Ok(v) => v,
-            Err(_) => (false, 0, 0),
-        };
+        let (dirty, ahead, behind) = result.unwrap_or_default();
 
         AsyncNotification::RepoStatus(RepoStatusNotification {
             repo_id: self.repo_id.clone(),
@@ -125,5 +114,3 @@ impl AsyncJob for AsyncRepoStatus {
         })
     }
 }
-
-

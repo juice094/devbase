@@ -3,6 +3,7 @@ use rusqlite::OptionalExtension;
 use std::collections::HashMap;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
+#[allow(async_fn_in_trait)]
 pub trait McpTool: Send + Sync + Clone {
     fn name(&self) -> &'static str;
     fn schema(&self) -> serde_json::Value;
@@ -10,7 +11,7 @@ pub trait McpTool: Send + Sync + Clone {
 }
 
 #[derive(Clone)]
-pub(crate) enum McpToolEnum {
+pub enum McpToolEnum {
     Scan(DevkitScanTool),
     Health(DevkitHealthTool),
     Sync(DevkitSyncTool),
@@ -90,11 +91,15 @@ pub struct McpServer {
     tools: HashMap<String, McpToolEnum>,
 }
 
+impl Default for McpServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl McpServer {
     pub fn new() -> Self {
-        Self {
-            tools: HashMap::new(),
-        }
+        Self { tools: HashMap::new() }
     }
 
     pub fn register_tool(mut self, tool: McpToolEnum) -> Self {
@@ -102,12 +107,12 @@ impl McpServer {
         self
     }
 
-    pub async fn handle_request(&self, req: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    pub async fn handle_request(
+        &self,
+        req: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
         let id = req.get("id").cloned().unwrap_or(serde_json::Value::Null);
-        let method = req
-            .get("method")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
 
         match method {
             "initialize" => Ok(serde_json::json!({
@@ -145,20 +150,17 @@ impl McpServer {
             }
             "tools/call" => {
                 let params = req.get("params").cloned().unwrap_or(serde_json::Value::Null);
-                let name = params
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let args = params
-                    .get("arguments")
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Null);
+                let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let args = params.get("arguments").cloned().unwrap_or(serde_json::Value::Null);
 
                 match self.tools.get(name) {
                     Some(tool) => match tool.invoke(args).await {
                         Ok(result) => {
                             let text = result.to_string();
-                            let is_error = !result.get("success").and_then(|v: &serde_json::Value| v.as_bool()).unwrap_or(false);
+                            let is_error = !result
+                                .get("success")
+                                .and_then(|v: &serde_json::Value| v.as_bool())
+                                .unwrap_or(false);
                             let content = serde_json::json!({
                                 "type": "text",
                                 "text": text
@@ -173,7 +175,8 @@ impl McpServer {
                             }))
                         }
                         Err(e) => {
-                            let payload = serde_json::json!({ "success": false, "error": e.to_string() });
+                            let payload =
+                                serde_json::json!({ "success": false, "error": e.to_string() });
                             let text = serde_json::to_string(&payload)?;
                             let content = serde_json::json!({ "type": "text", "text": text });
                             Ok(serde_json::json!({
@@ -206,7 +209,6 @@ impl McpServer {
             })),
         }
     }
-
 }
 
 pub fn build_server() -> McpServer {
@@ -250,10 +252,9 @@ pub async fn run_stdio() -> anyhow::Result<()> {
         if line.is_empty() {
             continue;
         }
-        
+
         let content_length = if line.starts_with("Content-Length: ") {
-            line.strip_prefix("Content-Length: ")
-                .and_then(|v| v.parse::<usize>().ok())
+            line.strip_prefix("Content-Length: ").and_then(|v| v.parse::<usize>().ok())
         } else {
             // Fallback: parse raw JSON line for backward compatibility
             let req: serde_json::Value = match serde_json::from_str(line) {
@@ -288,7 +289,7 @@ pub async fn run_stdio() -> anyhow::Result<()> {
             let _ = stdout.flush().await;
             continue;
         };
-        
+
         let content_length = match content_length {
             Some(len) => len,
             None => {
@@ -306,11 +307,11 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                 continue;
             }
         };
-        
+
         // Read the empty line (\r\n or \n)
         line_buf.clear();
         let _ = reader.read_line(&mut line_buf).await;
-        
+
         // Read the exact number of bytes
         let mut body_buf = vec![0u8; content_length];
         if let Err(e) = reader.read_exact(&mut body_buf).await {
@@ -327,11 +328,11 @@ pub async fn run_stdio() -> anyhow::Result<()> {
             let _ = stdout.flush().await;
             continue;
         }
-        
+
         // Some clients include a trailing newline after the body; consume it if present
         line_buf.clear();
         let _ = reader.read_line(&mut line_buf).await;
-        
+
         let req: serde_json::Value = match String::from_utf8(body_buf) {
             Ok(body) => match serde_json::from_str(&body) {
                 Ok(v) => v,
@@ -458,7 +459,6 @@ impl McpTool for DevkitHealthTool {
         let config = crate::config::Config::load()?;
         crate::health::run_json(detail, 0, 1, config.cache.ttl_seconds).await
     }
-
 }
 
 #[derive(Clone)]
@@ -524,9 +524,10 @@ impl McpTool for DevkitIndexTool {
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
         let path_owned = path.to_string();
-        let count = tokio::task::spawn_blocking(move || crate::knowledge_engine::run_index(&path_owned))
-            .await
-            .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+        let count =
+            tokio::task::spawn_blocking(move || crate::knowledge_engine::run_index(&path_owned))
+                .await
+                .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
         Ok(serde_json::json!({ "success": true, "indexed": count, "errors": 0 }))
     }
 }
@@ -575,7 +576,9 @@ impl McpTool for DevkitNoteTool {
 pub struct DevkitDigestTool;
 
 impl McpTool for DevkitDigestTool {
-    fn name(&self) -> &'static str { "devkit_digest" }
+    fn name(&self) -> &'static str {
+        "devkit_digest"
+    }
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
             "description": "Generate daily knowledge digest",
@@ -598,7 +601,9 @@ impl McpTool for DevkitDigestTool {
 pub struct DevkitPaperIndexTool;
 
 impl McpTool for DevkitPaperIndexTool {
-    fn name(&self) -> &'static str { "devkit_paper_index" }
+    fn name(&self) -> &'static str {
+        "devkit_paper_index"
+    }
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
             "description": "Scan a directory for PDF papers and index them",
@@ -614,9 +619,15 @@ impl McpTool for DevkitPaperIndexTool {
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("~/papers");
         let tags_str = args.get("tags").and_then(|v| v.as_str()).unwrap_or("");
-        let tags: Vec<String> = tags_str.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        let tags: Vec<String> = tags_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
         let path = if path.starts_with("~/") {
-            dirs::home_dir().map(|d| d.join(&path[2..])).unwrap_or_else(|| std::path::PathBuf::from(path))
+            dirs::home_dir()
+                .map(|d| d.join(&path[2..]))
+                .unwrap_or_else(|| std::path::PathBuf::from(path))
         } else {
             std::path::PathBuf::from(path)
         };
@@ -631,11 +642,12 @@ impl McpTool for DevkitPaperIndexTool {
                     if name.to_lowercase().ends_with(".pdf") {
                         let id = name.trim_end_matches(".pdf").trim_end_matches(".PDF").to_string();
                         // Simple heuristic: if filename contains arXiv format (e.g., 2507.03616)
-                        let title = if id.chars().filter(|c| c.is_numeric() || *c == '.').count() > 5 {
-                            format!("arXiv:{}", id)
-                        } else {
-                            id.clone()
-                        };
+                        let title =
+                            if id.chars().filter(|c| c.is_numeric() || *c == '.').count() > 5 {
+                                format!("arXiv:{}", id)
+                            } else {
+                                id.clone()
+                            };
                         let paper = crate::registry::PaperEntry {
                             id: id.clone(),
                             title,
@@ -663,7 +675,9 @@ impl McpTool for DevkitPaperIndexTool {
 pub struct DevkitExperimentLogTool;
 
 impl McpTool for DevkitExperimentLogTool {
-    fn name(&self) -> &'static str { "devkit_experiment_log" }
+    fn name(&self) -> &'static str {
+        "devkit_experiment_log"
+    }
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
             "description": "Log an experiment run",
@@ -695,21 +709,23 @@ impl McpTool for DevkitExperimentLogTool {
             config_json: args.get("config_json").and_then(|v| v.as_str()).map(String::from),
             result_path: args.get("result_path").and_then(|v| v.as_str()).map(String::from),
             git_commit: args.get("git_commit").and_then(|v| v.as_str()).map(String::from),
-            syncthing_folder_id: args.get("syncthing_folder_id").and_then(|v| v.as_str()).map(String::from),
+            syncthing_folder_id: args
+                .get("syncthing_folder_id")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             status: args.get("status").and_then(|v| v.as_str()).unwrap_or("running").to_string(),
             timestamp: chrono::Utc::now(),
         };
         tokio::task::spawn_blocking(move || {
             let mut conn = crate::registry::WorkspaceRegistry::init_db()?;
             crate::registry::WorkspaceRegistry::save_experiment(&conn, &exp)?;
-            if tag_repo {
-                if let Some(ref rid) = repo_id {
+            if tag_repo
+                && let Some(ref rid) = repo_id {
                     let tx = conn.transaction()?;
                     tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1 AND tag = 'experiment-active'", [rid])?;
                     tx.execute("INSERT OR REPLACE INTO repo_tags (repo_id, tag) VALUES (?1, 'experiment-active')", [rid])?;
                     tx.commit()?;
                 }
-            }
             Ok::<_, anyhow::Error>(serde_json::json!({ "success": true }))
         })
         .await
@@ -721,7 +737,9 @@ impl McpTool for DevkitExperimentLogTool {
 pub struct DevkitGithubInfoTool;
 
 impl McpTool for DevkitGithubInfoTool {
-    fn name(&self) -> &'static str { "devkit_github_info" }
+    fn name(&self) -> &'static str {
+        "devkit_github_info"
+    }
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
             "description": "Fetch live repository metadata from GitHub API",
@@ -736,7 +754,11 @@ impl McpTool for DevkitGithubInfoTool {
         })
     }
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
-        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?.to_string();
+        let repo_id = args
+            .get("repo_id")
+            .and_then(|v| v.as_str())
+            .context("repo_id required")?
+            .to_string();
         let write_summary = args.get("write_summary").and_then(|v| v.as_bool()).unwrap_or(false);
 
         let upstream_url = tokio::task::spawn_blocking({
@@ -750,11 +772,13 @@ impl McpTool for DevkitGithubInfoTool {
         }).await.map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
 
         let upstream_url = upstream_url.context("No origin remote found for repo")?;
-        let (owner, repo_name) = parse_github_repo(&upstream_url).context("Failed to parse GitHub owner/repo from upstream_url")?;
+        let (owner, repo_name) = parse_github_repo(&upstream_url)
+            .context("Failed to parse GitHub owner/repo from upstream_url")?;
 
         let config = crate::config::Config::load()?;
         let client = reqwest::Client::new();
-        let mut req = client.get(format!("https://api.github.com/repos/{}/{}", owner, repo_name))
+        let mut req = client
+            .get(format!("https://api.github.com/repos/{}/{}", owner, repo_name))
             .header("User-Agent", "devbase/0.1.0");
         if let Some(token) = config.github.token.as_deref() {
             req = req.header("Authorization", format!("Bearer {}", token));
@@ -763,7 +787,9 @@ impl McpTool for DevkitGithubInfoTool {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Ok(serde_json::json!({ "success": false, "error": format!("GitHub API error {}: {}", status, text) }));
+            return Ok(
+                serde_json::json!({ "success": false, "error": format!("GitHub API error {}: {}", status, text) }),
+            );
         }
         let data: serde_json::Value = resp.json().await?;
 
@@ -775,16 +801,16 @@ impl McpTool for DevkitGithubInfoTool {
         let updated_at = data.get("updated_at").and_then(|v| v.as_str()).map(String::from);
         let html_url = data.get("html_url").and_then(|v| v.as_str()).map(String::from);
 
-        if write_summary {
-            if let Some(ref desc) = description {
-                let repo_id2 = repo_id.clone();
-                let desc2 = desc.clone();
-                tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-                    let conn = crate::registry::WorkspaceRegistry::init_db()?;
-                    crate::registry::WorkspaceRegistry::save_summary(&conn, &repo_id2, &desc2, "")?;
-                    Ok(())
-                }).await.map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
-            }
+        if write_summary && let Some(ref desc) = description {
+            let repo_id2 = repo_id.clone();
+            let desc2 = desc.clone();
+            tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                let conn = crate::registry::WorkspaceRegistry::init_db()?;
+                crate::registry::WorkspaceRegistry::save_summary(&conn, &repo_id2, &desc2, "")?;
+                Ok(())
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
         }
 
         Ok(serde_json::json!({
@@ -807,7 +833,9 @@ impl McpTool for DevkitGithubInfoTool {
 pub struct DevkitCodeMetricsTool;
 
 impl McpTool for DevkitCodeMetricsTool {
-    fn name(&self) -> &'static str { "devkit_code_metrics" }
+    fn name(&self) -> &'static str {
+        "devkit_code_metrics"
+    }
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
@@ -867,7 +895,9 @@ impl McpTool for DevkitCodeMetricsTool {
 pub struct DevkitModuleGraphTool;
 
 impl McpTool for DevkitModuleGraphTool {
-    fn name(&self) -> &'static str { "devkit_module_graph" }
+    fn name(&self) -> &'static str {
+        "devkit_module_graph"
+    }
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
@@ -946,8 +976,10 @@ fn parse_github_repo(url: &str) -> Option<(String, String)> {
 pub struct DevkitQueryReposTool;
 
 impl McpTool for DevkitQueryReposTool {
-    fn name(&self) -> &'static str { "devkit_query_repos" }
-    
+    fn name(&self) -> &'static str {
+        "devkit_query_repos"
+    }
+
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
             "description": "Query registered repositories with filters. Returns structured metadata including Git status, tags, language, and health.",
@@ -962,52 +994,54 @@ impl McpTool for DevkitQueryReposTool {
             }
         })
     }
-    
+
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let language = args.get("language").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let tag = args.get("tag").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let status = args.get("status").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(50) as usize;
-        
+
         tokio::task::spawn_blocking(move || {
             let conn = crate::registry::WorkspaceRegistry::init_db()?;
             let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
-            
+
             let mut results = Vec::new();
             for repo in repos {
                 // Filter by language (case-insensitive)
                 if !language.is_empty() {
                     match &repo.language {
-                        Some(lang) if lang.eq_ignore_ascii_case(&language) => {},
+                        Some(lang) if lang.eq_ignore_ascii_case(&language) => {}
                         _ => continue,
                     }
                 }
-                
+
                 // Filter by tag (case-insensitive)
-                if !tag.is_empty() {
-                    if !repo.tags.iter().any(|t| t.eq_ignore_ascii_case(&tag)) {
-                        continue;
-                    }
+                if !tag.is_empty() && !repo.tags.iter().any(|t| t.eq_ignore_ascii_case(&tag)) {
+                    continue;
                 }
-                
+
                 // Gather status
                 let (ahead, behind, dirty) = if repo.workspace_type == "git" {
-                    let (st, ah, bh) = match crate::registry::WorkspaceRegistry::get_health(&conn, &repo.id)? {
-                        Some(health) => (health.status.clone(), health.ahead, health.behind),
-                        None => {
-                            let path = repo.local_path.to_string_lossy();
-                            let primary = repo.primary_remote();
-                            let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
-                            let default_branch = primary.and_then(|r| r.default_branch.as_deref());
-                            crate::health::analyze_repo(&path, upstream_url, default_branch)
-                        }
-                    };
+                    let (st, ah, bh) =
+                        match crate::registry::WorkspaceRegistry::get_health(&conn, &repo.id)? {
+                            Some(health) => (health.status.clone(), health.ahead, health.behind),
+                            None => {
+                                let path = repo.local_path.to_string_lossy();
+                                let primary = repo.primary_remote();
+                                let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
+                                let default_branch =
+                                    primary.and_then(|r| r.default_branch.as_deref());
+                                crate::health::analyze_repo(&path, upstream_url, default_branch)
+                            }
+                        };
                     let dirty = st == "dirty" || st == "changed";
                     (ah, bh, dirty)
                 } else {
                     let dirty = match crate::health::compute_workspace_hash(&repo.local_path) {
                         Ok(current_hash) => {
-                            match crate::registry::WorkspaceRegistry::get_latest_workspace_snapshot(&conn, &repo.id)? {
+                            match crate::registry::WorkspaceRegistry::get_latest_workspace_snapshot(
+                                &conn, &repo.id,
+                            )? {
                                 Some(prev) => prev.file_hash != current_hash,
                                 None => true,
                             }
@@ -1016,7 +1050,7 @@ impl McpTool for DevkitQueryReposTool {
                     };
                     (0, 0, dirty)
                 };
-                
+
                 // Filter by conceptual status
                 if !status.is_empty() {
                     let matches = match status.as_str() {
@@ -1031,7 +1065,7 @@ impl McpTool for DevkitQueryReposTool {
                         continue;
                     }
                 }
-                
+
                 results.push(serde_json::json!({
                     "id": repo.id,
                     "path": repo.local_path,
@@ -1044,12 +1078,12 @@ impl McpTool for DevkitQueryReposTool {
                     },
                     "stars": repo.stars,
                 }));
-                
+
                 if limit > 0 && results.len() >= limit {
                     break;
                 }
             }
-            
+
             Ok::<_, anyhow::Error>(serde_json::json!({
                 "success": true,
                 "count": results.len(),
@@ -1104,14 +1138,15 @@ impl McpTool for DevkitQueryTool {
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
     }
-
 }
 
 #[derive(Clone)]
 pub struct DevkitNaturalLanguageQueryTool;
 
 impl McpTool for DevkitNaturalLanguageQueryTool {
-    fn name(&self) -> &'static str { "devkit_natural_language_query" }
+    fn name(&self) -> &'static str {
+        "devkit_natural_language_query"
+    }
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
@@ -1127,24 +1162,30 @@ impl McpTool for DevkitNaturalLanguageQueryTool {
     }
 
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
-        let query = args.get("query").and_then(|v| v.as_str()).context("Missing required argument: query")?;
+        let query = args
+            .get("query")
+            .and_then(|v| v.as_str())
+            .context("Missing required argument: query")?;
         let query = query.to_string();
-        
+
         tokio::task::spawn_blocking(move || {
             let conn = crate::registry::WorkspaceRegistry::init_db()?;
             let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
             let filtered = nl_filter_repos(&query, &repos, &conn)?;
-            
-            let results: Vec<serde_json::Value> = filtered.into_iter().map(|repo| {
-                serde_json::json!({
-                    "id": repo.id,
-                    "path": repo.local_path,
-                    "language": repo.language,
-                    "tags": repo.tags,
-                    "stars": repo.stars,
+
+            let results: Vec<serde_json::Value> = filtered
+                .into_iter()
+                .map(|repo| {
+                    serde_json::json!({
+                        "id": repo.id,
+                        "path": repo.local_path,
+                        "language": repo.language,
+                        "tags": repo.tags,
+                        "stars": repo.stars,
+                    })
                 })
-            }).collect();
-            
+                .collect();
+
             Ok::<_, anyhow::Error>(serde_json::json!({
                 "success": true,
                 "count": results.len(),
@@ -1157,19 +1198,30 @@ impl McpTool for DevkitNaturalLanguageQueryTool {
     }
 }
 
-fn nl_filter_repos(query: &str, repos: &[crate::registry::RepoEntry], conn: &rusqlite::Connection) -> anyhow::Result<Vec<crate::registry::RepoEntry>> {
+fn nl_filter_repos(
+    query: &str,
+    repos: &[crate::registry::RepoEntry],
+    conn: &rusqlite::Connection,
+) -> anyhow::Result<Vec<crate::registry::RepoEntry>> {
     let q = query.to_lowercase();
     let stars_cond = parse_stars_condition(&q);
     let explicit_tag = extract_tag_from_query(&q);
-    
+
     let mut results = Vec::new();
     for repo in repos {
         // Language filter
         let lang_keywords = [
-            ("rust", "rust"), ("go", "go"), ("golang", "go"),
-            ("python", "python"), ("typescript", "typescript"), ("ts", "typescript"),
-            ("javascript", "javascript"), ("js", "javascript"),
-            ("cpp", "c++"), ("c++", "c++"), ("java", "java"),
+            ("rust", "rust"),
+            ("go", "go"),
+            ("golang", "go"),
+            ("python", "python"),
+            ("typescript", "typescript"),
+            ("ts", "typescript"),
+            ("javascript", "javascript"),
+            ("js", "javascript"),
+            ("cpp", "c++"),
+            ("c++", "c++"),
+            ("java", "java"),
         ];
         let mut lang_matched = true;
         for &(kw, expected) in &lang_keywords {
@@ -1178,29 +1230,49 @@ fn nl_filter_repos(query: &str, repos: &[crate::registry::RepoEntry], conn: &rus
                 break;
             }
         }
-        if !lang_matched { continue; }
-        
-        // Tag filter
-        if let Some(ref tag) = explicit_tag {
-            if !repo.tags.iter().any(|t| t.eq_ignore_ascii_case(tag)) {
-                continue;
-            }
+        if !lang_matched {
+            continue;
         }
-        
+
+        // Tag filter
+        if let Some(ref tag) = explicit_tag
+            && !repo.tags.iter().any(|t| t.eq_ignore_ascii_case(tag))
+        {
+            continue;
+        }
+
         // Stars filter
         if let Some((op, val)) = stars_cond {
             let stars = repo.stars.unwrap_or(0);
             match op {
-                '>' => if stars <= val { continue; },
-                '<' => if stars >= val { continue; },
-                '=' => if stars != val { continue; },
+                '>' => {
+                    if stars <= val {
+                        continue;
+                    }
+                }
+                '<' => {
+                    if stars >= val {
+                        continue;
+                    }
+                }
+                '=' => {
+                    if stars != val {
+                        continue;
+                    }
+                }
                 _ => {}
             }
         }
-        
+
         // Status filters (need health data)
-        if q.contains("dirty") || q.contains("behind") || q.contains("ahead") || q.contains("diverged") || q.contains("up to date") {
-            let (st, ah, bh) = match crate::registry::WorkspaceRegistry::get_health(conn, &repo.id)? {
+        if q.contains("dirty")
+            || q.contains("behind")
+            || q.contains("ahead")
+            || q.contains("diverged")
+            || q.contains("up to date")
+        {
+            let (st, ah, bh) = match crate::registry::WorkspaceRegistry::get_health(conn, &repo.id)?
+            {
                 Some(h) => (h.status.clone(), h.ahead, h.behind),
                 None => {
                     let path = repo.local_path.to_string_lossy();
@@ -1211,17 +1283,27 @@ fn nl_filter_repos(query: &str, repos: &[crate::registry::RepoEntry], conn: &rus
                 }
             };
             let dirty = st == "dirty" || st == "changed";
-            
-            if q.contains("dirty") && !dirty { continue; }
-            if q.contains("behind") && !q.contains("ahead") && bh == 0 { continue; }
-            if q.contains("ahead") && !q.contains("behind") && ah == 0 { continue; }
-            if q.contains("diverged") && (ah == 0 || bh == 0) { continue; }
-            if (q.contains("up to date") || q.contains("uptodate")) && (dirty || ah > 0 || bh > 0) { continue; }
+
+            if q.contains("dirty") && !dirty {
+                continue;
+            }
+            if q.contains("behind") && !q.contains("ahead") && bh == 0 {
+                continue;
+            }
+            if q.contains("ahead") && !q.contains("behind") && ah == 0 {
+                continue;
+            }
+            if q.contains("diverged") && (ah == 0 || bh == 0) {
+                continue;
+            }
+            if (q.contains("up to date") || q.contains("uptodate")) && (dirty || ah > 0 || bh > 0) {
+                continue;
+            }
         }
-        
+
         results.push(repo.clone());
     }
-    
+
     Ok(results)
 }
 
@@ -1230,9 +1312,13 @@ fn parse_stars_condition(query: &str) -> Option<(char, u64)> {
     if !lower.contains("stars") && !lower.contains("star") {
         return None;
     }
-    let digits: String = lower.chars().skip_while(|c| !c.is_ascii_digit()).take_while(|c| c.is_ascii_digit()).collect();
+    let digits: String = lower
+        .chars()
+        .skip_while(|c| !c.is_ascii_digit())
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
     let num = digits.parse::<u64>().ok()?;
-    
+
     if lower.contains(">") || lower.contains("more than") || lower.contains("over") {
         Some(('>', num))
     } else if lower.contains("<") || lower.contains("less than") || lower.contains("under") {
@@ -1255,144 +1341,4 @@ fn extract_tag_from_query(q: &str) -> Option<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_initialize() {
-        let server = build_server();
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize"
-        });
-        let resp = server.handle_request(req).await.unwrap();
-        assert_eq!(resp.get("jsonrpc").unwrap(), "2.0");
-        let result = resp.get("result").unwrap();
-        assert_eq!(result.get("protocolVersion").unwrap(), "2024-11-05");
-        assert_eq!(result.get("serverInfo").unwrap().get("name").unwrap(), "devbase");
-        assert!(result.get("capabilities").unwrap().get("tools").is_some());
-    }
-
-    #[tokio::test]
-    async fn test_tools_list() {
-        let server = build_server();
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "tools/list"
-        });
-        let resp = server.handle_request(req).await.unwrap();
-        let tools = resp.get("result").unwrap().get("tools").unwrap().as_array().unwrap();
-        assert_eq!(tools.len(), 14);
-        let names: Vec<&str> = tools.iter().map(|t| t.get("name").unwrap().as_str().unwrap()).collect();
-        assert!(names.contains(&"devkit_scan"));
-        assert!(names.contains(&"devkit_health"));
-        assert!(names.contains(&"devkit_sync"));
-        assert!(names.contains(&"devkit_query"));
-        assert!(names.contains(&"devkit_query_repos"));
-        assert!(names.contains(&"devkit_index"));
-        assert!(names.contains(&"devkit_note"));
-        assert!(names.contains(&"devkit_digest"));
-        assert!(names.contains(&"devkit_paper_index"));
-        assert!(names.contains(&"devkit_experiment_log"));
-        assert!(names.contains(&"devkit_github_info"));
-        assert!(names.contains(&"devkit_code_metrics"));
-        assert!(names.contains(&"devkit_module_graph"));
-        assert!(names.contains(&"devkit_natural_language_query"));
-        for tool in tools {
-            assert!(tool.get("name").is_some());
-            assert!(tool.get("description").is_some());
-            assert!(tool.get("inputSchema").is_some());
-        }
-    }
-
-    #[tokio::test]
-    async fn test_tools_call_devkit_health() {
-        let server = build_server();
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 3,
-            "method": "tools/call",
-            "params": {
-                "name": "devkit_health",
-                "arguments": { "detail": false }
-            }
-        });
-        let resp = server.handle_request(req).await.unwrap();
-        let result = resp.get("result").unwrap();
-        let content = result.get("content").unwrap().as_array().unwrap();
-        let text = content[0].get("text").unwrap().as_str().unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
-        assert_eq!(parsed.get("success").unwrap(), true);
-        let summary = parsed.get("summary").unwrap();
-        assert!(summary.get("total_repos").unwrap().as_i64().unwrap() >= 0);
-    }
-
-    #[tokio::test]
-    async fn test_tools_call_devkit_query() {
-        let server = build_server();
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 4,
-            "method": "tools/call",
-            "params": {
-                "name": "devkit_query",
-                "arguments": { "expression": "lang:rust" }
-            }
-        });
-        let resp = server.handle_request(req).await.unwrap();
-        let result = resp.get("result").unwrap();
-        let content = result.get("content").unwrap().as_array().unwrap();
-        let text = content[0].get("text").unwrap().as_str().unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
-        assert_eq!(parsed.get("success").unwrap(), true);
-        assert!(parsed.get("count").unwrap().as_i64().unwrap() >= 0);
-    }
-
-    #[tokio::test]
-    async fn test_tools_call_unknown_tool() {
-        let server = build_server();
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 5,
-            "method": "tools/call",
-            "params": {
-                "name": "unknown_tool",
-                "arguments": {}
-            }
-        });
-        let resp = server.handle_request(req).await.unwrap();
-        assert!(resp.get("error").is_some());
-        let error = resp.get("error").unwrap();
-        assert_eq!(error.get("code").unwrap().as_i64().unwrap(), -32602);
-    }
-
-    #[tokio::test]
-    async fn test_unknown_method() {
-        let server = build_server();
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 6,
-            "method": "unknown/method"
-        });
-        let resp = server.handle_request(req).await.unwrap();
-        assert!(resp.get("error").is_some());
-        let error = resp.get("error").unwrap();
-        assert_eq!(error.get("code").unwrap().as_i64().unwrap(), -32601);
-    }
-
-    #[tokio::test]
-    async fn test_stdio_content_length_format() {
-        let body = serde_json::json!({ "jsonrpc": "2.0", "id": 1, "result": {} });
-        let msg = format_mcp_message(&body);
-        assert!(msg.starts_with("Content-Length: "));
-        let parts: Vec<&str> = msg.split("\r\n\r\n").collect();
-        assert_eq!(parts.len(), 2);
-        let body_part = parts[1];
-        assert!(body_part.ends_with("\n"));
-        let parsed: serde_json::Value = serde_json::from_str(body_part.trim_end()).unwrap();
-        assert_eq!(parsed, body);
-    }
-
-}
+mod tests;

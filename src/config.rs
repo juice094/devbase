@@ -36,7 +36,7 @@ impl Default for SyncConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
@@ -85,7 +85,9 @@ impl Default for GeneralConfig {
     }
 }
 
-fn default_language() -> String { "auto".to_string() }
+fn default_language() -> String {
+    "auto".to_string()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DaemonConfig {
@@ -113,21 +115,6 @@ pub struct WatchConfig {
 pub struct DigestConfig {
     #[serde(default = "default_digest_window_hours")]
     pub window_hours: i64,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            general: GeneralConfig::default(),
-            daemon: DaemonConfig::default(),
-            cache: CacheConfig::default(),
-            watch: WatchConfig::default(),
-            digest: DigestConfig::default(),
-            github: GithubConfig::default(),
-            llm: LlmConfig::default(),
-            sync: SyncConfig::default(),
-        }
-    }
 }
 
 impl Default for DaemonConfig {
@@ -178,20 +165,46 @@ impl Default for LlmConfig {
     }
 }
 
-fn default_llm_enabled() -> bool { false }
-fn default_llm_provider() -> String { "ollama".to_string() }
-fn default_llm_max_tokens() -> u32 { 200 }
-fn default_llm_timeout_seconds() -> u64 { 30 }
-fn default_sync_timeout_seconds() -> u64 { 60 }
-fn default_sync_concurrency() -> usize { 8 }
-fn default_github_timeout_seconds() -> u64 { 5 }
+fn default_llm_enabled() -> bool {
+    false
+}
+fn default_llm_provider() -> String {
+    "ollama".to_string()
+}
+fn default_llm_max_tokens() -> u32 {
+    200
+}
+fn default_llm_timeout_seconds() -> u64 {
+    30
+}
+fn default_sync_timeout_seconds() -> u64 {
+    60
+}
+fn default_sync_concurrency() -> usize {
+    8
+}
+fn default_github_timeout_seconds() -> u64 {
+    5
+}
 
-fn default_daemon_interval_seconds() -> u64 { 3600 }
-fn default_true() -> bool { true }
-fn default_health_stale_hours() -> i64 { 24 }
-fn default_cache_ttl_seconds() -> i64 { 300 }
-pub fn default_watch_max_files() -> usize { 512 }
-fn default_digest_window_hours() -> i64 { 24 }
+fn default_daemon_interval_seconds() -> u64 {
+    3600
+}
+fn default_true() -> bool {
+    true
+}
+fn default_health_stale_hours() -> i64 {
+    24
+}
+fn default_cache_ttl_seconds() -> i64 {
+    300
+}
+pub fn default_watch_max_files() -> usize {
+    512
+}
+fn default_digest_window_hours() -> i64 {
+    24
+}
 
 impl Config {
     pub fn load() -> anyhow::Result<Self> {

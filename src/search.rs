@@ -2,18 +2,16 @@
 
 use std::path::PathBuf;
 use tantivy::{
+    Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, TantivyError,
     collector::TopDocs,
     query::QueryParser,
-    schema::{Schema, Value, STORED, TEXT},
-    Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, TantivyError,
+    schema::{STORED, Schema, TEXT, Value},
 };
 
 const INDEX_DIR: &str = "devbase/search_index";
 
 fn index_path() -> PathBuf {
-    dirs::data_local_dir()
-        .expect("local data dir")
-        .join(INDEX_DIR)
+    dirs::data_local_dir().expect("local data dir").join(INDEX_DIR)
 }
 
 fn build_schema() -> Schema {
@@ -29,10 +27,8 @@ pub fn init_index() -> Result<(Index, IndexReader), TantivyError> {
     let path = index_path();
     std::fs::create_dir_all(&path)?;
     let schema = build_schema();
-    let index = Index::open_or_create(
-        tantivy::directory::MmapDirectory::open(&path)?,
-        schema.clone(),
-    )?;
+    let index =
+        Index::open_or_create(tantivy::directory::MmapDirectory::open(&path)?, schema.clone())?;
     let reader = index
         .reader_builder()
         .reload_policy(ReloadPolicy::OnCommitWithDelay)
@@ -61,13 +57,17 @@ pub fn add_repo_doc(
     doc.add_text(id, repo_id);
     doc.add_text(title_f, title);
     doc.add_text(content_f, content);
-    doc.add_text(tags_f, &tags.join(","));
+    doc.add_text(tags_f, tags.join(","));
 
     writer.add_document(doc)?;
     Ok(())
 }
 
-pub fn delete_repo_doc(writer: &mut IndexWriter, schema: &Schema, repo_id: &str) -> Result<(), TantivyError> {
+pub fn delete_repo_doc(
+    writer: &mut IndexWriter,
+    schema: &Schema,
+    repo_id: &str,
+) -> Result<(), TantivyError> {
     let id = schema.get_field("id").unwrap();
     let term = tantivy::Term::from_field_text(id, repo_id);
     writer.delete_term(term);

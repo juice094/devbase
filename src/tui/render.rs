@@ -1,11 +1,11 @@
-use crate::tui::{App, InputMode, SortMode, SyncPopupMode, SearchPopupMode};
-use ratatui::{{
-    layout::{{Constraint, Direction, Layout}},
-    style::{{Color, Modifier, Style}},
-    text::{{Line, Span, Text}},
-    widgets::{{Block, Borders, List, ListItem, Paragraph, Sparkline, Wrap}},
+use crate::tui::{App, InputMode, SearchPopupMode, SortMode, SyncPopupMode};
+use ratatui::{
     Frame,
-}};
+    layout::{Constraint, Direction, Layout},
+    style::{Color, Modifier, Style},
+    text::{Line, Span, Text},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Sparkline, Wrap},
+};
 
 pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
     let bottom_height = if app.show_help
@@ -20,10 +20,7 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
 
     let main_vertical = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(bottom_height),
-        ])
+        .constraints([Constraint::Min(0), Constraint::Length(bottom_height)])
         .split(frame.area());
 
     let main_chunks = Layout::default()
@@ -46,9 +43,7 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 _ => "🟢",
             };
             let mut prefix = format!("{} ", status_icon);
-            if app.loading_repo_status.contains(&repo.id)
-                || app.loading_sync.contains(&repo.id)
-            {
+            if app.loading_repo_status.contains(&repo.id) || app.loading_sync.contains(&repo.id) {
                 prefix.push_str("⏳ ");
             }
 
@@ -110,9 +105,10 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
     let list = if items.is_empty() {
         let onboarding = vec![
             ListItem::new(Line::from(Span::styled("", Style::default()))),
-            ListItem::new(Line::from(vec![
-                Span::styled("  还没有注册任何仓库", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-            ])),
+            ListItem::new(Line::from(vec![Span::styled(
+                "  还没有注册任何仓库",
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            )])),
             ListItem::new(Line::from(Span::styled("", Style::default()))),
             ListItem::new(Line::from(vec![
                 Span::styled("  运行: ", Style::default().fg(Color::DarkGray)),
@@ -123,8 +119,7 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 Span::styled("devbase scan . --register", Style::default().fg(Color::Green)),
             ])),
         ];
-        List::new(onboarding)
-            .block(Block::default().borders(Borders::ALL).title(list_title))
+        List::new(onboarding).block(Block::default().borders(Borders::ALL).title(list_title))
     } else {
         List::new(items)
             .block(Block::default().borders(Borders::ALL).title(list_title))
@@ -146,25 +141,30 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
         .split(main_chunks[1]);
 
     // Detail panel
-    let (detail_text, insights_opt, stars_height, stars_opt) = if let Some(repo) = app.current_repo() {
+    let (detail_text, insights_opt, stars_height, stars_opt) = if let Some(repo) =
+        app.current_repo()
+    {
         let history = if let Ok(conn) = crate::registry::WorkspaceRegistry::init_db() {
-            crate::registry::WorkspaceRegistry::get_stars_history(&conn, &repo.id, 30).unwrap_or_default()
+            crate::registry::WorkspaceRegistry::get_stars_history(&conn, &repo.id, 30)
+                .unwrap_or_default()
         } else {
             vec![]
         };
         let has_enough = history.len() >= 2;
         let stars_height = if has_enough { 4 } else { 3 };
 
-        let mut tag_line = vec![
-            Span::styled("标签: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        ];
+        let mut tag_line = vec![Span::styled(
+            "标签: ",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        )];
         tag_line.extend(tag_spans(&repo.tags));
 
         // ── Core status block ──
-        let (dirty, ahead, behind) = match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
-            (Some(d), Some(a), Some(b)) => (d, a, b),
-            _ => (false, 0, 0),
-        };
+        let (dirty, ahead, behind) =
+            match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
+                (Some(d), Some(a), Some(b)) => (d, a, b),
+                _ => (false, 0, 0),
+            };
         let status_color = if dirty {
             Color::Red
         } else if behind > 0 || ahead > 0 {
@@ -172,7 +172,13 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
         } else {
             Color::Green
         };
-        let status_icon = if dirty { "⚠" } else if behind > 0 || ahead > 0 { "●" } else { "✓" };
+        let status_icon = if dirty {
+            "⚠"
+        } else if behind > 0 || ahead > 0 {
+            "●"
+        } else {
+            "✓"
+        };
         let status_desc = if dirty {
             "工作目录不干净".to_string()
         } else if behind > 0 && ahead > 0 {
@@ -187,7 +193,8 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
 
         // Git HEAD + sync history
         let head_short = read_head_commit(&repo.local_path).unwrap_or_else(|| "—".to_string());
-        let (last_sync_human, last_sync_action, last_sync_commit) = read_syncdone_info(&repo.local_path);
+        let (last_sync_human, last_sync_action, last_sync_commit) =
+            read_syncdone_info(&repo.local_path);
         let summary_text = read_repo_summary(&repo.id).unwrap_or_else(|| "暂无描述".to_string());
 
         let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
@@ -202,8 +209,14 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
         let lines: Vec<Line> = vec![
             // === Layer 1: Core status (human decision-making) ===
             Line::from(vec![
-                Span::styled(format!("{} ", status_icon), Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
-                Span::styled(&repo.id, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    format!("{} ", status_icon),
+                    Style::default().fg(status_color).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    &repo.id,
+                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                ),
             ]),
             Line::from(vec![
                 Span::raw("    "),
@@ -217,47 +230,68 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
             ]),
             if policy == crate::sync::SyncPolicy::Mirror {
                 Line::from(vec![
-                    Span::styled("  ⚠ ", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
-                    Span::styled(crate::i18n::current().sync.mirror_policy_warning, Style::default().fg(Color::Red)),
+                    Span::styled(
+                        "  ⚠ ",
+                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        crate::i18n::current().sync.mirror_policy_warning,
+                        Style::default().fg(Color::Red),
+                    ),
                 ])
             } else {
                 Line::from("")
             },
             Line::from(""),
-
             // === Layer 1.5: What is this repo? ===
             Line::from(vec![
-                Span::styled("描述: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "描述: ",
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(summary_text.clone(), Style::default().fg(Color::White)),
             ]),
             Line::from(""),
-
             // === Layer 2: Connection metadata ===
             Line::from(vec![
-                Span::styled("分支: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "分支: ",
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(repo.default_branch.as_deref().unwrap_or("—")),
-                Span::styled("  语言: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "  语言: ",
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(repo.language.as_deref().unwrap_or("—")),
             ]),
             Line::from(vec![
-                Span::styled("远程: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "远程: ",
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(
                     repo.upstream_url.as_deref().unwrap_or("(无)"),
-                    if repo.upstream_url.is_some() { Style::default().fg(Color::Green) } else { Style::default().fg(Color::Yellow) },
+                    if repo.upstream_url.is_some() {
+                        Style::default().fg(Color::Green)
+                    } else {
+                        Style::default().fg(Color::Yellow)
+                    },
                 ),
             ]),
             Line::from(tag_line),
             Line::from(""),
-
             // === Layer 3: Sync history ===
             Line::from(vec![
                 Span::styled("上次同步: ", Style::default().fg(Color::DarkGray)),
                 Span::styled(last_sync_human.clone(), Style::default().fg(Color::White)),
-                Span::styled(format!(" ({}) ", last_sync_action.clone()), Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!(" ({}) ", last_sync_action.clone()),
+                    Style::default().fg(Color::DarkGray),
+                ),
                 Span::styled(last_sync_commit.clone(), Style::default().fg(Color::DarkGray)),
             ]),
             Line::from(""),
-
             // === Layer 4: Action hint ===
             Line::from(vec![
                 Span::styled("操作: ", Style::default().fg(Color::DarkGray)),
@@ -271,7 +305,13 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
         (Text::raw(crate::i18n::current().log.no_repos_registered), None, 0, None)
     };
 
-    let insights_height = insights_opt.as_ref().map_or(0, |v| if v.is_empty() { 0 } else { v.len().min(3) as u16 + 2 });
+    let insights_height = insights_opt.as_ref().map_or(0, |v| {
+        if v.is_empty() {
+            0
+        } else {
+            v.len().min(3) as u16 + 2
+        }
+    });
 
     let detail_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -283,21 +323,27 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
         .split(right_chunks[0]);
 
     let detail = Paragraph::new(detail_text)
-        .block(Block::default().borders(Borders::ALL).title(crate::i18n::current().tui.title_details))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(crate::i18n::current().tui.title_details),
+        )
         .wrap(Wrap { trim: true });
 
     frame.render_widget(detail, detail_chunks[0]);
 
-    if let Some(insights) = insights_opt {
-        if !insights.is_empty() {
-            let insight_lines: Vec<Line> = insights.iter().take(3)
-                .map(|text| Line::from(Span::styled(text.clone(), Style::default().fg(Color::Cyan))))
-                .collect();
-            let insights_widget = Paragraph::new(Text::from(insight_lines))
-                .block(Block::default().borders(Borders::ALL).title("Insights"))
-                .wrap(Wrap { trim: true });
-            frame.render_widget(insights_widget, detail_chunks[1]);
-        }
+    if let Some(insights) = insights_opt
+        && !insights.is_empty()
+    {
+        let insight_lines: Vec<Line> = insights
+            .iter()
+            .take(3)
+            .map(|text| Line::from(Span::styled(text.clone(), Style::default().fg(Color::Cyan))))
+            .collect();
+        let insights_widget = Paragraph::new(Text::from(insight_lines))
+            .block(Block::default().borders(Borders::ALL).title("Insights"))
+            .wrap(Wrap { trim: true });
+        frame.render_widget(insights_widget, detail_chunks[1]);
     }
 
     if let Some((history, has_enough)) = stars_opt {
@@ -311,10 +357,7 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
 
             let spark_text_chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Min(1),
-                    Constraint::Length(1),
-                ])
+                .constraints([Constraint::Min(1), Constraint::Length(1)])
                 .split(stars_inner);
 
             let sparkline = Sparkline::default()
@@ -326,11 +369,18 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
             let current = spark_data.last().copied().unwrap_or(0);
             let first = spark_data.first().copied().unwrap_or(0);
             let delta = current as i64 - first as i64;
-            let delta_text = if delta >= 0 { format!("(+{})", delta) } else { format!("({})", delta) };
+            let delta_text = if delta >= 0 {
+                format!("(+{})", delta)
+            } else {
+                format!("({})", delta)
+            };
             let delta_color = if delta >= 0 { Color::Green } else { Color::Red };
 
             let stars_label = Paragraph::new(Line::from(vec![
-                Span::styled(format!("★{} ", current), Style::default().fg(Color::Rgb(255, 215, 0))),
+                Span::styled(
+                    format!("★{} ", current),
+                    Style::default().fg(Color::Rgb(255, 215, 0)),
+                ),
                 Span::styled(delta_text, Style::default().fg(delta_color)),
             ]));
             frame.render_widget(stars_label, spark_text_chunks[1]);
@@ -349,7 +399,11 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
     let log_lines: Vec<Line> = app.logs[log_start..].iter().map(|l| format_log_line(l)).collect();
     let log_text = Text::from(log_lines);
     let logs = Paragraph::new(log_text)
-        .block(Block::default().borders(Borders::ALL).title(crate::i18n::current().tui.title_logs))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(crate::i18n::current().tui.title_logs),
+        )
         .wrap(Wrap { trim: true });
 
     frame.render_widget(logs, right_chunks[1]);
@@ -371,36 +425,46 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
         }
         SearchPopupMode::Results => {
             let popup_area = centered_rect(80, 70, frame.area());
-            let popup_inner = popup_area.inner(ratatui::layout::Margin {
-                horizontal: 1,
-                vertical: 1,
-            });
+            let popup_inner =
+                popup_area.inner(ratatui::layout::Margin { horizontal: 1, vertical: 1 });
 
             let title = if app.search_results.is_empty() {
-                format!("{}: \"{}\" - {}", crate::i18n::current().tui.search_results_title, app.search_pattern, crate::i18n::current().tui.search_no_results)
+                format!(
+                    "{}: \"{}\" - {}",
+                    crate::i18n::current().tui.search_results_title,
+                    app.search_pattern,
+                    crate::i18n::current().tui.search_no_results
+                )
             } else {
-                format!("{}: \"{}\" ({} results)", crate::i18n::current().tui.search_results_title, app.search_pattern, app.search_results.len())
+                format!(
+                    "{}: \"{}\" ({} results)",
+                    crate::i18n::current().tui.search_results_title,
+                    app.search_pattern,
+                    app.search_results.len()
+                )
             };
 
-            let items: Vec<ListItem> = app.search_results.iter().enumerate().map(|(i, result)| {
-                let is_selected = i == app.search_selected;
-                let repo_line = Span::styled(
-                    format!("[{}] {}:{}", result.repo_id, result.file_path, result.line_number),
-                    Style::default().fg(Color::Cyan),
-                );
-                let content_line = Span::styled(
-                    format!("  > {}", result.line_content),
-                    if is_selected {
-                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
-                    } else {
-                        Style::default().fg(Color::Gray)
-                    },
-                );
-                ListItem::new(Text::from(vec![
-                    Line::from(repo_line),
-                    Line::from(content_line),
-                ]))
-            }).collect();
+            let items: Vec<ListItem> = app
+                .search_results
+                .iter()
+                .enumerate()
+                .map(|(i, result)| {
+                    let is_selected = i == app.search_selected;
+                    let repo_line = Span::styled(
+                        format!("[{}] {}:{}", result.repo_id, result.file_path, result.line_number),
+                        Style::default().fg(Color::Cyan),
+                    );
+                    let content_line = Span::styled(
+                        format!("  > {}", result.line_content),
+                        if is_selected {
+                            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default().fg(Color::Gray)
+                        },
+                    );
+                    ListItem::new(Text::from(vec![Line::from(repo_line), Line::from(content_line)]))
+                })
+                .collect();
 
             let popup_list = List::new(items)
                 .block(Block::default().borders(Borders::ALL).title(title))
@@ -435,10 +499,8 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
     match app.sync_popup_mode {
         SyncPopupMode::Preview => {
             let popup_area = centered_rect(60, 50, frame.area());
-            let popup_inner = popup_area.inner(ratatui::layout::Margin {
-                horizontal: 1,
-                vertical: 1,
-            });
+            let popup_inner =
+                popup_area.inner(ratatui::layout::Margin { horizontal: 1, vertical: 1 });
 
             let mut lines: Vec<Line> = Vec::new();
 
@@ -458,7 +520,9 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 )));
                 lines.push(Line::from(""));
                 for (repo_id, msg) in &app.sync_popup_results {
-                    if repo_id == "system" { continue; }
+                    if repo_id == "system" {
+                        continue;
+                    }
                     let color = if msg.contains("Fetched") {
                         Color::Green
                     } else if msg.contains("Error") || msg.contains("TIMEOUT") {
@@ -482,18 +546,52 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 return;
             }
 
-            let safe: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::Safe).collect();
-            let diverged: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::BlockedDiverged).collect();
-            let dirty: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::BlockedDirty).collect();
-            let local_ahead: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::LocalAhead).collect();
-            let up_to_date: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::UpToDate).collect();
-            let no_upstream: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::NoUpstream).collect();
-            let unknown: Vec<_> = app.sync_preview_items.iter().filter(|i| i.safety == crate::sync::SyncSafety::Unknown).collect();
+            let safe: Vec<_> = app
+                .sync_preview_items
+                .iter()
+                .filter(|i| i.safety == crate::sync::SyncSafety::Safe)
+                .collect();
+            let diverged: Vec<_> = app
+                .sync_preview_items
+                .iter()
+                .filter(|i| i.safety == crate::sync::SyncSafety::BlockedDiverged)
+                .collect();
+            let dirty: Vec<_> = app
+                .sync_preview_items
+                .iter()
+                .filter(|i| i.safety == crate::sync::SyncSafety::BlockedDirty)
+                .collect();
+            let local_ahead: Vec<_> = app
+                .sync_preview_items
+                .iter()
+                .filter(|i| i.safety == crate::sync::SyncSafety::LocalAhead)
+                .collect();
+            let up_to_date: Vec<_> = app
+                .sync_preview_items
+                .iter()
+                .filter(|i| i.safety == crate::sync::SyncSafety::UpToDate)
+                .collect();
+            let no_upstream: Vec<_> = app
+                .sync_preview_items
+                .iter()
+                .filter(|i| i.safety == crate::sync::SyncSafety::NoUpstream)
+                .collect();
+            let unknown: Vec<_> = app
+                .sync_preview_items
+                .iter()
+                .filter(|i| i.safety == crate::sync::SyncSafety::Unknown)
+                .collect();
 
             if !safe.is_empty() {
-                lines.push(Line::from(Span::styled(format!("将执行 ({})", safe.len()), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))));
+                lines.push(Line::from(Span::styled(
+                    format!("将执行 ({})", safe.len()),
+                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                )));
                 for item in safe {
-                    lines.push(Line::from(format!("  [{}] {:?} behind={}", item.repo_id, item.policy, item.behind)));
+                    lines.push(Line::from(format!(
+                        "  [{}] {:?} behind={}",
+                        item.repo_id, item.policy, item.behind
+                    )));
                     if let Some(rec) = &item.recommendation {
                         lines.push(Line::from(Span::styled(
                             format!("    → {}", rec),
@@ -504,9 +602,15 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(""));
             }
             if !diverged.is_empty() {
-                lines.push(Line::from(Span::styled(format!("被阻塞 - 分叉 ({})", diverged.len()), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
+                lines.push(Line::from(Span::styled(
+                    format!("被阻塞 - 分叉 ({})", diverged.len()),
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                )));
                 for item in diverged {
-                    lines.push(Line::from(format!("  [{}] {:?} ahead={} behind={}", item.repo_id, item.policy, item.ahead, item.behind)));
+                    lines.push(Line::from(format!(
+                        "  [{}] {:?} ahead={} behind={}",
+                        item.repo_id, item.policy, item.ahead, item.behind
+                    )));
                     if let Some(rec) = &item.recommendation {
                         lines.push(Line::from(Span::styled(
                             format!("    → {}", rec),
@@ -517,7 +621,10 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(""));
             }
             if !dirty.is_empty() {
-                lines.push(Line::from(Span::styled(format!("被阻塞 - 工作目录不干净 ({})", dirty.len()), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
+                lines.push(Line::from(Span::styled(
+                    format!("被阻塞 - 工作目录不干净 ({})", dirty.len()),
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                )));
                 for item in dirty {
                     lines.push(Line::from(format!("  [{}] {:?}", item.repo_id, item.policy)));
                     if let Some(rec) = &item.recommendation {
@@ -530,9 +637,15 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(""));
             }
             if !local_ahead.is_empty() {
-                lines.push(Line::from(Span::styled(format!("本地超前 - 将推送 ({})", local_ahead.len()), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))));
+                lines.push(Line::from(Span::styled(
+                    format!("本地超前 - 将推送 ({})", local_ahead.len()),
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                )));
                 for item in local_ahead {
-                    lines.push(Line::from(format!("  [{}] {:?} ahead={}", item.repo_id, item.policy, item.ahead)));
+                    lines.push(Line::from(format!(
+                        "  [{}] {:?} ahead={}",
+                        item.repo_id, item.policy, item.ahead
+                    )));
                     if let Some(rec) = &item.recommendation {
                         lines.push(Line::from(Span::styled(
                             format!("    → {}", rec),
@@ -543,7 +656,10 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(""));
             }
             if !up_to_date.is_empty() {
-                lines.push(Line::from(Span::styled(format!("已最新 ({})", up_to_date.len()), Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD))));
+                lines.push(Line::from(Span::styled(
+                    format!("已最新 ({})", up_to_date.len()),
+                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+                )));
                 for item in up_to_date {
                     lines.push(Line::from(format!("  [{}] {:?}", item.repo_id, item.policy)));
                     if let Some(rec) = &item.recommendation {
@@ -556,7 +672,10 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(""));
             }
             if !no_upstream.is_empty() {
-                lines.push(Line::from(Span::styled(format!("无远程 ({})", no_upstream.len()), Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD))));
+                lines.push(Line::from(Span::styled(
+                    format!("无远程 ({})", no_upstream.len()),
+                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+                )));
                 for item in no_upstream {
                     lines.push(Line::from(format!("  [{}] {:?}", item.repo_id, item.policy)));
                     if let Some(rec) = &item.recommendation {
@@ -569,7 +688,10 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::from(""));
             }
             if !unknown.is_empty() {
-                lines.push(Line::from(Span::styled(format!("异常 ({})", unknown.len()), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
+                lines.push(Line::from(Span::styled(
+                    format!("异常 ({})", unknown.len()),
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                )));
                 for item in unknown {
                     lines.push(Line::from(format!("  [{}] {:?}", item.repo_id, item.policy)));
                     if let Some(rec) = &item.recommendation {
@@ -611,18 +733,13 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
         }
         SyncPopupMode::Progress => {
             let popup_area = centered_rect(60, 40, frame.area());
-            let popup_inner = popup_area.inner(ratatui::layout::Margin {
-                horizontal: 1,
-                vertical: 1,
-            });
+            let popup_inner =
+                popup_area.inner(ratatui::layout::Margin { horizontal: 1, vertical: 1 });
 
             let queued = app.loading_sync.len();
             let running = app.sync_running.len();
             let completed = app.sync_total.saturating_sub(queued + running);
-            let elapsed_secs = app
-                .sync_start_time
-                .map(|t| t.elapsed().as_secs())
-                .unwrap_or(0);
+            let elapsed_secs = app.sync_start_time.map(|t| t.elapsed().as_secs()).unwrap_or(0);
             let i18n = crate::i18n::current();
             let popup_title = Line::from(vec![
                 Span::raw(i18n.tui.title_sync_progress),
@@ -667,12 +784,8 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                 })
                 .collect();
 
-            let popup_list = List::new(items)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(popup_title),
-                );
+            let popup_list =
+                List::new(items).block(Block::default().borders(Borders::ALL).title(popup_title));
 
             frame.render_widget(ratatui::widgets::Clear, popup_area);
             frame.render_widget(popup_list, popup_area);
@@ -697,9 +810,15 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
     if bottom_height > 0 {
         let bottom_text = match app.input_mode {
             InputMode::TagInput => Line::from(vec![
-                Span::styled("标签: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "标签: ",
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(&app.input_buffer),
-                Span::styled(crate::i18n::current().tui.hint_tag_input, Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    crate::i18n::current().tui.hint_tag_input,
+                    Style::default().fg(Color::DarkGray),
+                ),
             ]),
             InputMode::Normal => {
                 let i18n = &crate::i18n::current().tui;
@@ -733,17 +852,29 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
                     let completed = app.sync_total.saturating_sub(queued + running);
                     spans.push(Span::raw(" | "));
                     spans.push(Span::styled(
-                        format!("{}{}/{}/{}", crate::i18n::current().tui.title_sync_progress, completed, running, app.sync_total),
+                        format!(
+                            "{}{}/{}/{}",
+                            crate::i18n::current().tui.title_sync_progress,
+                            completed,
+                            running,
+                            app.sync_total
+                        ),
                         Style::default().fg(Color::Yellow),
                     ));
                 }
                 Line::from(spans)
             }
             InputMode::SearchInput => Line::from(vec![
-                Span::styled(crate::i18n::current().tui.search_prompt, Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    crate::i18n::current().tui.search_prompt,
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(" "),
                 Span::raw(&app.input_buffer),
-                Span::styled(crate::i18n::current().tui.hint_tag_input, Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    crate::i18n::current().tui.hint_tag_input,
+                    Style::default().fg(Color::DarkGray),
+                ),
             ]),
         };
         let bottom_bar = Paragraph::new(bottom_text);
@@ -751,7 +882,11 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
     }
 }
 
-fn centered_rect(percent_x: u16, percent_y: u16, r: ratatui::layout::Rect) -> ratatui::layout::Rect {
+fn centered_rect(
+    percent_x: u16,
+    percent_y: u16,
+    r: ratatui::layout::Rect,
+) -> ratatui::layout::Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -808,10 +943,12 @@ fn read_head_commit(path: &str) -> Option<String> {
 fn read_syncdone_info(path: &str) -> (String, String, String) {
     let default = || ("从未同步".to_string(), "—".to_string(), "—".to_string());
 
-    let content = match std::fs::read_to_string(std::path::Path::new(path).join(".devbase").join("syncdone")) {
-        Ok(c) => c,
-        Err(_) => return default(),
-    };
+    let content =
+        match std::fs::read_to_string(std::path::Path::new(path).join(".devbase").join("syncdone"))
+        {
+            Ok(c) => c,
+            Err(_) => return default(),
+        };
     let json: serde_json::Value = match serde_json::from_str(&content) {
         Ok(j) => j,
         Err(_) => return default(),
@@ -848,11 +985,9 @@ fn read_syncdone_info(path: &str) -> (String, String, String) {
 
 fn read_repo_summary(repo_id: &str) -> Option<String> {
     let conn = crate::registry::WorkspaceRegistry::init_db().ok()?;
-    conn.query_row(
-        "SELECT summary FROM repo_summaries WHERE repo_id = ?1",
-        [repo_id],
-        |row| row.get::<_, String>(0),
-    )
+    conn.query_row("SELECT summary FROM repo_summaries WHERE repo_id = ?1", [repo_id], |row| {
+        row.get::<_, String>(0)
+    })
     .ok()
 }
 
@@ -865,21 +1000,21 @@ fn format_log_line(line: &str) -> Line<'_> {
         spans.push(Span::styled(ts, Style::default().fg(Color::DarkGray)));
 
         let rest = &line[ts_end + 2..];
-        if rest.starts_with("[ERROR] ") {
+        if let Some(stripped) = rest.strip_prefix("[ERROR] ") {
             spans.push(Span::styled(
                 "[ERROR] ",
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             ));
-            spans.push(Span::raw(&rest[8..]));
-        } else if rest.starts_with("[WARN] ") {
+            spans.push(Span::raw(stripped));
+        } else if let Some(stripped) = rest.strip_prefix("[WARN] ") {
             spans.push(Span::styled(
                 "[WARN] ",
                 Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
             ));
-            spans.push(Span::raw(&rest[7..]));
-        } else if rest.starts_with("[INFO] ") {
+            spans.push(Span::raw(stripped));
+        } else if let Some(stripped) = rest.strip_prefix("[INFO] ") {
             spans.push(Span::styled("[INFO] ", Style::default().fg(Color::Green)));
-            spans.push(Span::raw(&rest[7..]));
+            spans.push(Span::raw(stripped));
         } else {
             spans.push(Span::raw(rest));
         }

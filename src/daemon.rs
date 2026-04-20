@@ -35,7 +35,11 @@ impl Daemon {
 
         // 1. health check for stale repos
         let stale_threshold = if self.config.daemon.incremental {
-            Some((chrono::Utc::now() - chrono::Duration::hours(self.config.daemon.health_stale_hours)).to_rfc3339())
+            Some(
+                (chrono::Utc::now()
+                    - chrono::Duration::hours(self.config.daemon.health_stale_hours))
+                .to_rfc3339(),
+            )
         } else {
             None
         };
@@ -50,15 +54,20 @@ impl Daemon {
                 let primary = repo.primary_remote();
                 let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
                 let default_branch = primary.and_then(|r| r.default_branch.as_deref());
-                let (status, ahead, behind) =
-                    crate::health::analyze_repo(repo.local_path.to_string_lossy().as_ref(), upstream_url, default_branch);
+                let (status, ahead, behind) = crate::health::analyze_repo(
+                    repo.local_path.to_string_lossy().as_ref(),
+                    upstream_url,
+                    default_branch,
+                );
                 let health = crate::registry::HealthEntry {
                     status: status.clone(),
                     ahead,
                     behind,
                     checked_at: chrono::Utc::now(),
                 };
-                if let Err(e) = crate::registry::WorkspaceRegistry::save_health(&conn, &repo.id, &health) {
+                if let Err(e) =
+                    crate::registry::WorkspaceRegistry::save_health(&conn, &repo.id, &health)
+                {
                     tracing::warn!("Failed to save health for {}: {}", repo.id, e);
                 }
             }
@@ -115,7 +124,11 @@ impl Daemon {
                     &d.relation_type,
                     d.confidence,
                 );
-                let repo_id = if d.from.is_empty() { None } else { Some(d.from.as_str()) };
+                let repo_id = if d.from.is_empty() {
+                    None
+                } else {
+                    Some(d.from.as_str())
+                };
                 let _ = crate::registry::WorkspaceRegistry::save_discovery(
                     &conn,
                     repo_id,

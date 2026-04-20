@@ -34,10 +34,8 @@ impl SyncthingClient {
         path: &str,
         device_ids: &[String],
     ) -> anyhow::Result<()> {
-        let devices: Vec<serde_json::Value> = device_ids
-            .iter()
-            .map(|d| json!({ "deviceID": d }))
-            .collect();
+        let devices: Vec<serde_json::Value> =
+            device_ids.iter().map(|d| json!({ "deviceID": d })).collect();
         let body = json!({
             "id": id,
             "path": path,

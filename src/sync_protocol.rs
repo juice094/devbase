@@ -27,10 +27,7 @@ impl VersionVector {
                 return self;
             }
         }
-        self.counters.push(Counter {
-            id: local_id,
-            value: 1,
-        });
+        self.counters.push(Counter { id: local_id, value: 1 });
         self
     }
 
@@ -69,11 +66,8 @@ impl VersionVector {
             other_map.insert(c.id, c.value);
         }
 
-        let all_ids: std::collections::HashSet<u64> = self_map
-            .keys()
-            .chain(other_map.keys())
-            .copied()
-            .collect();
+        let all_ids: std::collections::HashSet<u64> =
+            self_map.keys().chain(other_map.keys()).copied().collect();
 
         let mut has_greater = false;
         let mut has_less = false;
@@ -117,29 +111,24 @@ pub struct SyncIndex {
 pub fn scan_directory(path: &Path) -> anyhow::Result<SyncIndex> {
     let mut files = Vec::new();
 
-    for entry in walkdir::WalkDir::new(path)
-        .into_iter()
-        .filter_entry(|e| {
-            // Skip .git directories
-            if let Some(name) = e.file_name().to_str() {
-                name != ".git"
-            } else {
-                true
-            }
-        })
-    {
+    for entry in walkdir::WalkDir::new(path).into_iter().filter_entry(|e| {
+        // Skip .git directories
+        if let Some(name) = e.file_name().to_str() {
+            name != ".git"
+        } else {
+            true
+        }
+    }) {
         let entry = entry.with_context(|| "walkdir entry error")?;
         if !entry.file_type().is_file() {
             continue;
         }
 
-        let meta = entry.metadata().with_context(|| {
-            format!("failed to read metadata for {:?}", entry.path())
-        })?;
+        let meta = entry
+            .metadata()
+            .with_context(|| format!("failed to read metadata for {:?}", entry.path()))?;
         let size = meta.len();
-        let mod_time = meta
-            .modified()
-            .unwrap_or_else(|_| std::time::SystemTime::UNIX_EPOCH);
+        let mod_time = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
         let mod_time: DateTime<Utc> = mod_time.into();
 
         // Compute a lightweight hash: SHA256 of file content would be ideal,

@@ -5,8 +5,19 @@ use std::path::Path;
 use tracing::info;
 
 const IGNORED_DIRS: &[&str] = &[
-    ".git", "node_modules", "target", "__pycache__", ".venv", "venv",
-    "dist", "build", ".tmp", ".cache", ".bun", ".cargo", ".rustup",
+    ".git",
+    "node_modules",
+    "target",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    ".tmp",
+    ".cache",
+    ".bun",
+    ".cargo",
+    ".rustup",
 ];
 
 pub fn compute_workspace_hash(root: &Path) -> anyhow::Result<String> {
@@ -22,7 +33,7 @@ pub fn compute_workspace_hash(root: &Path) -> anyhow::Result<String> {
             let path = entry.path();
             let rel = path.strip_prefix(root).unwrap_or(path);
             let rel_str = rel.to_string_lossy().replace('\\', "/");
-            if rel_str.split('/').any(|part| IGNORED_DIRS.iter().any(|d| *d == part)) {
+            if rel_str.split('/').any(|part| IGNORED_DIRS.contains(&part)) {
                 continue;
             }
             files.push(rel_str);
@@ -39,7 +50,12 @@ pub fn compute_workspace_hash(root: &Path) -> anyhow::Result<String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
-pub async fn run_json(detail: bool, limit: usize, page: usize, ttl_seconds: i64) -> anyhow::Result<serde_json::Value> {
+pub async fn run_json(
+    detail: bool,
+    limit: usize,
+    page: usize,
+    ttl_seconds: i64,
+) -> anyhow::Result<serde_json::Value> {
     let (total_repos, dirty_repos, behind_upstream, no_upstream_count, repo_details) = {
         let conn = WorkspaceRegistry::init_db()?;
         let repos = WorkspaceRegistry::list_repos(&conn)?;
@@ -59,34 +75,44 @@ pub async fn run_json(detail: bool, limit: usize, page: usize, ttl_seconds: i64)
             let (status, ahead, behind) = if repo.workspace_type == "git" {
                 match WorkspaceRegistry::get_health(&conn, &repo.id) {
                     Ok(Some(health)) => {
-                        let elapsed = Utc::now().signed_duration_since(health.checked_at).num_seconds();
+                        let elapsed =
+                            Utc::now().signed_duration_since(health.checked_at).num_seconds();
                         if elapsed < ttl_seconds {
                             (health.status, health.ahead, health.behind)
                         } else {
-                            let (status, ahead, behind) =
-                                analyze_repo(repo.local_path.to_string_lossy().as_ref(), upstream_url.as_deref(), default_branch.as_deref());
+                            let (status, ahead, behind) = analyze_repo(
+                                repo.local_path.to_string_lossy().as_ref(),
+                                upstream_url.as_deref(),
+                                default_branch.as_deref(),
+                            );
                             let new_health = HealthEntry {
                                 status: status.clone(),
                                 ahead,
                                 behind,
                                 checked_at: Utc::now(),
                             };
-                            if let Err(e) = WorkspaceRegistry::save_health(&conn, &repo.id, &new_health) {
+                            if let Err(e) =
+                                WorkspaceRegistry::save_health(&conn, &repo.id, &new_health)
+                            {
                                 tracing::warn!("Failed to save health for {}: {}", repo.id, e);
                             }
                             (status, ahead, behind)
                         }
                     }
                     _ => {
-                        let (status, ahead, behind) =
-                            analyze_repo(repo.local_path.to_string_lossy().as_ref(), upstream_url.as_deref(), default_branch.as_deref());
+                        let (status, ahead, behind) = analyze_repo(
+                            repo.local_path.to_string_lossy().as_ref(),
+                            upstream_url.as_deref(),
+                            default_branch.as_deref(),
+                        );
                         let new_health = HealthEntry {
                             status: status.clone(),
                             ahead,
                             behind,
                             checked_at: Utc::now(),
                         };
-                        if let Err(e) = WorkspaceRegistry::save_health(&conn, &repo.id, &new_health) {
+                        if let Err(e) = WorkspaceRegistry::save_health(&conn, &repo.id, &new_health)
+                        {
                             tracing::warn!("Failed to save health for {}: {}", repo.id, e);
                         }
                         (status, ahead, behind)
@@ -111,7 +137,8 @@ pub async fn run_json(detail: bool, limit: usize, page: usize, ttl_seconds: i64)
                         continue;
                     }
                 };
-                let status = match WorkspaceRegistry::get_latest_workspace_snapshot(&conn, &repo.id) {
+                let status = match WorkspaceRegistry::get_latest_workspace_snapshot(&conn, &repo.id)
+                {
                     Ok(Some(prev)) if prev.file_hash == current_hash => "ok".to_string(),
                     _ => {
                         let snapshot = WorkspaceSnapshot {
@@ -119,8 +146,13 @@ pub async fn run_json(detail: bool, limit: usize, page: usize, ttl_seconds: i64)
                             file_hash: current_hash,
                             checked_at: Utc::now(),
                         };
-                        if let Err(e) = WorkspaceRegistry::save_workspace_snapshot(&conn, &snapshot) {
-                            tracing::warn!("Failed to save workspace snapshot for {}: {}", repo.id, e);
+                        if let Err(e) = WorkspaceRegistry::save_workspace_snapshot(&conn, &snapshot)
+                        {
+                            tracing::warn!(
+                                "Failed to save workspace snapshot for {}: {}",
+                                repo.id,
+                                e
+                            );
                         }
                         "changed".to_string()
                     }
@@ -176,7 +208,10 @@ pub async fn run_json(detail: bool, limit: usize, page: usize, ttl_seconds: i64)
                 id: None,
                 operation: "health".to_string(),
                 repo_id: None,
-                details: Some(format!("repos={}, dirty={}, behind={}", total_repos, dirty_repos, behind_upstream)),
+                details: Some(format!(
+                    "repos={}, dirty={}, behind={}",
+                    total_repos, dirty_repos, behind_upstream
+                )),
                 status: "success".to_string(),
                 timestamp: Utc::now(),
             },
@@ -221,11 +256,26 @@ pub async fn run(detail: bool, limit: usize, page: usize, ttl_seconds: i64) -> a
 
     let env = result["environment"].as_object().unwrap();
     println!("\n{}:", crate::i18n::current().log.health_environment);
-    println!("  rustc: {}", env["rustc"].as_str().unwrap_or(crate::i18n::current().log.not_installed));
-    println!("  cargo: {}", env["cargo"].as_str().unwrap_or(crate::i18n::current().log.not_installed));
-    println!("  node: {}", env["node"].as_str().unwrap_or(crate::i18n::current().log.not_installed));
-    println!("  go: {}", env["go"].as_str().unwrap_or(crate::i18n::current().log.not_installed));
-    println!("  cmake: {}", env["cmake"].as_str().unwrap_or(crate::i18n::current().log.not_installed));
+    println!(
+        "  rustc: {}",
+        env["rustc"].as_str().unwrap_or(crate::i18n::current().log.not_installed)
+    );
+    println!(
+        "  cargo: {}",
+        env["cargo"].as_str().unwrap_or(crate::i18n::current().log.not_installed)
+    );
+    println!(
+        "  node: {}",
+        env["node"].as_str().unwrap_or(crate::i18n::current().log.not_installed)
+    );
+    println!(
+        "  go: {}",
+        env["go"].as_str().unwrap_or(crate::i18n::current().log.not_installed)
+    );
+    println!(
+        "  cmake: {}",
+        env["cmake"].as_str().unwrap_or(crate::i18n::current().log.not_installed)
+    );
 
     if detail {
         let repos = result["repos"].as_array().unwrap();
@@ -236,7 +286,8 @@ pub async fn run(detail: bool, limit: usize, page: usize, ttl_seconds: i64) -> a
                     let page_num = pagination["page"].as_u64().unwrap_or(1);
                     let limit_val = pagination["limit"].as_u64().unwrap_or(0);
                     let has_more = pagination["has_more"].as_bool().unwrap_or(false);
-                    println!("\n{} (page {} of ~{}, limit={}):",
+                    println!(
+                        "\n{} (page {} of ~{}, limit={}):",
                         crate::i18n::current().log.health_repos,
                         page_num,
                         (total as f64 / limit_val as f64).ceil() as u64,
@@ -272,7 +323,11 @@ pub async fn run(detail: bool, limit: usize, page: usize, ttl_seconds: i64) -> a
     Ok(())
 }
 
-pub fn analyze_repo(path: &str, upstream_url: Option<&str>, default_branch: Option<&str>) -> (String, usize, usize) {
+pub fn analyze_repo(
+    path: &str,
+    upstream_url: Option<&str>,
+    default_branch: Option<&str>,
+) -> (String, usize, usize) {
     let repo = match Repository::open(path) {
         Ok(r) => r,
         Err(_) => return ("error".to_string(), 0, 0),
@@ -320,7 +375,10 @@ pub fn analyze_repo(path: &str, upstream_url: Option<&str>, default_branch: Opti
     (status.to_string(), ahead, behind)
 }
 
-fn calc_ahead_behind(repo: &Repository, default_branch: Option<&str>) -> anyhow::Result<(usize, usize)> {
+fn calc_ahead_behind(
+    repo: &Repository,
+    default_branch: Option<&str>,
+) -> anyhow::Result<(usize, usize)> {
     let head = match repo.head() {
         Ok(h) => h,
         Err(_) => return Ok((0, 0)),
@@ -332,21 +390,17 @@ fn calc_ahead_behind(repo: &Repository, default_branch: Option<&str>) -> anyhow:
     };
 
     let upstream_names: Vec<String> = match git2::Branch::wrap(head).upstream() {
-        Ok(up) => {
-            match up.name() {
-                Ok(Some(name)) => vec![name.to_string()],
-                _ => vec!["origin/HEAD".to_string()],
-            }
-        }
+        Ok(up) => match up.name() {
+            Ok(Some(name)) => vec![name.to_string()],
+            _ => vec!["origin/HEAD".to_string()],
+        },
         Err(_) => {
             let branch = default_branch.unwrap_or("HEAD");
             vec![format!("origin/{}", branch), "origin/HEAD".to_string()]
         }
     };
 
-    let upstream_ref = upstream_names
-        .iter()
-        .find_map(|name| repo.find_reference(name).ok());
+    let upstream_ref = upstream_names.iter().find_map(|name| repo.find_reference(name).ok());
 
     let upstream_ref = match upstream_ref {
         Some(r) => r,
@@ -358,16 +412,11 @@ fn calc_ahead_behind(repo: &Repository, default_branch: Option<&str>) -> anyhow:
         None => return Ok((0, 0)),
     };
 
-    repo.graph_ahead_behind(local_oid, remote_oid)
-        .map_err(|e| anyhow::anyhow!(e))
+    repo.graph_ahead_behind(local_oid, remote_oid).map_err(|e| anyhow::anyhow!(e))
 }
 
 async fn get_tool_version(cmd: &str, args: &[&str]) -> Option<String> {
-    let output = tokio::process::Command::new(cmd)
-        .args(args)
-        .output()
-        .await
-        .ok()?;
+    let output = tokio::process::Command::new(cmd).args(args).output().await.ok()?;
 
     if !output.status.success() {
         return None;

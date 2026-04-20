@@ -93,11 +93,11 @@ pub struct App {
     pub(crate) search_pattern: String,
 }
 
-pub mod state;
 pub mod event;
 pub mod render;
+pub mod state;
 
-use self::event::{run_app, TuiAction};
+use self::event::{TuiAction, run_app};
 
 pub async fn run() -> anyhow::Result<()> {
     let mut terminal = ratatui::init();

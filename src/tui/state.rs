@@ -1,10 +1,13 @@
 use crate::asyncgit::AsyncNotification;
 use crate::registry::WorkspaceRegistry;
-use crate::tui::{App, InputMode, ListState, RepoItem, SortMode, SyncPopupMode, SyncPreviewItem, SearchPopupMode, SearchResult};
+use crate::tui::{
+    App, InputMode, ListState, RepoItem, SearchPopupMode, SearchResult, SortMode, SyncPopupMode,
+    SyncPreviewItem,
+};
+use chrono::Utc;
 use crossbeam_channel::bounded;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
-use chrono::Utc;
 
 impl App {
     pub(crate) fn new() -> anyhow::Result<Self> {
@@ -85,7 +88,12 @@ impl App {
                 let (safety, ahead, behind) = crate::sync::assess_safety(&path, policy);
                 let dirty = safety == crate::sync::SyncSafety::BlockedDirty;
                 let _ = tx.send(crate::asyncgit::AsyncNotification::RepoStatus(
-                    crate::asyncgit::RepoStatusNotification { repo_id: id, dirty, ahead, behind }
+                    crate::asyncgit::RepoStatusNotification {
+                        repo_id: id,
+                        dirty,
+                        ahead,
+                        behind,
+                    },
                 ));
             });
         }
@@ -131,8 +139,7 @@ impl App {
             }
             SortMode::Stars => {
                 self.repos.sort_by(|a, b| {
-                    b.stars.unwrap_or(0).cmp(&a.stars.unwrap_or(0))
-                        .then_with(|| a.id.cmp(&b.id))
+                    b.stars.unwrap_or(0).cmp(&a.stars.unwrap_or(0)).then_with(|| a.id.cmp(&b.id))
                 });
             }
         }
@@ -171,10 +178,7 @@ impl App {
             .repos
             .iter()
             .filter(|r| {
-                r.upstream_url
-                    .as_deref()
-                    .map(|u| u.contains("github.com"))
-                    .unwrap_or(false)
+                r.upstream_url.as_deref().map(|u| u.contains("github.com")).unwrap_or(false)
             })
             .map(|r| (r.id.clone(), r.upstream_url.clone()))
             .collect();
@@ -193,25 +197,25 @@ impl App {
             // Phase 1: check cache serially (conn is not Send)
             let mut needs_fetch = Vec::new();
             for (repo_id, upstream_url) in repos {
-                let cache_hit = match crate::registry::WorkspaceRegistry::get_stars_cache(&conn, &repo_id) {
-                    Ok(Some((stars, fetched_at))) => {
-                        let elapsed = Utc::now().signed_duration_since(fetched_at).num_seconds();
-                        if elapsed < ttl {
-                            let _ = tx.send(AsyncNotification::StarsUpdated {
-                                repo_id: repo_id.clone(),
-                                stars: Some(stars),
-                            });
-                            true
-                        } else {
-                            false
+                let cache_hit =
+                    match crate::registry::WorkspaceRegistry::get_stars_cache(&conn, &repo_id) {
+                        Ok(Some((stars, fetched_at))) => {
+                            let elapsed =
+                                Utc::now().signed_duration_since(fetched_at).num_seconds();
+                            if elapsed < ttl {
+                                let _ = tx.send(AsyncNotification::StarsUpdated {
+                                    repo_id: repo_id.clone(),
+                                    stars: Some(stars),
+                                });
+                                true
+                            } else {
+                                false
+                            }
                         }
-                    }
-                    _ => false,
-                };
-                if !cache_hit {
-                    if let Some(url) = upstream_url {
-                        needs_fetch.push((repo_id, url));
-                    }
+                        _ => false,
+                    };
+                if !cache_hit && let Some(url) = upstream_url {
+                    needs_fetch.push((repo_id, url));
                 }
             }
             if needs_fetch.is_empty() {
@@ -238,27 +242,25 @@ impl App {
             for (repo_id, handle) in handles {
                 let stars = handle.await.ok().flatten();
                 if let Some(s) = stars {
-                    let _ = crate::registry::WorkspaceRegistry::save_stars_cache(&conn, &repo_id, s);
+                    let _ =
+                        crate::registry::WorkspaceRegistry::save_stars_cache(&conn, &repo_id, s);
                 }
-                let _ = tx.send(AsyncNotification::StarsUpdated {
-                    repo_id,
-                    stars,
-                });
+                let _ = tx.send(AsyncNotification::StarsUpdated { repo_id, stars });
             }
         });
     }
 
     pub(crate) fn spawn_repo_status_for_current(&mut self) {
         let repo = self.current_repo().cloned();
-        if let Some(repo) = repo {
-            if repo.status_dirty.is_none() {
-                let id = repo.id.clone();
-                self.loading_repo_status.insert(id);
-                self.repo_status_job.spawn(crate::asyncgit::AsyncRepoStatus {
-                    repo_id: repo.id,
-                    local_path: repo.local_path,
-                });
-            }
+        if let Some(repo) = repo
+            && repo.status_dirty.is_none()
+        {
+            let id = repo.id.clone();
+            self.loading_repo_status.insert(id);
+            self.repo_status_job.spawn(crate::asyncgit::AsyncRepoStatus {
+                repo_id: repo.id,
+                local_path: repo.local_path,
+            });
         }
     }
 
@@ -307,9 +309,9 @@ impl App {
                     repo.status_ahead = Some(n.ahead);
                     repo.status_behind = Some(n.behind);
                 }
-                self.log_info(crate::i18n::current().log.status_fmt(
-                    &n.repo_id, n.dirty, n.ahead, n.behind
-                ));
+                self.log_info(
+                    crate::i18n::current().log.status_fmt(&n.repo_id, n.dirty, n.ahead, n.behind),
+                );
                 // Trigger re-sort when all statuses are loaded
                 if self.loading_repo_status.is_empty() && self.sort_mode == SortMode::Status {
                     self.sort_repos();
@@ -326,28 +328,33 @@ impl App {
                 } else {
                     self.sync_running.remove(&n.repo_id);
                 }
-                if let Some(entry) = self.sync_popup_results.iter_mut().find(|(id, _)| id == &n.repo_id) {
+                if let Some(entry) =
+                    self.sync_popup_results.iter_mut().find(|(id, _)| id == &n.repo_id)
+                {
                     entry.1 = n.message.clone();
                 } else {
                     self.sync_popup_results.push((n.repo_id.clone(), n.message.clone()));
                 }
-                self.log_info(crate::i18n::current().log.sync_progress_fmt(
-                    &n.repo_id, &n.action, &n.message
-                ));
+                self.log_info(
+                    crate::i18n::current().log.sync_progress_fmt(&n.repo_id, &n.action, &n.message),
+                );
             }
             AsyncNotification::StarsUpdated { repo_id, stars } => {
                 if let Some(repo) = self.repos.iter_mut().find(|r| r.id == repo_id) {
                     repo.stars = stars;
                 }
-                if let Ok(conn) = crate::registry::WorkspaceRegistry::init_db() {
-                    if let Some(s) = stars {
-                        let _ = crate::registry::WorkspaceRegistry::save_stars_cache(&conn, &repo_id, s);
-                    }
+                if let Ok(conn) = crate::registry::WorkspaceRegistry::init_db()
+                    && let Some(s) = stars
+                {
+                    let _ =
+                        crate::registry::WorkspaceRegistry::save_stars_cache(&conn, &repo_id, s);
                 }
                 // Re-sort if currently sorting by stars
                 if self.sort_mode == SortMode::Stars {
                     self.repos.sort_by(|a, b| {
-                        b.stars.unwrap_or(0).cmp(&a.stars.unwrap_or(0))
+                        b.stars
+                            .unwrap_or(0)
+                            .cmp(&a.stars.unwrap_or(0))
                             .then_with(|| a.id.cmp(&b.id))
                     });
                 }
@@ -403,7 +410,11 @@ impl App {
             let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
             let (safety, ahead, behind) = crate::sync::assess_safety(&repo.local_path, policy);
             let recommendation = crate::sync::recommend_sync_action(
-                safety, ahead, behind, policy, repo.upstream_url.is_some()
+                safety,
+                ahead,
+                behind,
+                policy,
+                repo.upstream_url.is_some(),
             );
             self.sync_preview_items.push(SyncPreviewItem {
                 repo_id: repo.id.clone(),
@@ -416,14 +427,19 @@ impl App {
         }
 
         if self.sync_preview_items.is_empty() {
-            self.sync_popup_results.push(("system".to_string(), "No repositories eligible for safe sync.".to_string()));
+            self.sync_popup_results.push((
+                "system".to_string(),
+                "No repositories eligible for safe sync.".to_string(),
+            ));
             self.sync_popup_mode = SyncPopupMode::Progress;
         }
     }
 
     pub(crate) fn fetch_all_and_preview(&mut self) {
         self.dry_run = true;
-        let tasks: Vec<_> = self.repos.iter()
+        let tasks: Vec<_> = self
+            .repos
+            .iter()
             .filter(|r| r.upstream_url.is_some())
             .map(|repo| {
                 let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
@@ -451,7 +467,8 @@ impl App {
         self.loading_sync.clear();
 
         for t in &tasks {
-            self.sync_popup_results.push((t.id.clone(), crate::i18n::current().log.status_queued.to_string()));
+            self.sync_popup_results
+                .push((t.id.clone(), crate::i18n::current().log.status_queued.to_string()));
         }
 
         let sender = self.async_tx.clone();
@@ -485,30 +502,29 @@ impl App {
         self.search_results.clear();
         self.search_selected = 0;
 
-        let repo_paths: Vec<(String, String)> = self.repos.iter()
-            .map(|r| (r.id.clone(), r.local_path.clone()))
-            .collect();
+        let repo_paths: Vec<(String, String)> =
+            self.repos.iter().map(|r| (r.id.clone(), r.local_path.clone())).collect();
 
         let pattern = self.search_pattern.clone();
 
         for (repo_id, path) in repo_paths {
             if which::which("rg").is_ok() {
                 if let Ok(output) = std::process::Command::new("rg")
-                    .args(&["-n", "--no-heading", "--with-filename", "-C", "1", &pattern, &path])
+                    .args(["-n", "--no-heading", "--with-filename", "-C", "1", &pattern, &path])
                     .output()
                 {
                     let text = String::from_utf8_lossy(&output.stdout);
                     for line in text.lines() {
                         let parts: Vec<&str> = line.splitn(3, ':').collect();
-                        if parts.len() >= 3 {
-                            if let Ok(line_num) = parts[1].parse::<usize>() {
-                                self.search_results.push(SearchResult {
-                                    repo_id: repo_id.clone(),
-                                    file_path: parts[0].to_string(),
-                                    line_number: line_num,
-                                    line_content: parts[2].to_string(),
-                                });
-                            }
+                        if parts.len() >= 3
+                            && let Ok(line_num) = parts[1].parse::<usize>()
+                        {
+                            self.search_results.push(SearchResult {
+                                repo_id: repo_id.clone(),
+                                file_path: parts[0].to_string(),
+                                line_number: line_num,
+                                line_content: parts[2].to_string(),
+                            });
                         }
                     }
                 }
@@ -560,14 +576,18 @@ impl App {
         self.sync_running.clear();
 
         if safe_items.is_empty() {
-            self.sync_popup_results.push(("system".to_string(), crate::i18n::current().sync.no_safe_repos.to_string()));
+            self.sync_popup_results.push((
+                "system".to_string(),
+                crate::i18n::current().sync.no_safe_repos.to_string(),
+            ));
             return;
         }
 
         self.log_info(crate::i18n::current().log.batch_syncing(safe_items.len()));
         for r in &safe_items {
             self.loading_sync.insert(r.id.clone());
-            self.sync_popup_results.push((r.id.clone(), crate::i18n::current().log.status_queued.to_string()));
+            self.sync_popup_results
+                .push((r.id.clone(), crate::i18n::current().log.status_queued.to_string()));
         }
 
         let sender = self.async_tx.clone();
@@ -600,7 +620,8 @@ impl App {
         // 1. 未同步检查
         if let (Some(ahead), Some(behind)) = (repo.status_ahead, repo.status_behind) {
             if ahead > 0 && behind > 0 {
-                insights.push("⚠️ Local and remote have diverged — needs manual review".to_string());
+                insights
+                    .push("⚠️ Local and remote have diverged — needs manual review".to_string());
             } else if behind > 0 {
                 insights.push(format!("📥 Behind remote by {} commits — consider syncing", behind));
             } else if ahead > 0 {
@@ -619,18 +640,18 @@ impl App {
         }
 
         // 4. Stars 检查（如果有历史数据）
-        if let Ok(conn) = crate::registry::WorkspaceRegistry::init_db() {
-            if let Ok(history) = crate::registry::WorkspaceRegistry::get_stars_history(&conn, &repo.id, 7) {
-                if history.len() >= 2 {
-                    let first = history.first().map(|(s, _)| *s).unwrap_or(0);
-                    let last = history.last().map(|(s, _)| *s).unwrap_or(0);
-                    let delta = last as i64 - first as i64;
-                    if delta > 0 {
-                        insights.push(format!("⭐ Stars gained {} this week", delta));
-                    } else if delta < 0 {
-                        insights.push(format!("⭐ Stars lost {} this week", delta.abs()));
-                    }
-                }
+        if let Ok(conn) = crate::registry::WorkspaceRegistry::init_db()
+            && let Ok(history) =
+                crate::registry::WorkspaceRegistry::get_stars_history(&conn, &repo.id, 7)
+            && history.len() >= 2
+        {
+            let first = history.first().map(|(s, _)| *s).unwrap_or(0);
+            let last = history.last().map(|(s, _)| *s).unwrap_or(0);
+            let delta = last as i64 - first as i64;
+            if delta > 0 {
+                insights.push(format!("⭐ Stars gained {} this week", delta));
+            } else if delta < 0 {
+                insights.push(format!("⭐ Stars lost {} this week", delta.abs()));
             }
         }
 
@@ -644,25 +665,47 @@ impl App {
     }
 }
 
-fn search_repo_fallback(repo_path: &str, pattern: &str, repo_id: &str, results: &mut Vec<SearchResult>) {
+fn search_repo_fallback(
+    repo_path: &str,
+    pattern: &str,
+    repo_id: &str,
+    results: &mut Vec<SearchResult>,
+) {
     use std::collections::HashSet;
 
-    let excluded_dirs: HashSet<&str> = [".git", "target", "node_modules", ".venv", "venv", "dist", "build"].iter().cloned().collect();
+    let excluded_dirs: HashSet<&str> =
+        [".git", "target", "node_modules", ".venv", "venv", "dist", "build"]
+            .iter()
+            .cloned()
+            .collect();
 
     for entry in walkdir::WalkDir::new(repo_path).max_depth(10) {
-        let entry = match entry { Ok(e) => e, Err(_) => continue };
-        if !entry.file_type().is_file() { continue; }
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if !entry.file_type().is_file() {
+            continue;
+        }
 
         let path = entry.path();
         if path.components().any(|c| {
             if let Some(name) = c.as_os_str().to_str() {
                 excluded_dirs.contains(name)
-            } else { false }
-        }) { continue; }
+            } else {
+                false
+            }
+        }) {
+            continue;
+        }
 
         if let Ok(content) = std::fs::read(path) {
-            if content.len() > 8 * 1024 * 1024 { continue; }
-            if content.contains(&0) { continue; }
+            if content.len() > 8 * 1024 * 1024 {
+                continue;
+            }
+            if content.contains(&0) {
+                continue;
+            }
 
             let path_str = path.to_string_lossy().to_string();
             for (line_num, line) in content.split(|&b| b == b'\n').enumerate() {
@@ -674,7 +717,9 @@ fn search_repo_fallback(repo_path: &str, pattern: &str, repo_id: &str, results: 
                         line_number: line_num + 1,
                         line_content: line_str.to_string(),
                     });
-                    if results.len() >= 200 { return; }
+                    if results.len() >= 200 {
+                        return;
+                    }
                 }
             }
         }

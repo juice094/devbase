@@ -188,7 +188,7 @@ pub fn format_template(template: &str, args: &[&str]) -> String {
     let mut result = template.to_string();
     for arg in args {
         if let Some(pos) = result.find("{}") {
-            result.replace_range(pos..pos+2, arg);
+            result.replace_range(pos..pos + 2, arg);
         }
     }
     result
@@ -198,7 +198,7 @@ pub fn detect_system_language() -> String {
     #[cfg(target_os = "windows")]
     {
         if let Ok(output) = std::process::Command::new("reg")
-            .args(&["query", "HKCU\\Control Panel\\Desktop", "/v", "PreferredUILanguages"])
+            .args(["query", "HKCU\\Control Panel\\Desktop", "/v", "PreferredUILanguages"])
             .output()
         {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -212,7 +212,7 @@ pub fn detect_system_language() -> String {
             }
         }
         if let Ok(output) = std::process::Command::new("reg")
-            .args(&["query", "HKCU\\Control Panel\\International", "/v", "LocaleName"])
+            .args(["query", "HKCU\\Control Panel\\International", "/v", "LocaleName"])
             .output()
         {
             let stdout = String::from_utf8_lossy(&output.stdout);

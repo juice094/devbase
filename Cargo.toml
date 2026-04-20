@@ -3,7 +3,7 @@ name = "devbase"
 version = "0.1.0"
 edition = "2024"
 description = "Developer workspace database and knowledge-base manager"
-authors = ["Your Name <you@example.com>"]
+authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -25,9 +25,9 @@ blake3 = "1.5"
 ratatui = "0.30"
 crossterm = "0.28"
 crossbeam-channel = "0.5"
-notify = "7"
+notify = "8.2.0"
 which = "7"
-tokei = "13"
+tokei = "14.0.0"
 
 
 
@@ -35,3 +35,5 @@ tokei = "13"
 tempfile = "3"
 
 [workspace]
+
+

@@ -1,4 +1,4 @@
-use crate::sync_protocol::{scan_directory, FileInfo, SyncIndex};
+use crate::sync_protocol::{FileInfo, SyncIndex, scan_directory};
 use anyhow::Context;
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::{HashMap, HashSet};
@@ -58,11 +58,7 @@ impl FsWatcher {
             }
         }
 
-        if paths.is_empty() {
-            None
-        } else {
-            Some(paths)
-        }
+        if paths.is_empty() { None } else { Some(paths) }
     }
 }
 
@@ -127,11 +123,7 @@ impl FolderScheduler {
     }
 
     pub fn with_max_files(root: PathBuf, max_files: usize) -> Self {
-        FolderScheduler {
-            root,
-            index: None,
-            max_files,
-        }
+        FolderScheduler { root, index: None, max_files }
     }
 
     /// Given a list of changed paths, produce SyncActions.
@@ -151,16 +143,10 @@ impl FolderScheduler {
         let mut actions = Vec::new();
 
         if let Some(old) = old_index {
-            let old_map: HashMap<String, FileInfo> = old
-                .files
-                .into_iter()
-                .map(|f| (f.name.clone(), f))
-                .collect();
-            let new_map: HashMap<String, FileInfo> = new_index
-                .files
-                .iter()
-                .map(|f| (f.name.clone(), f.clone()))
-                .collect();
+            let old_map: HashMap<String, FileInfo> =
+                old.files.into_iter().map(|f| (f.name.clone(), f)).collect();
+            let new_map: HashMap<String, FileInfo> =
+                new_index.files.iter().map(|f| (f.name.clone(), f.clone())).collect();
 
             let mut changed = Vec::new();
 
@@ -168,9 +154,7 @@ impl FolderScheduler {
             for (name, new_f) in &new_map {
                 match old_map.get(name) {
                     Some(old_f) => {
-                        if old_f.blocks_hash != new_f.blocks_hash
-                            || old_f.size != new_f.size
-                        {
+                        if old_f.blocks_hash != new_f.blocks_hash || old_f.size != new_f.size {
                             changed.push(new_f.clone());
                         }
                     }
