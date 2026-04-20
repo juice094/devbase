@@ -6,7 +6,7 @@ use std::path::Path;
 use tracing::{info, warn};
 
 #[derive(Debug, Clone)]
-enum Condition {
+pub(crate) enum Condition {
     Lang(String),
     Stale { op: String, days: i64 },
     Behind { op: String, count: i64 },
@@ -15,7 +15,7 @@ enum Condition {
     Keyword(String),
 }
 
-fn parse_cmp_expr(value: &str) -> Option<(String, i64)> {
+pub(crate) fn parse_cmp_expr(value: &str) -> Option<(String, i64)> {
     if value.is_empty() {
         return None;
     }
@@ -29,7 +29,7 @@ fn parse_cmp_expr(value: &str) -> Option<(String, i64)> {
     }
 }
 
-fn parse_query(query_str: &str) -> Vec<Condition> {
+pub(crate) fn parse_query(query_str: &str) -> Vec<Condition> {
     let mut conditions = Vec::new();
     for token in query_str.split_whitespace() {
         if let Some((key, rest)) = token.split_once(':') {
@@ -117,7 +117,7 @@ fn compute_behind(path: &str, default_branch: Option<&str>) -> anyhow::Result<Op
     }
 }
 
-fn eval_condition(
+pub(crate) fn eval_condition(
     repo: &crate::registry::RepoEntry,
     cond: &Condition,
     last_sync: Option<&str>,
@@ -470,6 +470,159 @@ pub async fn run_json(
         },
         "results": paged_results
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::RepoEntry;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    fn repo(id: &str, path: &str, tags: &[&str]) -> RepoEntry {
+        RepoEntry {
+            id: id.to_string(),
+            local_path: PathBuf::from(path),
+            tags: tags.iter().map(|t| t.to_string()).collect(),
+            discovered_at: Utc::now(),
+            language: None,
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        }
+    }
+
+    #[test]
+    fn test_parse_query_keyword() {
+        let conds = parse_query("devbase");
+        assert_eq!(conds.len(), 1);
+        assert!(matches!(&conds[0], Condition::Keyword(k) if k == "devbase"));
+    }
+
+    #[test]
+    fn test_parse_query_lang() {
+        let conds = parse_query("lang:rust");
+        assert_eq!(conds.len(), 1);
+        assert!(matches!(&conds[0], Condition::Lang(l) if l == "rust"));
+    }
+
+    #[test]
+    fn test_parse_query_tag() {
+        let conds = parse_query("tag:cli");
+        assert_eq!(conds.len(), 1);
+        assert!(matches!(&conds[0], Condition::Tag(t) if t == "cli"));
+    }
+
+    #[test]
+    fn test_parse_query_stale() {
+        let conds = parse_query("stale:>7");
+        assert_eq!(conds.len(), 1);
+        assert!(matches!(&conds[0], Condition::Stale { op, days } if op == ">" && *days == 7));
+    }
+
+    #[test]
+    fn test_parse_query_behind() {
+        let conds = parse_query("behind:=3");
+        assert_eq!(conds.len(), 1);
+        assert!(matches!(&conds[0], Condition::Behind { op, count } if op == "=" && *count == 3));
+    }
+
+    #[test]
+    fn test_parse_query_note() {
+        let conds = parse_query("note:todo");
+        assert_eq!(conds.len(), 1);
+        assert!(matches!(&conds[0], Condition::Note(n) if n == "todo"));
+    }
+
+    #[test]
+    fn test_parse_query_multiple() {
+        let conds = parse_query("lang:rust tag:cli devbase");
+        assert_eq!(conds.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_cmp_expr_gt() {
+        assert_eq!(parse_cmp_expr(">5"), Some((">".to_string(), 5)));
+    }
+
+    #[test]
+    fn test_parse_cmp_expr_eq_implicit() {
+        assert_eq!(parse_cmp_expr("10"), Some(("=".to_string(), 10)));
+    }
+
+    #[test]
+    fn test_parse_cmp_expr_empty() {
+        assert_eq!(parse_cmp_expr(""), None);
+    }
+
+    #[test]
+    fn test_eval_keyword_match() {
+        let r = repo("devbase", "/tmp/devbase", &["cli"]);
+        let cond = Condition::Keyword("devbase".to_string());
+        assert!(eval_condition(&r, &cond, None, None, &HashMap::new()).is_some());
+    }
+
+    #[test]
+    fn test_eval_keyword_no_match() {
+        let r = repo("foo", "/tmp/foo", &[]);
+        let cond = Condition::Keyword("devbase".to_string());
+        assert!(eval_condition(&r, &cond, None, None, &HashMap::new()).is_none());
+    }
+
+    #[test]
+    fn test_eval_tag_match() {
+        let r = repo("foo", "/tmp/foo", &["cli", "rust"]);
+        let cond = Condition::Tag("cli".to_string());
+        assert!(eval_condition(&r, &cond, None, None, &HashMap::new()).is_some());
+    }
+
+    #[test]
+    fn test_eval_tag_no_match() {
+        let r = repo("foo", "/tmp/foo", &["rust"]);
+        let cond = Condition::Tag("cli".to_string());
+        assert!(eval_condition(&r, &cond, None, None, &HashMap::new()).is_none());
+    }
+
+    #[test]
+    fn test_eval_behind_match() {
+        let r = repo("foo", "/tmp/foo", &[]);
+        let cond = Condition::Behind { op: ">".to_string(), count: 2 };
+        assert!(eval_condition(&r, &cond, None, Some(5), &HashMap::new()).is_some());
+    }
+
+    #[test]
+    fn test_eval_behind_no_match() {
+        let r = repo("foo", "/tmp/foo", &[]);
+        let cond = Condition::Behind { op: ">".to_string(), count: 10 };
+        assert!(eval_condition(&r, &cond, None, Some(5), &HashMap::new()).is_none());
+    }
+
+    #[test]
+    fn test_eval_stale_never_synced() {
+        let r = repo("foo", "/tmp/foo", &[]);
+        let cond = Condition::Stale { op: ">".to_string(), days: 1 };
+        // never synced (last_sync=None) is considered stale for ">"
+        assert!(eval_condition(&r, &cond, None, None, &HashMap::new()).is_some());
+    }
+
+    #[test]
+    fn test_eval_note_match() {
+        let r = repo("foo", "/tmp/foo", &[]);
+        let mut notes = HashMap::new();
+        notes.insert("foo".to_string(), vec!["TODO: fix bug".to_string()]);
+        let cond = Condition::Note("todo".to_string());
+        assert!(eval_condition(&r, &cond, None, None, &notes).is_some());
+    }
+
+    #[test]
+    fn test_eval_note_no_match() {
+        let r = repo("foo", "/tmp/foo", &[]);
+        let notes = HashMap::new();
+        let cond = Condition::Note("todo".to_string());
+        assert!(eval_condition(&r, &cond, None, None, &notes).is_none());
+    }
 }
 
 pub async fn run(

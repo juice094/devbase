@@ -868,3 +868,135 @@ CREATE TABLE IF NOT EXISTS repo_code_metrics (
     updated_at TEXT
 );
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::RemoteEntry;
+
+    fn sample_repo(id: &str, path: &str) -> RepoEntry {
+        RepoEntry {
+            id: id.to_string(),
+            local_path: PathBuf::from(path),
+            tags: vec![],
+            discovered_at: Utc::now(),
+            language: Some("rust".to_string()),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        }
+    }
+
+    #[test]
+    fn test_list_repos_empty() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert!(repos.is_empty());
+    }
+
+    #[test]
+    fn test_save_and_list_repo() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let repo = sample_repo("repo1", "/tmp/repo1");
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].id, "repo1");
+        assert_eq!(repos[0].local_path, PathBuf::from("/tmp/repo1"));
+        assert_eq!(repos[0].language, Some("rust".to_string()));
+        assert_eq!(repos[0].workspace_type, "git");
+        assert_eq!(repos[0].data_tier, "private");
+    }
+
+    #[test]
+    fn test_save_repo_with_tags() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let mut repo = sample_repo("repo1", "/tmp/repo1");
+        repo.tags = vec!["cli".to_string(), "rust".to_string()];
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert_eq!(repos[0].tags.len(), 2);
+        assert!(repos[0].tags.contains(&"cli".to_string()));
+        assert!(repos[0].tags.contains(&"rust".to_string()));
+    }
+
+    #[test]
+    fn test_save_repo_with_remotes() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let mut repo = sample_repo("repo1", "/tmp/repo1");
+        repo.remotes.push(RemoteEntry {
+            remote_name: "origin".to_string(),
+            upstream_url: Some("https://github.com/user/repo1".to_string()),
+            default_branch: Some("main".to_string()),
+            last_sync: None,
+        });
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert_eq!(repos[0].remotes.len(), 1);
+        assert_eq!(repos[0].remotes[0].remote_name, "origin");
+        assert_eq!(
+            repos[0].remotes[0].upstream_url,
+            Some("https://github.com/user/repo1".to_string())
+        );
+    }
+
+    #[test]
+    fn test_save_repo_updates_existing() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let mut repo = sample_repo("repo1", "/tmp/repo1");
+        repo.tags = vec!["a".to_string()];
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        let mut repo2 = sample_repo("repo1", "/tmp/repo1_moved");
+        repo2.tags = vec!["b".to_string(), "c".to_string()];
+        repo2.language = Some("go".to_string());
+        WorkspaceRegistry::save_repo(&mut conn, &repo2).unwrap();
+
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].local_path, PathBuf::from("/tmp/repo1_moved"));
+        assert_eq!(repos[0].language, Some("go".to_string()));
+        assert_eq!(repos[0].tags.len(), 2);
+        assert!(!repos[0].tags.contains(&"a".to_string()));
+    }
+
+    #[test]
+    fn test_list_workspaces_by_tier() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let mut private = sample_repo("private_repo", "/tmp/p");
+        private.data_tier = "private".to_string();
+
+        let mut public = sample_repo("public_repo", "/tmp/pub");
+        public.data_tier = "public".to_string();
+
+        WorkspaceRegistry::save_repo(&mut conn, &private).unwrap();
+        WorkspaceRegistry::save_repo(&mut conn, &public).unwrap();
+
+        let private_repos = WorkspaceRegistry::list_workspaces_by_tier(&conn, "private").unwrap();
+        assert_eq!(private_repos.len(), 1);
+        assert_eq!(private_repos[0].id, "private_repo");
+
+        let public_repos = WorkspaceRegistry::list_workspaces_by_tier(&conn, "public").unwrap();
+        assert_eq!(public_repos.len(), 1);
+        assert_eq!(public_repos[0].id, "public_repo");
+
+        let none = WorkspaceRegistry::list_workspaces_by_tier(&conn, "nonexistent").unwrap();
+        assert!(none.is_empty());
+    }
+
+    #[test]
+    fn test_save_repo_with_stars() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let mut repo = sample_repo("starred", "/tmp/s");
+        repo.stars = Some(100);
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert_eq!(repos[0].stars, Some(100));
+    }
+}

@@ -177,3 +177,74 @@ impl FolderScheduler {
         Ok(actions)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_watch_aggregator_dedup() {
+        let agg = WatchAggregator {
+            delay: Duration::from_secs(1),
+            max_files: 512,
+        };
+        let events = vec![
+            PathBuf::from("/tmp/a.txt"),
+            PathBuf::from("/tmp/b.txt"),
+            PathBuf::from("/tmp/a.txt"), // duplicate
+        ];
+        let result = agg.aggregate(events);
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn test_folder_scheduler_first_run() {
+        let tmp = std::env::temp_dir().join(format!("devbase_watch_test_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("file1.txt"), "hello").unwrap();
+
+        let mut scheduler = FolderScheduler::with_max_files(tmp.clone(), 10);
+        let actions = scheduler.check_and_schedule(vec![]).unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], SyncAction::Scan(())));
+
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn test_folder_scheduler_incremental_no_change() {
+        let tmp = std::env::temp_dir().join(format!("devbase_watch_test2_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("file1.txt"), "hello").unwrap();
+
+        let mut scheduler = FolderScheduler::with_max_files(tmp.clone(), 10);
+        // First run establishes baseline
+        let _ = scheduler.check_and_schedule(vec![]).unwrap();
+        // Second run with no file changes
+        let actions = scheduler.check_and_schedule(vec![]).unwrap();
+        assert!(actions.is_empty());
+
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn test_folder_scheduler_degrades_to_scan() {
+        let tmp = std::env::temp_dir().join(format!("devbase_watch_test3_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("file1.txt"), "hello").unwrap();
+
+        let mut scheduler = FolderScheduler::with_max_files(tmp.clone(), 1);
+        // Provide more changed paths than max_files threshold
+        let actions = scheduler
+            .check_and_schedule(vec![
+                PathBuf::from("/tmp/a"),
+                PathBuf::from("/tmp/b"),
+                PathBuf::from("/tmp/c"),
+            ])
+            .unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], SyncAction::Scan(())));
+
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
+}

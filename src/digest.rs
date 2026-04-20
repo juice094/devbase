@@ -114,3 +114,79 @@ pub fn generate_daily_digest(
 
     Ok(lines.join("\n"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::WorkspaceRegistry;
+
+    fn setup_i18n() {
+        crate::i18n::init("en");
+    }
+
+    fn default_config() -> crate::config::Config {
+        crate::config::Config::default()
+    }
+
+    #[test]
+    fn test_generate_daily_digest_empty() {
+        setup_i18n();
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let config = default_config();
+        let digest = generate_daily_digest(&conn, &config).unwrap();
+        assert!(digest.contains("Daily Digest"));
+        assert!(digest.contains("0 repos in db"));
+    }
+
+    #[test]
+    fn test_generate_daily_digest_with_repos() {
+        setup_i18n();
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let repo = crate::registry::RepoEntry {
+            id: "repo1".to_string(),
+            local_path: std::path::PathBuf::from("/tmp/repo1"),
+            tags: vec![],
+            discovered_at: Utc::now(),
+            language: Some("rust".to_string()),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        };
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        let config = default_config();
+        let digest = generate_daily_digest(&conn, &config).unwrap();
+        assert!(digest.contains("1 repos in db"));
+    }
+
+    #[test]
+    fn test_generate_daily_digest_with_unhealthy_repo() {
+        setup_i18n();
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let repo = crate::registry::RepoEntry {
+            id: "sick_repo".to_string(),
+            local_path: std::path::PathBuf::from("/tmp/sick"),
+            tags: vec![],
+            discovered_at: Utc::now(),
+            language: None,
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        };
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+        conn.execute(
+            "INSERT INTO repo_health (repo_id, status, ahead, behind, checked_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params!["sick_repo", "dirty", 0, 2, Utc::now().to_rfc3339()],
+        ).unwrap();
+
+        let config = default_config();
+        let digest = generate_daily_digest(&conn, &config).unwrap();
+        assert!(digest.contains("Repositories needing attention"));
+        assert!(digest.contains("sick_repo"));
+        assert!(digest.contains("status=dirty"));
+    }
+}
