@@ -1,4 +1,30 @@
 /target
 
+# Test artifacts
 daemon_test*.log
 daemon_test*.err
+
+# =============================================================================
+# SECURITY: Local data & credentials — never commit these
+# =============================================================================
+
+# devbase runtime data (sync markers, local workspace state)
+.devbase/
+
+# SQLite databases and backups
+*.db
+*.db-journal
+*.db-wal
+backup-*.db
+
+# Log files
+*.log
+
+# Environment variables & local secrets
+.env
+.env.*
+*.local.toml
+
+# OS metadata
+.DS_Store
+Thumbs.db

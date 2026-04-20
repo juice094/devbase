@@ -259,8 +259,9 @@ max_files = 512
 window_hours = 24
 
 [github]
-# Uncomment and set your GitHub Personal Access Token to avoid API rate limits
-# token = "ghp_xxxxxxxxxxxxxxxxxxxx"
+# Uncomment and set your GitHub Personal Access Token to avoid API rate limits.
+# NEVER commit this file with a real token — keep it in user config dir only.
+# token = "<YOUR_GITHUB_PAT>"
 timeout_seconds = 5
 
 [llm]

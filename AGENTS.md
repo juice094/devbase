@@ -2,51 +2,82 @@
 
 ## 项目概述
 
-`devbase` 是本地优先的开发者工作区与知识库管理器。当前处于 **架构重构稳定期**（Sprint 2 已结束，技术债务清理完成）。
+`devbase` 是本地优先的开发者工作区与知识库管理器。当前处于 **v0.1.0 稳定期**，技术债务已清理，架构具备可持续演进能力。
 
 - **技术栈**：Rust 2024, SQLite, tokio, ratatui, git2, reqwest, tantivy
-- **Registry DB**：`%LOCALAPPDATA%\devbase\registry.db`（Schema v6，已移除 `ai_queries`/`agri_observations`）
-- **MCP Server**：仅 stdio 传输（SSE 已移除，遵循 MCP 2026 规范）
-- **当前测试**：44 passed / 0 failed / 2 ignored
-- **编译状态**：0 warnings（devbase），clarity-core 外部 warnings 6 个
+- **Registry DB**：`%LOCALAPPDATA%\devbase\registry.db`（用户本地，永不进入版本控制）
+- **MCP Server**：stdio 传输，14 个 tool
+- **当前测试**：51 passed / 0 failed / 2 ignored
+- **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
 
 ## 关键约定
 
 1. **文件操作**：读取用 `ReadFile`，搜索用 `Grep`/`Glob`，修改用 `StrReplaceFile`，整文件重写用 `WriteFile`
 2. **Shell**：Windows PowerShell；用 `;` 分隔命令
-3. **Git**：提交前 `cargo test` 必须全绿；commit message 遵循 `feat/fix/docs/refactor(scope): description`
+3. **Git**：提交前必须通过 `cargo test --all-targets` + `cargo clippy --all-targets -D warnings` + `cargo fmt --check`
 4. **Schema 迁移**：`PRAGMA user_version` 安全升级；升级前自动调用 `backup::auto_backup_before_migration()`
 
-## 架构变更记录（2026-04-15）
+## 安全原则
 
-| 变更项 | 旧状态 | 新状态 | Commit |
-|--------|--------|--------|--------|
-| MCP Transport | stdio + SSE 双传输 | 仅 stdio | `7bf2625` |
-| Sync ASYNC 死锁 | Sequential fallback (FIXME) | `spawn_blocking` + 真正并发 | `7bf2625` |
-| Registry Schema | v5（12 张表） | v6（9 张表，删除 ai_queries/agri_observations） | `7bf2625` |
-| clarity-core | 路径依赖 | 内联移除，纯 reqwest | `7bf2625` |
-| Search 框架 | 无 | tantivy bm25 框架（待集成到 Query） | `7bf2625` |
+### 本地优先（Local-First）
 
-## Sprint 2 历史任务
+- **Registry DB** 始终存储在用户的本地配置目录（`dirs::config_dir()/devbase/`），绝不向远程传输
+- **代码内容** 不会被上传到任何云端服务（除非用户显式配置 GitHub token 用于 stars 查询）
+- **MCP Server** 仅通过 stdio 本地进程通信，不暴露网络端口
 
-| 顺序 | 任务 | 状态 | Commit |
-|------|------|------|--------|
-| 1 | `McpTool::invoke_stream()` trait 扩展 | ✅ 完成 | `df3a908` |
-| 2 | SSE handler 流式适配 (`_stream: true`) | ❌ 已移除（SSE deprecated） | `7bf2625` |
-| 3 | CLI pagination (`--limit` / `--page`) | ✅ 完成 | `4716faf` |
-| 4 | `devkit_health`/`devkit_query` 流式集成 | ❌ 已移除（非标实现） | `7bf2625` |
-| 5 | `.syncdone` 文件标记 | ✅ 完成 | `5efde13` |
-| 6 | `agri_observations` schema | ❌ 已移除（零使用） | `7bf2625` |
-| 7 | Daemon 内置 SSE Server | ❌ 已移除 | `7bf2625` |
+### 凭证管理
+
+- GitHub token、LLM API key 存储在本地 `config.toml` 中
+- `config.toml` 位于用户配置目录，**不在项目工作目录**，因此不会被意外 `git commit`
+- 默认配置模板中的 token 字段使用占位符 `<YOUR_GITHUB_PAT>`，避免真实 token 格式泄露
+- `.gitignore` 已覆盖 `*.db`、`.devbase/`、`.env*`、`*.local.toml`
+
+### 审计与备份
+
+- 所有 `scan`/`sync`/`health` 操作自动写入 OpLog（SQLite `oplog` 表）
+- Schema 迁移前自动生成 `backup-YYYYMMDD-HHMMSS.db` 快照
+- Registry 支持 `export`/`import` 用于用户自主备份
+
+## 架构状态（Wave 5 完成）
+
+| 维度 | 状态 |
+|------|------|
+| 代码质量 | `rustfmt.toml` + `cargo fmt` + `clippy -D warnings` 全绿 |
+| 模块拆分 | `sync`→5 子模块 / `registry`→7 子模块 / `mcp` 测试分离 |
+| 库/二进制 | `src/lib.rs` 导出全部 22 个模块；`src/main.rs` 仅 CLI 入口 |
+| TUI 架构 | `render/` 6 子模块 + `theme.rs` Design Token + `layout.rs` 响应式引擎 |
+| CI/CD | `.github/workflows/ci.yml`：check / test / fmt / clippy on Windows |
+| 依赖安全 | `cargo audit` 0 漏洞（除上游 `tokei` 的 `RUSTSEC-2020-0163`） |
+
+## 历史 Waves
+
+| Wave | 主题 | 关键产出 | Commit |
+|------|------|---------|--------|
+| 1 | 代码质量 | `rustfmt.toml`, clippy 清零 | `4efcd58` |
+| 2 | 模块拆分 | `sync/`, `registry/`, `mcp/tests.rs` | `4efcd58` |
+| 3 | 工程化 | `src/lib.rs`, CI workflow, `main.rs` 简化 | `4efcd58` |
+| 4 | 依赖/审计 | `notify` 8.2.0, `tokei` 14.0.0 | `4efcd58` |
+| 5 | TUI 美学与工程学 | 主题系统, Tabs, Help Overlay, Render 拆分 | `6b9be88` |
+
+## 敏感文件清单（禁止提交）
+
+| 文件/模式 | 原因 | .gitignore 覆盖 |
+|-----------|------|----------------|
+| `*.db` | SQLite 数据库含用户仓库元数据 | ✅ |
+| `.devbase/` | 本地 sync 标记和工作区状态 | ✅ |
+| `*.log` | 可能含路径或错误堆栈信息 | ✅ |
+| `.env*` | 环境变量和 secrets | ✅ |
+| `*.local.toml` | 本地覆盖配置 | ✅ |
+| `target/` | 构建产物 | ✅ |
 
 ## 跨项目接口
 
 - **clarity-core**：已解除路径依赖。devbase 不再被 clarity-core 调用，LLM 能力内联为纯 reqwest
 - **syncthing-rust**：`.syncdone` 标记格式已对齐
-- **agri-paper**：`agri_observations` 表已删除，后续若需农业数据集成请重新评估 Schema 设计
 
 ## 禁止事项
 
 - 不得修改 `dev\third_party\*` 外部仓库
 - 不得在没有迁移逻辑的情况下修改 registry schema
-- 不得引入新的已 deprecated 协议（如 SSE）
+- 不得引入已 deprecated 的协议
+- **不得在任何源码文件中硬编码真实 token、api_key 或密码**（包括注释和测试数据）
