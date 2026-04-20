@@ -351,6 +351,42 @@ pub async fn run_json(
         }));
     }
 
+    // Handle vault: prefix queries
+    if let Some(rest) = query_str.strip_prefix("vault:") {
+        let all = WorkspaceRegistry::list_vault_notes(&conn)?;
+        let keywords: Vec<&str> = rest.split_whitespace().collect();
+        let filtered: Vec<_> = if keywords.is_empty() {
+            all
+        } else {
+            all.into_iter()
+                .filter(|n| {
+                    let hay =
+                        format!("{} {} {}", n.id, n.title.as_deref().unwrap_or(""), n.content)
+                            .to_lowercase();
+                    keywords.iter().all(|kw| hay.contains(&kw.to_lowercase()))
+                })
+                .collect()
+        };
+        let count = filtered.len();
+        let results: Vec<serde_json::Value> = filtered
+            .into_iter()
+            .map(|n| {
+                serde_json::json!({
+                    "id": n.id,
+                    "title": n.title,
+                    "tags": n.tags.join(","),
+                    "match_reasons": ["vault"]
+                })
+            })
+            .collect();
+        return Ok(serde_json::json!({
+            "success": true,
+            "count": count,
+            "expression": query_str,
+            "results": results
+        }));
+    }
+
     let conditions = parse_query(query_str);
 
     let repos = WorkspaceRegistry::list_repos(&conn)?;
