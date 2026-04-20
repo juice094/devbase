@@ -1,15 +1,19 @@
 use crate::registry::{VaultNote, WorkspaceRegistry};
 use crate::vault::frontmatter::extract_frontmatter;
 use crate::vault::wikilink::extract_wikilinks;
-use anyhow::Context;
+
 use chrono::Utc;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
 fn default_vault_dir() -> anyhow::Result<PathBuf> {
-    let data_dir = dirs::data_local_dir()
-        .ok_or_else(|| anyhow::anyhow!("Could not determine local data directory"))?;
-    Ok(data_dir.join("devbase").join("vault"))
+    let ws = crate::registry::WorkspaceRegistry::workspace_dir()?;
+    let vault = ws.join("vault");
+    // P1-2: PARA directory structure
+    for sub in &["00-Inbox", "01-Projects", "02-Areas", "03-Resources", "04-Archives", "99-Meta"] {
+        std::fs::create_dir_all(vault.join(sub))?;
+    }
+    Ok(vault)
 }
 
 /// Scan a vault directory for Markdown notes and sync them into the registry.
@@ -105,7 +109,7 @@ mod tests {
         let count = scan_vault(Some(&tmp)).unwrap();
         assert_eq!(count, 1);
 
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let _conn = WorkspaceRegistry::init_in_memory().unwrap();
         // Note: scan_vault uses init_db() (file-based), so we can't read back from in-memory.
         // This test mainly ensures scan_vault() does not panic and counts correctly.
 

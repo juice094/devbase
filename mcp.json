@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "devbase": {
+      "command": "devbase",
+      "args": ["mcp"],
+      "description": "Developer Knowledge OS — manage repos, vault notes, and assets",
+      "env": {}
+    }
+  }
+}

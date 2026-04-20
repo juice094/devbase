@@ -11,6 +11,17 @@ impl WorkspaceRegistry {
         Ok(db_dir.join("registry.db"))
     }
 
+    /// Workspace root directory where vault notes, assets, and repo manifests live.
+    pub fn workspace_dir() -> anyhow::Result<PathBuf> {
+        let data_dir = dirs::data_local_dir()
+            .ok_or_else(|| anyhow::anyhow!("Could not determine local data directory"))?;
+        let ws = data_dir.join("devbase").join("workspace");
+        std::fs::create_dir_all(&ws)?;
+        std::fs::create_dir_all(ws.join("vault"))?;
+        std::fs::create_dir_all(ws.join("assets"))?;
+        Ok(ws)
+    }
+
     pub fn init_db() -> anyhow::Result<rusqlite::Connection> {
         let path = Self::db_path()?;
         let conn = rusqlite::Connection::open(&path)?;
@@ -721,6 +732,8 @@ impl WorkspaceRegistry {
         note: &crate::registry::VaultNote,
     ) -> anyhow::Result<()> {
         let tx = conn.transaction()?;
+        // P1-1: filesystem-first — content/frontmatter no longer stored in SQLite.
+        // The registry only keeps lightweight metadata (id, path, title, tags, links, updated_at).
         tx.execute(
             "INSERT OR REPLACE INTO vault_notes (id, path, title, content, frontmatter, tags, outgoing_links, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -728,7 +741,7 @@ impl WorkspaceRegistry {
                 &note.id,
                 &note.path,
                 note.title.as_ref(),
-                &note.content,
+                "", // content: empty — read from filesystem on demand
                 note.frontmatter.as_ref(),
                 note.tags.join(","),
                 serde_json::to_string(&note.outgoing_links)?,
@@ -753,7 +766,8 @@ impl WorkspaceRegistry {
                 id: row.get(0)?,
                 path: row.get(1)?,
                 title: row.get(2)?,
-                content: row.get(3)?,
+                // P1-1: filesystem-first — content is read from disk on demand.
+                content: String::new(),
                 frontmatter: row.get(4)?,
                 tags: tags_raw
                     .map(|s| {

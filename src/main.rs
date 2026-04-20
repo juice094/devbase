@@ -582,9 +582,9 @@ async fn main() -> anyhow::Result<()> {
                 let dir = if path.is_empty() {
                     None
                 } else {
-                    Some(std::path::Path::new(&path))
+                    Some(std::path::PathBuf::from(path))
                 };
-                let count = tokio::task::spawn_blocking(move || vault::scanner::scan_vault(dir))
+                let count = tokio::task::spawn_blocking(move || vault::scanner::scan_vault(dir.as_deref()))
                     .await
                     .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
                 println!("Synced {} vault notes.", count);

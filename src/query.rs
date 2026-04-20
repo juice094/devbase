@@ -360,8 +360,12 @@ pub async fn run_json(
         } else {
             all.into_iter()
                 .filter(|n| {
+                    // P1-1: filesystem-first — read content from disk for keyword matching
+                    let content = crate::vault::fs_io::read_note_body(&n.path)
+                        .map(|(body, _fm)| body)
+                        .unwrap_or_default();
                     let hay =
-                        format!("{} {} {}", n.id, n.title.as_deref().unwrap_or(""), n.content)
+                        format!("{} {} {}", n.id, n.title.as_deref().unwrap_or(""), content)
                             .to_lowercase();
                     keywords.iter().all(|kw| hay.contains(&kw.to_lowercase()))
                 })

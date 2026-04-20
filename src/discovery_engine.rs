@@ -208,7 +208,6 @@ pub fn discover_similar_projects(conn: &rusqlite::Connection) -> anyhow::Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn test_normalize_dep_name() {
