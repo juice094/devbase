@@ -115,3 +115,61 @@ impl AppLayout {
             .split(popup_layout[1])[1]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_layout_compact() {
+        let area = Rect::new(0, 0, 60, 15);
+        let layout = AppLayout::compute(area);
+        assert!(layout.compact);
+        assert_eq!(layout.area, area);
+        assert_eq!(layout.list.width, 60);
+        assert_eq!(layout.bottom.height, 1);
+        assert_eq!(layout.detail, Rect::default());
+        assert_eq!(layout.logs, Rect::default());
+    }
+
+    #[test]
+    fn test_layout_standard() {
+        let area = Rect::new(0, 0, 100, 30);
+        let layout = AppLayout::compute(area);
+        assert!(!layout.compact);
+        assert_eq!(layout.area, area);
+        assert_eq!(layout.list.width, 35); // 35% of 100
+        assert_eq!(layout.right.width, 65); // remaining
+        assert_eq!(layout.bottom.height, 1);
+    }
+
+    #[test]
+    fn test_layout_wide() {
+        let area = Rect::new(0, 0, 120, 40);
+        let layout = AppLayout::compute(area);
+        assert!(!layout.compact);
+        assert_eq!(layout.list.width + layout.right.width, 120);
+        // detail/logs should partition the right panel height
+        assert_eq!(layout.detail.height + layout.logs.height, layout.right.height);
+    }
+
+    #[test]
+    fn test_layout_centered() {
+        let area = Rect::new(0, 0, 100, 100);
+        let centered = AppLayout::centered(area, 50, 50);
+        assert_eq!(centered.width, 50);
+        assert_eq!(centered.height, 50);
+        assert_eq!(centered.x, 25);
+        assert_eq!(centered.y, 25);
+    }
+
+    #[test]
+    fn test_layout_inner() {
+        let rect = Rect::new(10, 10, 20, 10);
+        let inner = AppLayout::inner(rect);
+        assert_eq!(inner.x, 11);
+        assert_eq!(inner.y, 11);
+        assert_eq!(inner.width, 18);
+        assert_eq!(inner.height, 8);
+    }
+}

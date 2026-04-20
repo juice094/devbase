@@ -149,3 +149,40 @@ impl Styles {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_theme_dark_colors() {
+        let t = Theme::dark();
+        assert_eq!(t.primary, Color::Cyan);
+        assert_eq!(t.success, Color::Green);
+        assert_eq!(t.danger, Color::Red);
+        assert_eq!(t.info, Color::Rgb(255, 215, 0));
+    }
+
+    #[test]
+    fn test_theme_light_colors() {
+        let t = Theme::light();
+        assert_eq!(t.bg, Color::White);
+        assert_eq!(t.text, Color::Black);
+        assert_eq!(t.highlight_bg, Color::Rgb(200, 220, 255));
+    }
+
+    #[test]
+    fn test_theme_default_is_dark() {
+        assert_eq!(Theme::default().primary, Theme::dark().primary);
+    }
+
+    #[test]
+    fn test_styles_from_dark_theme() {
+        let theme = Theme::dark();
+        let styles = theme.styles();
+        assert_eq!(styles.theme.primary, Color::Cyan);
+        assert_eq!(styles.status_ok.fg, Some(Color::Green));
+        assert_eq!(styles.status_danger.fg, Some(Color::Red));
+        assert_eq!(styles.star.fg, Some(Color::Rgb(255, 215, 0)));
+    }
+}
