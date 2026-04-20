@@ -347,6 +347,27 @@ impl WorkspaceRegistry {
             let _ = conn.execute("DROP TABLE IF EXISTS agri_observations", []);
             conn.execute("PRAGMA user_version = 6", [])?;
         }
+        if user_version < 7 {
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS vault_notes (
+                    id TEXT PRIMARY KEY,
+                    path TEXT NOT NULL,
+                    title TEXT,
+                    content TEXT NOT NULL,
+                    frontmatter TEXT,
+                    tags TEXT,
+                    outgoing_links TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )",
+                [],
+            )?;
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_vault_notes_tags ON vault_notes(tags)",
+                [],
+            )?;
+            conn.execute("PRAGMA user_version = 7", [])?;
+        }
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS repo_code_metrics (
@@ -867,6 +888,19 @@ CREATE TABLE IF NOT EXISTS repo_code_metrics (
     language_breakdown TEXT,
     updated_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS vault_notes (
+    id TEXT PRIMARY KEY,
+    path TEXT NOT NULL,
+    title TEXT,
+    content TEXT NOT NULL,
+    frontmatter TEXT,
+    tags TEXT,
+    outgoing_links TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_vault_notes_tags ON vault_notes(tags);
 "#;
 
 #[cfg(test)]

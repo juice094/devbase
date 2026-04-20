@@ -43,6 +43,19 @@ impl RepoEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultNote {
+    pub id: String,
+    pub path: String,
+    pub title: Option<String>,
+    pub content: String,
+    pub frontmatter: Option<String>,
+    pub tags: Vec<String>,
+    pub outgoing_links: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaperEntry {
     pub id: String,
     pub title: String,

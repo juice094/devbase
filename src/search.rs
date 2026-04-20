@@ -20,6 +20,7 @@ fn build_schema() -> Schema {
     schema_builder.add_text_field("title", TEXT | STORED);
     schema_builder.add_text_field("content", TEXT);
     schema_builder.add_text_field("tags", TEXT);
+    schema_builder.add_text_field("doc_type", TEXT | STORED);
     schema_builder.build()
 }
 
@@ -27,8 +28,19 @@ pub fn init_index() -> Result<(Index, IndexReader), TantivyError> {
     let path = index_path();
     std::fs::create_dir_all(&path)?;
     let schema = build_schema();
-    let index =
-        Index::open_or_create(tantivy::directory::MmapDirectory::open(&path)?, schema.clone())?;
+    let index = match Index::open_in_dir(&path) {
+        Ok(idx) => {
+            if idx.schema() == schema {
+                idx
+            } else {
+                drop(idx);
+                let _ = std::fs::remove_dir_all(&path);
+                std::fs::create_dir_all(&path)?;
+                Index::create_in_dir(&path, schema)?
+            }
+        }
+        Err(_) => Index::create_in_dir(&path, schema)?,
+    };
     let reader = index
         .reader_builder()
         .reload_policy(ReloadPolicy::OnCommitWithDelay)
@@ -48,16 +60,41 @@ pub fn add_repo_doc(
     content: &str,
     tags: &[String],
 ) -> Result<(), TantivyError> {
-    let id = schema.get_field("id").unwrap();
+    add_doc(writer, schema, repo_id, title, content, tags, "repo")
+}
+
+pub fn add_vault_doc(
+    writer: &mut IndexWriter,
+    schema: &Schema,
+    note_id: &str,
+    title: &str,
+    content: &str,
+    tags: &[String],
+) -> Result<(), TantivyError> {
+    add_doc(writer, schema, note_id, title, content, tags, "vault")
+}
+
+fn add_doc(
+    writer: &mut IndexWriter,
+    schema: &Schema,
+    id: &str,
+    title: &str,
+    content: &str,
+    tags: &[String],
+    doc_type: &str,
+) -> Result<(), TantivyError> {
+    let id_f = schema.get_field("id").unwrap();
     let title_f = schema.get_field("title").unwrap();
     let content_f = schema.get_field("content").unwrap();
     let tags_f = schema.get_field("tags").unwrap();
+    let doc_type_f = schema.get_field("doc_type").unwrap();
 
     let mut doc = TantivyDocument::default();
-    doc.add_text(id, repo_id);
+    doc.add_text(id_f, id);
     doc.add_text(title_f, title);
     doc.add_text(content_f, content);
     doc.add_text(tags_f, tags.join(","));
+    doc.add_text(doc_type_f, doc_type);
 
     writer.add_document(doc)?;
     Ok(())
