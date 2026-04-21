@@ -1,6 +1,6 @@
 [package]
 name = "devbase"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = "Developer workspace database and knowledge-base manager"
 authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]

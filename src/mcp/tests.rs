@@ -26,7 +26,7 @@ async fn test_tools_list() {
     });
     let resp = server.handle_request(req).await.unwrap();
     let tools = resp.get("result").unwrap().get("tools").unwrap().as_array().unwrap();
-    assert_eq!(tools.len(), 17);
+    assert_eq!(tools.len(), 18);
     let names: Vec<&str> = tools.iter().map(|t| t.get("name").unwrap().as_str().unwrap()).collect();
     assert!(names.contains(&"devkit_scan"));
     assert!(names.contains(&"devkit_health"));

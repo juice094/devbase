@@ -443,7 +443,47 @@ fn render_vault_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &St
         Line::from(Span::styled(&content_preview, styles.dim)),
     ]);
 
-    let paragraph = Paragraph::new(text)
+    // Backlinks section
+    let vault_dir = crate::registry::WorkspaceRegistry::workspace_dir()
+        .ok()
+        .map(|ws| ws.join("vault"));
+    let backlinks = if let Some(vd) = vault_dir {
+        match crate::vault::backlinks::build_backlink_index(&vd) {
+            Ok(index) => crate::vault::backlinks::get_backlinks(&index, &vault.id),
+            Err(_) => Vec::new(),
+        }
+    } else {
+        Vec::new()
+    };
+
+    let mut all_lines = text.lines.to_vec();
+    all_lines.push(Line::from(""));
+    all_lines.push(Line::from(vec![
+        Span::styled("被引用: ", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            if backlinks.is_empty() {
+                "(无)".to_string()
+            } else {
+                format!("{} 篇笔记", backlinks.len())
+            },
+            styles.dim,
+        ),
+    ]));
+    for src in backlinks.iter().take(10) {
+        all_lines.push(Line::from(vec![
+            Span::raw("  ← "),
+            Span::styled(src, Style::default().fg(styles.theme.info)),
+        ]));
+    }
+    if backlinks.len() > 10 {
+        all_lines.push(Line::from(vec![
+            Span::styled(format!("  ... 还有 {} 篇", backlinks.len() - 10), styles.dim),
+        ]));
+    }
+
+    let text_with_backlinks = Text::from(all_lines);
+
+    let paragraph = Paragraph::new(text_with_backlinks)
         .block(
             Block::default()
                 .borders(Borders::ALL)

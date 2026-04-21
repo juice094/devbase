@@ -292,7 +292,7 @@ impl WorkspaceRegistry {
 
         // Schema versioning for future migrations
         let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        const CURRENT_SCHEMA_VERSION: i32 = 6;
+        const CURRENT_SCHEMA_VERSION: i32 = 8;
         if user_version < CURRENT_SCHEMA_VERSION
             && path.exists()
             && let Err(e) = crate::backup::auto_backup_before_migration(&path)
@@ -380,7 +380,6 @@ impl WorkspaceRegistry {
                     id TEXT PRIMARY KEY,
                     path TEXT NOT NULL,
                     title TEXT,
-                    content TEXT NOT NULL,
                     frontmatter TEXT,
                     tags TEXT,
                     outgoing_links TEXT,
@@ -394,6 +393,43 @@ impl WorkspaceRegistry {
                 [],
             )?;
             conn.execute("PRAGMA user_version = 7", [])?;
+        }
+        if user_version < 8 {
+            // Wave 9-3: drop content column from vault_notes (filesystem-first)
+            let has_content: bool = conn
+                .query_row(
+                    "SELECT 1 FROM pragma_table_info('vault_notes') WHERE name = 'content'",
+                    [],
+                    |_| Ok(true),
+                )
+                .unwrap_or(false);
+            if has_content {
+                conn.execute(
+                    "CREATE TABLE vault_notes_v2 (
+                        id TEXT PRIMARY KEY,
+                        path TEXT NOT NULL,
+                        title TEXT,
+                        frontmatter TEXT,
+                        tags TEXT,
+                        outgoing_links TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )",
+                    [],
+                )?;
+                conn.execute(
+                    "INSERT INTO vault_notes_v2 (id, path, title, frontmatter, tags, outgoing_links, created_at, updated_at)
+                     SELECT id, path, title, frontmatter, tags, outgoing_links, created_at, updated_at FROM vault_notes",
+                    [],
+                )?;
+                conn.execute("DROP TABLE vault_notes", [])?;
+                conn.execute("ALTER TABLE vault_notes_v2 RENAME TO vault_notes", [])?;
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_vault_notes_tags ON vault_notes(tags)",
+                    [],
+                )?;
+            }
+            conn.execute("PRAGMA user_version = 8", [])?;
         }
 
         conn.execute(
@@ -751,13 +787,12 @@ impl WorkspaceRegistry {
         // P1-1: filesystem-first — content/frontmatter no longer stored in SQLite.
         // The registry only keeps lightweight metadata (id, path, title, tags, links, updated_at).
         tx.execute(
-            "INSERT OR REPLACE INTO vault_notes (id, path, title, content, frontmatter, tags, outgoing_links, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT OR REPLACE INTO vault_notes (id, path, title, frontmatter, tags, outgoing_links, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
                 &note.id,
                 &note.path,
                 note.title.as_ref(),
-                "", // content: empty — read from filesystem on demand
                 note.frontmatter.as_ref(),
                 note.tags.join(","),
                 serde_json::to_string(&note.outgoing_links)?,
@@ -773,18 +808,17 @@ impl WorkspaceRegistry {
         conn: &rusqlite::Connection,
     ) -> anyhow::Result<Vec<crate::registry::VaultNote>> {
         let mut stmt = conn.prepare(
-            "SELECT id, path, title, content, frontmatter, tags, outgoing_links, created_at, updated_at FROM vault_notes ORDER BY updated_at DESC"
+            "SELECT id, path, title, frontmatter, tags, outgoing_links, created_at, updated_at FROM vault_notes ORDER BY updated_at DESC"
         )?;
         let rows = stmt.query_map([], |row| {
-            let tags_raw: Option<String> = row.get(5)?;
-            let links_raw: Option<String> = row.get(6)?;
+            let tags_raw: Option<String> = row.get(4)?;
+            let links_raw: Option<String> = row.get(5)?;
             Ok(crate::registry::VaultNote {
                 id: row.get(0)?,
                 path: row.get(1)?,
                 title: row.get(2)?,
-                // P1-1: filesystem-first — content is read from disk on demand.
                 content: String::new(),
-                frontmatter: row.get(4)?,
+                frontmatter: row.get(3)?,
                 tags: tags_raw
                     .map(|s| {
                         s.split(',')
@@ -796,10 +830,10 @@ impl WorkspaceRegistry {
                 outgoing_links: links_raw
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or_default(),
-                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(7)?)
+                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(6)?)
                     .map(|dt| dt.with_timezone(&Utc))
                     .unwrap_or_else(|_| Utc::now()),
-                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
+                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(7)?)
                     .map(|dt| dt.with_timezone(&Utc))
                     .unwrap_or_else(|_| Utc::now()),
             })
@@ -997,7 +1031,6 @@ CREATE TABLE IF NOT EXISTS vault_notes (
     id TEXT PRIMARY KEY,
     path TEXT NOT NULL,
     title TEXT,
-    content TEXT NOT NULL,
     frontmatter TEXT,
     tags TEXT,
     outgoing_links TEXT,

@@ -29,7 +29,7 @@
     }
   },
   "tools": {
-    "count": 17,
+    "count": 18,
     "list": [
       "devkit_scan",
       "devkit_health",
@@ -47,7 +47,8 @@
       "devkit_natural_language_query",
       "devkit_vault_search",
       "devkit_vault_read",
-      "devkit_vault_write"
+      "devkit_vault_write",
+      "devkit_vault_backlinks"
     ]
   }
 }

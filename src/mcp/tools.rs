@@ -1125,3 +1125,62 @@ impl McpTool for DevkitVaultWriteTool {
         }))
     }
 }
+
+// ---------------------------------------------------------------------------
+// Vault backlinks tool
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+pub struct DevkitVaultBacklinksTool;
+
+impl McpTool for DevkitVaultBacklinksTool {
+    fn name(&self) -> &'static str {
+        "devkit_vault_backlinks"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": "Find all vault notes that link to a given note (backlinks)",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "note_id": { "type": "string", "description": "Target note id or path (e.g., '01-Projects/devbase.md')" }
+                },
+                "required": ["note_id"]
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let note_id = args
+            .get("note_id")
+            .and_then(|v| v.as_str())
+            .context("Missing required argument: note_id")?;
+
+        let backlinks = tokio::task::spawn_blocking({
+            let note_id = note_id.to_string();
+            move || {
+                let vault_dir = crate::registry::WorkspaceRegistry::workspace_dir()
+                    .ok()
+                    .map(|ws| ws.join("vault"));
+                if let Some(vd) = vault_dir {
+                    match crate::vault::backlinks::build_backlink_index(&vd) {
+                        Ok(index) => crate::vault::backlinks::get_backlinks(&index, &note_id),
+                        Err(_) => Vec::new(),
+                    }
+                } else {
+                    Vec::new()
+                }
+            }
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?;
+
+        Ok(serde_json::json!({
+            "success": true,
+            "target": note_id,
+            "count": backlinks.len(),
+            "backlinks": backlinks,
+        }))
+    }
+}

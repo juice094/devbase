@@ -351,6 +351,28 @@ pub async fn run_json(
         }));
     }
 
+    // Handle vault::backlinks prefix queries
+    if let Some(rest) = query_str.strip_prefix("vault::backlinks:") {
+        let target = rest.trim();
+        let vault_dir = crate::registry::WorkspaceRegistry::workspace_dir()
+            .ok()
+            .map(|ws| ws.join("vault"));
+        let backlinks = if let Some(vd) = vault_dir {
+            match crate::vault::backlinks::build_backlink_index(&vd) {
+                Ok(index) => crate::vault::backlinks::get_backlinks(&index, target),
+                Err(_) => Vec::new(),
+            }
+        } else {
+            Vec::new()
+        };
+        return Ok(serde_json::json!({
+            "success": true,
+            "target": target,
+            "count": backlinks.len(),
+            "backlinks": backlinks,
+        }));
+    }
+
     // Handle vault: prefix queries
     if let Some(rest) = query_str.strip_prefix("vault:") {
         let results = if rest.trim().is_empty() {
