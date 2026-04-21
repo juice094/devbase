@@ -1,0 +1,53 @@
+{
+  "$schema": "https://registry.modelcontextprotocol.io/schema/server.json",
+  "name": "io.github.juice094.devbase",
+  "version": "0.2.0",
+  "description": "Developer Knowledge OS — manage Git repos, vault notes (Markdown), and assets. AI-native workspace with 17 MCP tools.",
+  "license": "MIT",
+  "homepage": "https://github.com/juice094/devbase",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/juice094/devbase.git"
+  },
+  "maintainers": [
+    {
+      "name": "juice094",
+      "email": "160722440+juice094@users.noreply.github.com"
+    }
+  ],
+  "categories": ["developer-tools", "knowledge-management", "version-control"],
+  "tags": ["git", "rust", "vault", "notes", "mcp"],
+  "runtime": {
+    "type": "stdio",
+    "command": "devbase",
+    "args": ["mcp"]
+  },
+  "installation": {
+    "cargo": {
+      "crate": "devbase",
+      "bin": "devbase"
+    }
+  },
+  "tools": {
+    "count": 17,
+    "list": [
+      "devkit_scan",
+      "devkit_health",
+      "devkit_sync",
+      "devkit_query",
+      "devkit_query_repos",
+      "devkit_index",
+      "devkit_note",
+      "devkit_digest",
+      "devkit_paper_index",
+      "devkit_experiment_log",
+      "devkit_github_info",
+      "devkit_code_metrics",
+      "devkit_module_graph",
+      "devkit_natural_language_query",
+      "devkit_vault_search",
+      "devkit_vault_read",
+      "devkit_vault_write"
+    ]
+  }
+}

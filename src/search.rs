@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use tantivy::{
     Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, TantivyError,
     collector::TopDocs,
-    query::QueryParser,
+    query::{BooleanQuery, Occur, QueryParser, TermQuery},
     schema::{STORED, Schema, TEXT, Value},
 };
 
@@ -117,6 +117,18 @@ pub fn commit_writer(writer: &mut IndexWriter) -> Result<(), TantivyError> {
 }
 
 pub fn search_repos(query_str: &str, limit: usize) -> Result<Vec<(String, f32)>, TantivyError> {
+    search_by_doc_type(query_str, limit, None)
+}
+
+pub fn search_vault(query_str: &str, limit: usize) -> Result<Vec<(String, f32)>, TantivyError> {
+    search_by_doc_type(query_str, limit, Some("vault"))
+}
+
+fn search_by_doc_type(
+    query_str: &str,
+    limit: usize,
+    doc_type_filter: Option<&str>,
+) -> Result<Vec<(String, f32)>, TantivyError> {
     let (index, reader) = init_index()?;
     let schema = index.schema();
     let searcher = reader.searcher();
@@ -124,11 +136,26 @@ pub fn search_repos(query_str: &str, limit: usize) -> Result<Vec<(String, f32)>,
     let title = schema.get_field("title").unwrap();
     let content = schema.get_field("content").unwrap();
     let tags = schema.get_field("tags").unwrap();
+    let doc_type_f = schema.get_field("doc_type").unwrap();
 
     let query_parser = QueryParser::for_index(&index, vec![title, content, tags]);
-    let query = query_parser.parse_query(query_str)?;
+    let text_query = query_parser.parse_query(query_str)?;
 
-    let top_docs = searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())?;
+    // Build combined query: text_query AND doc_type:filter (if specified)
+    let final_query: Box<dyn tantivy::query::Query> = if let Some(dt) = doc_type_filter {
+        let term_query = TermQuery::new(
+            tantivy::Term::from_field_text(doc_type_f, dt),
+            tantivy::schema::IndexRecordOption::Basic,
+        );
+        Box::new(BooleanQuery::new(vec![
+            (Occur::Must, text_query),
+            (Occur::Must, Box::new(term_query)),
+        ]))
+    } else {
+        text_query
+    };
+
+    let top_docs = searcher.search(&*final_query, &TopDocs::with_limit(limit).order_by_score())?;
 
     let id_field = schema.get_field("id").unwrap();
     let mut results = Vec::new();

@@ -353,39 +353,46 @@ pub async fn run_json(
 
     // Handle vault: prefix queries
     if let Some(rest) = query_str.strip_prefix("vault:") {
-        let all = WorkspaceRegistry::list_vault_notes(&conn)?;
-        let keywords: Vec<&str> = rest.split_whitespace().collect();
-        let filtered: Vec<_> = if keywords.is_empty() {
+        let results = if rest.trim().is_empty() {
+            // List all vault notes when no keywords given
+            let all = WorkspaceRegistry::list_vault_notes(&conn)?;
             all
+                .into_iter()
+                .map(|n| {
+                    serde_json::json!({
+                        "id": n.id,
+                        "title": n.title,
+                        "tags": n.tags.join(","),
+                        "score": 1.0,
+                        "match_reasons": ["vault"]
+                    })
+                })
+                .collect::<Vec<_>>()
         } else {
-            all.into_iter()
-                .filter(|n| {
-                    // P1-1: filesystem-first — read content from disk for keyword matching
-                    let content = crate::vault::fs_io::read_note_body(&n.path)
-                        .map(|(body, _fm)| body)
-                        .unwrap_or_default();
-                    let hay =
-                        format!("{} {} {}", n.id, n.title.as_deref().unwrap_or(""), content)
-                            .to_lowercase();
-                    keywords.iter().all(|kw| hay.contains(&kw.to_lowercase()))
-                })
-                .collect()
+            // Wave 8-2: Tantivy full-text search for vault notes
+            match crate::search::search_vault(rest, limit) {
+                Ok(docs) => docs
+                    .into_iter()
+                    .map(|(id, score)| {
+                        serde_json::json!({
+                            "id": id,
+                            "title": id.split('/').last().unwrap_or(&id),
+                            "score": score,
+                            "match_reasons": ["vault"]
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+                Err(e) => {
+                    return Ok(serde_json::json!({
+                        "success": false,
+                        "error": format!("Search failed: {}", e)
+                    }));
+                }
+            }
         };
-        let count = filtered.len();
-        let results: Vec<serde_json::Value> = filtered
-            .into_iter()
-            .map(|n| {
-                serde_json::json!({
-                    "id": n.id,
-                    "title": n.title,
-                    "tags": n.tags.join(","),
-                    "match_reasons": ["vault"]
-                })
-            })
-            .collect();
         return Ok(serde_json::json!({
             "success": true,
-            "count": count,
+            "count": results.len(),
             "expression": query_str,
             "results": results
         }));

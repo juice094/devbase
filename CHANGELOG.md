@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-04-20
+
+### Added
+
+- **Vault Watch** — Filesystem watcher for `workspace/vault/`
+  - Auto-refresh TUI vault list when notes are edited externally
+  - 500ms debounce to avoid excessive reloads
+- **Vault Tantivy Search** — `vault:` queries now use Tantivy full-text index
+  - Replaces slow SQLite LIKE + per-file reading
+  - Supports keyword scoring and ranking
+- **MCP Registry Manifest** — `server.json` for official MCP Registry submission
+
+### Changed
+
+- `query.rs` vault branch: uses `search_vault()` instead of in-memory filtering
+
 ## [0.2.0] - 2026-04-20
 
 ### Added

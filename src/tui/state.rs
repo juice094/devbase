@@ -54,6 +54,7 @@ impl App {
         app.log_info(crate::i18n::current().log.tui_started.to_string());
         app.load_repos()?;
         app.spawn_stars_refresh();
+        app.spawn_vault_watcher();
         Ok(app)
     }
 
@@ -268,6 +269,31 @@ impl App {
         });
     }
 
+    pub(crate) fn spawn_vault_watcher(&mut self) {
+        let vault_path = match crate::registry::WorkspaceRegistry::workspace_dir() {
+            Ok(ws) => ws.join("vault"),
+            Err(_) => return,
+        };
+        if !vault_path.exists() {
+            return;
+        }
+        let tx = self.async_tx.clone();
+        std::thread::spawn(move || {
+            let watcher = match crate::watch::FsWatcher::new(&vault_path) {
+                Ok(w) => w,
+                Err(_) => return,
+            };
+            loop {
+                if watcher.poll_event(std::time::Duration::from_secs(2)).is_some() {
+                    // Debounce: wait 500ms then drain remaining events
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    let _ = watcher.poll_event(std::time::Duration::from_millis(100));
+                    let _ = tx.send(crate::asyncgit::AsyncNotification::VaultChanged);
+                }
+            }
+        });
+    }
+
     pub(crate) fn spawn_repo_status_for_current(&mut self) {
         let repo = self.current_repo().cloned();
         if let Some(repo) = repo
@@ -469,6 +495,12 @@ impl App {
                             .cmp(&a.stars.unwrap_or(0))
                             .then_with(|| a.id.cmp(&b.id))
                     });
+                }
+            }
+            AsyncNotification::VaultChanged => {
+                self.log_info("Vault changed, refreshing...".to_string());
+                if let Err(e) = self.load_vaults() {
+                    self.log_error(format!("Vault refresh failed: {}", e));
                 }
             }
         }
