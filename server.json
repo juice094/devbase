@@ -1,8 +1,8 @@
 {
   "$schema": "https://registry.modelcontextprotocol.io/schema/server.json",
   "name": "io.github.juice094.devbase",
-  "version": "0.2.0",
-  "description": "Developer Knowledge OS — manage Git repos, vault notes (Markdown), and assets. AI-native workspace with 17 MCP tools.",
+  "version": "0.2.3",
+  "description": "Developer Knowledge OS — manage Git repos, vault notes (Markdown), and assets. AI-native workspace with 19 MCP tools."
   "license": "MIT",
   "homepage": "https://github.com/juice094/devbase",
   "repository": {
@@ -29,7 +29,7 @@
     }
   },
   "tools": {
-    "count": 18,
+    "count": 19,
     "list": [
       "devkit_scan",
       "devkit_health",
@@ -48,7 +48,8 @@
       "devkit_vault_search",
       "devkit_vault_read",
       "devkit_vault_write",
-      "devkit_vault_backlinks"
+      "devkit_vault_backlinks",
+      "devkit_project_context"
     ]
   }
 }
