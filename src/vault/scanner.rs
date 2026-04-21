@@ -62,6 +62,7 @@ pub fn scan_vault(vault_dir: Option<&Path>) -> anyhow::Result<usize> {
                 });
 
                 let tags = frontmatter.as_ref().map(|fm| fm.tags.clone()).unwrap_or_default();
+                let linked_repo = frontmatter.as_ref().and_then(|fm| fm.extra.get("repo").cloned());
                 let fm_raw = frontmatter.map(|fm| fm.raw);
 
                 let note = VaultNote {
@@ -72,6 +73,7 @@ pub fn scan_vault(vault_dir: Option<&Path>) -> anyhow::Result<usize> {
                     frontmatter: fm_raw,
                     tags,
                     outgoing_links: outgoing,
+                    linked_repo,
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
                 };

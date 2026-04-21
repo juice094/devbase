@@ -433,6 +433,14 @@ impl WorkspaceRegistry {
         }
 
         conn.execute(
+            "CREATE TABLE IF NOT EXISTS vault_repo_links (
+                vault_id TEXT NOT NULL,
+                repo_id TEXT NOT NULL,
+                PRIMARY KEY (vault_id, repo_id)
+            )",
+            [],
+        )?;
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS repo_code_metrics (
                 repo_id TEXT PRIMARY KEY,
                 total_lines INTEGER,
@@ -800,6 +808,13 @@ impl WorkspaceRegistry {
                 note.updated_at.to_rfc3339(),
             ],
         )?;
+        // Sprint A-1: update vault_repo_links if linked_repo is specified
+        if let Some(repo_id) = &note.linked_repo {
+            tx.execute(
+                "INSERT OR REPLACE INTO vault_repo_links (vault_id, repo_id) VALUES (?1, ?2)",
+                rusqlite::params![&note.id, repo_id],
+            )?;
+        }
         tx.commit()?;
         Ok(())
     }
@@ -830,6 +845,7 @@ impl WorkspaceRegistry {
                 outgoing_links: links_raw
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or_default(),
+                linked_repo: None,
                 created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(6)?)
                     .map(|dt| dt.with_timezone(&Utc))
                     .unwrap_or_else(|_| Utc::now()),
@@ -847,7 +863,70 @@ impl WorkspaceRegistry {
 
     pub fn delete_vault_note(conn: &rusqlite::Connection, note_id: &str) -> anyhow::Result<()> {
         conn.execute("DELETE FROM vault_notes WHERE id = ?1", [note_id])?;
+        conn.execute("DELETE FROM vault_repo_links WHERE vault_id = ?1", [note_id])?;
         Ok(())
+    }
+
+    /// Get repo IDs linked to a vault note.
+    pub fn get_linked_repos(
+        conn: &rusqlite::Connection,
+        vault_id: &str,
+    ) -> anyhow::Result<Vec<String>> {
+        let mut stmt = conn.prepare(
+            "SELECT repo_id FROM vault_repo_links WHERE vault_id = ?1 ORDER BY repo_id"
+        )?;
+        let rows = stmt.query_map([vault_id], |row| row.get::<_, String>(0))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.into())
+    }
+
+    /// Get vault note IDs linked to a repo.
+    pub fn get_linked_vaults(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+    ) -> anyhow::Result<Vec<String>> {
+        let mut stmt = conn.prepare(
+            "SELECT vault_id FROM vault_repo_links WHERE repo_id = ?1 ORDER BY vault_id"
+        )?;
+        let rows = stmt.query_map([repo_id], |row| row.get::<_, String>(0))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.into())
+    }
+
+    /// Get vault notes (with title) linked to a repo.
+    pub fn get_linked_vault_notes(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+    ) -> anyhow::Result<Vec<(String, Option<String>)>> {
+        let mut stmt = conn.prepare(
+            "SELECT n.id, n.title FROM vault_notes n
+             JOIN vault_repo_links l ON n.id = l.vault_id
+             WHERE l.repo_id = ?1
+             ORDER BY n.updated_at DESC"
+        )?;
+        let rows = stmt.query_map([repo_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.into())
+    }
+
+    /// Get repos (with local_path) linked to a vault note.
+    pub fn get_linked_repos_full(
+        conn: &rusqlite::Connection,
+        vault_id: &str,
+    ) -> anyhow::Result<Vec<(String, String)>> {
+        let mut stmt = conn.prepare(
+            "SELECT r.id, r.local_path FROM repos r
+             JOIN vault_repo_links l ON r.id = l.repo_id
+             WHERE l.vault_id = ?1
+             ORDER BY r.id"
+        )?;
+        let rows = stmt.query_map([vault_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.into())
     }
 }
 
@@ -1038,6 +1117,12 @@ CREATE TABLE IF NOT EXISTS vault_notes (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_vault_notes_tags ON vault_notes(tags);
+
+CREATE TABLE IF NOT EXISTS vault_repo_links (
+    vault_id TEXT NOT NULL,
+    repo_id TEXT NOT NULL,
+    PRIMARY KEY (vault_id, repo_id)
+);
 "#;
 
 #[cfg(test)]

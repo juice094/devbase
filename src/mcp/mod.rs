@@ -30,6 +30,7 @@ pub enum McpToolEnum {
     VaultRead(DevkitVaultReadTool),
     VaultWrite(DevkitVaultWriteTool),
     VaultBacklinks(DevkitVaultBacklinksTool),
+    ProjectContext(DevkitProjectContextTool),
 }
 
 impl McpTool for McpToolEnum {
@@ -53,6 +54,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::VaultRead(t) => t.name(),
             McpToolEnum::VaultWrite(t) => t.name(),
             McpToolEnum::VaultBacklinks(t) => t.name(),
+            McpToolEnum::ProjectContext(t) => t.name(),
         }
     }
 
@@ -76,6 +78,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::VaultRead(t) => t.schema(),
             McpToolEnum::VaultWrite(t) => t.schema(),
             McpToolEnum::VaultBacklinks(t) => t.schema(),
+            McpToolEnum::ProjectContext(t) => t.schema(),
         }
     }
 
@@ -99,6 +102,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::VaultRead(t) => t.invoke(args).await,
             McpToolEnum::VaultWrite(t) => t.invoke(args).await,
             McpToolEnum::VaultBacklinks(t) => t.invoke(args).await,
+            McpToolEnum::ProjectContext(t) => t.invoke(args).await,
         }
     }
 }
@@ -247,6 +251,7 @@ pub fn build_server() -> McpServer {
         .register_tool(McpToolEnum::VaultRead(DevkitVaultReadTool))
         .register_tool(McpToolEnum::VaultWrite(DevkitVaultWriteTool))
         .register_tool(McpToolEnum::VaultBacklinks(DevkitVaultBacklinksTool))
+        .register_tool(McpToolEnum::ProjectContext(DevkitProjectContextTool))
 }
 
 pub fn format_mcp_message(body: &serde_json::Value) -> String {

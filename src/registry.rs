@@ -51,6 +51,7 @@ pub struct VaultNote {
     pub frontmatter: Option<String>,
     pub tags: Vec<String>,
     pub outgoing_links: Vec<String>,
+    pub linked_repo: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

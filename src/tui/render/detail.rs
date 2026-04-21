@@ -167,6 +167,33 @@ fn render_overview(frame: &mut Frame, repo: &crate::tui::RepoItem, area: Rect, s
         lines.push(Line::from(""));
     }
 
+    // === Layer 3.5: Linked vault notes ===
+    let linked_vaults = crate::registry::WorkspaceRegistry::init_db()
+        .ok()
+        .and_then(|conn| crate::registry::WorkspaceRegistry::get_linked_vault_notes(&conn, &repo.id).ok())
+        .unwrap_or_default();
+
+    let mut vault_lines: Vec<Line> = Vec::new();
+    if !linked_vaults.is_empty() {
+        vault_lines.push(Line::from(vec![
+            Span::styled("关联笔记: ", styles.label),
+            Span::styled(format!("{} 篇", linked_vaults.len()), Style::default().fg(styles.theme.primary)),
+        ]));
+        for (vid, vtitle) in linked_vaults.iter().take(5) {
+            let display = vtitle.as_deref().unwrap_or(vid);
+            vault_lines.push(Line::from(vec![
+                Span::raw("  → "),
+                Span::styled(display, Style::default().fg(styles.theme.info)),
+            ]));
+        }
+        if linked_vaults.len() > 5 {
+            vault_lines.push(Line::from(vec![
+                Span::styled(format!("  ... 还有 {} 篇", linked_vaults.len() - 5), styles.dim),
+            ]));
+        }
+        vault_lines.push(Line::from(""));
+    }
+
     lines.extend(vec![
         // === Layer 3: Description ===
         Line::from(vec![
@@ -174,6 +201,9 @@ fn render_overview(frame: &mut Frame, repo: &crate::tui::RepoItem, area: Rect, s
             Span::styled(summary_text, Style::default().fg(styles.theme.text)),
         ]),
         Line::from(vec![hr.clone()]),
+    ]);
+    lines.extend(vault_lines);
+    lines.extend(vec![
         // === Layer 4: Connection metadata ===
         Line::from(vec![
             Span::styled("分支: ", styles.label),
@@ -456,7 +486,39 @@ fn render_vault_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &St
         Vec::new()
     };
 
+    // Linked repos section
+    let linked_repos = crate::registry::WorkspaceRegistry::init_db()
+        .ok()
+        .and_then(|conn| crate::registry::WorkspaceRegistry::get_linked_repos_full(&conn, &vault.id).ok())
+        .unwrap_or_default();
+
     let mut all_lines = text.lines.to_vec();
+    all_lines.push(Line::from(""));
+    all_lines.push(Line::from(vec![
+        Span::styled("关联仓库: ", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            if linked_repos.is_empty() {
+                "(无)".to_string()
+            } else {
+                format!("{} 个", linked_repos.len())
+            },
+            styles.dim,
+        ),
+    ]));
+    for (rid, rpath) in linked_repos.iter().take(5) {
+        all_lines.push(Line::from(vec![
+            Span::raw("  → "),
+            Span::styled(rid, Style::default().fg(styles.theme.info)),
+            Span::styled(format!("  {}", rpath), styles.dim),
+        ]));
+    }
+    if linked_repos.len() > 5 {
+        all_lines.push(Line::from(vec![
+            Span::styled(format!("  ... 还有 {} 个", linked_repos.len() - 5), styles.dim),
+        ]));
+    }
+
+    // Backlinks section
     all_lines.push(Line::from(""));
     all_lines.push(Line::from(vec![
         Span::styled("被引用: ", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
