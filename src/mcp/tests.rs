@@ -128,6 +128,29 @@ async fn test_unknown_method() {
 }
 
 #[tokio::test]
+async fn test_tools_call_devkit_project_context() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_project_context",
+            "arguments": { "project": "nonexistent-project-xyz" }
+        }
+    });
+    let resp = server.handle_request(req).await.unwrap();
+    let result = resp.get("result").unwrap();
+    assert_eq!(result.get("content").unwrap().as_array().unwrap().len(), 1);
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    assert!(parsed.get("repo").unwrap().is_null());
+    assert!(parsed.get("vault_notes").unwrap().as_array().unwrap().is_empty());
+    assert!(parsed.get("assets").unwrap().as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn test_stdio_content_length_format() {
     let body = serde_json::json!({ "jsonrpc": "2.0", "id": 1, "result": {} });
     let msg = format_mcp_message(&body);
