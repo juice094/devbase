@@ -1,0 +1,25 @@
+# Smithery.ai configuration for devbase
+# https://smithery.ai
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties: {}
+    required: []
+  commandFunction:
+    - |-
+      (config) => ({
+        command: "devbase",
+        args: ["mcp"]
+      })
+
+description: |
+  Developer Knowledge OS — manage Git repos, vault notes (Markdown), and assets.
+  Provides 19 MCP tools for repo scanning, health checks, vault search/backlinks,
+  and unified project context queries.
+
+categories:
+  - developer-tools
+  - knowledge-management
+  - version-control
