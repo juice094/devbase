@@ -1,0 +1,379 @@
+use super::*;
+use chrono::{DateTime, Utc};
+use std::path::PathBuf;
+
+impl WorkspaceRegistry {
+    fn collect_repos_from_stmt(
+        mut stmt: rusqlite::Statement<'_>,
+        params: &[&dyn rusqlite::ToSql],
+    ) -> anyhow::Result<Vec<RepoEntry>> {
+        let rows = stmt.query_map(params, |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<i64>>(8)?,
+                row.get::<_, Option<String>>(9)?,
+                row.get::<_, Option<String>>(10)?,
+                row.get::<_, Option<String>>(11)?,
+                row.get::<_, Option<String>>(12)?,
+            ))
+        })?;
+        let mut entries = Vec::new();
+        for row in rows {
+            let (
+                id,
+                local_path,
+                tags,
+                language,
+                discovered_at,
+                workspace_type,
+                data_tier,
+                last_synced_at,
+                stars,
+                remote_name,
+                upstream_url,
+                default_branch,
+                last_sync,
+            ) = row?;
+            let local_path = PathBuf::from(local_path);
+            let discovered_at = DateTime::parse_from_rfc3339(&discovered_at)?.with_timezone(&Utc);
+            let tags: Vec<String> = tags
+                .map(|s| {
+                    s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()
+                })
+                .unwrap_or_default();
+            let workspace_type = workspace_type.unwrap_or_else(|| "git".to_string());
+            let data_tier = data_tier.unwrap_or_else(|| "private".to_string());
+            let last_synced_at = last_synced_at.and_then(|s| {
+                DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))
+            });
+            let stars = stars.map(|s| s as u64);
+            let remote = remote_name.map(|name| RemoteEntry {
+                remote_name: name,
+                upstream_url,
+                default_branch,
+                last_sync: last_sync.and_then(|s| {
+                    DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))
+                }),
+            });
+            if let Some(entry) = entries.last_mut().filter(|e: &&mut RepoEntry| e.id == id) {
+                if let Some(r) = remote {
+                    entry.remotes.push(r);
+                }
+            } else {
+                let mut remotes = Vec::new();
+                if let Some(r) = remote {
+                    remotes.push(r);
+                }
+                entries.push(RepoEntry {
+                    id,
+                    local_path,
+                    tags,
+                    language,
+                    workspace_type,
+                    data_tier,
+                    last_synced_at,
+                    stars,
+                    discovered_at,
+                    remotes,
+                });
+            }
+        }
+        Ok(entries)
+    }
+
+    pub fn list_repos(conn: &rusqlite::Connection) -> anyhow::Result<Vec<RepoEntry>> {
+        let stmt = conn.prepare(
+            "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
+                    r.workspace_type, r.data_tier, r.last_synced_at, r.stars,
+                    rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
+             FROM repos r
+             LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
+             ORDER BY r.id, rm.remote_name"
+        )?;
+        Self::collect_repos_from_stmt(stmt, &[])
+    }
+
+    pub fn list_repos_stale_health(
+        conn: &rusqlite::Connection,
+        threshold: &str,
+    ) -> anyhow::Result<Vec<RepoEntry>> {
+        let stmt = conn.prepare(
+            "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
+                    r.workspace_type, r.data_tier, r.last_synced_at, r.stars,
+                    rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
+             FROM repos r
+             LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM repo_health h WHERE h.repo_id = r.id
+             ) OR EXISTS (
+                 SELECT 1 FROM repo_health h WHERE h.repo_id = r.id AND h.checked_at < ?1
+             )
+             ORDER BY r.id, rm.remote_name"
+        )?;
+        Self::collect_repos_from_stmt(stmt, &[&threshold])
+    }
+
+    pub fn list_repos_need_index(
+        conn: &rusqlite::Connection,
+        threshold: &str,
+    ) -> anyhow::Result<Vec<RepoEntry>> {
+        let stmt = conn.prepare(
+            "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
+                    r.workspace_type, r.data_tier, r.last_synced_at, r.stars,
+                    rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
+             FROM repos r
+             LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM repo_summaries s WHERE s.repo_id = r.id
+             ) OR EXISTS (
+                 SELECT 1 FROM repo_summaries s WHERE s.repo_id = r.id AND s.generated_at < ?1
+             ) OR r.language IS NULL
+             ORDER BY r.id, rm.remote_name"
+        )?;
+        Self::collect_repos_from_stmt(stmt, &[&threshold])
+    }
+
+    pub fn save_repo(conn: &mut rusqlite::Connection, repo: &RepoEntry) -> anyhow::Result<()> {
+        let tx = conn.transaction()?;
+        tx.execute(
+            "INSERT OR REPLACE INTO repos (id, local_path, language, discovered_at, workspace_type, data_tier, last_synced_at, stars) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                &repo.id,
+                repo.local_path.to_string_lossy().to_string(),
+                repo.language.as_ref(),
+                repo.discovered_at.to_rfc3339(),
+                &repo.workspace_type,
+                &repo.data_tier,
+                repo.last_synced_at.map(|dt| dt.to_rfc3339()),
+                repo.stars.map(|s| s as i64)
+            ],
+        )?;
+        tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1", [&repo.id])?;
+        for tag in &repo.tags {
+            tx.execute(
+                "INSERT OR REPLACE INTO repo_tags (repo_id, tag) VALUES (?1, ?2)",
+                rusqlite::params![&repo.id, tag],
+            )?;
+        }
+        tx.execute("DELETE FROM repo_remotes WHERE repo_id = ?1", [&repo.id])?;
+        for remote in &repo.remotes {
+            tx.execute(
+                "INSERT INTO repo_remotes (repo_id, remote_name, upstream_url, default_branch, last_sync) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![
+                    &repo.id,
+                    &remote.remote_name,
+                    remote.upstream_url.as_ref(),
+                    remote.default_branch.as_ref(),
+                    remote.last_sync.map(|dt| dt.to_rfc3339())
+                ],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn update_repo_language(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        language: Option<&str>,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "UPDATE repos SET language = ?1 WHERE id = ?2",
+            rusqlite::params![language, repo_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_repo_tier(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        tier: &str,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "UPDATE repos SET data_tier = ?1 WHERE id = ?2",
+            rusqlite::params![tier, repo_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_repo_workspace_type(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        workspace_type: &str,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "UPDATE repos SET workspace_type = ?1 WHERE id = ?2",
+            rusqlite::params![workspace_type, repo_id],
+        )?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn update_repo_last_synced_at(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        timestamp: DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "UPDATE repos SET last_synced_at = ?1 WHERE id = ?2",
+            rusqlite::params![timestamp.to_rfc3339(), repo_id],
+        )?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn list_workspaces_by_tier(
+        conn: &rusqlite::Connection,
+        tier: &str,
+    ) -> anyhow::Result<Vec<RepoEntry>> {
+        let stmt = conn.prepare(
+            "SELECT r.id, r.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id) as tags, r.language, r.discovered_at,
+                    r.workspace_type, r.data_tier, r.last_synced_at, r.stars,
+                    rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
+             FROM repos r
+             LEFT JOIN repo_remotes rm ON r.id = rm.repo_id
+             WHERE r.data_tier = ?1
+             ORDER BY r.id, rm.remote_name"
+        )?;
+        Self::collect_repos_from_stmt(stmt, &[&tier])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::RemoteEntry;
+
+    fn sample_repo(id: &str, path: &str) -> RepoEntry {
+        RepoEntry {
+            id: id.to_string(),
+            local_path: PathBuf::from(path),
+            tags: vec![],
+            discovered_at: Utc::now(),
+            language: Some("rust".to_string()),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        }
+    }
+
+    #[test]
+    fn test_list_repos_empty() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert!(repos.is_empty());
+    }
+
+    #[test]
+    fn test_save_and_list_repo() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let repo = sample_repo("repo1", "/tmp/repo1");
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].id, "repo1");
+        assert_eq!(repos[0].local_path, PathBuf::from("/tmp/repo1"));
+        assert_eq!(repos[0].language, Some("rust".to_string()));
+        assert_eq!(repos[0].workspace_type, "git");
+        assert_eq!(repos[0].data_tier, "private");
+    }
+
+    #[test]
+    fn test_save_repo_with_tags() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let mut repo = sample_repo("repo1", "/tmp/repo1");
+        repo.tags = vec!["cli".to_string(), "rust".to_string()];
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert_eq!(repos[0].tags.len(), 2);
+        assert!(repos[0].tags.contains(&"cli".to_string()));
+        assert!(repos[0].tags.contains(&"rust".to_string()));
+    }
+
+    #[test]
+    fn test_save_repo_with_remotes() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let mut repo = sample_repo("repo1", "/tmp/repo1");
+        repo.remotes.push(RemoteEntry {
+            remote_name: "origin".to_string(),
+            upstream_url: Some("https://github.com/user/repo1".to_string()),
+            default_branch: Some("main".to_string()),
+            last_sync: None,
+        });
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert_eq!(repos[0].remotes.len(), 1);
+        assert_eq!(repos[0].remotes[0].remote_name, "origin");
+        assert_eq!(
+            repos[0].remotes[0].upstream_url,
+            Some("https://github.com/user/repo1".to_string())
+        );
+    }
+
+    #[test]
+    fn test_save_repo_updates_existing() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let mut repo = sample_repo("repo1", "/tmp/repo1");
+        repo.tags = vec!["a".to_string()];
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        let mut repo2 = sample_repo("repo1", "/tmp/repo1_moved");
+        repo2.tags = vec!["b".to_string(), "c".to_string()];
+        repo2.language = Some("go".to_string());
+        WorkspaceRegistry::save_repo(&mut conn, &repo2).unwrap();
+
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].local_path, PathBuf::from("/tmp/repo1_moved"));
+        assert_eq!(repos[0].language, Some("go".to_string()));
+        assert_eq!(repos[0].tags.len(), 2);
+        assert!(!repos[0].tags.contains(&"a".to_string()));
+    }
+
+    #[test]
+    fn test_list_workspaces_by_tier() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let mut private = sample_repo("private_repo", "/tmp/p");
+        private.data_tier = "private".to_string();
+
+        let mut public = sample_repo("public_repo", "/tmp/pub");
+        public.data_tier = "public".to_string();
+
+        WorkspaceRegistry::save_repo(&mut conn, &private).unwrap();
+        WorkspaceRegistry::save_repo(&mut conn, &public).unwrap();
+
+        let private_repos = WorkspaceRegistry::list_workspaces_by_tier(&conn, "private").unwrap();
+        assert_eq!(private_repos.len(), 1);
+        assert_eq!(private_repos[0].id, "private_repo");
+
+        let public_repos = WorkspaceRegistry::list_workspaces_by_tier(&conn, "public").unwrap();
+        assert_eq!(public_repos.len(), 1);
+        assert_eq!(public_repos[0].id, "public_repo");
+
+        let none = WorkspaceRegistry::list_workspaces_by_tier(&conn, "nonexistent").unwrap();
+        assert!(none.is_empty());
+    }
+
+    #[test]
+    fn test_save_repo_with_stars() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let mut repo = sample_repo("starred", "/tmp/s");
+        repo.stars = Some(100);
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert_eq!(repos[0].stars, Some(100));
+    }
+}

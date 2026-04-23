@@ -125,12 +125,18 @@ impl Default for WorkspaceRegistry {
     }
 }
 
-mod core;
 mod health;
 mod knowledge;
+mod links;
 mod metrics;
+mod migrate;
+mod repo;
 pub mod repos_toml;
+mod vault;
 mod workspace;
+
+#[cfg(test)]
+mod test_helpers;
 
 #[cfg(test)]
 mod tests;
