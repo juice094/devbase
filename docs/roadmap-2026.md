@@ -1,8 +1,8 @@
 # devbase 推进路线图 2026
 
 > 基于统一分析（双模态：Human TUI + AI MCP）的阶段性执行计划
-> 更新日期：2026-04-15
-> 当前版本：commit `aca5f8f`
+> 更新日期：2026-04-23
+> 当前版本：commit `2fc7872` (v0.2.3)
 
 ---
 
@@ -75,7 +75,7 @@ pub struct SearchResultItem {
 
 ## Phase 2：AI 轮基础（Month 1-2）
 
-### 2.1 注册表 Schema 扩展：`code_metrics`
+### 2.1 注册表 Schema 扩展：`code_metrics` ✅
 
 **价值**：AI 需要知道"哪个项目最大""哪个项目测试最多"。
 
@@ -101,7 +101,7 @@ CREATE TABLE repo_code_metrics (
 
 ---
 
-### 2.2 注册表 Schema 扩展：`module_graph`
+### 2.2 注册表 Schema 扩展：`module_graph` ✅
 
 **价值**：AI 需要理解仓库内部的模块依赖关系。
 
@@ -265,7 +265,7 @@ Month 2+: Phase 4.x 长期建设
 |------|------|-------------|-------------|
 | 注册仓库数 | ? | 统计基线 | +50% |
 | TUI DAU | ? | 统计基线 | +30% |
-| MCP tool 数 | 11 | 15 | 20 |
+| MCP tool 数 | 19 | 22 | 30 |
 | AI 集成案例 | 0 | 1 (Claude Code) | 3 (Claude + 5ire + Codex) |
 | 代码语义索引覆盖率 | 0% | Rust 仓库 100% | 全语言 80% |
 

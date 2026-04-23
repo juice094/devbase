@@ -105,7 +105,7 @@
 |--------|---------|---------|
 | **EventStream 架构** | 将 `devkit_*` 工具调用、用户查询、索引任务统一建模为 `Action → Observation` 事件流 | 支持会话回放、异步 UI 同步 |
 | **Microagent 提示注入** | 读取仓库内 `.devbase/microagents/` 下的提示文件，在查询相关仓库时自动注入上下文 | 让 AI 回答更贴合项目内部约定 |
-| **工具注册表标准化** | 将现有 10 个 `devkit_*` 工具迁移到 **MCP rust-sdk (`rmcp`)** 的 `#[tool_router]` + `ServerHandler` | 获得标准 capability 声明、progress/cancellation、HTTP transport |
+| **工具注册表标准化** | 将现有 19 个 MCP tools 迁移到 **MCP rust-sdk (`rmcp`)** 的 `#[tool_router]` + `ServerHandler` | 获得标准 capability 声明、progress/cancellation、HTTP transport |
 | **Memory Condenser** | 当 `ai_queries` / `repo_notes` 累积过多时，自动按时间窗口聚类并生成摘要，写入 `repo_summaries` | 防止上下文爆炸 |
 
 #### 方向 C：TUI 与本地 LLM 集成（参照 ratatui / ollama / kimi-cli）
@@ -159,8 +159,9 @@
 
 ## 四、优先级与里程碑建议
 
-### Phase 1：MCP 标准化 + GitHub 集成（已完成 + 收尾）
+### Phase 1：MCP 标准化 + GitHub 集成（已完成）
 - [x] GitHub token 配置与 `devkit_github_info`
+- [x] Registry 拆分，MCP tools 模块化（19 tools 落地）
 - [ ] 迁移现有 MCP Server 到 `rmcp` SDK（短期高价值）
 
 ### Phase 2：知识检索增强（devbase 核心能力提升）

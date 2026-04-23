@@ -1,8 +1,8 @@
 # devbase 竞品分析报告
 
 > 分析范围：`C:\Users\22414\dev\third_party` 36 个开源项目
-> 分析日期：2026-04-15
-> devbase 版本：commit `e857e27`
+> 分析日期：2026-04-23
+> devbase 版本：commit `2fc7872` (v0.2.3)
 
 ---
 
@@ -114,7 +114,7 @@ third_party/ (36 projects)
 | **LLM 对话** | ❌ | ✅ | ✅ REPL + TUI | ✅ | ✅ | ✅ |
 | **本地知识库** | ✅ 仓库摘要+模块结构 | ✅ **bge-m3 + RAG** | ✅ Skill 系统 | ❌ | ❌ | ❌ |
 | **MCP 角色** | ✅ **Server**（提供工具） | ✅ **Client** | ❌ | ❌ | ❌ | ❌ |
-| **MCP 工具数** | 5+（devkit_health/query等） | 消费工具 | — | — | — | — |
+| **MCP 工具数** | 19（health/query/repos/metrics/graph/vault/notes 等） | 消费工具 | — | — | — | — |
 | **TUI 界面** | ✅ ratatui | ❌ GUI | ✅ ratatui + egui | ✅ CLI | ✅ ratatui | ✅ |
 | **仓库管理** | ✅ 本地仓库注册表 | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **技能/插件** | ✅ MCP tools | ❌ | ✅ Plugin + DCC | ❌ | ✅ 工具调用 | ✅ |
