@@ -3,9 +3,14 @@ use std::collections::HashMap;
 /// Parsed frontmatter from a Markdown vault note.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Frontmatter {
+    pub id: Option<String>,
     pub title: Option<String>,
+    pub repo: Option<String>,
     pub tags: Vec<String>,
     pub aliases: Vec<String>,
+    pub ai_context: Option<bool>,
+    pub created: Option<String>,
+    pub updated: Option<String>,
     pub date: Option<String>,
     pub raw: String,
     pub extra: HashMap<String, String>,
@@ -48,11 +53,26 @@ fn parse_yaml_frontmatter(raw: &str) -> Frontmatter {
             let rest = rest.trim();
 
             match key {
+                "id" => {
+                    fm.id = Some(unquote(rest).to_string());
+                }
                 "title" => {
                     fm.title = Some(unquote(rest).to_string());
                 }
+                "repo" => {
+                    fm.repo = Some(unquote(rest).to_string());
+                }
                 "date" => {
                     fm.date = Some(unquote(rest).to_string());
+                }
+                "created" => {
+                    fm.created = Some(unquote(rest).to_string());
+                }
+                "updated" => {
+                    fm.updated = Some(unquote(rest).to_string());
+                }
+                "ai_context" => {
+                    fm.ai_context = Some(parse_bool(rest));
                 }
                 "tags" => {
                     fm.tags = parse_yaml_list(rest, raw, line);
@@ -68,6 +88,10 @@ fn parse_yaml_frontmatter(raw: &str) -> Frontmatter {
     }
 
     fm
+}
+
+fn parse_bool(s: &str) -> bool {
+    matches!(s.trim().to_lowercase().as_str(), "true" | "yes" | "1" | "on")
 }
 
 fn unquote(s: &str) -> &str {

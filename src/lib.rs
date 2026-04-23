@@ -13,6 +13,7 @@ pub mod query;
 pub mod registry;
 pub mod scan;
 pub mod search;
+pub mod skill_sync;
 pub mod sync;
 pub mod sync_protocol;
 pub mod syncthing_client;

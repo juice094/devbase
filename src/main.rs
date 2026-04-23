@@ -110,6 +110,18 @@ enum Commands {
         #[arg(long, default_value = "10")]
         duration: u64,
     },
+    /// Sync vault notes with ai_context=true to Clarity SKILL.md format
+    SkillSync {
+        /// Output directory for generated SKILL.md files
+        #[arg(long, default_value = "skills")]
+        output: String,
+        /// Only sync notes matching specific tags (comma-separated)
+        #[arg(long)]
+        filter_tags: Option<String>,
+        /// Preview mode: list what would be synced without writing files
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Push registered repositories to Syncthing as sync folders
     SyncthingPush {
         /// Syncthing REST API base URL
@@ -358,6 +370,24 @@ async fn main() -> anyhow::Result<()> {
             }
 
             println!("Watch completed for {}", path);
+        }
+        Commands::SkillSync { output, filter_tags, dry_run } => {
+            let filter_tags: Vec<String> = filter_tags
+                .map(|s| s.split(',').map(|t| t.trim().to_string()).collect())
+                .unwrap_or_default();
+            match skill_sync::run_sync(&output, &filter_tags, dry_run) {
+                Ok(count) => {
+                    if dry_run {
+                        println!("Would sync {} vault notes to {}", count, output);
+                    } else {
+                        println!("Synced {} vault notes to {}", count, output);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Skill sync failed: {}", e);
+                    std::process::exit(1);
+                }
+            }
         }
         Commands::SyncthingPush {
             api_url,

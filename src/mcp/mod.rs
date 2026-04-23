@@ -3,11 +3,45 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
 pub use tools::*;
 
+/// Phase of a streaming tool invocation.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamPhase {
+    /// Progress update (e.g., "Indexing repo 3/10...").
+    Progress,
+    /// Intermediate partial result.
+    Partial,
+    /// Final result — stream ends after this.
+    Done,
+    /// Error occurred — stream ends after this.
+    Error,
+}
+
+/// A single event in a streaming tool invocation.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ToolStreamEvent {
+    pub phase: StreamPhase,
+    pub payload: serde_json::Value,
+}
+
 #[allow(async_fn_in_trait)]
 pub trait McpTool: Send + Sync + Clone {
     fn name(&self) -> &'static str;
     fn schema(&self) -> serde_json::Value;
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value>;
+
+    /// Optional streaming interface for long-running operations.
+    ///
+    /// Default implementation delegates to `invoke` and emits a single `Done` event.
+    /// Override this for tools that support progressive output (e.g., indexing,
+    /// syncing large batches, or long-running analysis).
+    async fn invoke_stream(&self, args: serde_json::Value) -> anyhow::Result<Vec<ToolStreamEvent>> {
+        let result = self.invoke(args).await?;
+        Ok(vec![ToolStreamEvent {
+            phase: StreamPhase::Done,
+            payload: result,
+        }])
+    }
 }
 
 #[derive(Clone)]
