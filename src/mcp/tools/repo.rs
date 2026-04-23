@@ -1120,3 +1120,423 @@ fn extract_tag_from_query(q: &str) -> Option<String> {
         None
     }
 }
+
+#[derive(Clone)]
+pub struct DevkitCodeSymbolsTool;
+
+impl McpTool for DevkitCodeSymbolsTool {
+    fn name(&self) -> &'static str {
+        "devkit_code_symbols"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Query the semantic code symbol index for a repository. Returns functions, structs, enums, traits, impls, and modules extracted via tree-sitter AST parsing.
+
+Use this when the user wants to:
+- Find the definition of a specific function or struct
+- Explore the API surface of a repository
+- Answer questions like "what functions are in file X?" or "where is struct Y defined?"
+- Understand the module structure at the symbol level
+
+Do NOT use this for:
+- Full-text search across code contents (use devkit_natural_language_query instead)
+- Getting repo-level summaries (use devkit_query_repos instead)
+- Code metrics like line counts (use devkit_code_metrics instead)
+
+Parameters:
+- repo_id: Registered repository ID to query.
+- name_filter: Optional symbol name substring to filter results (case-insensitive).
+- symbol_type: Optional filter by symbol type: "function", "struct", "enum", "trait", "impl", "module", "type_alias", "constant", "static".
+- file_path: Optional file path substring to filter by source file.
+- limit: Maximum results to return (default: 50, max: 200).
+
+Returns: JSON array of symbols with file_path, name, symbol_type, line_start, line_end, and optional signature."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": { "type": "string" },
+                    "name_filter": { "type": "string", "default": "" },
+                    "symbol_type": { "type": "string", "default": "" },
+                    "file_path": { "type": "string", "default": "" },
+                    "limit": { "type": "integer", "default": 50 }
+                },
+                "required": ["repo_id"]
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
+        let name_filter = args.get("name_filter").and_then(|v| v.as_str()).unwrap_or("");
+        let symbol_type = args.get("symbol_type").and_then(|v| v.as_str()).unwrap_or("");
+        let file_path = args.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50).min(200) as usize;
+
+        let repo_id = repo_id.to_string();
+        let name_filter = name_filter.to_string();
+        let symbol_type = symbol_type.to_string();
+        let file_path = file_path.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let mut sql = String::from(
+                "SELECT file_path, symbol_type, name, line_start, line_end, signature \
+                 FROM code_symbols WHERE repo_id = ?1"
+            );
+            let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(repo_id.clone())];
+
+            if !symbol_type.is_empty() {
+                sql.push_str(" AND symbol_type = ?");
+                sql.push_str(&(params.len() + 1).to_string());
+                params.push(Box::new(symbol_type));
+            }
+            if !name_filter.is_empty() {
+                sql.push_str(" AND name LIKE ?");
+                sql.push_str(&(params.len() + 1).to_string());
+                params.push(Box::new(format!("%{}%", name_filter)));
+            }
+            if !file_path.is_empty() {
+                sql.push_str(" AND file_path LIKE ?");
+                sql.push_str(&(params.len() + 1).to_string());
+                params.push(Box::new(format!("%{}%", file_path)));
+            }
+            sql.push_str(&format!(" ORDER BY file_path, line_start LIMIT {}", limit));
+
+            let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(rusqlite::params_from_iter(param_refs), |row| {
+                Ok(serde_json::json!({
+                    "file_path": row.get::<_, String>(0)?,
+                    "symbol_type": row.get::<_, String>(1)?,
+                    "name": row.get::<_, String>(2)?,
+                    "line_start": row.get::<_, i64>(3)?,
+                    "line_end": row.get::<_, i64>(4)?,
+                    "signature": row.get::<_, Option<String>>(5)?,
+                }))
+            })?;
+
+            let mut symbols = Vec::new();
+            for row in rows {
+                symbols.push(row?);
+            }
+
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "success": true,
+                "repo_id": repo_id,
+                "count": symbols.len(),
+                "symbols": symbols,
+            }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitDependencyGraphTool;
+
+impl McpTool for DevkitDependencyGraphTool {
+    fn name(&self) -> &'static str {
+        "devkit_dependency_graph"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Query the cross-repository dependency graph. Returns which local repos a given repo depends on, or which repos depend on it (reverse dependencies). Edges are discovered by parsing Cargo.toml, package.json, and go.mod manifest files.
+
+Use this when the user wants to:
+- Understand the impact of changing a shared library ("who depends on X?")
+- Explore the architecture of a monorepo or multi-repo workspace
+- Find all repos that use a specific local crate/package/module
+- Plan refactoring or breaking changes across repo boundaries
+
+Do NOT use this for:
+- Code-level "who calls this function" (use devkit_code_symbols instead)
+- Full-text search (use devkit_natural_language_query instead)
+- Remote/external dependency analysis (this only tracks local repos)
+
+Parameters:
+- repo_id: Registered repository ID to query.
+- direction: "outgoing" (repos this repo depends on) or "incoming" (repos that depend on this repo). Default: "outgoing".
+- relation_type: Optional filter by relation type (default "depends_on").
+
+Returns: JSON array of dependency edges with target_repo_id, relation_type, and confidence score (1.0 = verified local path dependency, 0.7-0.9 = name heuristic match)."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": { "type": "string" },
+                    "direction": { "type": "string", "default": "outgoing" },
+                    "relation_type": { "type": "string", "default": "" }
+                },
+                "required": ["repo_id"]
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
+        let direction = args.get("direction").and_then(|v| v.as_str()).unwrap_or("outgoing");
+        let relation_type = args.get("relation_type").and_then(|v| v.as_str()).unwrap_or("");
+
+        let repo_id = repo_id.to_string();
+        let direction = direction.to_string();
+        let relation_type = relation_type.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let mut results = Vec::new();
+            if direction == "incoming" || direction == "reverse" {
+                let rows = crate::dependency_graph::list_reverse_dependencies(&conn, &repo_id)?;
+                for (from_id, rel, conf) in rows {
+                    if !relation_type.is_empty() && rel != relation_type {
+                        continue;
+                    }
+                    results.push(serde_json::json!({
+                        "source_repo_id": from_id,
+                        "target_repo_id": repo_id,
+                        "relation_type": rel,
+                        "confidence": conf,
+                    }));
+                }
+            } else {
+                let rows = crate::dependency_graph::list_dependencies(&conn, &repo_id)?;
+                for (to_id, rel, conf) in rows {
+                    if !relation_type.is_empty() && rel != relation_type {
+                        continue;
+                    }
+                    results.push(serde_json::json!({
+                        "source_repo_id": repo_id,
+                        "target_repo_id": to_id,
+                        "relation_type": rel,
+                        "confidence": conf,
+                    }));
+                }
+            }
+
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "success": true,
+                "repo_id": repo_id,
+                "direction": direction,
+                "count": results.len(),
+                "dependencies": results,
+            }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitCallGraphTool;
+
+impl McpTool for DevkitCallGraphTool {
+    fn name(&self) -> &'static str {
+        "devkit_call_graph"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Query the intra-repository call graph extracted by tree-sitter AST parsing. Answer "which functions call X" or "what does function Y call" within a single repo.
+
+Use this when the user wants to:
+- Find all call sites of a specific function inside a repo
+- Understand the control flow impact of changing a function
+- Discover unused functions (no incoming call edges)
+- Trace how data flows through the codebase
+
+Do NOT use this for:
+- Cross-repo dependency questions (use devkit_dependency_graph instead)
+- Finding symbol definitions (use devkit_code_symbols instead)
+- Full-text search (use devkit_natural_language_query instead)
+
+Parameters:
+- repo_id: Registered repository ID to query.
+- callee_name: Name of the called function to search for (required for "who calls X").
+- caller_name: Name of the calling function to search for (required for "what does Y call").
+- file_path: Optional file path substring to narrow scope.
+- limit: Maximum results (default: 50, max: 200).
+
+At least one of callee_name or caller_name must be provided.
+
+Returns: JSON array of call edges with caller_file, caller_symbol, caller_line, callee_name."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": { "type": "string" },
+                    "callee_name": { "type": "string", "default": "" },
+                    "caller_name": { "type": "string", "default": "" },
+                    "file_path": { "type": "string", "default": "" },
+                    "limit": { "type": "integer", "default": 50 }
+                },
+                "required": ["repo_id"]
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
+        let callee_name = args.get("callee_name").and_then(|v| v.as_str()).unwrap_or("");
+        let caller_name = args.get("caller_name").and_then(|v| v.as_str()).unwrap_or("");
+        let file_path = args.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50).min(200) as usize;
+
+        if callee_name.is_empty() && caller_name.is_empty() {
+            anyhow::bail!("At least one of callee_name or caller_name must be provided");
+        }
+
+        let repo_id = repo_id.to_string();
+        let callee_name = callee_name.to_string();
+        let caller_name = caller_name.to_string();
+        let file_path = file_path.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let mut sql = String::from(
+                "SELECT caller_file, caller_symbol, caller_line, callee_name \
+                 FROM code_call_graph WHERE repo_id = ?1"
+            );
+            let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(repo_id.clone())];
+
+            if !callee_name.is_empty() {
+                sql.push_str(" AND callee_name = ?");
+                sql.push_str(&(params.len() + 1).to_string());
+                params.push(Box::new(callee_name));
+            }
+            if !caller_name.is_empty() {
+                sql.push_str(" AND caller_symbol = ?");
+                sql.push_str(&(params.len() + 1).to_string());
+                params.push(Box::new(caller_name));
+            }
+            if !file_path.is_empty() {
+                sql.push_str(" AND caller_file LIKE ?");
+                sql.push_str(&(params.len() + 1).to_string());
+                params.push(Box::new(format!("%{}%", file_path)));
+            }
+            sql.push_str(&format!(" ORDER BY caller_file, caller_line LIMIT {}", limit));
+
+            let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(rusqlite::params_from_iter(param_refs), |row| {
+                Ok(serde_json::json!({
+                    "caller_file": row.get::<_, String>(0)?,
+                    "caller_symbol": row.get::<_, String>(1)?,
+                    "caller_line": row.get::<_, i64>(2)?,
+                    "callee_name": row.get::<_, String>(3)?,
+                }))
+            })?;
+
+            let mut calls = Vec::new();
+            for row in rows {
+                calls.push(row?);
+            }
+
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "success": true,
+                "repo_id": repo_id,
+                "count": calls.len(),
+                "calls": calls,
+            }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitDeadCodeTool;
+
+impl McpTool for DevkitDeadCodeTool {
+    fn name(&self) -> &'static str {
+        "devkit_dead_code"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Identify potentially dead (unused) functions in a repository by comparing the code symbol index against the call graph. Returns functions that are defined but never called within the same repo.
+
+Use this when the user wants to:
+- Clean up unused code in a repository
+- Identify functions that may be safe to remove or deprecate
+- Audit API surface for internal-only dead functions
+- Reduce maintenance burden by eliminating unnecessary code
+
+Do NOT use this for:
+- Public API methods that are called by external consumers (devbase only sees intra-repo calls)
+- Functions referenced by trait bounds or dynamic dispatch (may have false positives)
+- Cross-repo usage analysis (use devkit_dependency_graph + devkit_call_graph instead)
+
+Parameters:
+- repo_id: Registered repository ID to analyze.
+- limit: Maximum results (default: 50, max: 200).
+- include_pub: Also report `pub fn` items (default: false; public functions may be called externally).
+
+Returns: JSON array of potentially dead functions with file_path, name, and line_start."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": { "type": "string" },
+                    "limit": { "type": "integer", "default": 50 },
+                    "include_pub": { "type": "boolean", "default": false }
+                },
+                "required": ["repo_id"]
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50).min(200) as usize;
+        let include_pub = args.get("include_pub").and_then(|v| v.as_bool()).unwrap_or(false);
+
+        let repo_id = repo_id.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            // Find all functions in the repo that have NO incoming call edges
+            let mut sql = String::from(
+                "SELECT cs.file_path, cs.name, cs.line_start \
+                 FROM code_symbols cs \
+                 WHERE cs.repo_id = ?1 AND cs.symbol_type = 'function' \
+                 AND NOT EXISTS ( \
+                     SELECT 1 FROM code_call_graph ccg \
+                     WHERE ccg.repo_id = cs.repo_id AND ccg.callee_name = cs.name \
+                 )"
+            );
+
+            if !include_pub {
+                // Heuristic: exclude signatures that start with "pub fn"
+                // (stored in code_symbols.signature if available)
+                sql.push_str(" AND (cs.signature IS NULL OR cs.signature NOT LIKE 'pub fn%')");
+            }
+
+            sql.push_str(&format!(" ORDER BY cs.file_path, cs.line_start LIMIT {}", limit));
+
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map([&repo_id], |row| {
+                Ok(serde_json::json!({
+                    "file_path": row.get::<_, String>(0)?,
+                    "name": row.get::<_, String>(1)?,
+                    "line_start": row.get::<_, i64>(2)?,
+                }))
+            })?;
+
+            let mut dead = Vec::new();
+            for row in rows {
+                dead.push(row?);
+            }
+
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "success": true,
+                "repo_id": repo_id,
+                "count": dead.len(),
+                "note": "Results may include false positives: public APIs, trait methods, callback registrations, and dynamically dispatched functions are not visible in the intra-repo call graph.",
+                "dead_functions": dead,
+            }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}

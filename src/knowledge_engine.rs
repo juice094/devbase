@@ -698,9 +698,34 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
             WorkspaceRegistry::update_repo_language(&conn, &repo.id, Some(lang))?;
         }
 
+        // Semantic code indexing (tree-sitter AST extraction + call graph)
+        let (symbols, calls) = crate::semantic_index::index_repo_full(&repo.local_path);
+        if !symbols.is_empty() {
+            match crate::semantic_index::save_symbols(&mut conn, &repo.id, &symbols) {
+                Ok(n) => info!("Saved {} code symbols for {}", n, repo.id),
+                Err(e) => warn!("Failed to save code symbols for {}: {}", repo.id, e),
+            }
+        }
+        if !calls.is_empty() {
+            match crate::semantic_index::save_calls(&mut conn, &repo.id, &calls) {
+                Ok(n) => info!("Saved {} call edges for {}", n, repo.id),
+                Err(e) => warn!("Failed to save call graph for {}: {}", repo.id, e),
+            }
+        }
+
+        // Cross-repo dependency graph
+        match crate::dependency_graph::build_dependency_graph(&mut conn, &repo.id, &repo.local_path) {
+            Ok(n) => {
+                if n > 0 {
+                    info!("Resolved {} local dependencies for {}", n, repo.id);
+                }
+            }
+            Err(e) => warn!("Failed to build dependency graph for {}: {}", repo.id, e),
+        }
+
         println!(
-            "Indexed [{}] -> \"{}\" (keywords: {}) language={:?}",
-            repo.id, summary, keywords, detected_lang
+            "Indexed [{}] -> \"{}\" (keywords: {}) language={:?} symbols={} calls={}",
+            repo.id, summary, keywords, detected_lang, symbols.len(), calls.len()
         );
         count += 1;
     }

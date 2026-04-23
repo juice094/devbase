@@ -26,7 +26,7 @@ async fn test_tools_list() {
     });
     let resp = server.handle_request(req).await.unwrap();
     let tools = resp.get("result").unwrap().get("tools").unwrap().as_array().unwrap();
-    assert_eq!(tools.len(), 19);
+    assert_eq!(tools.len(), 23);
     let names: Vec<&str> = tools.iter().map(|t| t.get("name").unwrap().as_str().unwrap()).collect();
     assert!(names.contains(&"devkit_scan"));
     assert!(names.contains(&"devkit_health"));
@@ -41,6 +41,10 @@ async fn test_tools_list() {
     assert!(names.contains(&"devkit_github_info"));
     assert!(names.contains(&"devkit_code_metrics"));
     assert!(names.contains(&"devkit_module_graph"));
+    assert!(names.contains(&"devkit_code_symbols"));
+    assert!(names.contains(&"devkit_dependency_graph"));
+    assert!(names.contains(&"devkit_call_graph"));
+    assert!(names.contains(&"devkit_dead_code"));
     assert!(names.contains(&"devkit_natural_language_query"));
     assert!(names.contains(&"devkit_vault_search"));
     assert!(names.contains(&"devkit_vault_read"));

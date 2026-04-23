@@ -291,7 +291,7 @@ impl WorkspaceRegistry {
 
         // Schema versioning for future migrations
         let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        const CURRENT_SCHEMA_VERSION: i32 = 8;
+        const CURRENT_SCHEMA_VERSION: i32 = 10;
         if user_version < CURRENT_SCHEMA_VERSION
             && path.exists()
             && let Err(e) = crate::backup::auto_backup_before_migration(&path)
@@ -430,6 +430,36 @@ impl WorkspaceRegistry {
             }
             conn.execute("PRAGMA user_version = 8", [])?;
         }
+        if user_version < 9 {
+            // v9: semantic code symbols — already created above via CREATE TABLE IF NOT EXISTS
+            conn.execute("PRAGMA user_version = 9", [])?;
+        }
+        if user_version < 10 {
+            // v10: code call graph for "who calls X" queries
+            let exists: bool = conn
+                .query_row(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='code_call_graph'",
+                    [],
+                    |_| Ok(true),
+                )
+                .unwrap_or(false);
+            if !exists {
+                conn.execute(
+                    "CREATE TABLE code_call_graph (
+                        repo_id TEXT NOT NULL,
+                        caller_file TEXT NOT NULL,
+                        caller_symbol TEXT NOT NULL,
+                        caller_line INTEGER,
+                        callee_name TEXT NOT NULL
+                    )",
+                    [],
+                )?;
+                conn.execute("CREATE INDEX idx_call_graph_repo ON code_call_graph(repo_id)", [])?;
+                conn.execute("CREATE INDEX idx_call_graph_callee ON code_call_graph(callee_name)", [])?;
+                conn.execute("CREATE INDEX idx_call_graph_caller ON code_call_graph(repo_id, caller_file, caller_symbol)", [])?;
+            }
+            conn.execute("PRAGMA user_version = 10", [])?;
+        }
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS vault_repo_links (
@@ -452,6 +482,24 @@ impl WorkspaceRegistry {
             )",
             [],
         )?;
+
+        // v9: semantic code symbols for AI-powered code queries
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS code_symbols (
+                repo_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                symbol_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                line_start INTEGER,
+                line_end INTEGER,
+                signature TEXT,
+                PRIMARY KEY (repo_id, file_path, name)
+            )",
+            [],
+        )?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_code_symbols_repo ON code_symbols(repo_id)", [])?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_code_symbols_name ON code_symbols(name)", [])?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_code_symbols_type ON code_symbols(symbol_type)", [])?;
 
         // Migrate old repo_modules (used by knowledge_engine) to repo_modules_legacy if needed,
         // then create new repo_modules for cargo metadata indexing.

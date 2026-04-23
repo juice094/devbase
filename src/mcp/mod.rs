@@ -65,6 +65,10 @@ pub enum McpToolEnum {
     VaultWrite(DevkitVaultWriteTool),
     VaultBacklinks(DevkitVaultBacklinksTool),
     ProjectContext(DevkitProjectContextTool),
+    CodeSymbols(DevkitCodeSymbolsTool),
+    DependencyGraph(DevkitDependencyGraphTool),
+    CallGraph(DevkitCallGraphTool),
+    DeadCode(DevkitDeadCodeTool),
 }
 
 /// Stability tier for MCP tools.
@@ -111,6 +115,10 @@ impl McpToolEnum {
             McpToolEnum::Experiment(_) => ToolTier::Experimental,
             McpToolEnum::CodeMetrics(_) => ToolTier::Experimental,
             McpToolEnum::ModuleGraph(_) => ToolTier::Experimental,
+            McpToolEnum::CodeSymbols(_) => ToolTier::Beta,
+            McpToolEnum::DependencyGraph(_) => ToolTier::Beta,
+            McpToolEnum::CallGraph(_) => ToolTier::Experimental,
+            McpToolEnum::DeadCode(_) => ToolTier::Experimental,
         }
     }
 }
@@ -137,6 +145,10 @@ impl McpTool for McpToolEnum {
             McpToolEnum::VaultWrite(t) => t.name(),
             McpToolEnum::VaultBacklinks(t) => t.name(),
             McpToolEnum::ProjectContext(t) => t.name(),
+            McpToolEnum::CodeSymbols(t) => t.name(),
+            McpToolEnum::DependencyGraph(t) => t.name(),
+            McpToolEnum::CallGraph(t) => t.name(),
+            McpToolEnum::DeadCode(t) => t.name(),
         }
     }
 
@@ -161,6 +173,10 @@ impl McpTool for McpToolEnum {
             McpToolEnum::VaultWrite(t) => t.schema(),
             McpToolEnum::VaultBacklinks(t) => t.schema(),
             McpToolEnum::ProjectContext(t) => t.schema(),
+            McpToolEnum::CodeSymbols(t) => t.schema(),
+            McpToolEnum::DependencyGraph(t) => t.schema(),
+            McpToolEnum::CallGraph(t) => t.schema(),
+            McpToolEnum::DeadCode(t) => t.schema(),
         }
     }
 
@@ -185,6 +201,10 @@ impl McpTool for McpToolEnum {
             McpToolEnum::VaultWrite(t) => t.invoke(args).await,
             McpToolEnum::VaultBacklinks(t) => t.invoke(args).await,
             McpToolEnum::ProjectContext(t) => t.invoke(args).await,
+            McpToolEnum::CodeSymbols(t) => t.invoke(args).await,
+            McpToolEnum::DependencyGraph(t) => t.invoke(args).await,
+            McpToolEnum::CallGraph(t) => t.invoke(args).await,
+            McpToolEnum::DeadCode(t) => t.invoke(args).await,
         }
     }
 }
@@ -354,6 +374,10 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::VaultWrite(DevkitVaultWriteTool),
         McpToolEnum::VaultBacklinks(DevkitVaultBacklinksTool),
         McpToolEnum::ProjectContext(DevkitProjectContextTool),
+        McpToolEnum::CodeSymbols(DevkitCodeSymbolsTool),
+        McpToolEnum::DependencyGraph(DevkitDependencyGraphTool),
+        McpToolEnum::CallGraph(DevkitCallGraphTool),
+        McpToolEnum::DeadCode(DevkitDeadCodeTool),
     ];
     for tool in all_tools {
         if let Some(ref allowed) = tiers {
