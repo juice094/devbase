@@ -31,10 +31,7 @@ pub fn build_backlink_index(vault_dir: &Path) -> anyhow::Result<HashMap<String, 
         let links = crate::vault::wikilink::extract_wikilinks(body);
 
         for link in links {
-            index
-                .entry(link.target.clone())
-                .or_default()
-                .push(source_id.clone());
+            index.entry(link.target.clone()).or_default().push(source_id.clone());
         }
     }
 
@@ -55,11 +52,7 @@ mod tests {
         let tmp = std::env::temp_dir().join(format!("devbase_bl_{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
 
-        std::fs::write(
-            tmp.join("a.md"),
-            "# A\n\nThis links to [[B]] and [[C]].\n",
-        )
-        .unwrap();
+        std::fs::write(tmp.join("a.md"), "# A\n\nThis links to [[B]] and [[C]].\n").unwrap();
         std::fs::write(tmp.join("b.md"), "# B\n\nThis links to [[C]].\n").unwrap();
         std::fs::write(tmp.join("c.md"), "# C\n\nNo links.\n").unwrap();
 

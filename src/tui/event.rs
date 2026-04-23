@@ -146,12 +146,18 @@ pub(crate) async fn run_app<B: Backend>(
                                     Some("lazygit")
                                 } else {
                                     app.log_warn(
-                                        crate::i18n::current().log.external_tui_not_found.to_string(),
+                                        crate::i18n::current()
+                                            .log
+                                            .external_tui_not_found
+                                            .to_string(),
                                     );
                                     None
                                 };
                                 if let Some(cmd) = cmd {
-                                    return Ok(TuiAction::LaunchExternal { cmd: cmd.to_string(), cwd });
+                                    return Ok(TuiAction::LaunchExternal {
+                                        cmd: cmd.to_string(),
+                                        cwd,
+                                    });
                                 }
                             }
                         }
@@ -161,7 +167,7 @@ pub(crate) async fn run_app<B: Backend>(
                                 let _ = std::process::Command::new("code").arg(&path).spawn();
                             }
                         }
-                    }
+                    },
                     _ => {}
                 },
                 InputMode::TagInput => match key.code {

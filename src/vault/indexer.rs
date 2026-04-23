@@ -29,9 +29,7 @@ pub fn reindex_vault() -> anyhow::Result<()> {
         let tags: Vec<String> = note.tags.clone();
 
         // P1-1: read content from filesystem; fallback to empty string if unreadable
-        let content = fs_io::read_note_body(&note.path)
-            .map(|(body, _fm)| body)
-            .unwrap_or_default();
+        let content = fs_io::read_note_body(&note.path).map(|(body, _fm)| body).unwrap_or_default();
 
         if let Err(e) =
             search::add_vault_doc(&mut writer, &schema, &note.id, title, &content, &tags)

@@ -73,7 +73,10 @@ fn render_bottom_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect, 
                 crate::tui::MainView::VaultList => "[Vault]",
             };
             let mut spans = vec![
-                Span::styled(view_label, Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    view_label,
+                    Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(" "),
                 Span::styled("Tab", styles.selected),
                 Span::raw("=切换 "),

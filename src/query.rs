@@ -378,8 +378,7 @@ pub async fn run_json(
         let results = if rest.trim().is_empty() {
             // List all vault notes when no keywords given
             let all = WorkspaceRegistry::list_vault_notes(&conn)?;
-            all
-                .into_iter()
+            all.into_iter()
                 .map(|n| {
                     serde_json::json!({
                         "id": n.id,

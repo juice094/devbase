@@ -1010,12 +1010,14 @@ impl McpTool for DevkitVaultSearchTool {
                         .to_lowercase();
                         keywords.iter().all(|kw| hay.contains(&kw.to_lowercase()))
                     })
-                    .map(|n| serde_json::json!({
-                        "id": n.id,
-                        "title": n.title,
-                        "path": n.path,
-                        "tags": n.tags,
-                    }))
+                    .map(|n| {
+                        serde_json::json!({
+                            "id": n.id,
+                            "title": n.title,
+                            "path": n.path,
+                            "tags": n.tags,
+                        })
+                    })
                     .collect();
 
                 anyhow::Ok(filtered)
@@ -1228,7 +1230,10 @@ impl McpTool for DevkitProjectContextTool {
                 let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
                 let matched_repo = repos.into_iter().find(|r| {
                     r.id.eq_ignore_ascii_case(&project)
-                        || r.local_path.to_string_lossy().to_lowercase().contains(&project.to_lowercase())
+                        || r.local_path
+                            .to_string_lossy()
+                            .to_lowercase()
+                            .contains(&project.to_lowercase())
                 });
 
                 let repo_json = matched_repo.as_ref().map(|r| {
@@ -1246,7 +1251,8 @@ impl McpTool for DevkitProjectContextTool {
                 // 2. Linked vault notes (via vault_repo_links)
                 let mut linked_vaults = Vec::new();
                 if let Some(ref rid) = repo_id {
-                    let notes = crate::registry::WorkspaceRegistry::get_linked_vault_notes(&conn, rid)?;
+                    let notes =
+                        crate::registry::WorkspaceRegistry::get_linked_vault_notes(&conn, rid)?;
                     for (vid, vtitle) in notes {
                         linked_vaults.push(serde_json::json!({
                             "id": vid,
@@ -1262,7 +1268,10 @@ impl McpTool for DevkitProjectContextTool {
                     let hay = format!("{} {}", n.id, n.path).to_lowercase();
                     if hay.contains(&project.to_lowercase()) {
                         // Avoid duplicates
-                        if !linked_vaults.iter().any(|v| v.get("id").and_then(|x| x.as_str()) == Some(&n.id)) {
+                        if !linked_vaults
+                            .iter()
+                            .any(|v| v.get("id").and_then(|x| x.as_str()) == Some(&n.id))
+                        {
                             linked_vaults.push(serde_json::json!({
                                 "id": n.id,
                                 "title": n.title,

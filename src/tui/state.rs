@@ -66,8 +66,7 @@ impl App {
         if let Some(ot) = crate::registry::repos_toml::load_repos_toml() {
             for repo in &mut repos {
                 if let Some(o) = ot.repos.iter().find(|o| {
-                    repo.local_path.to_string_lossy().contains(&o.path)
-                        || repo.id.contains(&o.path)
+                    repo.local_path.to_string_lossy().contains(&o.path) || repo.id.contains(&o.path)
                 }) {
                     crate::registry::repos_toml::apply_overrides(repo, o);
                 }

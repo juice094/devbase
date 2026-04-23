@@ -1,7 +1,7 @@
-pub mod core;
 pub mod asyncgit;
 pub mod backup;
 pub mod config;
+pub mod core;
 pub mod daemon;
 pub mod digest;
 pub mod discovery_engine;

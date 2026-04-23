@@ -170,14 +170,19 @@ fn render_overview(frame: &mut Frame, repo: &crate::tui::RepoItem, area: Rect, s
     // === Layer 3.5: Linked vault notes ===
     let linked_vaults = crate::registry::WorkspaceRegistry::init_db()
         .ok()
-        .and_then(|conn| crate::registry::WorkspaceRegistry::get_linked_vault_notes(&conn, &repo.id).ok())
+        .and_then(|conn| {
+            crate::registry::WorkspaceRegistry::get_linked_vault_notes(&conn, &repo.id).ok()
+        })
         .unwrap_or_default();
 
     let mut vault_lines: Vec<Line> = Vec::new();
     if !linked_vaults.is_empty() {
         vault_lines.push(Line::from(vec![
             Span::styled("关联笔记: ", styles.label),
-            Span::styled(format!("{} 篇", linked_vaults.len()), Style::default().fg(styles.theme.primary)),
+            Span::styled(
+                format!("{} 篇", linked_vaults.len()),
+                Style::default().fg(styles.theme.primary),
+            ),
         ]));
         for (vid, vtitle) in linked_vaults.iter().take(5) {
             let display = vtitle.as_deref().unwrap_or(vid);
@@ -187,9 +192,10 @@ fn render_overview(frame: &mut Frame, repo: &crate::tui::RepoItem, area: Rect, s
             ]));
         }
         if linked_vaults.len() > 5 {
-            vault_lines.push(Line::from(vec![
-                Span::styled(format!("  ... 还有 {} 篇", linked_vaults.len() - 5), styles.dim),
-            ]));
+            vault_lines.push(Line::from(vec![Span::styled(
+                format!("  ... 还有 {} 篇", linked_vaults.len() - 5),
+                styles.dim,
+            )]));
         }
         vault_lines.push(Line::from(""));
     }
@@ -450,25 +456,38 @@ fn render_vault_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &St
 
     let text = Text::from(vec![
         Line::from(vec![
-            Span::styled("标题: ", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "标题: ",
+                Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD),
+            ),
             Span::raw(title),
         ]),
         Line::from(vec![
-            Span::styled("路径: ", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "路径: ",
+                Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD),
+            ),
             Span::styled(&vault.path, styles.dim),
         ]),
         Line::from(vec![
-            Span::styled("标签: ", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "标签: ",
+                Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD),
+            ),
             Span::raw(&tags_text),
         ]),
         Line::from(vec![
-            Span::styled("链接: ", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "链接: ",
+                Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD),
+            ),
             Span::raw(&links_text),
         ]),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("预览:", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "预览:",
+            Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD),
+        )]),
         Line::from(""),
         Line::from(Span::styled(&content_preview, styles.dim)),
     ]);
@@ -489,13 +508,18 @@ fn render_vault_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &St
     // Linked repos section
     let linked_repos = crate::registry::WorkspaceRegistry::init_db()
         .ok()
-        .and_then(|conn| crate::registry::WorkspaceRegistry::get_linked_repos_full(&conn, &vault.id).ok())
+        .and_then(|conn| {
+            crate::registry::WorkspaceRegistry::get_linked_repos_full(&conn, &vault.id).ok()
+        })
         .unwrap_or_default();
 
     let mut all_lines = text.lines.to_vec();
     all_lines.push(Line::from(""));
     all_lines.push(Line::from(vec![
-        Span::styled("关联仓库: ", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "关联仓库: ",
+            Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD),
+        ),
         Span::styled(
             if linked_repos.is_empty() {
                 "(无)".to_string()
@@ -513,15 +537,19 @@ fn render_vault_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &St
         ]));
     }
     if linked_repos.len() > 5 {
-        all_lines.push(Line::from(vec![
-            Span::styled(format!("  ... 还有 {} 个", linked_repos.len() - 5), styles.dim),
-        ]));
+        all_lines.push(Line::from(vec![Span::styled(
+            format!("  ... 还有 {} 个", linked_repos.len() - 5),
+            styles.dim,
+        )]));
     }
 
     // Backlinks section
     all_lines.push(Line::from(""));
     all_lines.push(Line::from(vec![
-        Span::styled("被引用: ", Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "被引用: ",
+            Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD),
+        ),
         Span::styled(
             if backlinks.is_empty() {
                 "(无)".to_string()
@@ -538,9 +566,10 @@ fn render_vault_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &St
         ]));
     }
     if backlinks.len() > 10 {
-        all_lines.push(Line::from(vec![
-            Span::styled(format!("  ... 还有 {} 篇", backlinks.len() - 10), styles.dim),
-        ]));
+        all_lines.push(Line::from(vec![Span::styled(
+            format!("  ... 还有 {} 篇", backlinks.len() - 10),
+            styles.dim,
+        )]));
     }
 
     let text_with_backlinks = Text::from(all_lines);

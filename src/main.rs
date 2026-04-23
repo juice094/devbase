@@ -584,9 +584,10 @@ async fn main() -> anyhow::Result<()> {
                 } else {
                     Some(std::path::PathBuf::from(path))
                 };
-                let count = tokio::task::spawn_blocking(move || vault::scanner::scan_vault(dir.as_deref()))
-                    .await
-                    .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+                let count =
+                    tokio::task::spawn_blocking(move || vault::scanner::scan_vault(dir.as_deref()))
+                        .await
+                        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
                 println!("Synced {} vault notes.", count);
             }
             VaultCommands::Reindex => {
