@@ -27,12 +27,6 @@ impl MainView {
         }
     }
 
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::RepoList => "Repos",
-            Self::VaultList => "Vault",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -43,22 +37,6 @@ pub(crate) enum DetailTab {
 }
 
 impl DetailTab {
-    pub fn next(self) -> Self {
-        match self {
-            Self::Overview => Self::Health,
-            Self::Health => Self::Insights,
-            Self::Insights => Self::Overview,
-        }
-    }
-
-    pub fn prev(self) -> Self {
-        match self {
-            Self::Overview => Self::Insights,
-            Self::Health => Self::Overview,
-            Self::Insights => Self::Health,
-        }
-    }
-
     pub fn label(self) -> &'static str {
         let i18n = crate::i18n::current();
         match self {

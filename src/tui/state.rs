@@ -380,18 +380,6 @@ impl App {
         }
     }
 
-    pub(crate) fn next_tab(&mut self) {
-        if self.main_view == MainView::RepoList {
-            self.detail_tab = self.detail_tab.next();
-        }
-    }
-
-    pub(crate) fn prev_tab(&mut self) {
-        if self.main_view == MainView::RepoList {
-            self.detail_tab = self.detail_tab.prev();
-        }
-    }
-
     pub(crate) fn toggle_main_view(&mut self) {
         self.main_view = self.main_view.toggle();
     }
