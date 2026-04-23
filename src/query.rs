@@ -397,7 +397,7 @@ pub async fn run_json(
                     .map(|(id, score)| {
                         serde_json::json!({
                             "id": id,
-                            "title": id.split('/').last().unwrap_or(&id),
+                            "title": id.split('/').next_back().unwrap_or(&id),
                             "score": score,
                             "match_reasons": ["vault"]
                         })
@@ -538,6 +538,60 @@ pub async fn run_json(
         },
         "results": paged_results
     }))
+}
+
+pub async fn run(
+    query_str: &str,
+    limit: usize,
+    page: usize,
+    config: &crate::config::Config,
+) -> anyhow::Result<()> {
+    let result = run_json(query_str, limit, page, config).await?;
+    let count = result["count"].as_u64().unwrap_or(0) as usize;
+
+    if count == 0 {
+        println!("No repositories matched '{}'", query_str);
+    } else {
+        if let Some(pagination) = result.get("pagination") {
+            if pagination != &serde_json::Value::Null {
+                let total = pagination["total"].as_u64().unwrap_or(0);
+                let page_num = pagination["page"].as_u64().unwrap_or(1);
+                let limit_val = pagination["limit"].as_u64().unwrap_or(0);
+                let has_more = pagination["has_more"].as_bool().unwrap_or(false);
+                println!(
+                    "\nFound {} result(s) (page {} of ~{}, limit={}).",
+                    total,
+                    page_num,
+                    (total as f64 / limit_val as f64).ceil() as u64,
+                    limit_val
+                );
+                if has_more {
+                    println!("(more results available, use --page {})", page_num + 1);
+                }
+            } else {
+                println!("\nFound {} result(s).", count);
+            }
+        } else {
+            println!("\nFound {} result(s).", count);
+        }
+        for item in result["results"].as_array().unwrap_or(&vec![]) {
+            let id = item["id"].as_str().unwrap_or("");
+            if let Some(summary) = item["summary"].as_str() {
+                let keywords = item["keywords"].as_str().unwrap_or("");
+                println!("  [{}] {} (keywords: {})", id, summary, keywords);
+            } else {
+                let path = item["local_path"].as_str().unwrap_or("");
+                let tags = item["tags"].as_str().unwrap_or("");
+                let reasons = item["match_reasons"]
+                    .as_array()
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
+                    .unwrap_or_default();
+                println!("  [{}] {} (tags: {})  [match: {}]", id, path, tags, reasons);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -691,58 +745,4 @@ mod tests {
         let cond = Condition::Note("todo".to_string());
         assert!(eval_condition(&r, &cond, None, None, &notes).is_none());
     }
-}
-
-pub async fn run(
-    query_str: &str,
-    limit: usize,
-    page: usize,
-    config: &crate::config::Config,
-) -> anyhow::Result<()> {
-    let result = run_json(query_str, limit, page, config).await?;
-    let count = result["count"].as_u64().unwrap_or(0) as usize;
-
-    if count == 0 {
-        println!("No repositories matched '{}'", query_str);
-    } else {
-        if let Some(pagination) = result.get("pagination") {
-            if pagination != &serde_json::Value::Null {
-                let total = pagination["total"].as_u64().unwrap_or(0);
-                let page_num = pagination["page"].as_u64().unwrap_or(1);
-                let limit_val = pagination["limit"].as_u64().unwrap_or(0);
-                let has_more = pagination["has_more"].as_bool().unwrap_or(false);
-                println!(
-                    "\nFound {} result(s) (page {} of ~{}, limit={}).",
-                    total,
-                    page_num,
-                    (total as f64 / limit_val as f64).ceil() as u64,
-                    limit_val
-                );
-                if has_more {
-                    println!("(more results available, use --page {})", page_num + 1);
-                }
-            } else {
-                println!("\nFound {} result(s).", count);
-            }
-        } else {
-            println!("\nFound {} result(s).", count);
-        }
-        for item in result["results"].as_array().unwrap_or(&vec![]) {
-            let id = item["id"].as_str().unwrap_or("");
-            if let Some(summary) = item["summary"].as_str() {
-                let keywords = item["keywords"].as_str().unwrap_or("");
-                println!("  [{}] {} (keywords: {})", id, summary, keywords);
-            } else {
-                let path = item["local_path"].as_str().unwrap_or("");
-                let tags = item["tags"].as_str().unwrap_or("");
-                let reasons = item["match_reasons"]
-                    .as_array()
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
-                    .unwrap_or_default();
-                println!("  [{}] {} (tags: {})  [match: {}]", id, path, tags, reasons);
-            }
-        }
-    }
-
-    Ok(())
 }

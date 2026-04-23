@@ -26,7 +26,6 @@ impl MainView {
             Self::VaultList => Self::RepoList,
         }
     }
-
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

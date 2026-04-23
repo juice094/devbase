@@ -95,8 +95,8 @@ fn parse_yaml_list<'a>(rest: &'a str, raw: &'a str, line: &'a str) -> Vec<String
             }
             if in_list {
                 let tl = l.trim_start();
-                if tl.starts_with("- ") {
-                    items.push(unquote(&tl[2..]).to_string());
+                if let Some(stripped) = tl.strip_prefix("- ") {
+                    items.push(unquote(stripped).to_string());
                 } else if !tl.is_empty() && !tl.starts_with('#') {
                     break;
                 }

@@ -591,7 +591,7 @@ async fn main() -> anyhow::Result<()> {
                 println!("Synced {} vault notes.", count);
             }
             VaultCommands::Reindex => {
-                tokio::task::spawn_blocking(|| vault::indexer::reindex_vault())
+                tokio::task::spawn_blocking(vault::indexer::reindex_vault)
                     .await
                     .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
                 println!("Vault search index rebuilt.");
