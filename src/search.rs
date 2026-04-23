@@ -10,8 +10,10 @@ use tantivy::{
 
 const INDEX_DIR: &str = "devbase/search_index";
 
-fn index_path() -> PathBuf {
-    dirs::data_local_dir().expect("local data dir").join(INDEX_DIR)
+fn index_path() -> Result<PathBuf, TantivyError> {
+    let base = dirs::data_local_dir()
+        .ok_or_else(|| TantivyError::InvalidArgument("local data dir not found".into()))?;
+    Ok(base.join(INDEX_DIR))
 }
 
 fn build_schema() -> Schema {
@@ -25,7 +27,7 @@ fn build_schema() -> Schema {
 }
 
 pub fn init_index() -> Result<(Index, IndexReader), TantivyError> {
-    let path = index_path();
+    let path = index_path()?;
     std::fs::create_dir_all(&path)?;
     let schema = build_schema();
     let index = match Index::open_in_dir(&path) {
@@ -168,15 +170,12 @@ fn search_by_doc_type(
     Ok(results)
 }
 
-fn open_index() -> (Index, Schema) {
-    let path = index_path();
+fn open_index() -> Result<(Index, Schema), TantivyError> {
+    let path = index_path()?;
     let schema = build_schema();
-    let idx = Index::open_or_create(
-        tantivy::directory::MmapDirectory::open(&path).expect("open index dir"),
-        schema.clone(),
-    )
-    .expect("open or create index");
-    (idx, schema)
+    let dir = tantivy::directory::MmapDirectory::open(&path)?;
+    let idx = Index::open_or_create(dir, schema.clone())?;
+    Ok((idx, schema))
 }
 
 #[cfg(test)]
