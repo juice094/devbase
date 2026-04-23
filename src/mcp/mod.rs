@@ -310,6 +310,22 @@ impl McpServer {
             })),
         }
     }
+
+    /// Invoke a tool in streaming mode and return a sequence of events.
+    ///
+    /// This is used by the SSE transport to push progressive updates.
+    /// If the tool does not override `invoke_stream`, the default implementation
+    /// delegates to `invoke` and wraps the result as a single `Done` event.
+    pub async fn handle_streaming_call(
+        &self,
+        name: &str,
+        args: serde_json::Value,
+    ) -> anyhow::Result<Vec<ToolStreamEvent>> {
+        match self.tools.get(name) {
+            Some(tool) => tool.invoke_stream(args).await,
+            None => Err(anyhow::anyhow!("Tool '{}' not found", name)),
+        }
+    }
 }
 
 /// Build an MCP server with optional tier filtering.
