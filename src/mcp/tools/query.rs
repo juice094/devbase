@@ -11,7 +11,23 @@ impl McpTool for DevkitQueryTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Query the knowledge base",
+            "description": r#"Execute a structured query against the devbase knowledge base (repos + vault notes). Supports filter expressions for language, stale status, behind/ahead counts, tags, and keywords.
+
+Use this when the user wants to:
+- Run precise filter queries like "lang:rust stale:>30" or "behind:>10"
+- Combine multiple conditions in a single structured expression
+- Export or script queries that need exact semantics
+
+Do NOT use this for:
+- Natural language questions (use devkit_natural_language_query instead)
+- Searching only vault notes (use devkit_vault_search instead)
+- Querying only repos with structured filters (use devkit_query_repos instead)
+
+Parameters:
+- query: Query expression. Examples: "lang:rust", "stale:>30", "behind:>10", "tag:third-party", "note:agri".
+- limit: Maximum results. Default 50.
+
+Returns: JSON array of matching items, each with type (repo or note), id, title, and relevance metadata."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {

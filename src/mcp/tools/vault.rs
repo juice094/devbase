@@ -11,7 +11,24 @@ impl McpTool for DevkitVaultSearchTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Search vault notes by keywords in title, tags, or content",
+            "description": r#"Search the devbase Vault (Markdown notes) by keywords across note titles, tags, and full content. This is the primary discovery tool for the knowledge base.
+
+Use this when the user wants to:
+- Find notes related to a topic, architecture decision, or project
+- Discover linked concepts via tags or wikilinks
+- Locate a note when you only remember fragments of its content
+- Check if a topic has been documented before writing a new note
+
+Do NOT use this for:
+- Reading the full content of a known note (use devkit_vault_read instead)
+- Writing or updating notes (use devkit_vault_write instead)
+- Finding backlinks to a specific note (use devkit_vault_backlinks instead)
+- Searching across code repositories (use devkit_query_repos or devkit_natural_language_query instead)
+
+Parameters:
+- query: Space-separated keywords. All keywords must match (AND logic). Case-insensitive.
+
+Returns: JSON array of matching notes. Each includes: id, title, path, and tags. Use devkit_vault_read with the id or path to retrieve full content."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -86,7 +103,23 @@ impl McpTool for DevkitVaultReadTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Read the full content of a vault note by its path or id",
+            "description": r#"Read the complete Markdown content of a vault note, including its YAML frontmatter and body. This is the primary tool for retrieving knowledge base documents.
+
+Use this when the user wants to:
+- Read a specific note after finding it via devkit_vault_search
+- Retrieve project documentation, architecture decisions, or design notes
+- Extract the frontmatter metadata (tags, repo links, ai_context) from a note
+
+Do NOT use this for:
+- Searching for notes (use devkit_vault_search instead)
+- Writing or updating notes (use devkit_vault_write instead)
+- Finding backlinks (use devkit_vault_backlinks instead)
+- Reading code files (use filesystem tools or devkit_project_context instead)
+
+Parameters:
+- path: Vault note file path or note id (e.g., "references/mcp-integration.md" or "mcp-integration-guide").
+
+Returns: JSON with frontmatter (id, repo, tags, ai_context, created, updated) and body (Markdown content)."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -125,7 +158,25 @@ impl McpTool for DevkitVaultWriteTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Write or append content to a vault note. Creates the file if it does not exist.",
+            "description": r#"Write new content to a vault note or append to an existing one. Creates the file and directory structure automatically if needed. This is the primary tool for maintaining the knowledge base.
+
+Use this when the user wants to:
+- Create a new knowledge base document
+- Update existing documentation with new findings
+- Append a log entry or observation to a running note
+- Save AI-generated analysis or summaries as persistent notes
+
+Do NOT use this for:
+- Attaching short annotations to repos (use devkit_note instead)
+- Modifying code files (use git or filesystem tools)
+- Deleting notes (not supported; move to archive manually)
+
+Parameters:
+- path: Target file path relative to the vault root (e.g., "ideas/new-feature.md").
+- content: Markdown content to write.
+- append: If true, appends to existing content. If false (default), overwrites.
+
+Returns: JSON with success status and the written file path."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -179,7 +230,22 @@ impl McpTool for DevkitVaultBacklinksTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Find all vault notes that link to a given note (backlinks)",
+            "description": r#"Find all vault notes that contain wikilink references to a specific target note. This reveals the knowledge graph connections around a topic.
+
+Use this when the user wants to:
+- Discover which notes reference a given concept or project
+- Map the knowledge graph around a central topic
+- Find related documentation before making changes
+
+Do NOT use this for:
+- Keyword search across notes (use devkit_vault_search instead)
+- Reading note content (use devkit_vault_read instead)
+- Finding repo-to-repo relationships (not supported)
+
+Parameters:
+- note_id: Target note id or path (e.g., "01-Projects/devbase.md").
+
+Returns: JSON array of backlinking notes, each with id, title, and path."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {

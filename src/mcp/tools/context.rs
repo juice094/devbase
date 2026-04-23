@@ -11,7 +11,29 @@ impl McpTool for DevkitProjectContextTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Get unified project context combining repo metadata, linked vault notes, and assets",
+            "description": r#"Retrieve a unified context snapshot for a project by aggregating its repository metadata, linked vault notes, keyword-matched vault notes, and associated asset files. This is the single best starting point when you need to understand a project holistically.
+
+Use this when the user wants to:
+- Understand a project at a glance (repo info + docs + assets in one call)
+- Prepare context before answering questions about a specific codebase
+- Find all documentation and resources related to a project
+- Build a project brief or summary without making multiple tool calls
+
+Do NOT use this for:
+- Searching across ALL repos (use devkit_query_repos instead)
+- Full-text search in the vault without a specific project (use devkit_vault_search instead)
+- Checking the health of multiple repos (use devkit_health instead)
+- If you only need one specific piece of information (e.g., just stars count), use the specific tool instead to save context space
+
+Parameters:
+- project: Project identifier — can be a repo id, repo name, or vault note id/path. The tool matches by substring (case-insensitive).
+
+Returns: JSON object with:
+  - success: boolean
+  - project: the matched project identifier
+  - repo: repository metadata (id, path, language, tags, stars) or null if no repo matched
+  - vault_notes: array of linked and keyword-matched notes (id, title, source: "link" or "search")
+  - assets: array of files/folders from the project's assets directory"#,
             "inputSchema": {
                 "type": "object",
                 "properties": {

@@ -12,7 +12,23 @@ impl McpTool for DevkitScanTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Scan a directory for Git repositories and optionally register them",
+            "description": r#"Scan a directory to discover Git repositories and non-Git workspaces (e.g., openclaw, generic projects marked by SOUL.md or .devbase files).
+
+Use this when the user wants to:
+- Discover repositories in a directory for the first time
+- Add newly cloned or downloaded projects to the devbase workspace
+- Find ZIP-snapshot folders (named with -main/-master suffix) that need Git migration
+
+Do NOT use this for:
+- Listing already-registered repos (use devkit_query_repos instead)
+- Checking repo status (use devkit_health instead)
+- Searching across repos (use devkit_query_repos or devkit_natural_language_query instead)
+
+Parameters:
+- path: Directory to scan (absolute or relative). Defaults to current directory.
+- register: If true, discovered repos are persisted to the devbase SQLite registry. If false, returns a preview only.
+
+Returns: JSON array of discovered repos with id, path, language, source_type, and whether registration succeeded."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -52,7 +68,23 @@ impl McpTool for DevkitHealthTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Check the health of registered repositories and the environment",
+            "description": r#"Check the health status of all registered repositories in the devbase workspace. This is a read-only diagnostic tool.
+
+Use this when the user wants to:
+- Get an overview of all tracked repos and their Git status
+- Identify repos that are dirty (uncommitted changes), ahead (local commits not pushed), behind (remote commits not pulled), or diverged
+- Check environment prerequisites (Rust, Go, Node.js, CMake versions)
+- Find repos that need attention before a sync
+
+Do NOT use this for:
+- Pulling or pushing changes (use devkit_sync instead)
+- Searching repos by language or tag (use devkit_query_repos instead)
+- Scanning new directories (use devkit_scan instead)
+
+Parameters:
+- detail: If true, returns per-repo Git status (dirty/ahead/behind/diverged), last sync time, and file count. If false, returns a summary only.
+
+Returns: JSON object with workspace summary and per-repo health records. Each repo includes: id, path, language, tags, git_status (dirty/ahead/behind/diverged/up_to_date), last_synced_at, file_count, and health score."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -83,7 +115,27 @@ impl McpTool for DevkitSyncTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Syncs registered repos according to their inferred SyncPolicy (Mirror/Conservative/Rebase/Merge based on tags). dry_run=true by default for safety.",
+            "description": r#"Synchronize registered repositories with their upstream remotes by pulling and/or pushing commits according to each repo's inferred SyncPolicy (Mirror / Conservative / Rebase / Merge, determined by tags).
+
+This is a WRITE operation. By default it runs in dry-run mode (no files are modified) for safety.
+
+Use this when the user wants to:
+- Update local repos to match their remotes (git pull)
+- Push local commits to remotes (git push)
+- Preview what a sync would do before executing it
+- Batch-sync multiple repos filtered by tags
+
+Do NOT use this for:
+- Checking repo status without modifying anything (use devkit_health instead)
+- Scanning or registering new repos (use devkit_scan instead)
+- Repos with dirty working directories — these are automatically skipped for safety
+- Repos with diverged histories under Conservative policy — these are also skipped
+
+Parameters:
+- dry_run: Defaults to true. When true, previews the sync plan without modifying any files. Set to false to execute.
+- filter_tags: Comma-separated tags to limit which repos are synced (e.g., "third-party,reference").
+
+Returns: JSON object with per-repo sync results including: repo_id, action (pull/push/skipped), status (success/conflict/error), and safety_reason if skipped."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -119,7 +171,22 @@ impl McpTool for DevkitIndexTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Index repository summaries and module structures",
+            "description": r#"Build or refresh the Tantivy full-text search index for repository summaries, README extracts, and module structures. This makes repos searchable via devkit_query and devkit_natural_language_query.
+
+Use this when the user wants to:
+- Make newly registered repos searchable
+- Update the search index after significant code changes
+- Enable full-text search across repo documentation
+
+Do NOT use this for:
+- Registering new repos (use devkit_scan instead)
+- Querying repos directly (use devkit_query_repos or devkit_natural_language_query instead)
+- Getting code metrics (use devkit_code_metrics instead)
+
+Parameters:
+- path: Specific repo path to index. If omitted, all registered repos are re-indexed.
+
+Returns: JSON with indexed count and error count."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -154,7 +221,24 @@ impl McpTool for DevkitNoteTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Add a note to a repository",
+            "description": r#"Attach a short text note to a registered repository in the devbase SQLite registry. This is a lightweight annotation tool, not a full document.
+
+Use this when the user wants to:
+- Record a quick observation about a repo (e.g., "needs dependency update")
+- Mark a repo with temporary status information
+- Log a one-line note from an AI assistant
+
+Do NOT use this for:
+- Writing long-form documentation (use devkit_vault_write instead)
+- Creating structured knowledge base entries (use devkit_vault_write instead)
+- Notes that need markdown formatting or backlinks (use devkit_vault_write instead)
+
+Parameters:
+- repo_id: Registered repository ID.
+- text: Note content (plain text, max ~500 chars recommended).
+- author: Optional author label (default: "ai").
+
+Returns: JSON with success status."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -193,7 +277,21 @@ impl McpTool for DevkitDigestTool {
     }
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Generate daily knowledge digest",
+            "description": r#"Generate a daily summary digest of recent activity across the devbase workspace, including new repos, health changes, and sync events.
+
+Use this when the user wants to:
+- Get a morning briefing of workspace changes
+- Review what happened across all repos in the last 24 hours
+- Identify repos that need attention today
+
+Do NOT use this for:
+- Real-time status checks (use devkit_health instead)
+- Specific repo queries (use devkit_query_repos instead)
+- Searching the vault (use devkit_vault_search instead)
+
+Parameters: None.
+
+Returns: JSON with a plain-text digest string."#,
             "inputSchema": { "type": "object", "properties": {} }
         })
     }
@@ -218,7 +316,23 @@ impl McpTool for DevkitPaperIndexTool {
     }
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Scan a directory for PDF papers and index them",
+            "description": r#"Scan a directory for PDF academic papers, extract metadata (title, authors, year if available), and register them in the devbase knowledge base for citation and search.
+
+Use this when the user wants to:
+- Import a collection of PDF papers into the workspace
+- Make papers searchable alongside code repos
+- Build a personal research library
+
+Do NOT use this for:
+- Indexing code repositories (use devkit_scan instead)
+- Reading paper content (use devkit_vault_read after indexing)
+- Searching existing papers (use devkit_vault_search instead)
+
+Parameters:
+- path: Directory containing PDFs. Defaults to ~/papers.
+- tags: Comma-separated tags to apply to all discovered papers.
+
+Returns: JSON with discovered paper count and registration status."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -292,7 +406,26 @@ impl McpTool for DevkitExperimentLogTool {
     }
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Log an experiment run",
+            "description": r#"Log a structured experiment entry in the devbase registry, linking it to a repository and optionally tagging the repo as experiment-active.
+
+Use this when the user wants to:
+- Record an experiment configuration and result
+- Track which repos are currently being experimented on
+- Maintain an audit trail of iterative changes
+
+Do NOT use this for:
+- General note-taking (use devkit_note or devkit_vault_write instead)
+- Code changes (use devkit_sync or git directly)
+- Paper tracking (use devkit_paper_index instead)
+
+Parameters:
+- id: Experiment identifier (e.g., "exp-2026-04-23-benchmark").
+- repo_id: Associated repository ID.
+- config: JSON object with experiment parameters.
+- result: JSON object with experiment outcomes.
+- tag_repo: If true, tags the repo with "experiment-active".
+
+Returns: JSON with experiment log ID and success status."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -354,7 +487,23 @@ impl McpTool for DevkitGithubInfoTool {
     }
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Fetch live repository metadata from GitHub API",
+            "description": r#"Fetch real-time metadata from the GitHub API for a registered repository, including stars, forks, open issues, description, and last push date. Optionally writes the GitHub description into the repo's local summary.
+
+Use this when the user wants to:
+- Check the current popularity (stars) of a tracked repo
+- Compare upstream activity across multiple repos
+- Update the local summary with the official GitHub description
+
+Do NOT use this for:
+- Querying local repo status (use devkit_health instead)
+- Syncing code changes (use devkit_sync instead)
+- Repos not hosted on GitHub (returns error)
+
+Parameters:
+- repo_id: Registered repository ID in devbase.
+- write_summary: If true, writes the GitHub description into the local repo summary file.
+
+Returns: JSON with stars, forks, open_issues, description, pushed_at, and updated summary path if write_summary was true."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -451,7 +600,22 @@ impl McpTool for DevkitCodeMetricsTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Get code metrics (lines, files, languages) for registered repositories",
+            "description": r#"Compute code metrics for registered repositories: total lines of code, file count, language breakdown, and rough complexity indicators (via tokei).
+
+Use this when the user wants to:
+- Compare the size of different projects
+- Identify the primary language of a repo
+- Find the largest or most complex codebase in the workspace
+
+Do NOT use this for:
+- Module-level structure analysis (use devkit_module_graph instead)
+- Git status or health checks (use devkit_health instead)
+- Searching code content (use devkit_natural_language_query instead)
+
+Parameters:
+- repo_id: Specific repo ID. If omitted, returns metrics for all registered repos.
+
+Returns: JSON array of metric objects per repo: repo_id, total_lines, code_lines, comment_lines, blank_lines, file_count, and language_breakdown."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -513,7 +677,22 @@ impl McpTool for DevkitModuleGraphTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Get module/target structure for Rust repositories (from cargo metadata)",
+            "description": r#"Extract the module and binary target structure from a Rust repository using cargo metadata. Returns crates, binaries, libraries, and their interdependencies.
+
+Use this when the user wants to:
+- Understand the architecture of a Rust workspace
+- Find all binary targets (executables) in a project
+- Map crate dependencies within a workspace
+
+Do NOT use this for:
+- Non-Rust repositories (returns empty or error)
+- General code metrics like line counts (use devkit_code_metrics instead)
+- Git operations (use devkit_health or devkit_sync instead)
+
+Parameters:
+- repo_id: Repository ID. If omitted, analyzes the current directory.
+
+Returns: JSON with workspace_members, packages (name, version, targets), and dependency graph."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -594,7 +773,27 @@ impl McpTool for DevkitQueryReposTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Query registered repositories with filters. Returns structured metadata including Git status, tags, language, and health.",
+            "description": r#"Query the devbase registry for registered repositories using structured filters. This is the primary read-only tool for repository discovery and filtering.
+
+Use this when the user wants to:
+- List repos by programming language (e.g., "show all Rust projects")
+- Find repos with specific tags (e.g., "production", "third-party", "agri:crop:rice")
+- Filter by Git status (dirty, ahead, behind, diverged, up_to_date)
+- Get paginated repo listings with metadata
+
+Do NOT use this for:
+- Natural language queries like "show me big projects" (use devkit_natural_language_query instead)
+- Full-text search across repo contents (use devkit_index + search instead)
+- Checking detailed health diagnostics (use devkit_health instead)
+- Writing or modifying repos (use devkit_sync or devkit_scan instead)
+
+Parameters:
+- language: Filter by programming language (e.g., "rust", "go", "python"). Empty string = all languages.
+- tag: Filter by tag. Empty string = all tags.
+- status: Filter by Git status enum: "dirty", "ahead", "behind", "diverged", "up_to_date", or "" (all).
+- limit: Maximum results to return. Default 50.
+
+Returns: JSON array of repo objects. Each includes: id, local_path, language, tags, stars, upstream_url, git_status (dirty/ahead/behind/diverged/up_to_date), and last_synced_at."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -717,7 +916,22 @@ impl McpTool for DevkitNaturalLanguageQueryTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Query repositories using natural language (e.g., 'show dirty rust repos', 'repos with more than 100 stars')",
+            "description": r#"Query registered repositories using natural language instead of structured filters. The query is parsed into filter conditions (language, status, stars, tags) and executed against the registry.
+
+Use this when the user asks in conversational form, such as:
+- "Show me all dirty Rust projects"
+- "Which repos have more than 100 stars?"
+- "List third-party libraries that are behind upstream"
+
+Do NOT use this for:
+- Precise structured queries (use devkit_query_repos for exact filters)
+- Full-text search across code (use devkit_index + search)
+- Vault note searches (use devkit_vault_search instead)
+
+Parameters:
+- query: Natural language query string.
+
+Returns: JSON array of matching repos with metadata, same format as devkit_query_repos."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {

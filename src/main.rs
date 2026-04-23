@@ -318,7 +318,9 @@ async fn main() -> anyhow::Result<()> {
                 // SAFETY: set_var is called once at program startup before any
                 // threads read the environment. The MCP server runs in a single
                 // subprocess, so concurrent reads are not possible.
-                unsafe { std::env::set_var("DEVBASE_MCP_TOOL_TIERS", tiers); }
+                unsafe {
+                    std::env::set_var("DEVBASE_MCP_TOOL_TIERS", tiers);
+                }
             }
             mcp::run_stdio().await?;
         }
