@@ -11,7 +11,7 @@ MCP（Model Context Protocol）是 AI 助手与外部工具通信的标准协议
 - 查询本地有哪些项目、它们的状态如何
 - 批量同步仓库、检查健康度
 - 获取代码统计、模块结构、GitHub 元数据
-- 添加笔记、生成知识日报
+- 添加笔记、生成知识日报、管理 Vault
 
 **核心优势**：AI 无法识别 GUI（桌面应用对 AI 是黑盒），但 AI 可以调用 MCP 工具。devbase 是 AI 理解本地代码库的**唯一结构化入口**。
 
@@ -101,7 +101,9 @@ AI 会调用 `devkit_health` 工具，返回你的仓库列表和状态。
 
 ---
 
-## 可用 Tool 清单（12 个）
+## 可用 Tool 清单（19 个）
+
+### Repo（13 个）
 
 | Tool | 功能 | AI 使用场景 |
 |------|------|-----------|
@@ -109,14 +111,36 @@ AI 会调用 `devkit_health` 工具，返回你的仓库列表和状态。
 | `devkit_health` | 健康检查（所有仓库状态） | "我本地有哪些项目需要同步？" |
 | `devkit_sync` | 批量同步（dry-run 默认） | "预览同步这些仓库会发生什么" |
 | `devkit_query_repos` | 按语言/标签/状态查询仓库 | "列出所有 dirty 的 Rust 项目" |
-| `devkit_code_metrics` | 代码统计（行数、文件数、语言） | "我最大的项目是什么？" |
 | `devkit_index` | 索引仓库摘要和模块结构 | "为所有仓库生成知识索引" |
-| `devkit_query` | 知识库查询（tantivy 搜索） | "搜索关于 'sync policy' 的知识" |
 | `devkit_note` | 为仓库添加笔记 | "给 devbase 项目添加一条笔记" |
 | `devkit_digest` | 生成每日知识简报 | "生成今天的知识日报" |
 | `devkit_github_info` | 查询 GitHub 元数据 | "devbase 项目有多少 stars？" |
 | `devkit_paper_index` | 索引 PDF 论文 | "索引 ~/papers 目录" |
 | `devkit_experiment_log` | 记录实验运行 | "记录这次实验的配置和结果" |
+| `devkit_code_metrics` | 代码统计（行数、文件数、语言） | "我最大的项目是什么？" |
+| `devkit_module_graph` | 模块依赖图 | "devbase 项目有哪些二进制目标？" |
+| `devkit_natural_language_query` | 自然语言查询代码库知识 | "用自然语言搜索我的项目知识" |
+
+### Vault（4 个）
+
+| Tool | 功能 | AI 使用场景 |
+|------|------|-----------|
+| `devkit_vault_search` | Vault 笔记搜索 | "在 Vault 中搜索关于架构的笔记" |
+| `devkit_vault_read` | 读取 Vault 笔记 | "读取 Vault 中某篇笔记的内容" |
+| `devkit_vault_write` | 创建或更新 Vault 笔记 | "在 Vault 中记录一个新的想法" |
+| `devkit_vault_backlinks` | 查询笔记反向链接 | "查看某篇笔记被哪些其他笔记引用" |
+
+### Query（1 个）
+
+| Tool | 功能 | AI 使用场景 |
+|------|------|-----------|
+| `devkit_query` | 知识库查询（tantivy 搜索） | "搜索关于 'sync policy' 的知识" |
+
+### Context（1 个）
+
+| Tool | 功能 | AI 使用场景 |
+|------|------|-----------|
+| `devkit_project_context` | 获取项目上下文摘要 | "获取当前项目的完整上下文信息" |
 
 ---
 
@@ -197,17 +221,15 @@ AI 会调用 `devkit_health` 工具，返回你的仓库列表和状态。
 
 **用户**：搜索所有项目中包含 `fetch_github_stars` 的地方
 
-**AI（调用 `devkit_query_repos` 获取仓库列表，然后用户通过 TUI 的 `/` 搜索功能查看）**：
+**AI（调用 `devkit_query_repos` 获取仓库列表，然后建议用户通过 TUI 的 `/` 搜索功能查看）**：
 
-> 注：此场景目前需要人类在 TUI 中按 `/` 执行搜索，AI 侧可通过 `devkit_query_repos` 获取仓库路径后，建议用户打开 TUI 搜索。
-
-**未来**：计划增加 `devkit_grep` MCP tool，让 AI 直接发起跨仓库代码搜索。
+> 注：`devkit_grep` MCP tool 未作为独立 tool 提供；跨仓库代码搜索能力已由 TUI 的 `/` 搜索和 `devkit_query_repos` 覆盖。AI 可通过 `devkit_query_repos` 获取仓库路径后，建议用户打开 TUI 执行 `/` 搜索。
 
 ---
 
 ## 传输模式
 
-devbase MCP Server 支持两种传输模式：
+devbase MCP Server 以 **stdio** 为主要传输模式，SSE 已边缘化，仅保留用于调试场景。
 
 ### stdio（推荐，本地 AI 助手）
 
@@ -219,7 +241,7 @@ devbase mcp --transport stdio
 
 AI 助手通过子进程启动 devbase，通过 stdin/stdout 通信。
 
-### SSE（服务器模式，远程 AI 或调试）
+### SSE（边缘化，仅调试）
 
 ```bash
 devbase mcp --transport sse --port 3001
@@ -253,13 +275,15 @@ AI 助手通过 HTTP SSE 连接 `http://localhost:3001/sse`。
 
 | 功能 | 状态 |
 |------|------|
-| 12 个基础 MCP tool | ✅ 可用 |
+| 19 个 MCP tool | ✅ 可用 |
 | `devkit_query_repos` 结构化查询 | ✅ 可用 |
 | `devkit_code_metrics` 代码统计 | ✅ 可用 |
-| `devkit_grep` 跨仓库代码搜索 | 🚧 规划中 |
-| `devkit_module_graph` 模块依赖图 | 🚧 规划中 |
-| 自然语言查询接口 | 🚧 规划中 |
+| `devkit_module_graph` 模块依赖图 | ✅ 可用 |
+| `devkit_grep` 跨仓库代码搜索 | ℹ️ 能力由 TUI `/` 搜索和 `devkit_query_repos` 覆盖 |
+| 自然语言查询接口 | ✅ 可用 |
+| Vault 笔记管理 | ✅ 可用 |
+| `project_context` 项目上下文 | ✅ 可用 |
 
 ---
 
-*最后更新：2026-04-15*
+*最后更新：2026-04-23*

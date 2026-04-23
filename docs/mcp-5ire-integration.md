@@ -11,7 +11,7 @@
 - 查询本地所有项目的状态和健康度
 - 获取代码统计、模块结构、Stars 趋势
 - 批量同步仓库（通过 dry-run 预览）
-- 管理你的开发者知识库
+- 管理你的开发者知识库和 Vault 笔记
 
 ---
 
@@ -91,7 +91,9 @@ VALUES (
 
 ## 5ire 中可用的 devbase Tool
 
-连接成功后，5ire 的 AI 助手可以调用以下 13 个 tool：
+连接成功后，5ire 的 AI 助手可以调用以下 19 个 tool：
+
+### Repo（13 个）
 
 | Tool | 5ire 中的使用场景 |
 |------|----------------|
@@ -99,15 +101,36 @@ VALUES (
 | `devkit_health` | "我本地有哪些项目需要同步？" |
 | `devkit_sync` | "预览同步这些仓库会发生什么" |
 | `devkit_query_repos` | "列出所有 dirty 的 Rust 项目" |
-| `devkit_code_metrics` | "我最大的项目是什么？" |
-| `devkit_module_graph` | "devbase 项目有哪些二进制目标？" |
 | `devkit_index` | "为所有仓库生成知识索引" |
-| `devkit_query` | "搜索关于 sync policy 的知识" |
 | `devkit_note` | "给 devbase 项目添加一条笔记" |
 | `devkit_digest` | "生成今天的知识日报" |
 | `devkit_github_info` | "devbase 项目有多少 stars？" |
 | `devkit_paper_index` | "索引 ~/papers 目录" |
 | `devkit_experiment_log` | "记录这次实验的配置" |
+| `devkit_code_metrics` | "我最大的项目是什么？" |
+| `devkit_module_graph` | "devbase 项目有哪些二进制目标？" |
+| `devkit_natural_language_query` | "用自然语言搜索我的代码库知识" |
+
+### Vault（4 个）
+
+| Tool | 5ire 中的使用场景 |
+|------|----------------|
+| `devkit_vault_search` | "在 Vault 中搜索关于架构的笔记" |
+| `devkit_vault_read` | "读取 Vault 中某篇笔记的内容" |
+| `devkit_vault_write` | "在 Vault 中创建或更新一条笔记" |
+| `devkit_vault_backlinks` | "查看某篇笔记被哪些其他笔记引用" |
+
+### Query（1 个）
+
+| Tool | 5ire 中的使用场景 |
+|------|----------------|
+| `devkit_query` | "搜索关于 sync policy 的知识" |
+
+### Context（1 个）
+
+| Tool | 5ire 中的使用场景 |
+|------|----------------|
+| `devkit_project_context` | "获取当前项目的上下文摘要" |
 
 ---
 
@@ -144,6 +167,15 @@ VALUES (
 > - `devbase` (bin) — src/main.rs
 > - `devbase` (lib) — src/lib.rs
 
+### 场景 4：Vault 笔记管理
+
+**用户**：我在 Vault 里有没有记录关于 MCP 集成的想法？
+
+**5ire（调用 `devkit_vault_search` with query="MCP 集成"）**：
+> 找到 2 条相关笔记：
+> 1. `docs/mcp-integration-guide.md` — 最后更新 2026-04-23
+> 2. `ideas/mcp-sse-vs-stdio.md` — 最后更新 2026-04-20
+
 ---
 
 ## 故障排除
@@ -179,4 +211,4 @@ VALUES (
 
 ---
 
-*最后更新：2026-04-15*
+*最后更新：2026-04-23*
