@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
 pub use tools::*;
@@ -31,6 +31,54 @@ pub enum McpToolEnum {
     VaultWrite(DevkitVaultWriteTool),
     VaultBacklinks(DevkitVaultBacklinksTool),
     ProjectContext(DevkitProjectContextTool),
+}
+
+/// Stability tier for MCP tools.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ToolTier {
+    Stable,
+    Beta,
+    Experimental,
+}
+
+impl ToolTier {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "stable" => Some(ToolTier::Stable),
+            "beta" => Some(ToolTier::Beta),
+            "experimental" => Some(ToolTier::Experimental),
+            _ => None,
+        }
+    }
+}
+
+impl McpToolEnum {
+    pub fn tier(&self) -> ToolTier {
+        match self {
+            // Stable: battle-tested, schema frozen, unit-tested
+            McpToolEnum::Health(_) => ToolTier::Stable,
+            McpToolEnum::QueryRepos(_) => ToolTier::Stable,
+            McpToolEnum::VaultSearch(_) => ToolTier::Stable,
+            McpToolEnum::VaultRead(_) => ToolTier::Stable,
+            McpToolEnum::ProjectContext(_) => ToolTier::Stable,
+            // Beta: validated but schema may微调, limited edge-case tests
+            McpToolEnum::Scan(_) => ToolTier::Beta,
+            McpToolEnum::Sync(_) => ToolTier::Beta,
+            McpToolEnum::Query(_) => ToolTier::Beta,
+            McpToolEnum::Index(_) => ToolTier::Beta,
+            McpToolEnum::Note(_) => ToolTier::Beta,
+            McpToolEnum::VaultWrite(_) => ToolTier::Beta,
+            McpToolEnum::VaultBacklinks(_) => ToolTier::Beta,
+            McpToolEnum::NaturalLanguageQuery(_) => ToolTier::Beta,
+            McpToolEnum::GithubInfo(_) => ToolTier::Beta,
+            // Experimental: new, behavior may change, pending prod validation
+            McpToolEnum::Digest(_) => ToolTier::Experimental,
+            McpToolEnum::Paper(_) => ToolTier::Experimental,
+            McpToolEnum::Experiment(_) => ToolTier::Experimental,
+            McpToolEnum::CodeMetrics(_) => ToolTier::Experimental,
+            McpToolEnum::ModuleGraph(_) => ToolTier::Experimental,
+        }
+    }
 }
 
 impl McpTool for McpToolEnum {
@@ -122,9 +170,8 @@ impl McpServer {
         Self { tools: HashMap::new() }
     }
 
-    pub fn register_tool(mut self, tool: McpToolEnum) -> Self {
+    pub fn register_tool(&mut self, tool: McpToolEnum) {
         self.tools.insert(tool.name().to_string(), tool);
-        self
     }
 
     pub async fn handle_request(
@@ -231,27 +278,47 @@ impl McpServer {
     }
 }
 
+/// Build an MCP server with optional tier filtering.
+///
+/// If `tiers` is `None`, all 19 tools are registered (backward compatible).
+/// If `tiers` is provided, only tools whose tier is in the set are registered.
+pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
+    let mut server = McpServer::new();
+    let all_tools = [
+        McpToolEnum::Scan(DevkitScanTool),
+        McpToolEnum::Health(DevkitHealthTool),
+        McpToolEnum::Sync(DevkitSyncTool),
+        McpToolEnum::Query(DevkitQueryTool),
+        McpToolEnum::QueryRepos(DevkitQueryReposTool),
+        McpToolEnum::Index(DevkitIndexTool),
+        McpToolEnum::Note(DevkitNoteTool),
+        McpToolEnum::Digest(DevkitDigestTool),
+        McpToolEnum::Paper(DevkitPaperIndexTool),
+        McpToolEnum::Experiment(DevkitExperimentLogTool),
+        McpToolEnum::GithubInfo(DevkitGithubInfoTool),
+        McpToolEnum::CodeMetrics(DevkitCodeMetricsTool),
+        McpToolEnum::ModuleGraph(DevkitModuleGraphTool),
+        McpToolEnum::NaturalLanguageQuery(DevkitNaturalLanguageQueryTool),
+        McpToolEnum::VaultSearch(DevkitVaultSearchTool),
+        McpToolEnum::VaultRead(DevkitVaultReadTool),
+        McpToolEnum::VaultWrite(DevkitVaultWriteTool),
+        McpToolEnum::VaultBacklinks(DevkitVaultBacklinksTool),
+        McpToolEnum::ProjectContext(DevkitProjectContextTool),
+    ];
+    for tool in all_tools {
+        if let Some(ref allowed) = tiers {
+            if !allowed.contains(&tool.tier()) {
+                continue;
+            }
+        }
+        server.register_tool(tool);
+    }
+    server
+}
+
+/// Build an MCP server with all tools (backward compatible).
 pub fn build_server() -> McpServer {
-    McpServer::new()
-        .register_tool(McpToolEnum::Scan(DevkitScanTool))
-        .register_tool(McpToolEnum::Health(DevkitHealthTool))
-        .register_tool(McpToolEnum::Sync(DevkitSyncTool))
-        .register_tool(McpToolEnum::Query(DevkitQueryTool))
-        .register_tool(McpToolEnum::QueryRepos(DevkitQueryReposTool))
-        .register_tool(McpToolEnum::Index(DevkitIndexTool))
-        .register_tool(McpToolEnum::Note(DevkitNoteTool))
-        .register_tool(McpToolEnum::Digest(DevkitDigestTool))
-        .register_tool(McpToolEnum::Paper(DevkitPaperIndexTool))
-        .register_tool(McpToolEnum::Experiment(DevkitExperimentLogTool))
-        .register_tool(McpToolEnum::GithubInfo(DevkitGithubInfoTool))
-        .register_tool(McpToolEnum::CodeMetrics(DevkitCodeMetricsTool))
-        .register_tool(McpToolEnum::ModuleGraph(DevkitModuleGraphTool))
-        .register_tool(McpToolEnum::NaturalLanguageQuery(DevkitNaturalLanguageQueryTool))
-        .register_tool(McpToolEnum::VaultSearch(DevkitVaultSearchTool))
-        .register_tool(McpToolEnum::VaultRead(DevkitVaultReadTool))
-        .register_tool(McpToolEnum::VaultWrite(DevkitVaultWriteTool))
-        .register_tool(McpToolEnum::VaultBacklinks(DevkitVaultBacklinksTool))
-        .register_tool(McpToolEnum::ProjectContext(DevkitProjectContextTool))
+    build_server_with_tiers(None)
 }
 
 pub fn format_mcp_message(body: &serde_json::Value) -> String {
@@ -259,8 +326,21 @@ pub fn format_mcp_message(body: &serde_json::Value) -> String {
     format!("Content-Length: {}\r\n\r\n{}\n", body_str.len(), body_str)
 }
 
+/// Parse tool tiers from a comma-separated string (e.g. "stable,beta").
+fn parse_tool_tiers(s: &str) -> HashSet<ToolTier> {
+    s.split(',')
+        .map(|t| t.trim())
+        .filter(|t| !t.is_empty())
+        .filter_map(ToolTier::from_str)
+        .collect()
+}
+
 pub async fn run_stdio() -> anyhow::Result<()> {
-    let server = build_server();
+    let tiers: Option<HashSet<ToolTier>> = std::env::var("DEVBASE_MCP_TOOL_TIERS")
+        .ok()
+        .map(|s| parse_tool_tiers(&s))
+        .filter(|set| !set.is_empty());
+    let server = build_server_with_tiers(tiers.as_ref());
     let stdin = tokio::io::stdin();
     let mut stdout = tokio::io::stdout();
     let mut reader = BufReader::new(stdin);

@@ -89,7 +89,12 @@ enum Commands {
     /// Launch interactive TUI
     Tui,
     /// Run as an MCP server (stdio transport)
-    Mcp,
+    Mcp {
+        /// Comma-separated tool tiers to expose (stable,beta,experimental).
+        /// Defaults to all tiers if omitted.
+        #[arg(long)]
+        tools: Option<String>,
+    },
     /// Start the background daemon for knowledge maintenance
     Daemon {
         /// Tick interval in seconds
@@ -308,7 +313,13 @@ async fn main() -> anyhow::Result<()> {
             info!("{}", i18n::current().cli.launching_tui);
             tui::run().await?;
         }
-        Commands::Mcp => {
+        Commands::Mcp { tools } => {
+            if let Some(tiers) = tools {
+                // SAFETY: set_var is called once at program startup before any
+                // threads read the environment. The MCP server runs in a single
+                // subprocess, so concurrent reads are not possible.
+                unsafe { std::env::set_var("DEVBASE_MCP_TOOL_TIERS", tiers); }
+            }
             mcp::run_stdio().await?;
         }
         Commands::Daemon { interval } => {

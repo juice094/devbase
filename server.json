@@ -28,6 +28,35 @@
       "bin": "devbase"
     }
   },
+  "capabilities": {
+    "tools": {
+      "stable": [
+        "devkit_health",
+        "devkit_query_repos",
+        "devkit_vault_search",
+        "devkit_vault_read",
+        "devkit_project_context"
+      ],
+      "beta": [
+        "devkit_scan",
+        "devkit_sync",
+        "devkit_query",
+        "devkit_index",
+        "devkit_note",
+        "devkit_vault_write",
+        "devkit_vault_backlinks",
+        "devkit_natural_language_query",
+        "devkit_github_info"
+      ],
+      "experimental": [
+        "devkit_digest",
+        "devkit_paper_index",
+        "devkit_experiment_log",
+        "devkit_code_metrics",
+        "devkit_module_graph"
+      ]
+    }
+  },
   "tools": {
     "count": 19,
     "list": [
