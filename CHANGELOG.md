@@ -27,7 +27,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Upsert semantics (ON CONFLICT UPDATE)
 - **`devkit_embedding_search`** — Alias for `devkit_semantic_search` with vector-based interface
   - Same parameters and behavior, alternative name for workflow clarity
-- **MCP tool count**: 25 → 27
+- **MCP tool count**: 25 → 31
+
+## [0.2.4] - 2026-04-20 (continued)
+
+### Added
+
+- **`devkit_hybrid_search`** — Hybrid vector + keyword search via RRF merge (Beta)
+  - `search::hybrid.rs`: `rrf_merge()` (Reciprocal Rank Fusion, k=60), `keyword_search_symbols()` (SQLite LIKE on name/signature), `hybrid_search_symbols()` (auto-fallback to keyword when embedding missing)
+  - `registry::knowledge::hybrid_search_symbols()` wrapper
+  - Recommended default search tool for code concept discovery
+- **`devkit_cross_repo_search`** — Cross-repository symbol search filtered by tags (Beta)
+  - `registry::knowledge::cross_repo_search_symbols()`: INTERSECT-based tag filtering (AND semantics), per-repo hybrid search, global dedup+sort
+  - Searches all repos matching ALL specified tags
+- **`devkit_knowledge_report`** — Workspace knowledge coverage report (Beta)
+  - `src/oplog_analytics.rs`: `generate_report()` with table-existence guards for resilient querying
+  - Reports: repo_count, total_symbols, total_embeddings, total_calls, coverage_pct, per-repo breakdown, health_summary, recent_activity
+- **`devkit_related_symbols`** — Explicit symbol-to-symbol knowledge links (Experimental)
+  - Schema v13: `code_symbol_links` table (source_repo, source_symbol, target_repo, target_symbol, link_type, strength)
+  - `src/symbol_links.rs`: `compute_similar_signature_links()` (Jaccard token overlap), `compute_co_located_links()` (same-file clustering)
+  - `generate_and_save_links()`: persists links with ON CONFLICT IGNORE upsert
+- **External Embedding Provider** — Reference Python implementation in `tools/embedding-provider/`
+  - `index.py`: Ollama `/api/embeddings` client, batch generation, cross-platform registry DB path
+  - Byte-compatible f32 little-endian serialization via `struct.pack`
+  - CLI: `--repo-id`, `--model`, `--ollama-url`, `--batch-size`, `--force`
+- **Schema v13** — `code_symbol_links` table for explicit conceptual relationships
+
+### Engineering
+
+- **Context Safety Mechanism** — Formalized as long-term architecture principle
+  - Sub-agent execution: serial + commit-isolated work directories (prevents compilation races)
+  - MCP tool idempotency: all state-mutating tools use ON CONFLICT UPDATE / transaction boundaries
+  - OpLog as immutable audit trail for all state transitions
 
 ---
 

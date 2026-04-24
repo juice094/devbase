@@ -1,15 +1,15 @@
 # Agent 环境指引
 
-`devbase` 是本地优先的开发者工作区与知识库管理器。当前处于 **v0.2.4**，数据层深度能力建设完成，支持多语言符号提取与向量语义搜索。
+`devbase` 是本地优先的开发者工作区与知识库管理器。当前处于 **v0.2.4**，混合检索与显式知识链接已落地，外置大脑架构贯通。
 
 - **技术栈**：Rust 2024, SQLite, tokio, ratatui, git2, reqwest, tantivy
 - **Registry DB**：`%LOCALAPPDATA%\devbase\registry.db`（轻量索引，用户本地，永不进入版本控制）
 - **Workspace**：`%LOCALAPPDATA%\devbase\workspace/` —— 文件系统 = source of truth
   - `vault/` —— PARA 结构：00-Inbox, 01-Projects, 02-Areas, 03-Resources, 04-Archives, 99-Meta
   - `assets/` —— 二进制资源
-- **MCP Server**：stdio 传输，24 个 tools（含 4 个数据层 tools + 1 个语义搜索）；配置见 `mcp.json`
+- **MCP Server**：stdio 传输，**31 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 1 个报告工具）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：184 passed / 0 failed / 2 ignored
+- **当前测试**：212 passed / 0 failed / 2 ignored
 - **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
 
 ## 关键约定
@@ -40,14 +40,15 @@
 - Schema 迁移前自动生成 `backup-YYYYMMDD-HHMMSS.db` 快照
 - Registry 支持 `export`/`import` 用于用户自主备份
 
-## 架构状态（Wave 5 完成）
+## 架构状态（Wave 15b 完成）
 
 | 维度 | 状态 |
 |------|------|
 | 代码质量 | `rustfmt.toml` + `cargo fmt` + `clippy -D warnings` 全绿 |
-| 模块拆分 | `sync`→5 子模块 / `registry`→7 子模块 / `mcp` 测试分离 |
-| 库/二进制 | `src/lib.rs` 导出全部 22 个模块；`src/main.rs` 仅 CLI 入口 |
+| 模块拆分 | `sync`→5 / `registry`→7 / `mcp` 测试分离 / `search`→hybrid / `oplog_analytics` / `symbol_links` |
+| 库/二进制 | `src/lib.rs` 导出全部 **26** 个模块；`src/main.rs` 仅 CLI 入口 |
 | TUI 架构 | `render/` 6 子模块 + `theme.rs` Design Token + `layout.rs` 响应式引擎 |
+| 数据层 | Schema v13: repos + repo_tags + code_symbols + code_embeddings + code_call_graph + code_symbol_links + oplog + vault_notes + papers + experiments |
 | CI/CD | `.github/workflows/ci.yml`：check / test / fmt / clippy on Windows |
 | 依赖安全 | `cargo audit` 0 漏洞（除上游 `tokei` 的 `RUSTSEC-2020-0163`） |
 
@@ -66,6 +67,12 @@
 | 9 | scan panic 修复 + arXiv/CMake | `block_on_async` 安全封装, arXiv API 元数据, CMakeLists.txt 依赖解析 | `881cd32` |
 | 10 | OpLog 结构化 | Schema v12, OplogEventType 枚举, JSON metadata, duration_ms | `7aa2a65` |
 | 11 | 性能基准 | criterion benches: index_repo_full, cosine_similarity, extract_symbols, CMake | `8e0f236` |
+| 12 | 混合检索核心 | `search::hybrid.rs`: RRF 归并, keyword_search, hybrid_search_symbols | `7fca714` |
+| 13 | 外部 Embedding Provider | Python CLI `tools/embedding-provider/`, Ollama 批量生成, 字节兼容序列化 | `574fb96` |
+| 14a | 跨 repo 语义聚合 | `cross_repo_search_symbols()` INTERSECT tag 过滤, `devkit_cross_repo_search` | `8e762c7` |
+| 14b | 知识覆盖报告 | `oplog_analytics.rs`: 表存在性容错, 覆盖度/健康度/活动流, `devkit_knowledge_report` | `869bcbf` |
+| 15a | 显式知识链接 | Schema v13 `code_symbol_links`, Jaccard 签名相似度, 同文件聚类, `devkit_related_symbols` | `d462209` |
+| 15b | 混合检索 MCP Tool | `devkit_hybrid_search`: 向量+RRF+关键词自动降级, 推荐默认搜索入口 | `6df6106` |
 
 ## 敏感文件清单（禁止提交）
 
@@ -155,6 +162,54 @@ devbase 承载外部资源调度的抽象接口：
 **当前阻塞**：`code_embeddings` 表为 0 行，因 Ollama 未运行。激活路径：
 1. 启动 Ollama + `devbase index <repo>` 生成 embedding
 2. 或配置远程 provider（OpenAI / 智谱 / DeepSeek）于 `config.toml [embedding]` 段
+
+## 上下文安全机制（Context Safety Mechanism）
+
+> 长期架构原则：在多 Agent / 子代理协作场景下，保证工作区状态的一致性与可恢复性。
+
+### 1. 子代理执行隔离
+
+**教训**：并行子代理在同一 Rust 工作目录操作会导致编译冲突、文件竞态和超时。
+
+**规则**：
+- **串行优先**：多个子代理任务必须串行执行，每次 commit 隔离工作目录状态
+- **目录隔离**：若必须并行，每个子代理分配独立工作目录或临时分支
+- **编译检查**：任何子代理返回前必须通过 `cargo test` + `cargo clippy`，否则标记为脏状态
+
+### 2. MCP 工具幂等性
+
+**原则**：所有通过 MCP 暴露的状态变更操作必须是幂等的。
+
+**实现**：
+- `save_embeddings` — `ON CONFLICT(repo_id, symbol_name) DO UPDATE`
+- `save_symbol_links` — `ON CONFLICT(source_repo, source_symbol, target_repo, target_symbol, link_type) DO NOTHING`
+- `index_repo` — 先 `DELETE` 旧数据再 `INSERT`（而非追加）
+- 所有批量操作包裹在 SQLite transaction 中
+
+### 3. 状态变更审计追踪
+
+**原则**：任何对 registry 的写入都必须留下不可变的审计痕迹。
+
+**实现**：
+- OpLog Schema v12+：`event_type` 枚举 + JSON metadata + `duration_ms`
+- 所有 `scan`/`sync`/`health`/`index` 操作自动记录
+- Schema 迁移前自动生成 `backup-YYYYMMDD-HHMMSS.db` 快照
+- `registry export --format json` 支持用户自主备份
+
+### 4. 知识库一致性契约
+
+**原则**：存储层（devbase）与计算层（Clarity/Skill）之间的接口契约必须显式、可版本化。
+
+**当前契约**：
+| 方向 | 接口 | 版本 |
+|------|------|------|
+| 外部 → devbase | `devkit_embedding_store(repo_id, symbol_name, embedding[])` | v1 |
+| devbase → 外部 | `devkit_hybrid_search(repo_id, query_text, query_embedding?, limit)` | v1 |
+| devbase → 外部 | `devkit_knowledge_report(repo_id?, activity_limit)` | v1 |
+
+**变更规则**：MCP tool schema 的 breaking change 必须通过新增 tool（如 `devkit_hybrid_search_v2`）而非修改现有 tool。
+
+---
 
 ## 禁止事项
 
