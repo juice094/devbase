@@ -189,3 +189,104 @@ async fn test_stdio_content_length_format() {
     let parsed: serde_json::Value = serde_json::from_str(body_part.trim_end()).unwrap();
     assert_eq!(parsed, body);
 }
+
+static NL_FILTER_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn mock_repo(
+    id: &str,
+    language: Option<&str>,
+    tags: Vec<&str>,
+    stars: Option<u64>,
+) -> crate::registry::RepoEntry {
+    crate::registry::RepoEntry {
+        id: id.to_string(),
+        local_path: std::path::PathBuf::from(format!("/tmp/{}", id)),
+        tags: tags.into_iter().map(String::from).collect(),
+        discovered_at: chrono::Utc::now(),
+        language: language.map(String::from),
+        workspace_type: "git".to_string(),
+        data_tier: "private".to_string(),
+        last_synced_at: None,
+        stars,
+        remotes: vec![],
+    }
+}
+
+#[test]
+fn test_nl_filter_repos_empty_query_returns_empty() {
+    let _guard = NL_FILTER_TEST_LOCK.lock().unwrap();
+    let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
+    let repos: Vec<crate::registry::RepoEntry> = vec![];
+    let results = crate::mcp::tools::repo::nl_filter_repos("", &repos, &conn).unwrap();
+    assert!(results.is_empty());
+}
+
+#[test]
+fn test_nl_filter_repos_fallback_finds_by_language() {
+    let _guard = NL_FILTER_TEST_LOCK.lock().unwrap();
+    let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
+    let repos = vec![
+        mock_repo("repo1", Some("rust"), vec!["cli"], Some(10)),
+        mock_repo("repo2", Some("python"), vec!["web"], Some(5)),
+    ];
+    let results = crate::mcp::tools::repo::nl_filter_repos("rust cli tool", &repos, &conn).unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].id, "repo1");
+}
+
+#[test]
+fn test_nl_filter_repos_tantivy_finds_devbase() {
+    let _guard = NL_FILTER_TEST_LOCK.lock().unwrap();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let old = std::env::var("LOCALAPPDATA").ok();
+    unsafe {
+        std::env::set_var("LOCALAPPDATA", tmp.path());
+    }
+
+    // Ensure DB schema exists in temp dir
+    let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
+
+    // Populate Tantivy index with devbase doc
+    let (index, _reader) = crate::search::init_index().unwrap();
+    let mut writer = crate::search::get_writer(&index).unwrap();
+    let schema = index.schema();
+    crate::search::add_repo_doc(
+        &mut writer,
+        &schema,
+        "devbase",
+        "devbase developer workspace manager",
+        "rust, cli, workspace, developer",
+        &["rust".to_string(), "cli".to_string()],
+    )
+    .unwrap();
+    crate::search::commit_writer(&mut writer).unwrap();
+
+    let repos = vec![crate::registry::RepoEntry {
+        id: "devbase".to_string(),
+        local_path: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")),
+        tags: vec!["rust".to_string(), "cli".to_string()],
+        discovered_at: chrono::Utc::now(),
+        language: Some("rust".to_string()),
+        workspace_type: "git".to_string(),
+        data_tier: "private".to_string(),
+        last_synced_at: None,
+        stars: Some(10),
+        remotes: vec![],
+    }];
+
+    let results =
+        crate::mcp::tools::repo::nl_filter_repos("developer workspace", &repos, &conn).unwrap();
+    assert!(!results.is_empty(), "tantivy path should find devbase");
+    assert_eq!(results[0].id, "devbase");
+
+    if let Some(v) = old {
+        unsafe {
+            std::env::set_var("LOCALAPPDATA", v);
+        }
+    } else {
+        unsafe {
+            std::env::remove_var("LOCALAPPDATA");
+        }
+    }
+}

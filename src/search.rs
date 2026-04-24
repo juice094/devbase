@@ -118,6 +118,12 @@ pub fn commit_writer(writer: &mut IndexWriter) -> Result<(), TantivyError> {
     Ok(())
 }
 
+pub fn index_is_empty() -> Result<bool, TantivyError> {
+    let (_index, reader) = init_index()?;
+    let searcher = reader.searcher();
+    Ok(searcher.num_docs() == 0)
+}
+
 pub fn search_repos(query_str: &str, limit: usize) -> Result<Vec<(String, f32)>, TantivyError> {
     search_by_doc_type(query_str, limit, None)
 }

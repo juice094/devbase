@@ -650,6 +650,20 @@ fn try_llm_summary(path: &Path, config: &crate::config::LlmConfig) -> Option<(St
     }
 }
 
+fn index_repo_in_search(
+    repo: &crate::registry::RepoEntry,
+    summary: &str,
+    keywords: &str,
+) -> anyhow::Result<()> {
+    let (index, _reader) = crate::search::init_index()?;
+    let mut writer = crate::search::get_writer(&index)?;
+    let schema = index.schema();
+    crate::search::delete_repo_doc(&mut writer, &schema, &repo.id)?;
+    crate::search::add_repo_doc(&mut writer, &schema, &repo.id, summary, keywords, &repo.tags)?;
+    crate::search::commit_writer(&mut writer)?;
+    Ok(())
+}
+
 pub fn index_repo(repo: &crate::registry::RepoEntry) -> anyhow::Result<()> {
     use tracing::{info, warn};
 
@@ -668,6 +682,10 @@ pub fn index_repo(repo: &crate::registry::RepoEntry) -> anyhow::Result<()> {
     let modules = extract_module_structure(&repo.local_path);
 
     WorkspaceRegistry::save_summary(&conn, &repo.id, &summary, &keywords)?;
+
+    if let Err(e) = index_repo_in_search(repo, &summary, &keywords) {
+        warn!("Failed to index repo in search: {}", e);
+    }
 
     let modules_tuple: Vec<(String, String)> =
         modules.into_iter().map(|m| (m.name, m.kind)).collect();
@@ -709,6 +727,11 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
         }
     };
 
+    // Initialize Tantivy search index writer once for the batch
+    let (search_index, _reader) = crate::search::init_index()?;
+    let mut search_writer = crate::search::get_writer(&search_index)?;
+    let search_schema = search_index.schema();
+
     let mut count = 0;
     for repo in &repos {
         let config = crate::config::Config::load().ok();
@@ -724,6 +747,17 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
         let modules = extract_module_structure(&repo.local_path);
 
         WorkspaceRegistry::save_summary(&conn, &repo.id, &summary, &keywords)?;
+
+        // Add/update repo document in Tantivy index
+        crate::search::delete_repo_doc(&mut search_writer, &search_schema, &repo.id)?;
+        crate::search::add_repo_doc(
+            &mut search_writer,
+            &search_schema,
+            &repo.id,
+            &summary,
+            &keywords,
+            &repo.tags,
+        )?;
 
         let modules_tuple: Vec<(String, String)> =
             modules.into_iter().map(|m| (m.name, m.kind)).collect();
@@ -819,6 +853,8 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
         );
         count += 1;
     }
+
+    crate::search::commit_writer(&mut search_writer)?;
 
     println!("\nIndexed {} repositories.", count);
     Ok(count)

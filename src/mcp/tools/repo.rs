@@ -979,7 +979,95 @@ Returns: JSON array of matching repos with metadata, same format as devkit_query
     }
 }
 
-fn nl_filter_repos(
+fn apply_nl_filters(
+    repo: &crate::registry::RepoEntry,
+    q: &str,
+    stars_cond: Option<(char, u64)>,
+    explicit_tag: Option<&str>,
+    conn: &rusqlite::Connection,
+) -> anyhow::Result<bool> {
+    // Language filter: only apply if query explicitly mentions a language keyword
+    let lang_keywords = [
+        ("rust", "rust"),
+        ("go", "go"),
+        ("golang", "go"),
+        ("python", "python"),
+        ("typescript", "typescript"),
+        ("ts", "typescript"),
+        ("javascript", "javascript"),
+        ("js", "javascript"),
+        ("cpp", "c++"),
+        ("c++", "c++"),
+        ("java", "java"),
+    ];
+    for &(kw, expected) in &lang_keywords {
+        if q.contains(kw) && repo.language.as_deref() != Some(expected) {
+            return Ok(false);
+        }
+    }
+
+    // Tag filter
+    if let Some(tag) = explicit_tag
+        && !repo.tags.iter().any(|t| t.eq_ignore_ascii_case(tag))
+    {
+        return Ok(false);
+    }
+
+    // Stars filter
+    if let Some((op, val)) = stars_cond {
+        let stars = repo.stars.unwrap_or(0);
+        let matches = match op {
+            '>' => stars > val,
+            '<' => stars < val,
+            '=' => stars == val,
+            _ => true,
+        };
+        if !matches {
+            return Ok(false);
+        }
+    }
+
+    // Status filters (need health data)
+    if q.contains("dirty")
+        || q.contains("behind")
+        || q.contains("ahead")
+        || q.contains("diverged")
+        || q.contains("up to date")
+        || q.contains("uptodate")
+    {
+        let (st, ah, bh) = match crate::registry::WorkspaceRegistry::get_health(conn, &repo.id)? {
+            Some(h) => (h.status.clone(), h.ahead, h.behind),
+            None => {
+                let path = repo.local_path.to_string_lossy();
+                let primary = repo.primary_remote();
+                let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
+                let default_branch = primary.and_then(|r| r.default_branch.as_deref());
+                crate::health::analyze_repo(&path, upstream_url, default_branch)
+            }
+        };
+        let dirty = st == "dirty" || st == "changed";
+
+        if q.contains("dirty") && !dirty {
+            return Ok(false);
+        }
+        if q.contains("behind") && !q.contains("ahead") && bh == 0 {
+            return Ok(false);
+        }
+        if q.contains("ahead") && !q.contains("behind") && ah == 0 {
+            return Ok(false);
+        }
+        if q.contains("diverged") && (ah == 0 || bh == 0) {
+            return Ok(false);
+        }
+        if (q.contains("up to date") || q.contains("uptodate")) && (dirty || ah > 0 || bh > 0) {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+pub(crate) fn nl_filter_repos(
     query: &str,
     repos: &[crate::registry::RepoEntry],
     conn: &rusqlite::Connection,
@@ -988,103 +1076,63 @@ fn nl_filter_repos(
     let stars_cond = parse_stars_condition(&q);
     let explicit_tag = extract_tag_from_query(&q);
 
-    let mut results = Vec::new();
-    for repo in repos {
-        // Language filter
-        let lang_keywords = [
-            ("rust", "rust"),
-            ("go", "go"),
-            ("golang", "go"),
-            ("python", "python"),
-            ("typescript", "typescript"),
-            ("ts", "typescript"),
-            ("javascript", "javascript"),
-            ("js", "javascript"),
-            ("cpp", "c++"),
-            ("c++", "c++"),
-            ("java", "java"),
-        ];
-        let mut lang_matched = true;
-        for &(kw, expected) in &lang_keywords {
-            if q.contains(kw) && repo.language.as_deref() != Some(expected) {
-                lang_matched = false;
-                break;
-            }
-        }
-        if !lang_matched {
-            continue;
-        }
+    let has_structural_filter = stars_cond.is_some()
+        || explicit_tag.is_some()
+        || q.contains("dirty")
+        || q.contains("behind")
+        || q.contains("ahead")
+        || q.contains("diverged")
+        || q.contains("up to date")
+        || q.contains("uptodate");
 
-        // Tag filter
-        if let Some(ref tag) = explicit_tag
-            && !repo.tags.iter().any(|t| t.eq_ignore_ascii_case(tag))
-        {
-            continue;
+    // Try Tantivy search first if index is not empty
+    let use_tantivy = match crate::search::index_is_empty() {
+        Ok(empty) => !empty,
+        Err(e) => {
+            tracing::warn!("Failed to check search index: {}", e);
+            false
         }
+    };
 
-        // Stars filter
-        if let Some((op, val)) = stars_cond {
-            let stars = repo.stars.unwrap_or(0);
-            match op {
-                '>' => {
-                    if stars <= val {
+    if use_tantivy && !query.trim().is_empty() {
+        let limit = repos.len().max(1000);
+        match crate::search::search_repos(query, limit) {
+            Ok(search_results) => {
+                let repo_map: std::collections::HashMap<_, _> =
+                    repos.iter().map(|r| (r.id.clone(), r)).collect();
+                let mut seen = std::collections::HashSet::new();
+                let mut results = Vec::new();
+                for (id, _score) in search_results {
+                    if !seen.insert(id.clone()) {
                         continue;
                     }
-                }
-                '<' => {
-                    if stars >= val {
-                        continue;
+                    if let Some(repo) = repo_map.get(&id)
+                        && apply_nl_filters(repo, &q, stars_cond, explicit_tag.as_deref(), conn)?
+                    {
+                        results.push((*repo).clone());
                     }
                 }
-                '=' => {
-                    if stars != val {
-                        continue;
-                    }
+                if !results.is_empty() {
+                    return Ok(results);
+                } else if has_structural_filter {
+                    // Tantivy returned no matching current repos, but query has structural filters -> return empty
+                    return Ok(Vec::new());
                 }
-                _ => {}
+                // Otherwise fall through to fallback logic
+            }
+            Err(e) => {
+                tracing::warn!("Tantivy search failed, falling back: {}", e);
             }
         }
-
-        // Status filters (need health data)
-        if q.contains("dirty")
-            || q.contains("behind")
-            || q.contains("ahead")
-            || q.contains("diverged")
-            || q.contains("up to date")
-        {
-            let (st, ah, bh) = match crate::registry::WorkspaceRegistry::get_health(conn, &repo.id)?
-            {
-                Some(h) => (h.status.clone(), h.ahead, h.behind),
-                None => {
-                    let path = repo.local_path.to_string_lossy();
-                    let primary = repo.primary_remote();
-                    let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
-                    let default_branch = primary.and_then(|r| r.default_branch.as_deref());
-                    crate::health::analyze_repo(&path, upstream_url, default_branch)
-                }
-            };
-            let dirty = st == "dirty" || st == "changed";
-
-            if q.contains("dirty") && !dirty {
-                continue;
-            }
-            if q.contains("behind") && !q.contains("ahead") && bh == 0 {
-                continue;
-            }
-            if q.contains("ahead") && !q.contains("behind") && ah == 0 {
-                continue;
-            }
-            if q.contains("diverged") && (ah == 0 || bh == 0) {
-                continue;
-            }
-            if (q.contains("up to date") || q.contains("uptodate")) && (dirty || ah > 0 || bh > 0) {
-                continue;
-            }
-        }
-
-        results.push(repo.clone());
     }
 
+    // Fallback: iterate all repos with hardcoded regex logic
+    let mut results = Vec::new();
+    for repo in repos {
+        if apply_nl_filters(repo, &q, stars_cond, explicit_tag.as_deref(), conn)? {
+            results.push(repo.clone());
+        }
+    }
     Ok(results)
 }
 
