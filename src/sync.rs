@@ -29,6 +29,7 @@ pub async fn run_json(
     filter_tags: Option<&str>,
     exclude: Option<&str>,
 ) -> anyhow::Result<serde_json::Value> {
+    let start = std::time::Instant::now();
     let config = crate::config::Config::load().unwrap_or_default();
     let tasks = collect_tasks(filter_tags, exclude).await?;
     let mut path_map = HashMap::new();
@@ -61,17 +62,24 @@ pub async fn run_json(
     info!("{}", crate::i18n::current().log.sync_finished);
 
     // Log to oplog
+    let duration_ms = start.elapsed().as_millis() as i64;
     if let Ok(conn) = WorkspaceRegistry::init_db() {
         let repo_count = results_json.len();
+        let details = serde_json::json!({
+            "dry_run": dry_run,
+            "repo_count": repo_count
+        });
         let _ = WorkspaceRegistry::save_oplog(
             &conn,
             &OplogEntry {
                 id: None,
-                operation: "sync".to_string(),
+                event_type: crate::registry::OplogEventType::Sync,
                 repo_id: None,
-                details: Some(format!("dry_run={}, repos={}", dry_run, repo_count)),
+                details: Some(details.to_string()),
                 status: "success".to_string(),
                 timestamp: Utc::now(),
+                duration_ms: Some(duration_ms),
+                event_version: 1,
             },
         );
     }
@@ -88,6 +96,7 @@ pub async fn run(
     filter_tags: Option<&str>,
     exclude: Option<&str>,
 ) -> anyhow::Result<()> {
+    let start = std::time::Instant::now();
     let config = crate::config::Config::load().unwrap_or_default();
     let tasks = collect_tasks(filter_tags, exclude).await?;
     let mut path_map = HashMap::new();
@@ -164,17 +173,24 @@ pub async fn run(
     }
 
     // Log to oplog
+    let duration_ms = start.elapsed().as_millis() as i64;
     if let Ok(conn) = WorkspaceRegistry::init_db() {
         let repo_count = results_json.len();
+        let details = serde_json::json!({
+            "dry_run": dry_run,
+            "repo_count": repo_count
+        });
         let _ = WorkspaceRegistry::save_oplog(
             &conn,
             &OplogEntry {
                 id: None,
-                operation: "sync".to_string(),
+                event_type: crate::registry::OplogEventType::Sync,
                 repo_id: None,
-                details: Some(format!("dry_run={}, repos={}", dry_run, repo_count)),
+                details: Some(details.to_string()),
                 status: "success".to_string(),
                 timestamp: Utc::now(),
+                duration_ms: Some(duration_ms),
+                event_version: 1,
             },
         );
     }

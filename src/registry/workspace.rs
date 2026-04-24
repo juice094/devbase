@@ -41,13 +41,16 @@ impl WorkspaceRegistry {
     // ------------------------------------------------------------------
     pub fn save_oplog(conn: &rusqlite::Connection, entry: &OplogEntry) -> anyhow::Result<()> {
         conn.execute(
-            "INSERT INTO oplog (operation, repo_id, details, status, timestamp) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO oplog (operation, event_type, repo_id, details, status, timestamp, duration_ms, event_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
-                &entry.operation,
+                entry.event_type.as_str(),
+                entry.event_type.as_str(),
                 entry.repo_id.as_ref(),
                 entry.details.as_ref(),
                 &entry.status,
-                entry.timestamp.to_rfc3339()
+                entry.timestamp.to_rfc3339(),
+                entry.duration_ms,
+                entry.event_version
             ],
         )?;
         Ok(())
@@ -55,20 +58,24 @@ impl WorkspaceRegistry {
 
     pub fn list_oplog(conn: &rusqlite::Connection, limit: i64) -> anyhow::Result<Vec<OplogEntry>> {
         let mut stmt = conn.prepare(
-            "SELECT id, operation, repo_id, details, status, timestamp FROM oplog ORDER BY timestamp DESC LIMIT ?1"
+            "SELECT id, event_type, repo_id, details, status, timestamp, duration_ms, event_version FROM oplog ORDER BY timestamp DESC LIMIT ?1"
         )?;
         let rows = stmt.query_map([limit], |row| {
             let ts: String = row.get(5)?;
             let timestamp = DateTime::parse_from_rfc3339(&ts)
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or_else(|_| Utc::now());
+            let event_type_str: String = row.get(1)?;
+            let event_type = event_type_str.parse().unwrap_or(OplogEventType::HealthCheck);
             Ok(OplogEntry {
                 id: row.get(0)?,
-                operation: row.get(1)?,
+                event_type,
                 repo_id: row.get(2)?,
                 details: row.get(3)?,
                 status: row.get(4)?,
                 timestamp,
+                duration_ms: row.get(6)?,
+                event_version: row.get(7).unwrap_or(0),
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -80,20 +87,24 @@ impl WorkspaceRegistry {
         limit: i64,
     ) -> anyhow::Result<Vec<OplogEntry>> {
         let mut stmt = conn.prepare(
-            "SELECT id, operation, repo_id, details, status, timestamp FROM oplog WHERE repo_id = ?1 ORDER BY timestamp DESC LIMIT ?2"
+            "SELECT id, event_type, repo_id, details, status, timestamp, duration_ms, event_version FROM oplog WHERE repo_id = ?1 ORDER BY timestamp DESC LIMIT ?2"
         )?;
         let rows = stmt.query_map(rusqlite::params![repo_id, limit], |row| {
             let ts: String = row.get(5)?;
             let timestamp = DateTime::parse_from_rfc3339(&ts)
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or_else(|_| Utc::now());
+            let event_type_str: String = row.get(1)?;
+            let event_type = event_type_str.parse().unwrap_or(OplogEventType::HealthCheck);
             Ok(OplogEntry {
                 id: row.get(0)?,
-                operation: row.get(1)?,
+                event_type,
                 repo_id: row.get(2)?,
                 details: row.get(3)?,
                 status: row.get(4)?,
                 timestamp,
+                duration_ms: row.get(6)?,
+                event_version: row.get(7).unwrap_or(0),
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)

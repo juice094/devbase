@@ -17,10 +17,7 @@ pub struct PaperMetadata {
 
 /// Fetch metadata for a given arXiv ID (e.g. "2401.12345" or "cs.AI/0202040").
 pub fn fetch_arxiv_metadata(arxiv_id: &str) -> anyhow::Result<PaperMetadata> {
-    let config = crate::config::Config::load()
-        .ok()
-        .map(|c| c.arxiv)
-        .unwrap_or_default();
+    let config = crate::config::Config::load().ok().map(|c| c.arxiv).unwrap_or_default();
     let url = format!("http://export.arxiv.org/api/query?id_list={}", arxiv_id);
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(config.timeout_seconds))

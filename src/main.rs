@@ -543,13 +543,41 @@ async fn main() -> anyhow::Result<()> {
                 for entry in entries {
                     let ts = entry.timestamp.format("%Y-%m-%d %H:%M:%S").to_string();
                     let repo = entry.repo_id.as_deref().unwrap_or("-");
+                    let details_display = if entry.event_version >= 1 {
+                        match serde_json::from_str::<serde_json::Value>(
+                            entry.details.as_deref().unwrap_or("{}"),
+                        ) {
+                            Ok(val) => {
+                                if let Some(obj) = val.as_object() {
+                                    obj.iter()
+                                        .map(|(k, v)| format!("{}={}", k, v))
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                } else {
+                                    entry.details.as_deref().unwrap_or("").to_string()
+                                }
+                            }
+                            Err(_) => entry.details.as_deref().unwrap_or("").to_string(),
+                        }
+                    } else {
+                        entry.details.as_deref().unwrap_or("").to_string()
+                    };
+                    let duration_display = entry
+                        .duration_ms
+                        .map(|d| format!(" | duration={}ms", d))
+                        .unwrap_or_default();
                     println!(
-                        "  [{}] {} | repo={} | status={} | {}",
+                        "  [{}] {} | repo={} | status={}{}{}",
                         ts,
-                        entry.operation,
+                        entry.event_type.as_str(),
                         repo,
                         entry.status,
-                        entry.details.as_deref().unwrap_or("")
+                        duration_display,
+                        if details_display.is_empty() {
+                            "".to_string()
+                        } else {
+                            format!(" | {}", details_display)
+                        }
                     );
                 }
             }

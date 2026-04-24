@@ -6,6 +6,7 @@ use tracing::{info, warn};
 use walkdir::WalkDir;
 
 pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::Value> {
+    let start = std::time::Instant::now();
     let root = PathBuf::from(path);
     if !root.exists() {
         return Ok(serde_json::json!({
@@ -72,19 +73,24 @@ pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::
         .collect();
 
     // Log to oplog
+    let duration_ms = start.elapsed().as_millis() as i64;
     if let Ok(conn) = WorkspaceRegistry::init_db() {
+        let details = serde_json::json!({
+            "path": path,
+            "discovered": count,
+            "registered": registered
+        });
         let _ = WorkspaceRegistry::save_oplog(
             &conn,
             &OplogEntry {
                 id: None,
-                operation: "scan".to_string(),
+                event_type: crate::registry::OplogEventType::Scan,
                 repo_id: None,
-                details: Some(format!(
-                    "path={}, discovered={}, registered={}",
-                    path, count, registered
-                )),
+                details: Some(details.to_string()),
                 status: "success".to_string(),
                 timestamp: Utc::now(),
+                duration_ms: Some(duration_ms),
+                event_version: 1,
             },
         );
     }

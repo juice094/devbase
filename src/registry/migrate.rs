@@ -304,7 +304,7 @@ impl WorkspaceRegistry {
 
         // Schema versioning for future migrations
         let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        const CURRENT_SCHEMA_VERSION: i32 = 11;
+        const CURRENT_SCHEMA_VERSION: i32 = 12;
         if user_version < CURRENT_SCHEMA_VERSION
             && path.exists()
             && let Err(e) = crate::backup::auto_backup_before_migration(&path)
@@ -498,6 +498,32 @@ impl WorkspaceRegistry {
                 )?;
             }
             conn.execute("PRAGMA user_version = 11", [])?;
+        }
+        if user_version < 12 {
+            let cols: Vec<String> = {
+                let mut stmt = conn.prepare("PRAGMA table_info(oplog)")?;
+                let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+                rows.filter_map(Result::ok).collect()
+            };
+            if !cols.iter().any(|c| c == "event_type") {
+                conn.execute("ALTER TABLE oplog ADD COLUMN event_type TEXT", [])?;
+            }
+            if !cols.iter().any(|c| c == "duration_ms") {
+                conn.execute("ALTER TABLE oplog ADD COLUMN duration_ms INTEGER", [])?;
+            }
+            if !cols.iter().any(|c| c == "event_version") {
+                conn.execute("ALTER TABLE oplog ADD COLUMN event_version INTEGER DEFAULT 1", [])?;
+            }
+            conn.execute(
+                "UPDATE oplog SET event_type = CASE operation WHEN 'health' THEN 'health_check' ELSE operation END WHERE event_type IS NULL",
+                [],
+            )?;
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_oplog_event_type ON oplog(event_type)",
+                [],
+            )?;
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_oplog_repo ON oplog(repo_id)", [])?;
+            conn.execute("PRAGMA user_version = 12", [])?;
         }
 
         conn.execute(

@@ -89,14 +89,50 @@ pub struct WorkspaceSnapshot {
     pub checked_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OplogEventType {
+    Scan,
+    Sync,
+    Index,
+    HealthCheck,
+}
+
+impl OplogEventType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OplogEventType::Scan => "scan",
+            OplogEventType::Sync => "sync",
+            OplogEventType::Index => "index",
+            OplogEventType::HealthCheck => "health_check",
+        }
+    }
+}
+
+impl std::str::FromStr for OplogEventType {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "scan" => Ok(OplogEventType::Scan),
+            "sync" => Ok(OplogEventType::Sync),
+            "index" => Ok(OplogEventType::Index),
+            "health_check" => Ok(OplogEventType::HealthCheck),
+            "health" => Ok(OplogEventType::HealthCheck),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OplogEntry {
     pub id: Option<i64>,
-    pub operation: String,
+    pub event_type: OplogEventType,
     pub repo_id: Option<String>,
     pub details: Option<String>,
     pub status: String,
     pub timestamp: DateTime<Utc>,
+    pub duration_ms: Option<i64>,
+    pub event_version: i32,
 }
 
 #[derive(Debug, Clone)]

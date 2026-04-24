@@ -156,10 +156,15 @@ CREATE TABLE IF NOT EXISTS oplog (
     repo_id TEXT,
     details TEXT,
     status TEXT NOT NULL,
-    timestamp TEXT NOT NULL
+    timestamp TEXT NOT NULL,
+    event_type TEXT,
+    duration_ms INTEGER,
+    event_version INTEGER DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_oplog_operation ON oplog(operation);
 CREATE INDEX IF NOT EXISTS idx_oplog_timestamp ON oplog(timestamp);
+CREATE INDEX IF NOT EXISTS idx_oplog_event_type ON oplog(event_type);
+CREATE INDEX IF NOT EXISTS idx_oplog_repo ON oplog(repo_id);
 
 CREATE TABLE IF NOT EXISTS repo_code_metrics (
     repo_id TEXT PRIMARY KEY,

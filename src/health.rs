@@ -56,6 +56,7 @@ pub async fn run_json(
     page: usize,
     ttl_seconds: i64,
 ) -> anyhow::Result<serde_json::Value> {
+    let start = std::time::Instant::now();
     let (total_repos, dirty_repos, behind_upstream, no_upstream_count, repo_details) = {
         let conn = WorkspaceRegistry::init_db()?;
         let repos = WorkspaceRegistry::list_repos(&conn)?;
@@ -201,19 +202,25 @@ pub async fn run_json(
     info!("Health check completed");
 
     // Log to oplog
+    let duration_ms = start.elapsed().as_millis() as i64;
     if let Ok(conn) = WorkspaceRegistry::init_db() {
+        let details = serde_json::json!({
+            "total_repos": total_repos,
+            "dirty_repos": dirty_repos,
+            "behind_upstream": behind_upstream,
+            "no_upstream": no_upstream_count
+        });
         let _ = WorkspaceRegistry::save_oplog(
             &conn,
             &OplogEntry {
                 id: None,
-                operation: "health".to_string(),
+                event_type: crate::registry::OplogEventType::HealthCheck,
                 repo_id: None,
-                details: Some(format!(
-                    "repos={}, dirty={}, behind={}",
-                    total_repos, dirty_repos, behind_upstream
-                )),
+                details: Some(details.to_string()),
                 status: "success".to_string(),
                 timestamp: Utc::now(),
+                duration_ms: Some(duration_ms),
+                event_version: 1,
             },
         );
     }
