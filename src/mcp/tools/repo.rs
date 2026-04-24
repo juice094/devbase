@@ -1905,6 +1905,98 @@ Returns: JSON object with repo_count, total_symbols, total_embeddings, total_cal
 }
 
 #[derive(Clone)]
+pub struct DevkitHybridSearchTool;
+
+impl McpTool for DevkitHybridSearchTool {
+    fn name(&self) -> &'static str {
+        "devkit_hybrid_search"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Hybrid code symbol search combining vector embeddings and keyword matching via Reciprocal Rank Fusion (RRF). This is the recommended default search tool when looking for code concepts.
+
+Behavior:
+- If query_embedding is provided: fuses vector similarity (70%) + keyword BM25-like matching (30%) via RRF.
+- If query_embedding is omitted: falls back to pure keyword search on symbol names and signatures.
+- If no embeddings exist for the repo: gracefully degrades to keyword search.
+
+Use this when the user wants to:
+- Find code related to a concept ("authentication", "error handling")
+- Search with either a natural language description or an embedding vector
+- Get robust results even when the embedding provider is offline
+
+Parameters:
+- repo_id: Registered repository ID to search within.
+- query_text: Text query for keyword matching (always used).
+- query_embedding: Optional f32 vector for semantic search.
+- limit: Maximum results (default: 10, max: 50).
+
+Returns: JSON array of symbols with file_path, name, line_start, and similarity_score."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": { "type": "string" },
+                    "query_text": { "type": "string", "description": "Keyword or natural language query" },
+                    "query_embedding": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "description": "Optional query embedding vector"
+                    },
+                    "limit": { "type": "integer", "default": 10 }
+                },
+                "required": ["repo_id", "query_text"]
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
+        let query_text = args.get("query_text").and_then(|v| v.as_str()).context("query_text required")?;
+        let query_embedding = args.get("query_embedding")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect::<Vec<f32>>());
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10).min(50) as usize;
+
+        let repo_id = repo_id.to_string();
+        let query_text = query_text.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let results = crate::registry::WorkspaceRegistry::hybrid_search_symbols(
+                &conn,
+                &repo_id,
+                &query_text,
+                query_embedding.as_deref(),
+                limit,
+            )?;
+
+            let symbols: Vec<serde_json::Value> = results
+                .into_iter()
+                .map(|(_repo, name, path, line, sim)| {
+                    serde_json::json!({
+                        "name": name,
+                        "file_path": path,
+                        "line_start": line,
+                        "similarity_score": sim,
+                    })
+                })
+                .collect();
+
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "success": true,
+                "repo_id": repo_id,
+                "query_text": query_text,
+                "count": symbols.len(),
+                "symbols": symbols,
+            }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
+#[derive(Clone)]
 pub struct DevkitRelatedSymbolsTool;
 
 impl McpTool for DevkitRelatedSymbolsTool {
