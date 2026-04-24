@@ -1905,6 +1905,80 @@ Returns: JSON object with repo_count, total_symbols, total_embeddings, total_cal
 }
 
 #[derive(Clone)]
+pub struct DevkitRelatedSymbolsTool;
+
+impl McpTool for DevkitRelatedSymbolsTool {
+    fn name(&self) -> &'static str {
+        "devkit_related_symbols"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Find symbols explicitly linked to a given symbol via conceptual relationships (similar signature, co-located in same file). This goes beyond the call graph to discover "related concepts".
+
+Use this when the user wants to:
+- Find functions with similar signatures (e.g., "other functions that also take a token parameter")
+- Discover utilities in the same file that might be relevant
+- Explore conceptual neighbors beyond direct callers/callees
+
+Parameters:
+- repo_id: Registered repository ID.
+- symbol_name: Name of the source symbol.
+- limit: Maximum related symbols (default: 10, max: 50).
+
+Returns: JSON array of related symbols with target_symbol, link_type, and strength (0.0-1.0)."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": { "type": "string" },
+                    "symbol_name": { "type": "string" },
+                    "limit": { "type": "integer", "default": 10 }
+                },
+                "required": ["repo_id", "symbol_name"]
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
+        let symbol_name = args.get("symbol_name").and_then(|v| v.as_str()).context("symbol_name required")?;
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10).min(50) as usize;
+
+        let repo_id = repo_id.to_string();
+        let symbol_name = symbol_name.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let results = crate::registry::WorkspaceRegistry::find_related_symbols(
+                &conn, &repo_id, &symbol_name, limit,
+            )?;
+
+            let links: Vec<serde_json::Value> = results
+                .into_iter()
+                .map(|(_src_repo, _src_sym, target_repo, target_symbol, link_type, strength)| {
+                    serde_json::json!({
+                        "target_repo": target_repo,
+                        "target_symbol": target_symbol,
+                        "link_type": link_type,
+                        "strength": strength,
+                    })
+                })
+                .collect();
+
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "success": true,
+                "repo_id": repo_id,
+                "symbol_name": symbol_name,
+                "count": links.len(),
+                "links": links,
+            }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
+#[derive(Clone)]
 pub struct DevkitCrossRepoSearchTool;
 
 impl McpTool for DevkitCrossRepoSearchTool {

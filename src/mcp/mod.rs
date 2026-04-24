@@ -75,6 +75,7 @@ pub enum McpToolEnum {
     EmbeddingSearch(DevkitEmbeddingSearchTool),
     CrossRepoSearch(DevkitCrossRepoSearchTool),
     KnowledgeReport(DevkitKnowledgeReportTool),
+    RelatedSymbols(DevkitRelatedSymbolsTool),
 }
 
 /// Stability tier for MCP tools.
@@ -132,6 +133,7 @@ impl McpToolEnum {
             McpToolEnum::EmbeddingSearch(_) => ToolTier::Beta,
             McpToolEnum::CrossRepoSearch(_) => ToolTier::Beta,
             McpToolEnum::KnowledgeReport(_) => ToolTier::Beta,
+            McpToolEnum::RelatedSymbols(_) => ToolTier::Experimental,
         }
     }
 }
@@ -168,6 +170,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::EmbeddingSearch(t) => t.name(),
             McpToolEnum::CrossRepoSearch(t) => t.name(),
             McpToolEnum::KnowledgeReport(t) => t.name(),
+            McpToolEnum::RelatedSymbols(t) => t.name(),
         }
     }
 
@@ -202,6 +205,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::EmbeddingSearch(t) => t.schema(),
             McpToolEnum::CrossRepoSearch(t) => t.schema(),
             McpToolEnum::KnowledgeReport(t) => t.schema(),
+            McpToolEnum::RelatedSymbols(t) => t.schema(),
         }
     }
 
@@ -236,6 +240,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::EmbeddingSearch(t) => t.invoke(args).await,
             McpToolEnum::CrossRepoSearch(t) => t.invoke(args).await,
             McpToolEnum::KnowledgeReport(t) => t.invoke(args).await,
+            McpToolEnum::RelatedSymbols(t) => t.invoke(args).await,
         }
     }
 }
@@ -415,6 +420,7 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::EmbeddingSearch(DevkitEmbeddingSearchTool),
         McpToolEnum::CrossRepoSearch(DevkitCrossRepoSearchTool),
         McpToolEnum::KnowledgeReport(DevkitKnowledgeReportTool),
+        McpToolEnum::RelatedSymbols(DevkitRelatedSymbolsTool),
     ];
     for tool in all_tools {
         if let Some(allowed) = tiers

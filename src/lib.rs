@@ -19,6 +19,7 @@ pub mod scan;
 pub mod search;
 pub mod semantic_index;
 pub mod skill_sync;
+pub mod symbol_links;
 pub mod sync;
 pub mod sync_protocol;
 pub mod syncthing_client;

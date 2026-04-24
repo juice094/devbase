@@ -382,6 +382,45 @@ impl WorkspaceRegistry {
         crate::search::hybrid::hybrid_search_symbols(conn, repo_id, query_text, query_embedding, limit)
     }
 
+    /// Find symbols explicitly linked to the given symbol.
+    /// Returns Vec<(source_repo, source_symbol, target_repo, target_symbol, link_type, strength)>.
+    pub fn find_related_symbols(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        symbol_name: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<(String, String, String, String, String, f32)>> {
+        let mut stmt = conn.prepare(
+            "SELECT target_repo, target_symbol, link_type, strength
+             FROM code_symbol_links
+             WHERE source_repo = ?1 AND source_symbol = ?2
+             ORDER BY strength DESC
+             LIMIT ?3"
+        )?;
+        let rows = stmt.query_map(rusqlite::params![repo_id, symbol_name, limit as i64], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, f64>(3)? as f32,
+            ))
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            let (target_repo, target_symbol, link_type, strength) = row?;
+            results.push((
+                repo_id.to_string(),
+                symbol_name.to_string(),
+                target_repo,
+                target_symbol,
+                link_type,
+                strength,
+            ));
+        }
+        Ok(results)
+    }
+
     /// Search for symbols semantically similar to the query embedding.
     /// Returns Vec<(repo_id, symbol_name, file_path, line_start, similarity_score)>.
     pub fn semantic_search_symbols(
