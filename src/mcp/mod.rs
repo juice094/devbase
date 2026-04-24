@@ -70,6 +70,7 @@ pub enum McpToolEnum {
     CallGraph(DevkitCallGraphTool),
     DeadCode(DevkitDeadCodeTool),
     SemanticSearch(DevkitSemanticSearchTool),
+    ArxivFetch(DevkitArxivFetchTool),
 }
 
 /// Stability tier for MCP tools.
@@ -122,6 +123,7 @@ impl McpToolEnum {
             McpToolEnum::CallGraph(_) => ToolTier::Experimental,
             McpToolEnum::DeadCode(_) => ToolTier::Experimental,
             McpToolEnum::SemanticSearch(_) => ToolTier::Beta,
+            McpToolEnum::ArxivFetch(_) => ToolTier::Beta,
         }
     }
 }
@@ -153,6 +155,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::CallGraph(t) => t.name(),
             McpToolEnum::DeadCode(t) => t.name(),
             McpToolEnum::SemanticSearch(t) => t.name(),
+            McpToolEnum::ArxivFetch(t) => t.name(),
         }
     }
 
@@ -182,6 +185,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::CallGraph(t) => t.schema(),
             McpToolEnum::DeadCode(t) => t.schema(),
             McpToolEnum::SemanticSearch(t) => t.schema(),
+            McpToolEnum::ArxivFetch(t) => t.schema(),
         }
     }
 
@@ -211,6 +215,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::CallGraph(t) => t.invoke(args).await,
             McpToolEnum::DeadCode(t) => t.invoke(args).await,
             McpToolEnum::SemanticSearch(t) => t.invoke(args).await,
+            McpToolEnum::ArxivFetch(t) => t.invoke(args).await,
         }
     }
 }
@@ -356,7 +361,7 @@ impl McpServer {
 
 /// Build an MCP server with optional tier filtering.
 ///
-/// If `tiers` is `None`, all 19 tools are registered (backward compatible).
+/// If `tiers` is `None`, all 25 tools are registered (backward compatible).
 /// If `tiers` is provided, only tools whose tier is in the set are registered.
 pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
     let mut server = McpServer::new();
@@ -385,6 +390,7 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::CallGraph(DevkitCallGraphTool),
         McpToolEnum::DeadCode(DevkitDeadCodeTool),
         McpToolEnum::SemanticSearch(DevkitSemanticSearchTool),
+        McpToolEnum::ArxivFetch(DevkitArxivFetchTool),
     ];
     for tool in all_tools {
         if let Some(allowed) = tiers

@@ -192,13 +192,13 @@ fn test_dead_code_excludes_pub_variants_and_main() {
 
     let repo = "test-repo";
     let symbols = [
-        ("private_fn", "fn private_fn() {}", true),   // should be dead
-        ("pub_fn", "pub fn pub_fn() {}", false),       // pub — excluded
+        ("private_fn", "fn private_fn() {}", true), // should be dead
+        ("pub_fn", "pub fn pub_fn() {}", false),    // pub — excluded
         ("pub_async_fn", "pub async fn pub_async_fn() {}", false), // pub async — excluded
         ("pub_crate_fn", "pub(crate) fn pub_crate_fn() {}", false), // pub(crate) — excluded
         ("pub_unsafe_fn", "pub unsafe fn pub_unsafe_fn() {}", false), // pub unsafe — excluded
-        ("main", "fn main() {}", false),               // main — excluded
-        ("called_fn", "fn called_fn() {}", false),     // has incoming call
+        ("main", "fn main() {}", false),            // main — excluded
+        ("called_fn", "fn called_fn() {}", false),  // has incoming call
     ];
 
     for (name, sig, _) in &symbols {
@@ -231,10 +231,12 @@ fn test_dead_code_excludes_pub_variants_and_main() {
         .to_string();
 
     let mut stmt = conn.prepare(&sql).unwrap();
-    let rows = stmt.query_map([repo], |row| {
-        let name: String = row.get(0)?;
-        Ok(name)
-    }).unwrap();
+    let rows = stmt
+        .query_map([repo], |row| {
+            let name: String = row.get(0)?;
+            Ok(name)
+        })
+        .unwrap();
 
     let dead: Vec<String> = rows.filter_map(Result::ok).collect();
     assert_eq!(dead, vec!["private_fn"]);
@@ -283,10 +285,12 @@ fn test_dead_code_include_pub() {
         .to_string();
 
     let mut stmt = conn.prepare(&sql).unwrap();
-    let rows = stmt.query_map([repo], |row| {
-        let name: String = row.get(0)?;
-        Ok(name)
-    }).unwrap();
+    let rows = stmt
+        .query_map([repo], |row| {
+            let name: String = row.get(0)?;
+            Ok(name)
+        })
+        .unwrap();
 
     let dead: Vec<String> = rows.filter_map(Result::ok).collect();
     assert_eq!(dead, vec!["pub_fn"]);

@@ -1648,3 +1648,53 @@ Returns: JSON array of matching symbols with file_path, name, line_start, and si
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
     }
 }
+
+#[derive(Clone)]
+pub struct DevkitArxivFetchTool;
+
+impl McpTool for DevkitArxivFetchTool {
+    fn name(&self) -> &'static str {
+        "devkit_arxiv_fetch"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": "Fetch paper metadata from arXiv by ID. Returns title, authors, summary, published date, and primary category.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "arxiv_id": { "type": "string", "description": "e.g. 2401.12345" }
+                },
+                "required": ["arxiv_id"]
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let arxiv_id = args
+            .get("arxiv_id")
+            .and_then(|v| v.as_str())
+            .context("Missing required argument: arxiv_id")?
+            .to_string();
+
+        let metadata =
+            tokio::task::spawn_blocking(move || crate::arxiv::fetch_arxiv_metadata(&arxiv_id))
+                .await
+                .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?;
+
+        match metadata {
+            Ok(m) => Ok(serde_json::json!({
+                "success": true,
+                "title": m.title,
+                "authors": m.authors,
+                "summary": m.summary,
+                "published": m.published,
+                "primary_category": m.primary_category,
+            })),
+            Err(e) => Ok(serde_json::json!({
+                "success": false,
+                "error": e.to_string(),
+            })),
+        }
+    }
+}

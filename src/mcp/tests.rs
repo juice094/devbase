@@ -26,7 +26,7 @@ async fn test_tools_list() {
     });
     let resp = server.handle_request(req).await.unwrap();
     let tools = resp.get("result").unwrap().get("tools").unwrap().as_array().unwrap();
-    assert_eq!(tools.len(), 24);
+    assert_eq!(tools.len(), 25);
     let names: Vec<&str> = tools.iter().map(|t| t.get("name").unwrap().as_str().unwrap()).collect();
     assert!(names.contains(&"devkit_scan"));
     assert!(names.contains(&"devkit_health"));
@@ -153,6 +153,28 @@ async fn test_tools_call_devkit_project_context() {
     assert!(parsed.get("repo").unwrap().is_null());
     assert!(parsed.get("vault_notes").unwrap().as_array().unwrap().is_empty());
     assert!(parsed.get("assets").unwrap().as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_arxiv_fetch() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 8,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_arxiv_fetch",
+            "arguments": { "arxiv_id": "" }
+        }
+    });
+    let resp = server.handle_request(req).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    // Empty arxiv_id should result in an error from the arXiv API or parser
+    assert_eq!(parsed.get("success").unwrap(), false);
+    assert!(!parsed.get("error").unwrap().as_str().unwrap().is_empty());
 }
 
 #[tokio::test]
