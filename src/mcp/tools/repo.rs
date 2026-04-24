@@ -1540,3 +1540,101 @@ Returns: JSON array of potentially dead functions with file_path, name, and line
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
     }
 }
+
+#[derive(Clone)]
+pub struct DevkitSemanticSearchTool;
+
+impl McpTool for DevkitSemanticSearchTool {
+    fn name(&self) -> &'static str {
+        "devkit_semantic_search"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Search for code symbols semantically similar to a natural language query. Uses local vector embeddings (via Ollama) to find function definitions that match the meaning of your query, not just the keywords.
+
+Use this when the user wants to:
+- Find code related to a concept (e.g., "authentication", "error handling", "config parsing")
+- Discover functions by what they do, not what they're named
+- Explore unfamiliar codebases using natural language
+
+Do NOT use this for:
+- Exact keyword searches (use devkit_natural_language_query or devkit_query instead)
+- Finding symbol definitions by exact name (use devkit_code_symbols instead)
+- When the embedding provider (Ollama) is not configured or available
+
+Parameters:
+- repo_id: Registered repository ID to search within.
+- query: Natural language description of what you're looking for (e.g., "token validation logic").
+- limit: Maximum results (default: 10, max: 50).
+
+Returns: JSON array of matching symbols with file_path, name, line_start, and similarity_score (0.0-1.0). Requires [embedding] enabled in config.toml and Ollama running locally."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": { "type": "string" },
+                    "query": { "type": "string" },
+                    "limit": { "type": "integer", "default": 10 }
+                },
+                "required": ["repo_id", "query"]
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
+        let query = args.get("query").and_then(|v| v.as_str()).context("query required")?;
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10).min(50) as usize;
+
+        let config = crate::config::Config::load()?;
+        if !config.embedding.enabled {
+            anyhow::bail!(
+                "Semantic search is disabled. Enable it by setting [embedding] enabled = true in config.toml and ensure Ollama is running."
+            );
+        }
+
+        let repo_id = repo_id.to_string();
+        let query = query.to_string();
+        let emb_config = config.embedding.clone();
+
+        tokio::task::spawn_blocking(move || {
+            // Generate query embedding
+            let rt = tokio::runtime::Runtime::new()?;
+            let query_embs = rt.block_on(crate::embedding::generate_embeddings(
+                &[query.clone()],
+                &emb_config,
+            ));
+            if query_embs.is_empty() {
+                anyhow::bail!("Failed to generate query embedding. Is Ollama running with model {}?", emb_config.model);
+            }
+            let query_emb = &query_embs[0];
+
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let results = crate::registry::WorkspaceRegistry::semantic_search_symbols(
+                &conn, &repo_id, query_emb, limit,
+            )?;
+
+            let symbols: Vec<serde_json::Value> = results
+                .into_iter()
+                .map(|(_repo, name, path, line, sim)| {
+                    serde_json::json!({
+                        "name": name,
+                        "file_path": path,
+                        "line_start": line,
+                        "similarity_score": sim,
+                    })
+                })
+                .collect();
+
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "success": true,
+                "repo_id": repo_id,
+                "query": query,
+                "count": symbols.len(),
+                "symbols": symbols,
+            }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}

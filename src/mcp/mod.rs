@@ -69,6 +69,7 @@ pub enum McpToolEnum {
     DependencyGraph(DevkitDependencyGraphTool),
     CallGraph(DevkitCallGraphTool),
     DeadCode(DevkitDeadCodeTool),
+    SemanticSearch(DevkitSemanticSearchTool),
 }
 
 /// Stability tier for MCP tools.
@@ -119,6 +120,7 @@ impl McpToolEnum {
             McpToolEnum::DependencyGraph(_) => ToolTier::Beta,
             McpToolEnum::CallGraph(_) => ToolTier::Experimental,
             McpToolEnum::DeadCode(_) => ToolTier::Experimental,
+            McpToolEnum::SemanticSearch(_) => ToolTier::Beta,
         }
     }
 }
@@ -149,6 +151,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::DependencyGraph(t) => t.name(),
             McpToolEnum::CallGraph(t) => t.name(),
             McpToolEnum::DeadCode(t) => t.name(),
+            McpToolEnum::SemanticSearch(t) => t.name(),
         }
     }
 
@@ -177,6 +180,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::DependencyGraph(t) => t.schema(),
             McpToolEnum::CallGraph(t) => t.schema(),
             McpToolEnum::DeadCode(t) => t.schema(),
+            McpToolEnum::SemanticSearch(t) => t.schema(),
         }
     }
 
@@ -205,6 +209,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::DependencyGraph(t) => t.invoke(args).await,
             McpToolEnum::CallGraph(t) => t.invoke(args).await,
             McpToolEnum::DeadCode(t) => t.invoke(args).await,
+            McpToolEnum::SemanticSearch(t) => t.invoke(args).await,
         }
     }
 }
@@ -378,6 +383,7 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::DependencyGraph(DevkitDependencyGraphTool),
         McpToolEnum::CallGraph(DevkitCallGraphTool),
         McpToolEnum::DeadCode(DevkitDeadCodeTool),
+        McpToolEnum::SemanticSearch(DevkitSemanticSearchTool),
     ];
     for tool in all_tools {
         if let Some(ref allowed) = tiers {

@@ -20,6 +20,20 @@ pub struct LlmConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingConfig {
+    #[serde(default = "default_embedding_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_embedding_provider")]
+    pub provider: String,
+    #[serde(default = "default_embedding_model")]
+    pub model: String,
+    #[serde(default = "default_embedding_base_url")]
+    pub base_url: String,
+    #[serde(default = "default_embedding_timeout_seconds")]
+    pub timeout_seconds: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncConfig {
     #[serde(default = "default_sync_timeout_seconds")]
     pub timeout_seconds: u64,
@@ -52,6 +66,8 @@ pub struct Config {
     pub github: GithubConfig,
     #[serde(default)]
     pub llm: LlmConfig,
+    #[serde(default)]
+    pub embedding: EmbeddingConfig,
     #[serde(default)]
     pub sync: SyncConfig,
 }
@@ -165,6 +181,18 @@ impl Default for LlmConfig {
     }
 }
 
+impl Default for EmbeddingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_embedding_enabled(),
+            provider: default_embedding_provider(),
+            model: default_embedding_model(),
+            base_url: default_embedding_base_url(),
+            timeout_seconds: default_embedding_timeout_seconds(),
+        }
+    }
+}
+
 fn default_llm_enabled() -> bool {
     false
 }
@@ -175,6 +203,22 @@ fn default_llm_max_tokens() -> u32 {
     200
 }
 fn default_llm_timeout_seconds() -> u64 {
+    30
+}
+
+fn default_embedding_enabled() -> bool {
+    false
+}
+fn default_embedding_provider() -> String {
+    "ollama".to_string()
+}
+fn default_embedding_model() -> String {
+    "nomic-embed-text".to_string()
+}
+fn default_embedding_base_url() -> String {
+    "http://localhost:11434".to_string()
+}
+fn default_embedding_timeout_seconds() -> u64 {
     30
 }
 fn default_sync_timeout_seconds() -> u64 {
@@ -271,6 +315,14 @@ provider = "ollama"
 # model = ""
 # base_url = ""
 max_tokens = 200
+timeout_seconds = 30
+
+[embedding]
+# Local embedding for semantic code search. Requires Ollama installed.
+enabled = false
+provider = "ollama"
+model = "nomic-embed-text"
+base_url = "http://localhost:11434"
 timeout_seconds = 30
 
 [sync]

@@ -6,6 +6,7 @@ pub mod daemon;
 pub mod dependency_graph;
 pub mod digest;
 pub mod discovery_engine;
+pub mod embedding;
 pub mod health;
 pub mod i18n;
 pub mod knowledge_engine;

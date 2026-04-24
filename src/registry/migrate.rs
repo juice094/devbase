@@ -289,9 +289,22 @@ impl WorkspaceRegistry {
         conn.execute("CREATE INDEX IF NOT EXISTS idx_oplog_operation ON oplog(operation)", [])?;
         conn.execute("CREATE INDEX IF NOT EXISTS idx_oplog_timestamp ON oplog(timestamp)", [])?;
 
+        // v11: code embeddings for semantic vector search
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS code_embeddings (
+                repo_id TEXT NOT NULL,
+                symbol_name TEXT NOT NULL,
+                embedding BLOB NOT NULL,
+                generated_at TEXT NOT NULL,
+                PRIMARY KEY (repo_id, symbol_name),
+                FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+
         // Schema versioning for future migrations
         let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        const CURRENT_SCHEMA_VERSION: i32 = 10;
+        const CURRENT_SCHEMA_VERSION: i32 = 11;
         if user_version < CURRENT_SCHEMA_VERSION
             && path.exists()
             && let Err(e) = crate::backup::auto_backup_before_migration(&path)
@@ -459,6 +472,29 @@ impl WorkspaceRegistry {
                 conn.execute("CREATE INDEX idx_call_graph_caller ON code_call_graph(repo_id, caller_file, caller_symbol)", [])?;
             }
             conn.execute("PRAGMA user_version = 10", [])?;
+        }
+        if user_version < 11 {
+            let ce_exists: bool = conn
+                .query_row(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='code_embeddings'",
+                    [],
+                    |_| Ok(true),
+                )
+                .unwrap_or(false);
+            if !ce_exists {
+                conn.execute(
+                    "CREATE TABLE code_embeddings (
+                        repo_id TEXT NOT NULL,
+                        symbol_name TEXT NOT NULL,
+                        embedding BLOB NOT NULL,
+                        generated_at TEXT NOT NULL,
+                        PRIMARY KEY (repo_id, symbol_name),
+                        FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+                    )",
+                    [],
+                )?;
+            }
+            conn.execute("PRAGMA user_version = 11", [])?;
         }
 
         conn.execute(

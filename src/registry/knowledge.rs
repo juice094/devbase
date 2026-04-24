@@ -264,4 +264,76 @@ impl WorkspaceRegistry {
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
+
+    // ------------------------------------------------------------------
+    // Code Embeddings (semantic vector search)
+    // ------------------------------------------------------------------
+
+    pub fn save_embeddings(
+        conn: &mut rusqlite::Connection,
+        repo_id: &str,
+        embeddings: &[(String, Vec<f32>)],
+    ) -> anyhow::Result<usize> {
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM code_embeddings WHERE repo_id = ?1", [repo_id])?;
+        let now = Utc::now().to_rfc3339();
+        let mut inserted = 0;
+        for (symbol_name, vec) in embeddings {
+            let blob = crate::embedding::embedding_to_bytes(vec);
+            tx.execute(
+                "INSERT INTO code_embeddings (repo_id, symbol_name, embedding, generated_at)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(repo_id, symbol_name) DO UPDATE SET
+                 embedding = excluded.embedding,
+                 generated_at = excluded.generated_at",
+                rusqlite::params![repo_id, symbol_name, blob, &now],
+            )?;
+            inserted += 1;
+        }
+        tx.commit()?;
+        Ok(inserted)
+    }
+
+    /// Search for symbols semantically similar to the query embedding.
+    /// Returns Vec<(repo_id, symbol_name, file_path, line_start, similarity_score)>.
+    pub fn semantic_search_symbols(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        query_embedding: &[f32],
+        limit: usize,
+    ) -> anyhow::Result<Vec<(String, String, String, i64, f32)>> {
+        let mut stmt = conn.prepare(
+            "SELECT ce.symbol_name, cs.file_path, cs.line_start, ce.embedding
+             FROM code_embeddings ce
+             JOIN code_symbols cs ON ce.repo_id = cs.repo_id
+                 AND ce.symbol_name = cs.name
+             WHERE ce.repo_id = ?1 AND cs.symbol_type = 'function'
+             ORDER BY ce.symbol_name"
+        )?;
+        let rows = stmt.query_map([repo_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Vec<u8>>(3)?,
+            ))
+        })?;
+
+        let mut scored: Vec<(String, String, i64, f32)> = Vec::new();
+        for row in rows {
+            let (symbol_name, file_path, line_start, blob) = row?;
+            let emb = crate::embedding::bytes_to_embedding(&blob);
+            let sim = crate::embedding::cosine_similarity(query_embedding, &emb);
+            scored.push((symbol_name, file_path, line_start, sim));
+        }
+
+        scored.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+        scored.truncate(limit);
+
+        Ok(scored
+            .into_iter()
+            .map(|(name, path, line, sim)| (repo_id.to_string(), name, path, line, sim))
+            .collect())
+    }
+
 }
