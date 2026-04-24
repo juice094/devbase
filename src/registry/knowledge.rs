@@ -294,6 +294,18 @@ impl WorkspaceRegistry {
         Ok(inserted)
     }
 
+    /// Hybrid search: vector similarity + keyword matching with RRF merge.
+    /// Falls back to pure keyword search when no embeddings are available.
+    pub fn hybrid_search_symbols(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        query_text: &str,
+        query_embedding: Option<&[f32]>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<crate::semantic_index::SemanticSearchRow>> {
+        crate::search::hybrid::hybrid_search_symbols(conn, repo_id, query_text, query_embedding, limit)
+    }
+
     /// Search for symbols semantically similar to the query embedding.
     /// Returns Vec<(repo_id, symbol_name, file_path, line_start, similarity_score)>.
     pub fn semantic_search_symbols(

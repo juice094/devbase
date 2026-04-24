@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub mod hybrid;
+
 use std::path::PathBuf;
 use tantivy::{
     Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, TantivyError,
