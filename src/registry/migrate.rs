@@ -468,7 +468,10 @@ impl WorkspaceRegistry {
                     [],
                 )?;
                 conn.execute("CREATE INDEX idx_call_graph_repo ON code_call_graph(repo_id)", [])?;
-                conn.execute("CREATE INDEX idx_call_graph_callee ON code_call_graph(callee_name)", [])?;
+                conn.execute(
+                    "CREATE INDEX idx_call_graph_callee ON code_call_graph(callee_name)",
+                    [],
+                )?;
                 conn.execute("CREATE INDEX idx_call_graph_caller ON code_call_graph(repo_id, caller_file, caller_symbol)", [])?;
             }
             conn.execute("PRAGMA user_version = 10", [])?;
@@ -533,9 +536,15 @@ impl WorkspaceRegistry {
             )",
             [],
         )?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_code_symbols_repo ON code_symbols(repo_id)", [])?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_code_symbols_repo ON code_symbols(repo_id)",
+            [],
+        )?;
         conn.execute("CREATE INDEX IF NOT EXISTS idx_code_symbols_name ON code_symbols(name)", [])?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_code_symbols_type ON code_symbols(symbol_type)", [])?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_code_symbols_type ON code_symbols(symbol_type)",
+            [],
+        )?;
 
         // Migrate old repo_modules (used by knowledge_engine) to repo_modules_legacy if needed,
         // then create new repo_modules for cargo metadata indexing.

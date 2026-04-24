@@ -108,11 +108,7 @@ pub async fn generate_embeddings_openai(
                 return Vec::new();
             }
             match resp.json::<OpenAIEmbeddingResponse>().await {
-                Ok(data) => data
-                    .data
-                    .into_iter()
-                    .map(|d| d.embedding)
-                    .collect(),
+                Ok(data) => data.data.into_iter().map(|d| d.embedding).collect(),
                 Err(e) => {
                     warn!("Failed to parse OpenAI embedding response: {}", e);
                     Vec::new()
@@ -174,9 +170,7 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
 /// Serialize an f32 vector to bytes for SQLite BLOB storage.
 pub fn embedding_to_bytes(emb: &[f32]) -> Vec<u8> {
-    emb.iter()
-        .flat_map(|f| f.to_le_bytes())
-        .collect()
+    emb.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
 
 /// Deserialize bytes from SQLite BLOB back to f32 vector.

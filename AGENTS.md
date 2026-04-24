@@ -1,15 +1,15 @@
 # Agent 环境指引
 
-`devbase` 是本地优先的开发者工作区与知识库管理器。当前处于 **v0.2.0**，技术债务已清理，架构具备可持续演进能力。
+`devbase` 是本地优先的开发者工作区与知识库管理器。当前处于 **v0.2.4**，数据层深度能力建设完成，支持多语言符号提取与向量语义搜索。
 
 - **技术栈**：Rust 2024, SQLite, tokio, ratatui, git2, reqwest, tantivy
 - **Registry DB**：`%LOCALAPPDATA%\devbase\registry.db`（轻量索引，用户本地，永不进入版本控制）
 - **Workspace**：`%LOCALAPPDATA%\devbase\workspace/` —— 文件系统 = source of truth
   - `vault/` —— PARA 结构：00-Inbox, 01-Projects, 02-Areas, 03-Resources, 04-Archives, 99-Meta
   - `assets/` —— 二进制资源
-- **MCP Server**：stdio 传输，17 个 tools（含 3 个 vault tools）；配置见 `mcp.json`
+- **MCP Server**：stdio 传输，24 个 tools（含 4 个数据层 tools + 1 个语义搜索）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：157 passed / 0 failed / 2 ignored
+- **当前测试**：184 passed / 0 failed / 2 ignored
 - **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
 
 ## 关键约定
@@ -60,6 +60,9 @@
 | 3 | 工程化 | `src/lib.rs`, CI workflow, `main.rs` 简化 | `4efcd58` |
 | 4 | 依赖/审计 | `notify` 8.2.0, `tokei` 14.0.0 | `4efcd58` |
 | 5 | TUI 美学与工程学 | 主题系统, Tabs, Help Overlay, Render 拆分 | `6b9be88` |
+| 6 | 数据层深度能力 (MVP) | 语义索引、调用图、依赖图、死代码检测、Python 依赖解析 | `9fbf7c4` |
+| 7 | 向量语义搜索 | `embedding.rs`, `code_embeddings` 表, `devkit_semantic_search` | `4d400b1` |
+| 8 | 多语言符号提取 | tree-sitter-python/typescript/go, Rust/Python/JS/Go 符号 + Call Graph | — |
 
 ## 敏感文件清单（禁止提交）
 

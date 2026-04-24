@@ -80,13 +80,14 @@ pub enum ToolTier {
     Experimental,
 }
 
-impl ToolTier {
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for ToolTier {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "stable" => Some(ToolTier::Stable),
-            "beta" => Some(ToolTier::Beta),
-            "experimental" => Some(ToolTier::Experimental),
-            _ => None,
+            "stable" => Ok(ToolTier::Stable),
+            "beta" => Ok(ToolTier::Beta),
+            "experimental" => Ok(ToolTier::Experimental),
+            _ => Err(()),
         }
     }
 }
@@ -386,10 +387,10 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::SemanticSearch(DevkitSemanticSearchTool),
     ];
     for tool in all_tools {
-        if let Some(ref allowed) = tiers {
-            if !allowed.contains(&tool.tier()) {
-                continue;
-            }
+        if let Some(allowed) = tiers
+            && !allowed.contains(&tool.tier())
+        {
+            continue;
         }
         server.register_tool(tool);
     }
@@ -411,7 +412,7 @@ fn parse_tool_tiers(s: &str) -> HashSet<ToolTier> {
     s.split(',')
         .map(|t| t.trim())
         .filter(|t| !t.is_empty())
-        .filter_map(ToolTier::from_str)
+        .filter_map(|s| s.parse().ok())
         .collect()
 }
 

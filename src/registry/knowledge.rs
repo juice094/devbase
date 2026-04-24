@@ -301,14 +301,14 @@ impl WorkspaceRegistry {
         repo_id: &str,
         query_embedding: &[f32],
         limit: usize,
-    ) -> anyhow::Result<Vec<(String, String, String, i64, f32)>> {
+    ) -> anyhow::Result<Vec<crate::semantic_index::SemanticSearchRow>> {
         let mut stmt = conn.prepare(
             "SELECT ce.symbol_name, cs.file_path, cs.line_start, ce.embedding
              FROM code_embeddings ce
              JOIN code_symbols cs ON ce.repo_id = cs.repo_id
                  AND ce.symbol_name = cs.name
              WHERE ce.repo_id = ?1 AND cs.symbol_type = 'function'
-             ORDER BY ce.symbol_name"
+             ORDER BY ce.symbol_name",
         )?;
         let rows = stmt.query_map([repo_id], |row| {
             Ok((
@@ -335,5 +335,4 @@ impl WorkspaceRegistry {
             .map(|(name, path, line, sim)| (repo_id.to_string(), name, path, line, sim))
             .collect())
     }
-
 }

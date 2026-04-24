@@ -1182,7 +1182,7 @@ Returns: JSON array of symbols with file_path, name, symbol_type, line_start, li
             let conn = crate::registry::WorkspaceRegistry::init_db()?;
             let mut sql = String::from(
                 "SELECT file_path, symbol_type, name, line_start, line_end, signature \
-                 FROM code_symbols WHERE repo_id = ?1"
+                 FROM code_symbols WHERE repo_id = ?1",
             );
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(repo_id.clone())];
 
@@ -1395,7 +1395,7 @@ Returns: JSON array of call edges with caller_file, caller_symbol, caller_line, 
             let conn = crate::registry::WorkspaceRegistry::init_db()?;
             let mut sql = String::from(
                 "SELECT caller_file, caller_symbol, caller_line, callee_name \
-                 FROM code_call_graph WHERE repo_id = ?1"
+                 FROM code_call_graph WHERE repo_id = ?1",
             );
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(repo_id.clone())];
 
@@ -1601,11 +1601,14 @@ Returns: JSON array of matching symbols with file_path, name, line_start, and si
             // Generate query embedding
             let rt = tokio::runtime::Runtime::new()?;
             let query_embs = rt.block_on(crate::embedding::generate_embeddings(
-                &[query.clone()],
+                std::slice::from_ref(&query),
                 &emb_config,
             ));
             if query_embs.is_empty() {
-                anyhow::bail!("Failed to generate query embedding. Is Ollama running with model {}?", emb_config.model);
+                anyhow::bail!(
+                    "Failed to generate query embedding. Is Ollama running with model {}?",
+                    emb_config.model
+                );
             }
             let query_emb = &query_embs[0];
 

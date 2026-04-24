@@ -152,13 +152,8 @@ fn parse_package_json(path: &Path, _repo_path: &Path) -> Vec<DependencyRef> {
     for field in ["dependencies", "devDependencies", "peerDependencies"] {
         if let Some(obj) = doc.get(field).and_then(|v| v.as_object()) {
             for (name, value) in obj {
-                let local_path = value.as_str().and_then(|s| {
-                    if s.starts_with("file:") {
-                        Some(PathBuf::from(&s[5..]))
-                    } else {
-                        None
-                    }
-                });
+                let local_path =
+                    value.as_str().and_then(|s| s.strip_prefix("file:").map(PathBuf::from));
                 deps.push(DependencyRef {
                     name: name.clone(),
                     kind: ManifestKind::Npm,
@@ -261,7 +256,7 @@ fn parse_pyproject_toml(path: &Path) -> Vec<DependencyRef> {
         for item in arr {
             if let Some(spec) = item.as_str() {
                 let name = spec
-                    .split(|c: char| c == '=' || c == '<' || c == '>' || c == '!' || c == '~' || c == ';')
+                    .split(['=', '<', '>', '!', '~', ';'])
                     .next()
                     .unwrap_or(spec)
                     .trim()
@@ -278,7 +273,11 @@ fn parse_pyproject_toml(path: &Path) -> Vec<DependencyRef> {
     }
 
     // [tool.poetry.dependencies]
-    if let Some(toml::Value::Table(poetry)) = doc.get("tool").and_then(|t| t.get("poetry")).and_then(|p| p.get("dependencies")) {
+    if let Some(toml::Value::Table(poetry)) = doc
+        .get("tool")
+        .and_then(|t| t.get("poetry"))
+        .and_then(|p| p.get("dependencies"))
+    {
         for (name, value) in poetry {
             let local_path = match value {
                 toml::Value::Table(t) => t.get("path").and_then(|p| p.as_str()).map(PathBuf::from),
@@ -293,7 +292,9 @@ fn parse_pyproject_toml(path: &Path) -> Vec<DependencyRef> {
     }
 
     // [tool.uv.sources] with path = "..."
-    if let Some(toml::Value::Table(sources)) = doc.get("tool").and_then(|t| t.get("uv")).and_then(|u| u.get("sources")) {
+    if let Some(toml::Value::Table(sources)) =
+        doc.get("tool").and_then(|t| t.get("uv")).and_then(|u| u.get("sources"))
+    {
         for (name, value) in sources {
             let local_path = match value {
                 toml::Value::Table(t) => t.get("path").and_then(|p| p.as_str()).map(PathBuf::from),
@@ -328,7 +329,7 @@ fn parse_requirements_txt(path: &Path) -> Vec<DependencyRef> {
         }
         // Extract package name before version specifier
         let name = line
-            .split(|c| c == '=' || c == '<' || c == '>' || c == '!' || c == '[' || c == ';')
+            .split(['=', '<', '>', '!', '[', ';'])
             .next()
             .unwrap_or(line)
             .trim()
@@ -366,9 +367,8 @@ pub fn build_dependency_graph(
 
     {
         let mut stmt = conn.prepare("SELECT id, local_path FROM repos")?;
-        let rows = stmt.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?;
+        let rows =
+            stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
         for row in rows {
             let (id, path_str) = row?;
             let pb = PathBuf::from(&path_str);
@@ -409,19 +409,19 @@ pub fn build_dependency_graph(
             }
 
             // Try matching by directory name of the local path
-            if let Some(dir_name) = canonical.file_name().and_then(|n| n.to_str()) {
-                if let Some(target_id) = name_to_repo.get(dir_name) {
-                    crate::registry::WorkspaceRegistry::save_relation(
-                        conn,
-                        repo_id,
-                        target_id,
-                        "depends_on",
-                        0.9,
-                    )?;
-                    resolved += 1;
-                    debug!("Resolved name-matched local path dep: {} -> {}", repo_id, target_id);
-                    continue;
-                }
+            if let Some(dir_name) = canonical.file_name().and_then(|n| n.to_str())
+                && let Some(target_id) = name_to_repo.get(dir_name)
+            {
+                crate::registry::WorkspaceRegistry::save_relation(
+                    conn,
+                    repo_id,
+                    target_id,
+                    "depends_on",
+                    0.9,
+                )?;
+                resolved += 1;
+                debug!("Resolved name-matched local path dep: {} -> {}", repo_id, target_id);
+                continue;
             }
         }
 

@@ -1,7 +1,11 @@
 //! Semantic code indexing using tree-sitter.
 //!
-//! Extracts symbols (functions, structs, enums, traits, impls) from source files
-//! and stores them in the SQLite registry for AI-powered code queries.
+//! Extracts symbols (functions, structs, enums, traits, impls, classes,
+//! interfaces) from source files and stores them in the SQLite registry for
+//! AI-powered code queries.
+//!
+//! Supported languages: Rust (.rs), Python (.py), JavaScript/TypeScript
+//! (.js, .ts, .jsx, .tsx), Go (.go).
 
 use std::path::{Path, PathBuf};
 use tracing::{debug, warn};
@@ -28,6 +32,8 @@ pub enum SymbolType {
     TypeAlias,
     Constant,
     Static,
+    Class,
+    Interface,
 }
 
 impl SymbolType {
@@ -42,6 +48,8 @@ impl SymbolType {
             SymbolType::TypeAlias => "type_alias",
             SymbolType::Constant => "constant",
             SymbolType::Static => "static",
+            SymbolType::Class => "class",
+            SymbolType::Interface => "interface",
         }
     }
 }
@@ -55,25 +63,71 @@ pub struct CodeCall {
     pub callee_name: String,
 }
 
-/// Extract symbols from a single source file.
-///
-/// Currently supports Rust. Other languages return empty Vec.
-pub fn extract_symbols(file_path: &Path, source: &str) -> Vec<CodeSymbol> {
-    let ext = file_path.extension().and_then(|e| e.to_str());
-    match ext {
-        Some("rs") => extract_rust_symbols(file_path, source),
-        _ => {
-            debug!("Skipping semantic extraction for {:?}", file_path);
-            Vec::new()
+/// Row type returned by semantic search:
+/// (repo_id, symbol_name, file_path, line_start, similarity_score).
+pub type SemanticSearchRow = (String, String, String, i64, f32);
+
+// ---------------------------------------------------------------------------
+// Language dispatch
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+enum Lang {
+    Rust,
+    Python,
+    JsTs,
+    Go,
+}
+
+impl Lang {
+    fn from_ext(ext: &str) -> Option<Self> {
+        match ext {
+            "rs" => Some(Lang::Rust),
+            "py" => Some(Lang::Python),
+            "js" | "ts" | "jsx" => Some(Lang::JsTs),
+            "tsx" => Some(Lang::JsTs),
+            "go" => Some(Lang::Go),
+            _ => None,
+        }
+    }
+
+    fn parser_language(self) -> tree_sitter::Language {
+        match self {
+            Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
+            Lang::Python => tree_sitter_python::LANGUAGE.into(),
+            Lang::JsTs => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            Lang::Go => tree_sitter_go::LANGUAGE.into(),
         }
     }
 }
 
-/// Extract Rust symbols using tree-sitter.
-fn extract_rust_symbols(file_path: &Path, source: &str) -> Vec<CodeSymbol> {
+// ---------------------------------------------------------------------------
+// Symbol extraction
+// ---------------------------------------------------------------------------
+
+/// Extract symbols from a single source file.
+///
+/// Supports Rust, Python, JavaScript/TypeScript, and Go.
+pub fn extract_symbols(file_path: &Path, source: &str) -> Vec<CodeSymbol> {
+    let ext = file_path.extension().and_then(|e| e.to_str());
+    let lang = match ext {
+        Some(ext) => match Lang::from_ext(ext) {
+            Some(l) => l,
+            None => {
+                debug!("Skipping semantic extraction for {:?}", file_path);
+                return Vec::new();
+            }
+        },
+        None => return Vec::new(),
+    };
+
+    extract_symbols_with_parser(file_path, source, lang)
+}
+
+fn extract_symbols_with_parser(file_path: &Path, source: &str, lang: Lang) -> Vec<CodeSymbol> {
     let mut parser = tree_sitter::Parser::new();
-    let language = tree_sitter_rust::LANGUAGE.into();
-    if let Err(e) = parser.set_language(&language) {
+    let ts_lang = lang.parser_language();
+    if let Err(e) = parser.set_language(&ts_lang) {
         warn!("Failed to set tree-sitter language: {}", e);
         return Vec::new();
     }
@@ -86,21 +140,50 @@ fn extract_rust_symbols(file_path: &Path, source: &str) -> Vec<CodeSymbol> {
         }
     };
 
-    let root = tree.root_node();
     let mut symbols = Vec::new();
     let source_bytes = source.as_bytes();
-
-    for i in 0..root.child_count() {
-        let node = root.child(i as u32).unwrap();
-        if let Some(sym) = node_to_symbol(&node, file_path, source_bytes) {
-            symbols.push(sym);
-        }
-    }
-
+    let root = tree.root_node();
+    collect_symbols_from_node(&root, file_path, source_bytes, lang, &mut symbols);
     symbols
 }
 
+fn collect_symbols_from_node(
+    node: &tree_sitter::Node,
+    file_path: &Path,
+    source_bytes: &[u8],
+    lang: Lang,
+    symbols: &mut Vec<CodeSymbol>,
+) {
+    if let Some(sym) = node_to_symbol(node, file_path, source_bytes, lang) {
+        symbols.push(sym);
+        // Don't recurse into this node — we don't want inner methods of a
+        // class to also be extracted as top-level symbols.
+        return;
+    }
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i as u32) {
+            collect_symbols_from_node(&child, file_path, source_bytes, lang, symbols);
+        }
+    }
+}
+
 fn node_to_symbol(
+    node: &tree_sitter::Node,
+    file_path: &Path,
+    source_bytes: &[u8],
+    lang: Lang,
+) -> Option<CodeSymbol> {
+    match lang {
+        Lang::Rust => rust_node_to_symbol(node, file_path, source_bytes),
+        Lang::Python => python_node_to_symbol(node, file_path, source_bytes),
+        Lang::JsTs => js_node_to_symbol(node, file_path, source_bytes),
+        Lang::Go => go_node_to_symbol(node, file_path, source_bytes),
+    }
+}
+
+// ---- Rust -----------------------------------------------------------------
+
+fn rust_node_to_symbol(
     node: &tree_sitter::Node,
     file_path: &Path,
     source_bytes: &[u8],
@@ -119,7 +202,7 @@ fn node_to_symbol(
     };
 
     let name = extract_node_name(node, source_bytes)?;
-    let line_start = node.start_position().row + 1; // 1-based
+    let line_start = node.start_position().row + 1;
     let line_end = node.end_position().row + 1;
     let signature = extract_signature(node, source_bytes);
 
@@ -133,8 +216,151 @@ fn node_to_symbol(
     })
 }
 
+// ---- Python ---------------------------------------------------------------
+
+fn python_node_to_symbol(
+    node: &tree_sitter::Node,
+    file_path: &Path,
+    source_bytes: &[u8],
+) -> Option<CodeSymbol> {
+    let symbol_type = match node.kind() {
+        "function_definition" => SymbolType::Function,
+        "class_definition" => SymbolType::Class,
+        _ => return None,
+    };
+
+    let name = extract_node_name(node, source_bytes)?;
+    let line_start = node.start_position().row + 1;
+    let line_end = node.end_position().row + 1;
+    let signature = extract_signature(node, source_bytes);
+
+    Some(CodeSymbol {
+        symbol_type,
+        name,
+        file_path: file_path.to_path_buf(),
+        line_start,
+        line_end,
+        signature,
+    })
+}
+
+// ---- JavaScript / TypeScript ----------------------------------------------
+
+fn js_node_to_symbol(
+    node: &tree_sitter::Node,
+    file_path: &Path,
+    source_bytes: &[u8],
+) -> Option<CodeSymbol> {
+    let symbol_type = match node.kind() {
+        "function_declaration" => SymbolType::Function,
+        "method_definition" => SymbolType::Function,
+        "class_declaration" => SymbolType::Class,
+        "interface_declaration" => SymbolType::Interface,
+        "type_alias_declaration" => SymbolType::TypeAlias,
+        "enum_declaration" => SymbolType::Enum,
+        _ => return None,
+    };
+
+    let name = if node.kind() == "method_definition" {
+        extract_child_by_kind(node, "property_identifier", source_bytes)?
+    } else {
+        extract_node_name(node, source_bytes)?
+    };
+
+    let line_start = node.start_position().row + 1;
+    let line_end = node.end_position().row + 1;
+    let signature = extract_signature(node, source_bytes);
+
+    Some(CodeSymbol {
+        symbol_type,
+        name,
+        file_path: file_path.to_path_buf(),
+        line_start,
+        line_end,
+        signature,
+    })
+}
+
+// ---- Go -------------------------------------------------------------------
+
+fn go_node_to_symbol(
+    node: &tree_sitter::Node,
+    file_path: &Path,
+    source_bytes: &[u8],
+) -> Option<CodeSymbol> {
+    match node.kind() {
+        "function_declaration" => {
+            let name = extract_node_name(node, source_bytes)?;
+            let line_start = node.start_position().row + 1;
+            let line_end = node.end_position().row + 1;
+            let signature = extract_signature(node, source_bytes);
+            Some(CodeSymbol {
+                symbol_type: SymbolType::Function,
+                name,
+                file_path: file_path.to_path_buf(),
+                line_start,
+                line_end,
+                signature,
+            })
+        }
+        "method_declaration" => {
+            let name = extract_child_by_kind(node, "field_identifier", source_bytes)?;
+            let line_start = node.start_position().row + 1;
+            let line_end = node.end_position().row + 1;
+            let signature = extract_signature(node, source_bytes);
+            Some(CodeSymbol {
+                symbol_type: SymbolType::Function,
+                name,
+                file_path: file_path.to_path_buf(),
+                line_start,
+                line_end,
+                signature,
+            })
+        }
+        "type_spec" => {
+            let name = extract_child_by_kind(node, "type_identifier", source_bytes)?;
+            let symbol_type = if has_child_of_kind(node, "struct_type") {
+                SymbolType::Struct
+            } else if has_child_of_kind(node, "interface_type") {
+                SymbolType::Interface
+            } else {
+                SymbolType::TypeAlias
+            };
+            let line_start = node.start_position().row + 1;
+            let line_end = node.end_position().row + 1;
+            let signature = extract_signature(node, source_bytes);
+            Some(CodeSymbol {
+                symbol_type,
+                name,
+                file_path: file_path.to_path_buf(),
+                line_start,
+                line_end,
+                signature,
+            })
+        }
+        "const_spec" => {
+            let name = extract_child_by_kind(node, "identifier", source_bytes)?;
+            let line_start = node.start_position().row + 1;
+            let line_end = node.end_position().row + 1;
+            let signature = extract_signature(node, source_bytes);
+            Some(CodeSymbol {
+                symbol_type: SymbolType::Constant,
+                name,
+                file_path: file_path.to_path_buf(),
+                line_start,
+                line_end,
+                signature,
+            })
+        }
+        _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 fn extract_node_name(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
-    // Find the identifier or type_identifier child
     for i in 0..node.child_count() {
         let child = node.child(i as u32)?;
         if child.kind() == "identifier" || child.kind() == "type_identifier" {
@@ -144,37 +370,68 @@ fn extract_node_name(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<St
     None
 }
 
-fn extract_signature(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
-    // For functions, extract the full signature line (fn name(...))
-    if node.kind() == "function_item" {
-        let start = node.start_position();
-        let _end_byte = node.end_byte();
-        // Find the end of the function signature (before the body block)
-        for i in 0..node.child_count() {
-            let child = node.child(i as u32)?;
-            if child.kind() == "block" {
-                let sig_text = &source_bytes[node.start_byte()..child.start_byte()];
-                return Some(String::from_utf8_lossy(sig_text).trim().to_string());
-            }
+fn extract_child_by_kind(
+    node: &tree_sitter::Node,
+    kind: &str,
+    source_bytes: &[u8],
+) -> Option<String> {
+    for i in 0..node.child_count() {
+        let child = node.child(i as u32)?;
+        if child.kind() == kind {
+            return Some(node_text(&child, source_bytes).to_string());
         }
-        // Fallback: first line
-        let line_start = start.row;
-        let line_text = source_bytes
-            .split(|&b| b == b'\n')
-            .nth(line_start)?;
-        return Some(String::from_utf8_lossy(line_text).trim().to_string());
     }
     None
+}
+
+fn has_child_of_kind(node: &tree_sitter::Node, kind: &str) -> bool {
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i as u32)
+            && child.kind() == kind
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn extract_signature(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
+    let block_kinds = [
+        "block",                  // Rust, Python, Go
+        "statement_block",        // JS/TS functions
+        "class_body",             // JS/TS classes
+        "enum_body",              // JS/TS enums
+        "interface_body",         // TS interfaces
+        "field_declaration_list", // Go structs
+        "method_spec_list",       // Go interfaces
+    ];
+    for i in 0..node.child_count() {
+        let child = node.child(i as u32)?;
+        if block_kinds.contains(&child.kind()) {
+            let sig_text = &source_bytes[node.start_byte()..child.start_byte()];
+            return Some(String::from_utf8_lossy(sig_text).trim().to_string());
+        }
+    }
+    // Fallback: first line
+    let line_start = node.start_position().row;
+    let line_text = source_bytes.split(|&b| b == b'\n').nth(line_start)?;
+    Some(String::from_utf8_lossy(line_text).trim().to_string())
 }
 
 fn node_text<'a>(node: &tree_sitter::Node, source: &'a [u8]) -> &'a str {
     std::str::from_utf8(&source[node.start_byte()..node.end_byte()]).unwrap_or("")
 }
 
+// ---------------------------------------------------------------------------
+// Repository-wide indexing
+// ---------------------------------------------------------------------------
+
 /// Scan a repository for source files and extract all symbols and call relationships.
 pub fn index_repo_full(repo_path: &Path) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
     let mut all_symbols = Vec::new();
     let mut all_calls = Vec::new();
+
+    let exts: &[&str] = &["rs", "py", "js", "ts", "jsx", "tsx", "go"];
 
     for entry in walkdir::WalkDir::new(repo_path)
         .into_iter()
@@ -182,7 +439,8 @@ pub fn index_repo_full(repo_path: &Path) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
         .filter(|e| e.file_type().is_file())
     {
         let path = entry.path();
-        if path.extension() != Some("rs".as_ref()) {
+        let ext = path.extension().and_then(|e| e.to_str());
+        if ext.is_none_or(|e| !exts.contains(&e)) {
             continue;
         }
 
@@ -209,10 +467,23 @@ pub fn index_repo(repo_path: &Path) -> Vec<CodeSymbol> {
     index_repo_full(repo_path).0
 }
 
+// ---------------------------------------------------------------------------
+// Call extraction
+// ---------------------------------------------------------------------------
+
 fn extract_calls_from_file(file_path: &Path, source: &str) -> Vec<CodeCall> {
+    let ext = file_path.extension().and_then(|e| e.to_str());
+    let lang = match ext {
+        Some(ext) => match Lang::from_ext(ext) {
+            Some(l) => l,
+            None => return Vec::new(),
+        },
+        None => return Vec::new(),
+    };
+
     let mut parser = tree_sitter::Parser::new();
-    let language = tree_sitter_rust::LANGUAGE.into();
-    if let Err(e) = parser.set_language(&language) {
+    let ts_lang = lang.parser_language();
+    if let Err(e) = parser.set_language(&ts_lang) {
         warn!("Failed to set tree-sitter language: {}", e);
         return Vec::new();
     }
@@ -229,7 +500,7 @@ fn extract_calls_from_file(file_path: &Path, source: &str) -> Vec<CodeCall> {
     let source_bytes = source.as_bytes();
     let root = tree.root_node();
     let mut cursor = root.walk();
-    walk_tree_for_calls(&mut cursor, file_path, source_bytes, &mut calls, None);
+    walk_tree_for_calls(&mut cursor, file_path, source_bytes, lang, &mut calls, None);
     calls
 }
 
@@ -237,47 +508,29 @@ fn walk_tree_for_calls(
     cursor: &mut tree_sitter::TreeCursor,
     file_path: &Path,
     source_bytes: &[u8],
+    lang: Lang,
     calls: &mut Vec<CodeCall>,
     current_function: Option<&str>,
 ) {
     let node = cursor.node();
 
-    let func_name: Option<String> = if node.kind() == "function_item" || node.kind() == "closure_expression" {
-        extract_node_name(&node, source_bytes)
-    } else {
-        None
-    };
+    let func_name = extract_current_function_name(&node, source_bytes, lang);
     let func_name_ref = func_name.as_deref().or(current_function);
 
-    if node.kind() == "call_expression" {
-        if let Some(callee) = extract_callee_name(&node, source_bytes) {
-            if let Some(caller) = func_name_ref {
-                calls.push(CodeCall {
-                    caller_file: file_path.to_path_buf(),
-                    caller_symbol: caller.to_string(),
-                    caller_line: node.start_position().row + 1,
-                    callee_name: callee,
-                });
-            }
-        }
-    }
-
-    if node.kind() == "macro_invocation" {
-        if let Some(callee) = extract_macro_name(&node, source_bytes) {
-            if let Some(caller) = func_name_ref {
-                calls.push(CodeCall {
-                    caller_file: file_path.to_path_buf(),
-                    caller_symbol: caller.to_string(),
-                    caller_line: node.start_position().row + 1,
-                    callee_name: callee,
-                });
-            }
-        }
+    if let Some(callee) = extract_callee_name(&node, source_bytes, lang)
+        && let Some(caller) = func_name_ref
+    {
+        calls.push(CodeCall {
+            caller_file: file_path.to_path_buf(),
+            caller_symbol: caller.to_string(),
+            caller_line: node.start_position().row + 1,
+            callee_name: callee,
+        });
     }
 
     if cursor.goto_first_child() {
         loop {
-            walk_tree_for_calls(cursor, file_path, source_bytes, calls, func_name_ref);
+            walk_tree_for_calls(cursor, file_path, source_bytes, lang, calls, func_name_ref);
             if !cursor.goto_next_sibling() {
                 break;
             }
@@ -286,17 +539,96 @@ fn walk_tree_for_calls(
     }
 }
 
-fn extract_callee_name(call_node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
-    // call_expression children: function expression, arguments
-    let func_node = call_node.child(0)?;
-    extract_call_target_name(&func_node, source_bytes)
+fn extract_current_function_name(
+    node: &tree_sitter::Node,
+    source_bytes: &[u8],
+    lang: Lang,
+) -> Option<String> {
+    match lang {
+        Lang::Rust => {
+            if node.kind() == "function_item" || node.kind() == "closure_expression" {
+                extract_node_name(node, source_bytes)
+            } else {
+                None
+            }
+        }
+        Lang::Python => {
+            if node.kind() == "function_definition" {
+                extract_node_name(node, source_bytes)
+            } else {
+                None
+            }
+        }
+        Lang::JsTs => {
+            if node.kind() == "function_declaration" || node.kind() == "method_definition" {
+                if node.kind() == "method_definition" {
+                    extract_child_by_kind(node, "property_identifier", source_bytes)
+                } else {
+                    extract_node_name(node, source_bytes)
+                }
+            } else {
+                None
+            }
+        }
+        Lang::Go => {
+            if node.kind() == "function_declaration" {
+                extract_node_name(node, source_bytes)
+            } else if node.kind() == "method_declaration" {
+                extract_child_by_kind(node, "field_identifier", source_bytes)
+            } else {
+                None
+            }
+        }
+    }
 }
 
-fn extract_call_target_name(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
+fn extract_callee_name(
+    node: &tree_sitter::Node,
+    source_bytes: &[u8],
+    lang: Lang,
+) -> Option<String> {
+    match lang {
+        Lang::Rust => {
+            if node.kind() == "call_expression" {
+                let func_node = node.child(0)?;
+                extract_rust_call_target_name(&func_node, source_bytes)
+            } else if node.kind() == "macro_invocation" {
+                extract_macro_name(node, source_bytes)
+            } else {
+                None
+            }
+        }
+        Lang::Python => {
+            if node.kind() == "call" {
+                let func_node = node.child(0)?;
+                extract_python_call_target_name(&func_node, source_bytes)
+            } else {
+                None
+            }
+        }
+        Lang::JsTs => {
+            if node.kind() == "call_expression" {
+                let func_node = node.child(0)?;
+                extract_js_call_target_name(&func_node, source_bytes)
+            } else {
+                None
+            }
+        }
+        Lang::Go => {
+            if node.kind() == "call_expression" {
+                let func_node = node.child(0)?;
+                extract_go_call_target_name(&func_node, source_bytes)
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn extract_rust_call_target_name(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
     match node.kind() {
         "identifier" => Some(node_text(node, source_bytes).to_string()),
         "field_expression" => {
-            // Method call: self.foo() or obj.bar()
             for i in 0..node.child_count() {
                 let child = node.child(i as u32)?;
                 if child.kind() == "field_identifier" {
@@ -306,10 +638,61 @@ fn extract_call_target_name(node: &tree_sitter::Node, source_bytes: &[u8]) -> Op
             None
         }
         "scoped_identifier" => {
-            // Foo::bar() or crate::foo::bar()
             for i in (0..node.child_count()).rev() {
                 let child = node.child(i as u32)?;
                 if child.kind() == "identifier" {
+                    return Some(node_text(&child, source_bytes).to_string());
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn extract_python_call_target_name(
+    node: &tree_sitter::Node,
+    source_bytes: &[u8],
+) -> Option<String> {
+    match node.kind() {
+        "identifier" => Some(node_text(node, source_bytes).to_string()),
+        "attribute" => {
+            // obj.method  — take the attribute (method name)
+            for i in 0..node.child_count() {
+                let child = node.child(i as u32)?;
+                if child.kind() == "identifier" {
+                    return Some(node_text(&child, source_bytes).to_string());
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn extract_js_call_target_name(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
+    match node.kind() {
+        "identifier" => Some(node_text(node, source_bytes).to_string()),
+        "member_expression" => {
+            for i in 0..node.child_count() {
+                let child = node.child(i as u32)?;
+                if child.kind() == "property_identifier" {
+                    return Some(node_text(&child, source_bytes).to_string());
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn extract_go_call_target_name(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
+    match node.kind() {
+        "identifier" => Some(node_text(node, source_bytes).to_string()),
+        "selector_expression" => {
+            for i in 0..node.child_count() {
+                let child = node.child(i as u32)?;
+                if child.kind() == "field_identifier" {
                     return Some(node_text(&child, source_bytes).to_string());
                 }
             }
@@ -329,6 +712,10 @@ fn extract_macro_name(macro_node: &tree_sitter::Node, source_bytes: &[u8]) -> Op
     None
 }
 
+// ---------------------------------------------------------------------------
+// Batch save to SQLite
+// ---------------------------------------------------------------------------
+
 /// Batch save symbols to the SQLite registry.
 pub fn save_symbols(
     conn: &mut rusqlite::Connection,
@@ -338,10 +725,7 @@ pub fn save_symbols(
     let tx = conn.transaction()?;
 
     // Clear old symbols for this repo
-    tx.execute(
-        "DELETE FROM code_symbols WHERE repo_id = ?1",
-        [repo_id],
-    )?;
+    tx.execute("DELETE FROM code_symbols WHERE repo_id = ?1", [repo_id])?;
 
     let mut inserted = 0;
     for sym in symbols {
@@ -380,10 +764,7 @@ pub fn save_calls(
     let tx = conn.transaction()?;
 
     // Clear old calls for this repo
-    tx.execute(
-        "DELETE FROM code_call_graph WHERE repo_id = ?1",
-        [repo_id],
-    )?;
+    tx.execute("DELETE FROM code_call_graph WHERE repo_id = ?1", [repo_id])?;
 
     let mut inserted = 0;
     for call in calls {
@@ -407,9 +788,15 @@ pub fn save_calls(
     Ok(inserted)
 }
 
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ---- Rust ----------------------------------------------------------------
 
     #[test]
     fn test_extract_rust_function() {
@@ -418,7 +805,7 @@ fn hello_world() -> String {
     "hello".to_string()
 }
 "#;
-        let symbols = extract_rust_symbols(Path::new("test.rs"), source);
+        let symbols = extract_symbols(Path::new("test.rs"), source);
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].symbol_type, SymbolType::Function);
         assert_eq!(symbols[0].name, "hello_world");
@@ -434,24 +821,199 @@ pub struct RepoEntry {
     path: PathBuf,
 }
 "#;
-        let symbols = extract_rust_symbols(Path::new("test.rs"), source);
+        let symbols = extract_symbols(Path::new("test.rs"), source);
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].symbol_type, SymbolType::Struct);
         assert_eq!(symbols[0].name, "RepoEntry");
     }
 
     #[test]
-    fn test_extract_multiple() {
+    fn test_extract_multiple_rust() {
         let source = r#"
 fn func_a() {}
 fn func_b() {}
 struct MyStruct;
 "#;
-        let symbols = extract_rust_symbols(Path::new("test.rs"), source);
+        let symbols = extract_symbols(Path::new("test.rs"), source);
         assert_eq!(symbols.len(), 3);
         let names: Vec<_> = symbols.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"func_a"));
         assert!(names.contains(&"func_b"));
         assert!(names.contains(&"MyStruct"));
+    }
+
+    // ---- Python --------------------------------------------------------------
+
+    #[test]
+    fn test_extract_python_function() {
+        let source = r#"
+def hello_world():
+    return "hello"
+"#;
+        let symbols = extract_symbols(Path::new("test.py"), source);
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].symbol_type, SymbolType::Function);
+        assert_eq!(symbols[0].name, "hello_world");
+        assert_eq!(symbols[0].line_start, 2);
+        assert!(symbols[0].signature.is_some());
+    }
+
+    #[test]
+    fn test_extract_python_class() {
+        let source = r#"
+class MyClass:
+    def method(self):
+        pass
+"#;
+        let symbols = extract_symbols(Path::new("test.py"), source);
+        // Only the class is extracted at top-level; inner method is skipped.
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].symbol_type, SymbolType::Class);
+        assert_eq!(symbols[0].name, "MyClass");
+    }
+
+    #[test]
+    fn test_extract_python_multiple() {
+        let source = r#"
+def func_a():
+    pass
+
+def func_b():
+    pass
+
+class MyClass:
+    pass
+"#;
+        let symbols = extract_symbols(Path::new("test.py"), source);
+        assert_eq!(symbols.len(), 3);
+        let names: Vec<_> = symbols.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"func_a"));
+        assert!(names.contains(&"func_b"));
+        assert!(names.contains(&"MyClass"));
+    }
+
+    // ---- JavaScript / TypeScript ---------------------------------------------
+
+    #[test]
+    fn test_extract_js_function() {
+        let source = r#"
+function helloWorld() {
+    return "hello";
+}
+"#;
+        let symbols = extract_symbols(Path::new("test.js"), source);
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].symbol_type, SymbolType::Function);
+        assert_eq!(symbols[0].name, "helloWorld");
+        assert_eq!(symbols[0].line_start, 2);
+        assert!(symbols[0].signature.is_some());
+    }
+
+    #[test]
+    fn test_extract_ts_class_and_interface() {
+        let source = r#"
+interface Point {
+    x: number;
+    y: number;
+}
+
+class MyClass implements Point {
+    x: number = 0;
+    y: number = 0;
+}
+"#;
+        let symbols = extract_symbols(Path::new("test.ts"), source);
+        assert_eq!(symbols.len(), 2);
+        let names: Vec<_> = symbols.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"Point"));
+        assert!(names.contains(&"MyClass"));
+        let types: Vec<_> = symbols.iter().map(|s| s.symbol_type.clone()).collect();
+        assert!(types.contains(&SymbolType::Interface));
+        assert!(types.contains(&SymbolType::Class));
+    }
+
+    #[test]
+    fn test_extract_ts_enum() {
+        let source = r#"
+enum Color {
+    Red,
+    Green,
+    Blue,
+}
+"#;
+        let symbols = extract_symbols(Path::new("test.ts"), source);
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].symbol_type, SymbolType::Enum);
+        assert_eq!(symbols[0].name, "Color");
+    }
+
+    // ---- Go ------------------------------------------------------------------
+
+    #[test]
+    fn test_extract_go_function() {
+        let source = r#"
+package main
+
+func helloWorld() string {
+    return "hello"
+}
+"#;
+        let symbols = extract_symbols(Path::new("test.go"), source);
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].symbol_type, SymbolType::Function);
+        assert_eq!(symbols[0].name, "helloWorld");
+        assert_eq!(symbols[0].line_start, 4);
+        assert!(symbols[0].signature.is_some());
+    }
+
+    #[test]
+    fn test_extract_go_struct_and_interface() {
+        let source = r#"
+package main
+
+type Reader interface {
+    Read(p []byte) (n int, err error)
+}
+
+type MyStruct struct {
+    Name string
+}
+"#;
+        let symbols = extract_symbols(Path::new("test.go"), source);
+        assert_eq!(symbols.len(), 2);
+        let names: Vec<_> = symbols.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"Reader"));
+        assert!(names.contains(&"MyStruct"));
+        let types: Vec<_> = symbols.iter().map(|s| s.symbol_type.clone()).collect();
+        assert!(types.contains(&SymbolType::Interface));
+        assert!(types.contains(&SymbolType::Struct));
+    }
+
+    #[test]
+    fn test_extract_go_const() {
+        let source = r#"
+package main
+
+const Pi = 3.14
+"#;
+        let symbols = extract_symbols(Path::new("test.go"), source);
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].symbol_type, SymbolType::Constant);
+        assert_eq!(symbols[0].name, "Pi");
+    }
+
+    #[test]
+    fn test_extract_go_method() {
+        let source = r#"
+package main
+
+func (s *MyStruct) Method() string {
+    return s.Name
+}
+"#;
+        let symbols = extract_symbols(Path::new("test.go"), source);
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].symbol_type, SymbolType::Function);
+        assert_eq!(symbols[0].name, "Method");
     }
 }

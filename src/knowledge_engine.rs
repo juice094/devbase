@@ -715,37 +715,35 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
 
         // Semantic embeddings for vector search
         let emb_config = crate::config::Config::load().ok().map(|c| c.embedding);
-        if let Some(ref ec) = emb_config {
-            if ec.enabled {
-                let func_symbols: Vec<&crate::semantic_index::CodeSymbol> = symbols
+        if let Some(ref ec) = emb_config
+            && ec.enabled
+        {
+            let func_symbols: Vec<&crate::semantic_index::CodeSymbol> = symbols
+                .iter()
+                .filter(|s| s.symbol_type == crate::semantic_index::SymbolType::Function)
+                .collect();
+            if !func_symbols.is_empty() {
+                let texts: Vec<String> = func_symbols
                     .iter()
-                    .filter(|s| s.symbol_type == crate::semantic_index::SymbolType::Function)
+                    .map(|s| {
+                        let sig = s.signature.as_deref().unwrap_or(&s.name);
+                        format!("{} in {}: {}", s.name, s.file_path.display(), sig)
+                    })
                     .collect();
-                if !func_symbols.is_empty() {
-                    let texts: Vec<String> = func_symbols
-                        .iter()
-                        .map(|s| {
-                            let sig = s.signature.as_deref().unwrap_or(&s.name);
-                            format!("{} in {}: {}", s.name, s.file_path.display(), sig)
-                        })
-                        .collect();
-                    let rt = tokio::runtime::Runtime::new().ok();
-                    if let Some(rt) = rt {
-                        let embs = rt.block_on(crate::embedding::generate_embeddings(
-                            &texts, ec,
-                        ));
-                        if !embs.is_empty() {
-                            let pairs: Vec<(String, Vec<f32>)> = func_symbols
-                                .iter()
-                                .zip(embs.into_iter())
-                                .map(|(s, e)| (s.name.clone(), e))
-                                .collect();
-                            match crate::registry::WorkspaceRegistry::save_embeddings(
-                                &mut conn, &repo.id, &pairs,
-                            ) {
-                                Ok(n) => info!("Saved {} embeddings for {}", n, repo.id),
-                                Err(e) => warn!("Failed to save embeddings for {}: {}", repo.id, e),
-                            }
+                let rt = tokio::runtime::Runtime::new().ok();
+                if let Some(rt) = rt {
+                    let embs = rt.block_on(crate::embedding::generate_embeddings(&texts, ec));
+                    if !embs.is_empty() {
+                        let pairs: Vec<(String, Vec<f32>)> = func_symbols
+                            .iter()
+                            .zip(embs.into_iter())
+                            .map(|(s, e)| (s.name.clone(), e))
+                            .collect();
+                        match crate::registry::WorkspaceRegistry::save_embeddings(
+                            &mut conn, &repo.id, &pairs,
+                        ) {
+                            Ok(n) => info!("Saved {} embeddings for {}", n, repo.id),
+                            Err(e) => warn!("Failed to save embeddings for {}: {}", repo.id, e),
                         }
                     }
                 }
@@ -753,7 +751,8 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
         }
 
         // Cross-repo dependency graph
-        match crate::dependency_graph::build_dependency_graph(&mut conn, &repo.id, &repo.local_path) {
+        match crate::dependency_graph::build_dependency_graph(&mut conn, &repo.id, &repo.local_path)
+        {
             Ok(n) => {
                 if n > 0 {
                     info!("Resolved {} local dependencies for {}", n, repo.id);
@@ -764,10 +763,22 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
 
         println!(
             "Indexed [{}] -> \"{}\" (keywords: {}) language={:?} symbols={} calls={} embeddings={}",
-            repo.id, summary, keywords, detected_lang, symbols.len(), calls.len(),
-            emb_config.as_ref().filter(|e| e.enabled).map(|_| {
-                symbols.iter().filter(|s| s.symbol_type == crate::semantic_index::SymbolType::Function).count()
-            }).unwrap_or(0)
+            repo.id,
+            summary,
+            keywords,
+            detected_lang,
+            symbols.len(),
+            calls.len(),
+            emb_config
+                .as_ref()
+                .filter(|e| e.enabled)
+                .map(|_| {
+                    symbols
+                        .iter()
+                        .filter(|s| s.symbol_type == crate::semantic_index::SymbolType::Function)
+                        .count()
+                })
+                .unwrap_or(0)
         );
         count += 1;
     }
