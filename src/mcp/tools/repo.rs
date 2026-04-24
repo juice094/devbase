@@ -1507,10 +1507,12 @@ Returns: JSON array of potentially dead functions with file_path, name, and line
             );
 
             if !include_pub {
-                // Heuristic: exclude signatures that start with "pub fn"
-                // (stored in code_symbols.signature if available)
-                sql.push_str(" AND (cs.signature IS NULL OR cs.signature NOT LIKE 'pub fn%')");
+                // Heuristic: exclude signatures that contain "pub" followed by "fn"
+                // Covers: pub fn, pub async fn, pub(crate) fn, pub unsafe fn, etc.
+                sql.push_str(" AND (cs.signature IS NULL OR cs.signature NOT LIKE 'pub%fn%')");
             }
+            // Exclude main() — entry points are never dead code
+            sql.push_str(" AND cs.name != 'main'");
 
             sql.push_str(&format!(" ORDER BY cs.file_path, cs.line_start LIMIT {}", limit));
 

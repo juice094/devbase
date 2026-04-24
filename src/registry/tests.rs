@@ -156,3 +156,138 @@ fn test_oplog_event_type_roundtrip() {
     assert_eq!("health".parse::<OplogEventType>().unwrap(), OplogEventType::HealthCheck); // backward compat
     assert!("unknown".parse::<OplogEventType>().is_err());
 }
+
+// ---------------------------------------------------------------------------
+// Dead-code detection SQL logic tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_dead_code_excludes_pub_variants_and_main() {
+    let conn = rusqlite::Connection::open_in_memory().unwrap();
+    conn.execute(
+        "CREATE TABLE code_symbols (
+            repo_id TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            symbol_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            line_start INTEGER,
+            line_end INTEGER,
+            signature TEXT,
+            PRIMARY KEY (repo_id, file_path, name)
+        )",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "CREATE TABLE code_call_graph (
+            repo_id TEXT NOT NULL,
+            caller_file TEXT NOT NULL,
+            caller_symbol TEXT NOT NULL,
+            caller_line INTEGER,
+            callee_name TEXT NOT NULL
+        )",
+        [],
+    )
+    .unwrap();
+
+    let repo = "test-repo";
+    let symbols = [
+        ("private_fn", "fn private_fn() {}", true),   // should be dead
+        ("pub_fn", "pub fn pub_fn() {}", false),       // pub — excluded
+        ("pub_async_fn", "pub async fn pub_async_fn() {}", false), // pub async — excluded
+        ("pub_crate_fn", "pub(crate) fn pub_crate_fn() {}", false), // pub(crate) — excluded
+        ("pub_unsafe_fn", "pub unsafe fn pub_unsafe_fn() {}", false), // pub unsafe — excluded
+        ("main", "fn main() {}", false),               // main — excluded
+        ("called_fn", "fn called_fn() {}", false),     // has incoming call
+    ];
+
+    for (name, sig, _) in &symbols {
+        conn.execute(
+            "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start, signature)
+             VALUES (?1, 'src/lib.rs', 'function', ?2, 1, ?3)",
+            rusqlite::params![repo, name, sig],
+        )
+        .unwrap();
+    }
+
+    // Add a call edge to called_fn
+    conn.execute(
+        "INSERT INTO code_call_graph (repo_id, caller_file, caller_symbol, caller_line, callee_name)
+         VALUES (?1, 'src/lib.rs', 'other', 10, 'called_fn')",
+        [repo],
+    )
+    .unwrap();
+
+    // Run the same SQL that devkit_dead_code uses (include_pub = false)
+    let sql = "SELECT cs.name FROM code_symbols cs \
+         WHERE cs.repo_id = ?1 AND cs.symbol_type = 'function' \
+         AND NOT EXISTS ( \
+             SELECT 1 FROM code_call_graph ccg \
+             WHERE ccg.repo_id = cs.repo_id AND ccg.callee_name = cs.name \
+         ) \
+         AND (cs.signature IS NULL OR cs.signature NOT LIKE 'pub%fn%') \
+         AND cs.name != 'main' \
+         ORDER BY cs.name"
+        .to_string();
+
+    let mut stmt = conn.prepare(&sql).unwrap();
+    let rows = stmt.query_map([repo], |row| {
+        let name: String = row.get(0)?;
+        Ok(name)
+    }).unwrap();
+
+    let dead: Vec<String> = rows.filter_map(Result::ok).collect();
+    assert_eq!(dead, vec!["private_fn"]);
+}
+
+#[test]
+fn test_dead_code_include_pub() {
+    let conn = rusqlite::Connection::open_in_memory().unwrap();
+    conn.execute(
+        "CREATE TABLE code_symbols (
+            repo_id TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            symbol_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            line_start INTEGER,
+            line_end INTEGER,
+            signature TEXT,
+            PRIMARY KEY (repo_id, file_path, name)
+        )",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "CREATE TABLE code_call_graph (repo_id TEXT, caller_file TEXT, caller_symbol TEXT, caller_line INTEGER, callee_name TEXT)",
+        [],
+    )
+    .unwrap();
+
+    let repo = "test-repo";
+    conn.execute(
+        "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start, signature)
+         VALUES (?1, 'src/lib.rs', 'function', 'pub_fn', 1, 'pub fn pub_fn() {}')",
+        [repo],
+    )
+    .unwrap();
+
+    // include_pub = true → skip the pub filter, but still exclude main
+    let sql = "SELECT cs.name FROM code_symbols cs \
+         WHERE cs.repo_id = ?1 AND cs.symbol_type = 'function' \
+         AND NOT EXISTS ( \
+             SELECT 1 FROM code_call_graph ccg \
+             WHERE ccg.repo_id = cs.repo_id AND ccg.callee_name = cs.name \
+         ) \
+         AND cs.name != 'main' \
+         ORDER BY cs.name"
+        .to_string();
+
+    let mut stmt = conn.prepare(&sql).unwrap();
+    let rows = stmt.query_map([repo], |row| {
+        let name: String = row.get(0)?;
+        Ok(name)
+    }).unwrap();
+
+    let dead: Vec<String> = rows.filter_map(Result::ok).collect();
+    assert_eq!(dead, vec!["pub_fn"]);
+}
