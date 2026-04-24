@@ -44,14 +44,48 @@ fn main() -> anyhow::Result<()> {
     }
     println!();
 
-    // 4. Generate Symbol Links for devbase
-    println!("4. Generating explicit symbol links for devbase...");
+    // 4. Vector path validation — use an existing embedding as query vector
+    println!("4. Vector path validation (semantic search)");
+    let mut vector_ok = false;
+    if report.total_embeddings > 0 {
+        // Grab the first embedding from the DB to use as a query vector
+        let row: Result<(String, Vec<u8>), _> = conn.query_row(
+            "SELECT repo_id, embedding FROM code_embeddings LIMIT 1",
+            [],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
+        );
+        if let Ok((emb_repo, blob)) = row {
+            let dim = blob.len() / 4;
+            let query_vec: Vec<f32> = blob.chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect();
+            let vec_results = WorkspaceRegistry::semantic_search_symbols(
+                &conn, &emb_repo, &query_vec, 5
+            );
+            match vec_results {
+                Ok(v) if !v.is_empty() => {
+                    println!("   Semantic search returned {} match(es) for repo '{}'", v.len(), emb_repo);
+                    vector_ok = true;
+                }
+                Ok(_) => println!("   Semantic search returned 0 matches (unexpected but not an error)"),
+                Err(e) => println!("   Semantic search error: {}", e),
+            }
+        } else {
+            println!("   Could not read existing embedding from DB");
+        }
+    } else {
+        println!("   No embeddings in DB; vector path not testable");
+    }
+    println!();
+
+    // 5. Generate Symbol Links for devbase
+    println!("5. Generating explicit symbol links for devbase...");
     let mut conn_mut = WorkspaceRegistry::init_db()?;
     let count = devbase::symbol_links::generate_and_save_links(&mut conn_mut, "unknown")?;
     println!("   Generated {} symbol links\n", count);
 
-    // 5. Traverse Related Symbols
-    println!("5. Related symbols to 'run_index' in devbase:");
+    // 6. Traverse Related Symbols
+    println!("6. Related symbols to 'run_index' in devbase:");
     let related = WorkspaceRegistry::find_related_symbols(&conn, "unknown", "run_index", 10)?;
     println!("   Found {} related symbols:", related.len());
     for (_src_repo, _src_sym, target_repo, target_sym, link_type, strength) in related.iter().take(5) {
@@ -59,8 +93,8 @@ fn main() -> anyhow::Result<()> {
     }
     println!();
 
-    // 6. Cross-Repo Search
-    println!("6. Cross-repo search: 'main' in Rust repos");
+    // 7. Cross-Repo Search
+    println!("7. Cross-repo search: 'main' in Rust repos");
     let tags: Vec<String> = vec!["rust".into()];
     let results = WorkspaceRegistry::cross_repo_search_symbols(
         &conn, &tags, "main", None, 10
@@ -73,9 +107,12 @@ fn main() -> anyhow::Result<()> {
 
     println!("Validation Complete");
     println!("  [OK] Keyword-only hybrid_search works on real data");
+    println!("  [{}] Vector path: semantic search {}",
+        if vector_ok { "OK" } else { "WARN" },
+        if vector_ok { "functional" } else { "needs provider" }
+    );
     println!("  [OK] Symbol links generated and traversable");
     println!("  [OK] Cross-repo search functional");
-    println!("  [WARN] Vector path: code_embeddings = 0 (needs provider)");
 
     Ok(())
 }
