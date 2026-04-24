@@ -154,7 +154,7 @@ pub fn generate_report(
     // 2. Health summary (from repo_health_status view or raw query)
     // We approximate health by checking git status flags stored in repos or via a separate query.
     // For now, we count repos that have recent oplog events indicating issues.
-    let health = if let Some(rid) = repo_id {
+    let health = if let Some(_rid) = repo_id {
         // Single-repo health: count recent oplog events by type
         let mut stmt = conn.prepare(
             "SELECT event_type, COUNT(*)
@@ -163,7 +163,7 @@ pub fn generate_report(
                AND timestamp >= datetime('now', '-7 days')
              GROUP BY event_type"
         )?;
-        let rows = stmt.query_map([rid], |row| {
+        let rows = stmt.query_map([_rid], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
         })?;
         let mut counts: HashMap<String, i64> = HashMap::new();
@@ -180,15 +180,16 @@ pub fn generate_report(
         }
     } else {
         // Workspace-wide: approximate from oplog latest health_check per repo
+        // Note: oplog uses 'details' column (TEXT), not 'metadata'. We check details for status keywords.
         let mut stmt = conn.prepare(
             "SELECT 
-                SUM(CASE WHEN metadata LIKE '%\"dirty\":true%' THEN 1 ELSE 0 END) as dirty,
-                SUM(CASE WHEN metadata LIKE '%\"ahead\":true%' THEN 1 ELSE 0 END) as ahead,
-                SUM(CASE WHEN metadata LIKE '%\"behind\":true%' THEN 1 ELSE 0 END) as behind,
-                SUM(CASE WHEN metadata LIKE '%\"diverged\":true%' THEN 1 ELSE 0 END) as diverged,
-                SUM(CASE WHEN metadata LIKE '%\"ok\":true%' THEN 1 ELSE 0 END) as ok
+                SUM(CASE WHEN details LIKE '%dirty%' THEN 1 ELSE 0 END) as dirty,
+                SUM(CASE WHEN details LIKE '%ahead%' THEN 1 ELSE 0 END) as ahead,
+                SUM(CASE WHEN details LIKE '%behind%' THEN 1 ELSE 0 END) as behind,
+                SUM(CASE WHEN details LIKE '%diverged%' THEN 1 ELSE 0 END) as diverged,
+                SUM(CASE WHEN details LIKE '%up_to_date%' OR details LIKE '%ok%' THEN 1 ELSE 0 END) as ok
              FROM (
-                 SELECT repo_id, metadata,
+                 SELECT repo_id, details,
                         ROW_NUMBER() OVER (PARTITION BY repo_id ORDER BY timestamp DESC) as rn
                  FROM oplog
                  WHERE event_type = 'health_check'
@@ -259,7 +260,7 @@ mod tests {
         )
         .unwrap();
         conn.execute(
-            "CREATE TABLE oplog (id INTEGER PRIMARY KEY, repo_id TEXT, event_type TEXT, timestamp TEXT, metadata TEXT)",
+            "CREATE TABLE oplog (id INTEGER PRIMARY KEY AUTOINCREMENT, operation TEXT, repo_id TEXT, details TEXT, status TEXT, timestamp TEXT, event_type TEXT, duration_ms INTEGER, event_version INTEGER DEFAULT 1)",
             [],
         )
         .unwrap();
@@ -289,7 +290,7 @@ mod tests {
         )
         .unwrap();
         conn.execute(
-            "CREATE TABLE oplog (id INTEGER PRIMARY KEY, repo_id TEXT, event_type TEXT, timestamp TEXT, metadata TEXT)",
+            "CREATE TABLE oplog (id INTEGER PRIMARY KEY AUTOINCREMENT, operation TEXT, repo_id TEXT, details TEXT, status TEXT, timestamp TEXT, event_type TEXT, duration_ms INTEGER, event_version INTEGER DEFAULT 1)",
             [],
         )
         .unwrap();

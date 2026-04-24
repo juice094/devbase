@@ -309,7 +309,8 @@ impl WorkspaceRegistry {
     ) -> anyhow::Result<Vec<crate::semantic_index::SemanticSearchRow>> {
         use std::collections::HashMap;
 
-        // 1. Find repos matching all tags (INTERSECT for AND semantics)
+        // 1. Find repos matching all tags (INTERSECT for AND semantics).
+        // Tags are matched against both repo_tags.tag AND repos.language.
         let repo_ids: Vec<String> = if tags.is_empty() {
             let mut stmt = conn.prepare("SELECT id FROM repos")?;
             let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
@@ -320,12 +321,21 @@ impl WorkspaceRegistry {
                 if i > 0 {
                     sql.push_str(" INTERSECT ");
                 }
-                sql.push_str("SELECT repo_id FROM repo_tags WHERE tag = ?");
+                // Match against repo_tags or repos.language
+                sql.push_str(
+                    "SELECT repo_id FROM repo_tags WHERE LOWER(tag) = LOWER(?) \
+                     UNION \
+                     SELECT id AS repo_id FROM repos WHERE LOWER(language) = LOWER(?)"
+                );
             }
             let mut stmt = conn.prepare(&sql)?;
-            let param_refs: Vec<&dyn rusqlite::ToSql> =
-                tags.iter().map(|t| t as &dyn rusqlite::ToSql).collect();
-            let rows = stmt.query_map(rusqlite::params_from_iter(param_refs.iter().copied()), |row| {
+            let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            for tag in tags {
+                params.push(Box::new(tag.clone()));
+                params.push(Box::new(tag.clone()));
+            }
+            let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+            let rows = stmt.query_map(param_refs.as_slice(), |row| {
                 row.get::<_, String>(0)
             })?;
             rows.collect::<Result<Vec<_>, _>>()?
