@@ -1,0 +1,19 @@
+[package]
+name = "embedding-provider-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+embellama = "0.10"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+dirs = "5"
+chrono = "0.4"
+rusqlite = { version = "0.34", features = ["bundled"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[features]
+default = []
+# Enable CUDA GPU acceleration. Requires CUDA toolkit and compatible GPU.
+cuda = ["embellama/cuda"]
