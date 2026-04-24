@@ -1728,7 +1728,10 @@ Returns: success flag and count of stored embeddings."#,
 
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
-        let symbol_name = args.get("symbol_name").and_then(|v| v.as_str()).context("symbol_name required")?;
+        let symbol_name = args
+            .get("symbol_name")
+            .and_then(|v| v.as_str())
+            .context("symbol_name required")?;
         let embedding = parse_f32_array(&args, "embedding")?;
 
         let repo_id = repo_id.to_string();
@@ -1737,7 +1740,8 @@ Returns: success flag and count of stored embeddings."#,
         tokio::task::spawn_blocking(move || {
             let mut conn = crate::registry::WorkspaceRegistry::init_db()?;
             let pairs = vec![(symbol_name.clone(), embedding)];
-            let count = crate::registry::WorkspaceRegistry::save_embeddings(&mut conn, &repo_id, &pairs)?;
+            let count =
+                crate::registry::WorkspaceRegistry::save_embeddings(&mut conn, &repo_id, &pairs)?;
 
             Ok::<_, anyhow::Error>(serde_json::json!({
                 "success": true,
@@ -1883,15 +1887,13 @@ Returns: JSON object with repo_count, total_symbols, total_embeddings, total_cal
 
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).map(String::from);
-        let activity_limit = args.get("activity_limit").and_then(|v| v.as_u64()).unwrap_or(20).min(100) as usize;
+        let activity_limit =
+            args.get("activity_limit").and_then(|v| v.as_u64()).unwrap_or(20).min(100) as usize;
 
         tokio::task::spawn_blocking(move || {
             let conn = crate::registry::WorkspaceRegistry::init_db()?;
-            let report = crate::oplog_analytics::generate_report(
-                &conn,
-                repo_id.as_deref(),
-                activity_limit,
-            )?;
+            let report =
+                crate::oplog_analytics::generate_report(&conn, repo_id.as_deref(), activity_limit)?;
 
             let json = serde_json::to_value(report)?;
             Ok::<_, anyhow::Error>(serde_json::json!({
@@ -1952,10 +1954,11 @@ Returns: JSON array of symbols with file_path, name, line_start, and similarity_
 
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
-        let query_text = args.get("query_text").and_then(|v| v.as_str()).context("query_text required")?;
-        let query_embedding = args.get("query_embedding")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect::<Vec<f32>>());
+        let query_text =
+            args.get("query_text").and_then(|v| v.as_str()).context("query_text required")?;
+        let query_embedding = args.get("query_embedding").and_then(|v| v.as_array()).map(|arr| {
+            arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect::<Vec<f32>>()
+        });
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10).min(50) as usize;
 
         let repo_id = repo_id.to_string();
@@ -2033,7 +2036,10 @@ Returns: JSON array of related symbols with target_symbol, link_type, and streng
 
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
-        let symbol_name = args.get("symbol_name").and_then(|v| v.as_str()).context("symbol_name required")?;
+        let symbol_name = args
+            .get("symbol_name")
+            .and_then(|v| v.as_str())
+            .context("symbol_name required")?;
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10).min(50) as usize;
 
         let repo_id = repo_id.to_string();
@@ -2042,7 +2048,10 @@ Returns: JSON array of related symbols with target_symbol, link_type, and streng
         tokio::task::spawn_blocking(move || {
             let conn = crate::registry::WorkspaceRegistry::init_db()?;
             let results = crate::registry::WorkspaceRegistry::find_related_symbols(
-                &conn, &repo_id, &symbol_name, limit,
+                &conn,
+                &repo_id,
+                &symbol_name,
+                limit,
             )?;
 
             let links: Vec<serde_json::Value> = results
@@ -2120,14 +2129,18 @@ Returns: JSON array of symbols with repo_id, file_path, name, line_start, and si
     }
 
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
-        let tags = args.get("tags")
+        let tags = args
+            .get("tags")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<String>>())
+            .map(|arr| {
+                arr.iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<String>>()
+            })
             .unwrap_or_default();
-        let query_text = args.get("query_text").and_then(|v| v.as_str()).context("query_text required")?;
-        let query_embedding = args.get("query_embedding")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect::<Vec<f32>>());
+        let query_text =
+            args.get("query_text").and_then(|v| v.as_str()).context("query_text required")?;
+        let query_embedding = args.get("query_embedding").and_then(|v| v.as_array()).map(|arr| {
+            arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect::<Vec<f32>>()
+        });
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10).min(50) as usize;
 
         let query_text = query_text.to_string();

@@ -12,20 +12,28 @@ fn main() -> anyhow::Result<()> {
     // 1. Knowledge Report
     println!("1. Knowledge Coverage Report (workspace-wide)");
     let report = devbase::oplog_analytics::generate_report(&conn, None, 5)?;
-    println!("   Repos: {} | Symbols: {} | Embeddings: {} | Calls: {}",
-        report.repo_count, report.total_symbols, report.total_embeddings, report.total_calls);
+    println!(
+        "   Repos: {} | Symbols: {} | Embeddings: {} | Calls: {}",
+        report.repo_count, report.total_symbols, report.total_embeddings, report.total_calls
+    );
     println!("   Overall coverage: {:.1}%", report.overall_coverage_pct);
     println!("   Top 5 repos by symbol count:");
     for repo in report.repos.iter().take(5) {
-        println!("   - {}: {} symbols, {} embeddings ({:.1}% coverage)",
-            repo.repo_id, repo.symbol_count, repo.embedding_count, repo.coverage_pct);
+        println!(
+            "   - {}: {} symbols, {} embeddings ({:.1}% coverage)",
+            repo.repo_id, repo.symbol_count, repo.embedding_count, repo.coverage_pct
+        );
     }
     println!();
 
     // 2. Hybrid Search (keyword-only) on claude-code-rust
     println!("2. Hybrid Search: 'error handling' in claude-code-rust (keyword-only)");
     let results = devbase::search::hybrid::hybrid_search_symbols(
-        &conn, "claude-code-rust", "error handling", None, 10
+        &conn,
+        "claude-code-rust",
+        "error handling",
+        None,
+        10,
     )?;
     println!("   Found {} matches:", results.len());
     for (i, (_repo, name, path, line, score)) in results.iter().take(5).enumerate() {
@@ -35,9 +43,8 @@ fn main() -> anyhow::Result<()> {
 
     // 3. Hybrid Search on devbase
     println!("3. Hybrid Search: 'sync' in devbase (keyword-only)");
-    let results = devbase::search::hybrid::hybrid_search_symbols(
-        &conn, "unknown", "sync", None, 10
-    )?;
+    let results =
+        devbase::search::hybrid::hybrid_search_symbols(&conn, "unknown", "sync", None, 10)?;
     println!("   Found {} matches:", results.len());
     for (i, (_repo, name, path, line, score)) in results.iter().take(5).enumerate() {
         println!("   {}. {} ({}:{}) - score: {:.3}", i + 1, name, path, line, score);
@@ -49,25 +56,29 @@ fn main() -> anyhow::Result<()> {
     let mut vector_ok = false;
     if report.total_embeddings > 0 {
         // Grab the first embedding from the DB to use as a query vector
-        let row: Result<(String, Vec<u8>), _> = conn.query_row(
-            "SELECT repo_id, embedding FROM code_embeddings LIMIT 1",
-            [],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
-        );
+        let row: Result<(String, Vec<u8>), _> =
+            conn.query_row("SELECT repo_id, embedding FROM code_embeddings LIMIT 1", [], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
+            });
         if let Ok((emb_repo, blob)) = row {
-            let dim = blob.len() / 4;
-            let query_vec: Vec<f32> = blob.chunks_exact(4)
+            let query_vec: Vec<f32> = blob
+                .chunks_exact(4)
                 .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                 .collect();
-            let vec_results = WorkspaceRegistry::semantic_search_symbols(
-                &conn, &emb_repo, &query_vec, 5
-            );
+            let vec_results =
+                WorkspaceRegistry::semantic_search_symbols(&conn, &emb_repo, &query_vec, 5);
             match vec_results {
                 Ok(v) if !v.is_empty() => {
-                    println!("   Semantic search returned {} match(es) for repo '{}'", v.len(), emb_repo);
+                    println!(
+                        "   Semantic search returned {} match(es) for repo '{}'",
+                        v.len(),
+                        emb_repo
+                    );
                     vector_ok = true;
                 }
-                Ok(_) => println!("   Semantic search returned 0 matches (unexpected but not an error)"),
+                Ok(_) => {
+                    println!("   Semantic search returned 0 matches (unexpected but not an error)")
+                }
                 Err(e) => println!("   Semantic search error: {}", e),
             }
         } else {
@@ -88,17 +99,20 @@ fn main() -> anyhow::Result<()> {
     println!("6. Related symbols to 'run_index' in devbase:");
     let related = WorkspaceRegistry::find_related_symbols(&conn, "unknown", "run_index", 10)?;
     println!("   Found {} related symbols:", related.len());
-    for (_src_repo, _src_sym, target_repo, target_sym, link_type, strength) in related.iter().take(5) {
-        println!("   - {} (repo: {}) - {} - strength: {:.3}", target_sym, target_repo, link_type, strength);
+    for (_src_repo, _src_sym, target_repo, target_sym, link_type, strength) in
+        related.iter().take(5)
+    {
+        println!(
+            "   - {} (repo: {}) - {} - strength: {:.3}",
+            target_sym, target_repo, link_type, strength
+        );
     }
     println!();
 
     // 7. Cross-Repo Search
     println!("7. Cross-repo search: 'main' in Rust repos");
     let tags: Vec<String> = vec!["rust".into()];
-    let results = WorkspaceRegistry::cross_repo_search_symbols(
-        &conn, &tags, "main", None, 10
-    )?;
+    let results = WorkspaceRegistry::cross_repo_search_symbols(&conn, &tags, "main", None, 10)?;
     println!("   Found {} matches across Rust repos:", results.len());
     for (i, (repo, name, path, line, score)) in results.iter().take(5).enumerate() {
         println!("   {}. {}::{} ({}:{}) - score: {:.3}", i + 1, repo, name, path, line, score);
@@ -107,9 +121,14 @@ fn main() -> anyhow::Result<()> {
 
     println!("Validation Complete");
     println!("  [OK] Keyword-only hybrid_search works on real data");
-    println!("  [{}] Vector path: semantic search {}",
+    println!(
+        "  [{}] Vector path: semantic search {}",
         if vector_ok { "OK" } else { "WARN" },
-        if vector_ok { "functional" } else { "needs provider" }
+        if vector_ok {
+            "functional"
+        } else {
+            "needs provider"
+        }
     );
     println!("  [OK] Symbol links generated and traversable");
     println!("  [OK] Cross-repo search functional");

@@ -41,7 +41,7 @@ pub fn keyword_search_symbols(
             "SELECT repo_id, name, file_path, line_start
              FROM code_symbols
              WHERE repo_id = ?1 AND symbol_type = 'function'
-               AND (name LIKE ?2 OR signature LIKE ?2)"
+               AND (name LIKE ?2 OR signature LIKE ?2)",
         )?;
         let rows = stmt.query_map(rusqlite::params![repo_id, &pat], |row| {
             Ok((
@@ -67,10 +67,7 @@ pub fn keyword_search_symbols(
         }
     }
 
-    let mut results: Vec<SemanticSearchRow> = accum
-        .into_values()
-        .map(|(repo, name, path, line, score)| (repo, name, path, line, score))
-        .collect();
+    let mut results: Vec<SemanticSearchRow> = accum.into_values().collect();
     results.sort_by(|a, b| {
         b.4.partial_cmp(&a.4)
             .unwrap_or(std::cmp::Ordering::Equal)
@@ -111,7 +108,7 @@ pub fn rrf_merge(lists: Vec<Vec<SemanticSearchRow>>, k: f32) -> Vec<SemanticSear
     merged.sort_by(|a, b| {
         b.1.partial_cmp(&a.1)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.0 .1.cmp(&b.0 .1)) // tie-break by name
+            .then_with(|| a.0.1.cmp(&b.0.1)) // tie-break by name
     });
 
     merged.into_iter().map(|(row, _)| row).collect()
@@ -190,9 +187,7 @@ mod tests {
 
     #[test]
     fn test_rrf_merge_single_list_passthrough() {
-        let list: Vec<SemanticSearchRow> = vec![
-            ("r1".into(), "x".into(), "x.rs".into(), 1, 0.5),
-        ];
+        let list: Vec<SemanticSearchRow> = vec![("r1".into(), "x".into(), "x.rs".into(), 1, 0.5)];
         let merged = rrf_merge(vec![list.clone()], 60.0);
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].1, "x");

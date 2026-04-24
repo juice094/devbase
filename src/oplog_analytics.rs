@@ -48,11 +48,9 @@ pub struct ActivityEvent {
 }
 
 fn table_exists(conn: &rusqlite::Connection, name: &str) -> bool {
-    conn.query_row(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1",
-        [name],
-        |_| Ok(true),
-    )
+    conn.query_row("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1", [name], |_| {
+        Ok(true)
+    })
     .unwrap_or(false)
 }
 
@@ -161,11 +159,10 @@ pub fn generate_report(
              FROM oplog
              WHERE repo_id = ?1
                AND timestamp >= datetime('now', '-7 days')
-             GROUP BY event_type"
+             GROUP BY event_type",
         )?;
-        let rows = stmt.query_map([_rid], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-        })?;
+        let rows =
+            stmt.query_map([_rid], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))?;
         let mut counts: HashMap<String, i64> = HashMap::new();
         for row in rows {
             let (et, count) = row?;
@@ -219,7 +216,7 @@ pub fn generate_report(
         "SELECT repo_id, event_type, timestamp
          FROM oplog
          ORDER BY timestamp DESC
-         LIMIT ?"
+         LIMIT ?",
     )?;
     let rows = stmt.query_map([activity_limit as i64], |row| {
         Ok(ActivityEvent {
@@ -295,11 +292,8 @@ mod tests {
         )
         .unwrap();
 
-        conn.execute(
-            "INSERT INTO repos VALUES ('repo1', '/path', '2026-01-01')",
-            [],
-        )
-        .unwrap();
+        conn.execute("INSERT INTO repos VALUES ('repo1', '/path', '2026-01-01')", [])
+            .unwrap();
         conn.execute(
             "INSERT INTO code_symbols VALUES ('repo1', 'a.rs', 'function', 'foo', 1, 2, 'fn foo()'),
                     ('repo1', 'a.rs', 'function', 'bar', 3, 4, 'fn bar()')",

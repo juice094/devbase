@@ -325,7 +325,7 @@ impl WorkspaceRegistry {
                 sql.push_str(
                     "SELECT repo_id FROM repo_tags WHERE LOWER(tag) = LOWER(?) \
                      UNION \
-                     SELECT id AS repo_id FROM repos WHERE LOWER(language) = LOWER(?)"
+                     SELECT id AS repo_id FROM repos WHERE LOWER(language) = LOWER(?)",
                 );
             }
             let mut stmt = conn.prepare(&sql)?;
@@ -335,9 +335,7 @@ impl WorkspaceRegistry {
                 params.push(Box::new(tag.clone()));
             }
             let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-            let rows = stmt.query_map(param_refs.as_slice(), |row| {
-                row.get::<_, String>(0)
-            })?;
+            let rows = stmt.query_map(param_refs.as_slice(), |row| row.get::<_, String>(0))?;
             rows.collect::<Result<Vec<_>, _>>()?
         };
 
@@ -370,7 +368,8 @@ impl WorkspaceRegistry {
             deduped.entry(key).or_insert(row);
         }
 
-        let mut merged: Vec<crate::semantic_index::SemanticSearchRow> = deduped.into_values().collect();
+        let mut merged: Vec<crate::semantic_index::SemanticSearchRow> =
+            deduped.into_values().collect();
         merged.sort_by(|a, b| {
             b.4.partial_cmp(&a.4)
                 .unwrap_or(std::cmp::Ordering::Equal)
@@ -389,11 +388,18 @@ impl WorkspaceRegistry {
         query_embedding: Option<&[f32]>,
         limit: usize,
     ) -> anyhow::Result<Vec<crate::semantic_index::SemanticSearchRow>> {
-        crate::search::hybrid::hybrid_search_symbols(conn, repo_id, query_text, query_embedding, limit)
+        crate::search::hybrid::hybrid_search_symbols(
+            conn,
+            repo_id,
+            query_text,
+            query_embedding,
+            limit,
+        )
     }
 
     /// Find symbols explicitly linked to the given symbol.
     /// Returns Vec<(source_repo, source_symbol, target_repo, target_symbol, link_type, strength)>.
+    #[allow(clippy::type_complexity)]
     pub fn find_related_symbols(
         conn: &rusqlite::Connection,
         repo_id: &str,
@@ -405,16 +411,17 @@ impl WorkspaceRegistry {
              FROM code_symbol_links
              WHERE source_repo = ?1 AND source_symbol = ?2
              ORDER BY strength DESC
-             LIMIT ?3"
+             LIMIT ?3",
         )?;
-        let rows = stmt.query_map(rusqlite::params![repo_id, symbol_name, limit as i64], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, f64>(3)? as f32,
-            ))
-        })?;
+        let rows =
+            stmt.query_map(rusqlite::params![repo_id, symbol_name, limit as i64], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, f64>(3)? as f32,
+                ))
+            })?;
 
         let mut results = Vec::new();
         for row in rows {

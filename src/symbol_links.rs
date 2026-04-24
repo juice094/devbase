@@ -32,11 +32,10 @@ pub fn compute_similar_signature_links(
 ) -> anyhow::Result<Vec<SymbolLink>> {
     let mut stmt = conn.prepare(
         "SELECT name, signature FROM code_symbols
-         WHERE repo_id = ?1 AND symbol_type = 'function' AND signature IS NOT NULL"
+         WHERE repo_id = ?1 AND symbol_type = 'function' AND signature IS NOT NULL",
     )?;
-    let rows = stmt.query_map([repo_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
+    let rows =
+        stmt.query_map([repo_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
 
     let mut symbols: Vec<(String, HashSet<String>)> = Vec::new();
     for row in rows {
@@ -84,11 +83,10 @@ pub fn compute_co_located_links(
 ) -> anyhow::Result<Vec<SymbolLink>> {
     let mut stmt = conn.prepare(
         "SELECT file_path, name FROM code_symbols
-         WHERE repo_id = ?1 AND symbol_type = 'function'"
+         WHERE repo_id = ?1 AND symbol_type = 'function'",
     )?;
-    let rows = stmt.query_map([repo_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
+    let rows =
+        stmt.query_map([repo_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
 
     let mut by_file: HashMap<String, Vec<String>> = HashMap::new();
     for row in rows {
@@ -139,10 +137,7 @@ pub fn generate_and_save_links(
     }
 
     let tx = conn.transaction()?;
-    tx.execute(
-        "DELETE FROM code_symbol_links WHERE source_repo = ?1",
-        [repo_id],
-    )?;
+    tx.execute("DELETE FROM code_symbol_links WHERE source_repo = ?1", [repo_id])?;
 
     let now = chrono::Utc::now().to_rfc3339();
     let mut inserted = 0;
@@ -174,18 +169,16 @@ pub fn generate_and_save_links(
 fn tokenize_signature(sig: &str) -> HashSet<String> {
     sig.split(|c: char| !c.is_alphanumeric() && c != '_')
         .map(|s| s.to_lowercase())
-        .filter(|s| {
-            s.len() > 1 && !is_common_keyword(s) && !s.chars().all(|c| c.is_numeric())
-        })
+        .filter(|s| s.len() > 1 && !is_common_keyword(s) && !s.chars().all(|c| c.is_numeric()))
         .collect()
 }
 
 fn is_common_keyword(s: &str) -> bool {
     const KEYWORDS: &[&str] = &[
-        "fn", "pub", "async", "mut", "let", "const", "static", "use", "impl", "where",
-        "return", "self", "true", "false", "if", "else", "for", "while", "loop", "match",
-        "in", "ref", "move", "type", "crate", "super", "dyn", "trait", "enum", "struct",
-        "mod", "unsafe", "extern", "as", "break", "continue", "yield", "await", "box",
+        "fn", "pub", "async", "mut", "let", "const", "static", "use", "impl", "where", "return",
+        "self", "true", "false", "if", "else", "for", "while", "loop", "match", "in", "ref",
+        "move", "type", "crate", "super", "dyn", "trait", "enum", "struct", "mod", "unsafe",
+        "extern", "as", "break", "continue", "yield", "await", "box",
     ];
     KEYWORDS.contains(&s)
 }
