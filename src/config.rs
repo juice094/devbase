@@ -70,6 +70,8 @@ pub struct Config {
     pub embedding: EmbeddingConfig,
     #[serde(default)]
     pub sync: SyncConfig,
+    #[serde(default)]
+    pub arxiv: ArxivConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -231,6 +233,27 @@ fn default_github_timeout_seconds() -> u64 {
     5
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArxivConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_arxiv_timeout_seconds")]
+    pub timeout_seconds: u64,
+}
+
+impl Default for ArxivConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_true(),
+            timeout_seconds: default_arxiv_timeout_seconds(),
+        }
+    }
+}
+
+fn default_arxiv_timeout_seconds() -> u64 {
+    30
+}
+
 fn default_daemon_interval_seconds() -> u64 {
     3600
 }
@@ -329,6 +352,10 @@ timeout_seconds = 30
 # Max concurrent sync operations
 timeout_seconds = 60
 concurrency = 8
+
+[arxiv]
+enabled = true
+timeout_seconds = 30
 "#;
         std::fs::write(&path, content)?;
         Ok(())

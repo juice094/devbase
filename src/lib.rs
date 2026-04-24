@@ -1,3 +1,4 @@
+pub mod arxiv;
 pub mod asyncgit;
 pub mod backup;
 pub mod config;

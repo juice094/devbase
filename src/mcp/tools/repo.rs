@@ -1599,11 +1599,16 @@ Returns: JSON array of matching symbols with file_path, name, line_start, and si
 
         tokio::task::spawn_blocking(move || {
             // Generate query embedding
-            let rt = tokio::runtime::Runtime::new()?;
-            let query_embs = rt.block_on(crate::embedding::generate_embeddings(
-                std::slice::from_ref(&query),
-                &emb_config,
-            ));
+            let query_async = query.clone();
+            let emb_config_async = emb_config.clone();
+            let query_embs = crate::knowledge_engine::block_on_async(async move {
+                crate::embedding::generate_embeddings(
+                    std::slice::from_ref(&query_async),
+                    &emb_config_async,
+                )
+                .await
+            })
+            .ok_or_else(|| anyhow::anyhow!("Failed to run async embedding generation"))?;
             if query_embs.is_empty() {
                 anyhow::bail!(
                     "Failed to generate query embedding. Is Ollama running with model {}?",

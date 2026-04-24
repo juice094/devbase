@@ -11,6 +11,32 @@ pub struct ModuleInfo {
     pub kind: String, // "lib", "bin", "test", "example", "unknown"
 }
 
+/// Run an async future from a synchronous context safely.
+///
+/// If already inside a tokio runtime (e.g. `spawn_blocking`), spawns the
+/// future onto that runtime and blocks the current thread on a std channel.
+/// If outside any runtime, creates a temporary runtime.
+pub(crate) fn block_on_async<T>(
+    future: impl std::future::Future<Output = T> + Send + 'static,
+) -> Option<T>
+where
+    T: Send + 'static,
+{
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            let (tx, rx) = std::sync::mpsc::channel();
+            handle.spawn(async move {
+                let _ = tx.send(future.await);
+            });
+            rx.recv().ok()
+        }
+        Err(_) => {
+            let rt = tokio::runtime::Runtime::new().ok()?;
+            Some(rt.block_on(future))
+        }
+    }
+}
+
 /// 从 README 中提取摘要和关键词
 /// - 查找 README.md / README.rst / README（不区分大小写）
 /// - 读取文件内容，提取第一个非空段落（跳过标题行 # ...）
@@ -567,39 +593,49 @@ fn try_llm_summary(path: &Path, config: &crate::config::LlmConfig) -> Option<(St
         };
     }
 
-    let api_key = config.api_key.as_deref()?;
+    let api_key = config.api_key.clone()?;
     let (base_url, model) = match config.provider.as_str() {
         "deepseek" => (
-            config.base_url.as_deref().unwrap_or("https://api.deepseek.com/v1"),
-            config.model.as_deref().unwrap_or("deepseek-chat"),
+            config
+                .base_url
+                .clone()
+                .unwrap_or_else(|| "https://api.deepseek.com/v1".to_string()),
+            config.model.clone().unwrap_or_else(|| "deepseek-chat".to_string()),
         ),
         "kimi" => (
-            config.base_url.as_deref().unwrap_or("https://api.moonshot.cn/v1"),
-            config.model.as_deref().unwrap_or("kimi-k2-07132k"),
+            config
+                .base_url
+                .clone()
+                .unwrap_or_else(|| "https://api.moonshot.cn/v1".to_string()),
+            config.model.clone().unwrap_or_else(|| "kimi-k2-07132k".to_string()),
         ),
         "openai" => (
-            config.base_url.as_deref().unwrap_or("https://api.openai.com/v1"),
-            config.model.as_deref().unwrap_or("gpt-4o"),
+            config
+                .base_url
+                .clone()
+                .unwrap_or_else(|| "https://api.openai.com/v1".to_string()),
+            config.model.clone().unwrap_or_else(|| "gpt-4o".to_string()),
         ),
         "dashscope" => (
             config
                 .base_url
-                .as_deref()
-                .unwrap_or("https://dashscope.aliyuncs.com/compatible-mode/v1"),
-            config.model.as_deref().unwrap_or("qwen-max"),
+                .clone()
+                .unwrap_or_else(|| "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string()),
+            config.model.clone().unwrap_or_else(|| "qwen-max".to_string()),
         ),
         _ => return None,
     };
 
-    let rt = tokio::runtime::Runtime::new().ok()?;
     let prompt = build_llm_prompt(&context);
-    let result = rt.block_on(async {
+    let timeout = config.timeout_seconds;
+    let max_tokens = config.max_tokens;
+    let result = block_on_async(async move {
         tokio::time::timeout(
-            Duration::from_secs(config.timeout_seconds),
-            call_llm(api_key, base_url, model, &prompt, config.max_tokens),
+            Duration::from_secs(timeout),
+            call_llm(&api_key, &base_url, &model, &prompt, max_tokens),
         )
         .await
-    });
+    })?;
 
     match result {
         Ok(Ok(content)) => parse_llm_json(&content),
@@ -730,21 +766,22 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
                         format!("{} in {}: {}", s.name, s.file_path.display(), sig)
                     })
                     .collect();
-                let rt = tokio::runtime::Runtime::new().ok();
-                if let Some(rt) = rt {
-                    let embs = rt.block_on(crate::embedding::generate_embeddings(&texts, ec));
-                    if !embs.is_empty() {
-                        let pairs: Vec<(String, Vec<f32>)> = func_symbols
-                            .iter()
-                            .zip(embs.into_iter())
-                            .map(|(s, e)| (s.name.clone(), e))
-                            .collect();
-                        match crate::registry::WorkspaceRegistry::save_embeddings(
-                            &mut conn, &repo.id, &pairs,
-                        ) {
-                            Ok(n) => info!("Saved {} embeddings for {}", n, repo.id),
-                            Err(e) => warn!("Failed to save embeddings for {}: {}", repo.id, e),
-                        }
+                let ec = ec.clone();
+                let embs = block_on_async(async move {
+                    crate::embedding::generate_embeddings(&texts, &ec).await
+                })
+                .unwrap_or_default();
+                if !embs.is_empty() {
+                    let pairs: Vec<(String, Vec<f32>)> = func_symbols
+                        .iter()
+                        .zip(embs.into_iter())
+                        .map(|(s, e)| (s.name.clone(), e))
+                        .collect();
+                    match crate::registry::WorkspaceRegistry::save_embeddings(
+                        &mut conn, &repo.id, &pairs,
+                    ) {
+                        Ok(n) => info!("Saved {} embeddings for {}", n, repo.id),
+                        Err(e) => warn!("Failed to save embeddings for {}: {}", repo.id, e),
                     }
                 }
             }

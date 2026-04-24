@@ -23,6 +23,7 @@ pub enum ManifestKind {
     Npm,
     Go,
     Python,
+    CMake,
 }
 
 impl ManifestKind {
@@ -32,6 +33,7 @@ impl ManifestKind {
             ManifestKind::Npm => "npm",
             ManifestKind::Go => "go",
             ManifestKind::Python => "python",
+            ManifestKind::CMake => "cmake",
         }
     }
 }
@@ -61,6 +63,11 @@ pub fn extract_dependencies(repo_path: &Path) -> Vec<DependencyRef> {
     let requirements = repo_path.join("requirements.txt");
     if requirements.exists() {
         return parse_requirements_txt(&requirements);
+    }
+
+    let cmake_lists = repo_path.join("CMakeLists.txt");
+    if cmake_lists.exists() {
+        return parse_cmake_lists(&cmake_lists);
     }
 
     Vec::new()
@@ -346,6 +353,152 @@ fn parse_requirements_txt(path: &Path) -> Vec<DependencyRef> {
     deps
 }
 
+fn parse_cmake_lists(path: &Path) -> Vec<DependencyRef> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("Failed to read {:?}: {}", path, e);
+            return Vec::new();
+        }
+    };
+
+    let mut deps = Vec::new();
+    let mut fetch_content_active = false;
+
+    // CMake arguments can span multiple lines; merge logical lines so that
+    // parentheses are balanced before we inspect a command.
+    let mut buffer = String::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        // Remove inline comments
+        let line_no_comment = trimmed.split('#').next().unwrap_or(trimmed).trim();
+        if line_no_comment.is_empty() {
+            continue;
+        }
+
+        if buffer.is_empty() {
+            buffer.push_str(line_no_comment);
+        } else {
+            buffer.push(' ');
+            buffer.push_str(line_no_comment);
+        }
+
+        // If parentheses are balanced, we have a complete command line.
+        let open = buffer.chars().filter(|&c| c == '(').count();
+        let close = buffer.chars().filter(|&c| c == ')').count();
+        if open != close {
+            continue; // wait for more lines
+        }
+
+        let line_no_comment = buffer.clone();
+        buffer.clear();
+
+        // find_package(NAME ...)
+        if let Some(args) = line_no_comment.strip_prefix("find_package")
+            && let Some(inner) = extract_parenthesized(args)
+            && let Some(name) = inner.split_whitespace().next()
+            && !name.is_empty()
+        {
+            deps.push(DependencyRef {
+                name: name.to_string(),
+                kind: ManifestKind::CMake,
+                local_path: None,
+            });
+        }
+
+        // add_subdirectory(path)
+        if let Some(args) = line_no_comment.strip_prefix("add_subdirectory")
+            && let Some(inner) = extract_parenthesized(args)
+            && let Some(path_str) = inner.split_whitespace().next()
+            && !path_str.is_empty()
+        {
+            let is_local = !path_str.starts_with("${")
+                && !path_str.starts_with("http://")
+                && !path_str.starts_with("https://");
+            deps.push(DependencyRef {
+                name: path_str.to_string(),
+                kind: ManifestKind::CMake,
+                local_path: if is_local {
+                    Some(PathBuf::from(path_str))
+                } else {
+                    None
+                },
+            });
+        }
+
+        // include(FetchContent) — signal that following FetchContent_Declare should be captured
+        if let Some(rest) = line_no_comment.strip_prefix("include")
+            && let Some(inner) = extract_parenthesized(rest)
+            && inner.trim() == "FetchContent"
+        {
+            fetch_content_active = true;
+        }
+
+        // FetchContent_Declare(name ...)
+        if let Some(rest) = line_no_comment.strip_prefix("FetchContent_Declare")
+            && let Some(inner) = extract_parenthesized(rest)
+            && let Some(name) = inner.split_whitespace().next()
+            && !name.is_empty()
+        {
+            deps.push(DependencyRef {
+                name: name.to_string(),
+                kind: ManifestKind::CMake,
+                local_path: None,
+            });
+        }
+
+        // target_link_libraries(target PRIVATE/PUBLIC/INTERFACE name)
+        if let Some(args) = line_no_comment.strip_prefix("target_link_libraries")
+            && let Some(inner) = extract_parenthesized(args)
+        {
+            let mut tokens = inner.split_whitespace().peekable();
+            let _target = tokens.next(); // first token is target name
+            while let Some(tok) = tokens.next() {
+                let tok_upper = tok.to_uppercase();
+                if (tok_upper == "PRIVATE" || tok_upper == "PUBLIC" || tok_upper == "INTERFACE")
+                    && let Some(lib) = tokens.peek()
+                    && !lib.starts_with("${")
+                    && *lib != "${lib}"
+                {
+                    deps.push(DependencyRef {
+                        name: (*lib).to_string(),
+                        kind: ManifestKind::CMake,
+                        local_path: None,
+                    });
+                    // advance past the library name we just consumed
+                    let _ = tokens.next();
+                }
+            }
+        }
+    }
+
+    // If FetchContent wasn't explicitly included but FetchContent_Declare exists,
+    // we still captured it above. The flag is only for stricter behaviour if desired.
+    let _ = fetch_content_active;
+
+    deps
+}
+
+fn extract_parenthesized(s: &str) -> Option<&str> {
+    let s = s.trim();
+    let start = s.find('(')?;
+    let mut depth = 0;
+    for (i, c) in s[start..].chars().enumerate() {
+        if c == '(' {
+            depth += 1;
+        } else if c == ')' {
+            depth -= 1;
+            if depth == 0 {
+                return Some(&s[start + 1..start + i]);
+            }
+        }
+    }
+    None
+}
+
 // ------------------------------------------------------------------
 // Resolution against registered repos
 // ------------------------------------------------------------------
@@ -598,5 +751,74 @@ fastapi[standard]>=0.100
         assert!(deps.iter().any(|d| d.name == "fastapi"));
         // -e lines are skipped
         assert!(!deps.iter().any(|d| d.name == "-e"));
+    }
+
+    #[test]
+    fn test_parse_cmake_find_package() {
+        let dir = tempfile::tempdir().unwrap();
+        let cmake = r#"
+cmake_minimum_required(VERSION 3.20)
+project(demo)
+
+# External deps
+find_package(Boost REQUIRED)
+find_package(Threads)
+find_package(OpenSSL 1.1 REQUIRED)
+"#;
+        write_file(dir.path(), "CMakeLists.txt", cmake);
+        let deps = parse_cmake_lists(&dir.path().join("CMakeLists.txt"));
+        assert!(deps.iter().any(|d| d.name == "Boost"));
+        assert!(deps.iter().any(|d| d.name == "Threads"));
+        assert!(deps.iter().any(|d| d.name == "OpenSSL"));
+    }
+
+    #[test]
+    fn test_parse_cmake_add_subdirectory_local() {
+        let dir = tempfile::tempdir().unwrap();
+        let cmake = r#"
+add_subdirectory(third_party/fmt)
+add_subdirectory(${EXTERNAL_DIR}/foo) # variable, not local path dep
+add_subdirectory(https://example.com/repo) # remote, no local_path
+"#;
+        write_file(dir.path(), "CMakeLists.txt", cmake);
+        let deps = parse_cmake_lists(&dir.path().join("CMakeLists.txt"));
+        let local = deps.iter().find(|d| d.name == "third_party/fmt").unwrap();
+        assert_eq!(local.local_path, Some(PathBuf::from("third_party/fmt")));
+        let var = deps.iter().find(|d| d.name == "${EXTERNAL_DIR}/foo").unwrap();
+        assert!(var.local_path.is_none());
+        let remote = deps.iter().find(|d| d.name == "https://example.com/repo").unwrap();
+        assert!(remote.local_path.is_none());
+    }
+
+    #[test]
+    fn test_parse_cmake_fetchcontent_declare() {
+        let dir = tempfile::tempdir().unwrap();
+        let cmake = r#"
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG v1.14.0
+)
+FetchContent_Declare(nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.11.2/json.tar.xz)
+"#;
+        write_file(dir.path(), "CMakeLists.txt", cmake);
+        let deps = parse_cmake_lists(&dir.path().join("CMakeLists.txt"));
+        assert!(deps.iter().any(|d| d.name == "googletest"));
+        assert!(deps.iter().any(|d| d.name == "nlohmann_json"));
+    }
+
+    #[test]
+    fn test_parse_cmake_target_link_libraries() {
+        let dir = tempfile::tempdir().unwrap();
+        let cmake = r#"
+add_executable(app main.cpp)
+target_link_libraries(app PRIVATE Boost::filesystem PUBLIC Threads::Threads INTERFACE fmt::fmt)
+"#;
+        write_file(dir.path(), "CMakeLists.txt", cmake);
+        let deps = parse_cmake_lists(&dir.path().join("CMakeLists.txt"));
+        assert!(deps.iter().any(|d| d.name == "Boost::filesystem"));
+        assert!(deps.iter().any(|d| d.name == "Threads::Threads"));
+        assert!(deps.iter().any(|d| d.name == "fmt::fmt"));
     }
 }

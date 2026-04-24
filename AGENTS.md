@@ -62,7 +62,8 @@
 | 5 | TUI 美学与工程学 | 主题系统, Tabs, Help Overlay, Render 拆分 | `6b9be88` |
 | 6 | 数据层深度能力 (MVP) | 语义索引、调用图、依赖图、死代码检测、Python 依赖解析 | `9fbf7c4` |
 | 7 | 向量语义搜索 | `embedding.rs`, `code_embeddings` 表, `devkit_semantic_search` | `4d400b1` |
-| 8 | 多语言符号提取 | tree-sitter-python/typescript/go, Rust/Python/JS/Go 符号 + Call Graph | — |
+| 8 | 多语言符号提取 | tree-sitter-python/typescript/go, Rust/Python/JS/Go 符号 + Call Graph | `4f4911b` |
+| 9 | scan panic 修复 + arXiv/CMake | `block_on_async` 安全封装, arXiv API 元数据, CMakeLists.txt 依赖解析 | — |
 
 ## 敏感文件清单（禁止提交）
 
