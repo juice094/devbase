@@ -1,0 +1,24 @@
+# Embedding Provider Configuration for devbase
+# Copy this file to config.toml and adjust values as needed.
+
+[ollama]
+# Base URL of the Ollama API server
+url = "http://localhost:11434"
+
+# Embedding model to use (must be pulled in Ollama first)
+model = "nomic-embed-text"
+
+[embedding]
+# Number of symbols to embed in a single batch request
+batch_size = 32
+
+# Number of seconds to wait for Ollama to respond
+request_timeout = 120
+
+[registry]
+# Override the default registry.db path.
+# If unset, the script uses:
+#   Windows: %LOCALAPPDATA%\devbase\registry.db
+#   Linux:   ~/.local/share/devbase/registry.db
+#   macOS:   ~/.local/share/devbase/registry.db
+# db_path = ""

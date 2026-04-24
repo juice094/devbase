@@ -1840,3 +1840,101 @@ impl McpTool for DevkitArxivFetchTool {
         }
     }
 }
+
+#[derive(Clone)]
+pub struct DevkitCrossRepoSearchTool;
+
+impl McpTool for DevkitCrossRepoSearchTool {
+    fn name(&self) -> &'static str {
+        "devkit_cross_repo_search"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Search for code symbols across multiple repositories filtered by tags. Uses hybrid search (vector + keyword RRF merge) on each matching repo and returns globally deduplicated results.
+
+Use this when the user wants to:
+- Find a pattern across all Rust projects (e.g., "error handling" in repos tagged "rust")
+- Search across a technology area (e.g., "config parsing" in all CLI tools)
+- Discover reusable utilities across the workspace
+
+Do NOT use this for:
+- Single-repo searches (use devkit_hybrid_search or devkit_semantic_search)
+- Exact symbol lookup (use devkit_code_symbols)
+
+Parameters:
+- tags: Array of tag strings. Only repos matching ALL tags are searched. Empty array searches all repos.
+- query_text: Natural language or keyword query for the symbol search.
+- query_embedding: Optional query vector as f32 array. If provided, enables hybrid vector+keyword search.
+- limit: Maximum results (default: 10, max: 50).
+
+Returns: JSON array of symbols with repo_id, file_path, name, line_start, and similarity_score."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "tags": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Tags to filter repos (AND semantics). Empty = all repos."
+                    },
+                    "query_text": { "type": "string", "description": "Keyword or natural language query" },
+                    "query_embedding": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "description": "Optional query embedding vector"
+                    },
+                    "limit": { "type": "integer", "default": 10 }
+                },
+                "required": ["tags", "query_text"]
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let tags = args.get("tags")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<String>>())
+            .unwrap_or_default();
+        let query_text = args.get("query_text").and_then(|v| v.as_str()).context("query_text required")?;
+        let query_embedding = args.get("query_embedding")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect::<Vec<f32>>());
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10).min(50) as usize;
+
+        let query_text = query_text.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let results = crate::registry::WorkspaceRegistry::cross_repo_search_symbols(
+                &conn,
+                &tags,
+                &query_text,
+                query_embedding.as_deref(),
+                limit,
+            )?;
+
+            let symbols: Vec<serde_json::Value> = results
+                .into_iter()
+                .map(|(repo, name, path, line, sim)| {
+                    serde_json::json!({
+                        "repo_id": repo,
+                        "name": name,
+                        "file_path": path,
+                        "line_start": line,
+                        "similarity_score": sim,
+                    })
+                })
+                .collect();
+
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "success": true,
+                "tags": tags,
+                "query_text": query_text,
+                "count": symbols.len(),
+                "symbols": symbols,
+            }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}

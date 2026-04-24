@@ -294,6 +294,82 @@ impl WorkspaceRegistry {
         Ok(inserted)
     }
 
+    /// Cross-repo symbol search filtered by tags.
+    ///
+    /// Searches across all repos that match *all* specified tags.
+    /// If `tags` is empty, searches across all repos.
+    /// Results are deduplicated by (repo_id, symbol_name, file_path) and
+    /// sorted by score descending.
+    pub fn cross_repo_search_symbols(
+        conn: &rusqlite::Connection,
+        tags: &[String],
+        query_text: &str,
+        query_embedding: Option<&[f32]>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<crate::semantic_index::SemanticSearchRow>> {
+        use std::collections::HashMap;
+
+        // 1. Find repos matching all tags (INTERSECT for AND semantics)
+        let repo_ids: Vec<String> = if tags.is_empty() {
+            let mut stmt = conn.prepare("SELECT id FROM repos")?;
+            let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        } else {
+            let mut sql = String::new();
+            for (i, _) in tags.iter().enumerate() {
+                if i > 0 {
+                    sql.push_str(" INTERSECT ");
+                }
+                sql.push_str("SELECT repo_id FROM repo_tags WHERE tag = ?");
+            }
+            let mut stmt = conn.prepare(&sql)?;
+            let param_refs: Vec<&dyn rusqlite::ToSql> =
+                tags.iter().map(|t| t as &dyn rusqlite::ToSql).collect();
+            let rows = stmt.query_map(rusqlite::params_from_iter(param_refs.iter().copied()), |row| {
+                row.get::<_, String>(0)
+            })?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+
+        if repo_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // 2. Search each repo (generous per-repo limit before global dedup)
+        let per_repo_limit = limit.max(10) * 2;
+        let mut all_results = Vec::new();
+        for repo_id in repo_ids {
+            match crate::search::hybrid::hybrid_search_symbols(
+                conn,
+                &repo_id,
+                query_text,
+                query_embedding,
+                per_repo_limit,
+            ) {
+                Ok(mut results) => all_results.append(&mut results),
+                Err(e) => {
+                    tracing::warn!("Cross-repo search failed for {}: {}", repo_id, e);
+                }
+            }
+        }
+
+        // 3. Deduplicate and sort globally by score
+        let mut deduped: HashMap<String, crate::semantic_index::SemanticSearchRow> = HashMap::new();
+        for row in all_results {
+            let key = format!("{}::{}::{}", row.0, row.1, row.2);
+            deduped.entry(key).or_insert(row);
+        }
+
+        let mut merged: Vec<crate::semantic_index::SemanticSearchRow> = deduped.into_values().collect();
+        merged.sort_by(|a, b| {
+            b.4.partial_cmp(&a.4)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.1.cmp(&b.1))
+        });
+        merged.truncate(limit);
+        Ok(merged)
+    }
+
     /// Hybrid search: vector similarity + keyword matching with RRF merge.
     /// Falls back to pure keyword search when no embeddings are available.
     pub fn hybrid_search_symbols(
