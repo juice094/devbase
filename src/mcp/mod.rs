@@ -71,6 +71,8 @@ pub enum McpToolEnum {
     DeadCode(DevkitDeadCodeTool),
     SemanticSearch(DevkitSemanticSearchTool),
     ArxivFetch(DevkitArxivFetchTool),
+    EmbeddingStore(DevkitEmbeddingStoreTool),
+    EmbeddingSearch(DevkitEmbeddingSearchTool),
 }
 
 /// Stability tier for MCP tools.
@@ -124,6 +126,8 @@ impl McpToolEnum {
             McpToolEnum::DeadCode(_) => ToolTier::Experimental,
             McpToolEnum::SemanticSearch(_) => ToolTier::Beta,
             McpToolEnum::ArxivFetch(_) => ToolTier::Beta,
+            McpToolEnum::EmbeddingStore(_) => ToolTier::Beta,
+            McpToolEnum::EmbeddingSearch(_) => ToolTier::Beta,
         }
     }
 }
@@ -156,6 +160,8 @@ impl McpTool for McpToolEnum {
             McpToolEnum::DeadCode(t) => t.name(),
             McpToolEnum::SemanticSearch(t) => t.name(),
             McpToolEnum::ArxivFetch(t) => t.name(),
+            McpToolEnum::EmbeddingStore(t) => t.name(),
+            McpToolEnum::EmbeddingSearch(t) => t.name(),
         }
     }
 
@@ -186,6 +192,8 @@ impl McpTool for McpToolEnum {
             McpToolEnum::DeadCode(t) => t.schema(),
             McpToolEnum::SemanticSearch(t) => t.schema(),
             McpToolEnum::ArxivFetch(t) => t.schema(),
+            McpToolEnum::EmbeddingStore(t) => t.schema(),
+            McpToolEnum::EmbeddingSearch(t) => t.schema(),
         }
     }
 
@@ -216,6 +224,8 @@ impl McpTool for McpToolEnum {
             McpToolEnum::DeadCode(t) => t.invoke(args).await,
             McpToolEnum::SemanticSearch(t) => t.invoke(args).await,
             McpToolEnum::ArxivFetch(t) => t.invoke(args).await,
+            McpToolEnum::EmbeddingStore(t) => t.invoke(args).await,
+            McpToolEnum::EmbeddingSearch(t) => t.invoke(args).await,
         }
     }
 }
@@ -391,6 +401,8 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::DeadCode(DevkitDeadCodeTool),
         McpToolEnum::SemanticSearch(DevkitSemanticSearchTool),
         McpToolEnum::ArxivFetch(DevkitArxivFetchTool),
+        McpToolEnum::EmbeddingStore(DevkitEmbeddingStoreTool),
+        McpToolEnum::EmbeddingSearch(DevkitEmbeddingSearchTool),
     ];
     for tool in all_tools {
         if let Some(allowed) = tiers

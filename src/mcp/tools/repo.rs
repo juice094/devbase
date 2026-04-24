@@ -1591,6 +1591,21 @@ Returns: JSON array of potentially dead functions with file_path, name, and line
     }
 }
 
+/// Parse a JSON array of numbers into a Vec<f32>.
+fn parse_f32_array(value: &serde_json::Value, field: &str) -> anyhow::Result<Vec<f32>> {
+    let arr = value
+        .get(field)
+        .and_then(|v| v.as_array())
+        .with_context(|| format!("{} must be an array of numbers", field))?;
+    arr.iter()
+        .map(|v| {
+            v.as_f64()
+                .map(|f| f as f32)
+                .with_context(|| format!("{} contains non-numeric value", field))
+        })
+        .collect::<Result<Vec<f32>, _>>()
+}
+
 #[derive(Clone)]
 pub struct DevkitSemanticSearchTool;
 
@@ -1601,7 +1616,7 @@ impl McpTool for DevkitSemanticSearchTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": r#"Search for code symbols semantically similar to a natural language query. Uses local vector embeddings (via Ollama) to find function definitions that match the meaning of your query, not just the keywords.
+            "description": r#"Search for code symbols semantically similar to a query embedding vector. This is the "outboard brain" interface: embedding generation is performed externally (by an MCP Server or Skill using Ollama, llama.cpp, ONNX, etc.), and devbase only handles storage and similarity search.
 
 Use this when the user wants to:
 - Find code related to a concept (e.g., "authentication", "error handling", "config parsing")
@@ -1611,65 +1626,41 @@ Use this when the user wants to:
 Do NOT use this for:
 - Exact keyword searches (use devkit_natural_language_query or devkit_query instead)
 - Finding symbol definitions by exact name (use devkit_code_symbols instead)
-- When the embedding provider (Ollama) is not configured or available
+- When no embeddings have been stored for the repository (use devkit_embedding_store first)
 
 Parameters:
 - repo_id: Registered repository ID to search within.
-- query: Natural language description of what you're looking for (e.g., "token validation logic").
+- query_embedding: Query vector as an array of f32 numbers. Must match the dimension of stored embeddings.
 - limit: Maximum results (default: 10, max: 50).
 
-Returns: JSON array of matching symbols with file_path, name, line_start, and similarity_score (0.0-1.0). Requires [embedding] enabled in config.toml and Ollama running locally."#,
+Returns: JSON array of matching symbols with file_path, name, line_start, and similarity_score (0.0-1.0)."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "repo_id": { "type": "string" },
-                    "query": { "type": "string" },
+                    "query_embedding": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "description": "Query embedding vector as an array of f32 numbers"
+                    },
                     "limit": { "type": "integer", "default": 10 }
                 },
-                "required": ["repo_id", "query"]
+                "required": ["repo_id", "query_embedding"]
             }
         })
     }
 
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
-        let query = args.get("query").and_then(|v| v.as_str()).context("query required")?;
+        let query_emb = parse_f32_array(&args, "query_embedding")?;
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10).min(50) as usize;
 
-        let config = crate::config::Config::load()?;
-        if !config.embedding.enabled {
-            anyhow::bail!(
-                "Semantic search is disabled. Enable it by setting [embedding] enabled = true in config.toml and ensure Ollama is running."
-            );
-        }
-
         let repo_id = repo_id.to_string();
-        let query = query.to_string();
-        let emb_config = config.embedding.clone();
 
         tokio::task::spawn_blocking(move || {
-            // Generate query embedding
-            let query_async = query.clone();
-            let emb_config_async = emb_config.clone();
-            let query_embs = crate::knowledge_engine::block_on_async(async move {
-                crate::embedding::generate_embeddings(
-                    std::slice::from_ref(&query_async),
-                    &emb_config_async,
-                )
-                .await
-            })
-            .ok_or_else(|| anyhow::anyhow!("Failed to run async embedding generation"))?;
-            if query_embs.is_empty() {
-                anyhow::bail!(
-                    "Failed to generate query embedding. Is Ollama running with model {}?",
-                    emb_config.model
-                );
-            }
-            let query_emb = &query_embs[0];
-
             let conn = crate::registry::WorkspaceRegistry::init_db()?;
             let results = crate::registry::WorkspaceRegistry::semantic_search_symbols(
-                &conn, &repo_id, query_emb, limit,
+                &conn, &repo_id, &query_emb, limit,
             )?;
 
             let symbols: Vec<serde_json::Value> = results
@@ -1687,13 +1678,116 @@ Returns: JSON array of matching symbols with file_path, name, line_start, and si
             Ok::<_, anyhow::Error>(serde_json::json!({
                 "success": true,
                 "repo_id": repo_id,
-                "query": query,
                 "count": symbols.len(),
                 "symbols": symbols,
             }))
         })
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitEmbeddingStoreTool;
+
+impl McpTool for DevkitEmbeddingStoreTool {
+    fn name(&self) -> &'static str {
+        "devkit_embedding_store"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Store an externally-generated embedding vector for a code symbol. This is the storage-side of the "outboard brain" architecture: an external MCP Server or Skill (Ollama, llama.cpp, ONNX, remote API) generates embeddings, and devbase persists them in SQLite for similarity search.
+
+Use this when:
+- An external embedding provider has generated a vector for a symbol and wants to store it
+- Indexing a repository with custom embedding models not supported natively
+- Updating embeddings after code changes
+
+Parameters:
+- repo_id: Registered repository ID.
+- symbol_name: Name of the code symbol (must match an entry in code_symbols table).
+- embedding: Embedding vector as an array of f32 numbers.
+
+Returns: success flag and count of stored embeddings."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": { "type": "string" },
+                    "symbol_name": { "type": "string" },
+                    "embedding": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "description": "Embedding vector as an array of f32 numbers"
+                    }
+                },
+                "required": ["repo_id", "symbol_name", "embedding"]
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
+        let symbol_name = args.get("symbol_name").and_then(|v| v.as_str()).context("symbol_name required")?;
+        let embedding = parse_f32_array(&args, "embedding")?;
+
+        let repo_id = repo_id.to_string();
+        let symbol_name = symbol_name.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let mut conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let pairs = vec![(symbol_name.clone(), embedding)];
+            let count = crate::registry::WorkspaceRegistry::save_embeddings(&mut conn, &repo_id, &pairs)?;
+
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "success": true,
+                "repo_id": repo_id,
+                "symbol_name": symbol_name,
+                "stored": count,
+            }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitEmbeddingSearchTool;
+
+impl McpTool for DevkitEmbeddingSearchTool {
+    fn name(&self) -> &'static str {
+        "devkit_embedding_search"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Search for code symbols using an externally-provided query embedding vector. Alias for devkit_semantic_search with the same vector-based interface. Use whichever name is more intuitive for your workflow.
+
+Parameters:
+- repo_id: Registered repository ID to search within.
+- query_embedding: Query vector as an array of f32 numbers.
+- limit: Maximum results (default: 10, max: 50).
+
+Returns: JSON array of matching symbols with file_path, name, line_start, and similarity_score (0.0-1.0)."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": { "type": "string" },
+                    "query_embedding": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "description": "Query embedding vector as an array of f32 numbers"
+                    },
+                    "limit": { "type": "integer", "default": 10 }
+                },
+                "required": ["repo_id", "query_embedding"]
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        // Delegate to DevkitSemanticSearchTool — same logic
+        DevkitSemanticSearchTool.invoke(args).await
     }
 }
 
