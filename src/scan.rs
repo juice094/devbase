@@ -230,22 +230,31 @@ pub fn fetch_github_stars(
     let (owner, repo) = parse_github_owner_repo(upstream_url)?;
 
     let timeout_secs = github.map(|g| g.timeout_seconds).unwrap_or(5);
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(timeout_secs))
-        .build()
-        .ok()?;
-    let mut request = client
-        .get(format!("https://api.github.com/repos/{}/{}", owner, repo))
-        .header("User-Agent", "devbase-cli");
-    if let Some(token) = github.and_then(|g| g.token.as_deref()) {
-        request = request.header("Authorization", format!("Bearer {}", token));
-    }
-    let response = request.send().ok()?;
-    if !response.status().is_success() {
-        return None;
-    }
-    let json: serde_json::Value = response.json().ok()?;
-    json.get("stargazers_count")?.as_u64()
+    let token = github.and_then(|g| g.token.clone());
+
+    // Run the blocking HTTP request on a dedicated thread to avoid
+    // "Cannot drop a runtime in a context where blocking is not allowed"
+    // when this function is called from within an async context.
+    std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(timeout_secs))
+            .build()
+            .ok()?;
+        let mut request = client
+            .get(format!("https://api.github.com/repos/{}/{}", owner, repo))
+            .header("User-Agent", "devbase-cli");
+        if let Some(t) = token {
+            request = request.header("Authorization", format!("Bearer {}", t));
+        }
+        let response = request.send().ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let json: serde_json::Value = response.json().ok()?;
+        json.get("stargazers_count")?.as_u64()
+    })
+    .join()
+    .ok()?
 }
 
 fn extract_rust_modules(repo_path: &str) -> anyhow::Result<Vec<(String, String, String)>> {
