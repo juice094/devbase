@@ -5,6 +5,83 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-04-20
+
+### Architecture
+
+- **Outboard Brain Embedding Architecture** — Embedding generation moved to external Skill/MCP Server
+  - `embedding.rs` stripped of Ollama/OpenAI generation logic; storage protocol only (`embedding_to_bytes`, `bytes_to_embedding`, `cosine_similarity`)
+  - `knowledge_engine.rs` no longer generates embeddings during indexing
+  - Aligns with "store + search in devbase, compute in Clarity/Skill" boundary
+
+### Changed
+
+- **Breaking** — `devkit_semantic_search` now accepts `query_embedding: number[]` instead of `query: string`
+  - Embedding generation is the caller's responsibility (external MCP Server or Skill)
+  - Removed `config.embedding.enabled` gate; search works as long as embeddings exist in DB
+
+### Added
+
+- **`devkit_embedding_store`** — Store externally-generated embedding vectors into SQLite
+  - Parameters: `repo_id`, `symbol_name`, `embedding: number[]`
+  - Upsert semantics (ON CONFLICT UPDATE)
+- **`devkit_embedding_search`** — Alias for `devkit_semantic_search` with vector-based interface
+  - Same parameters and behavior, alternative name for workflow clarity
+- **MCP tool count**: 25 → 27
+
+---
+
+## [0.2.3] - 2026-04-20
+
+### Added
+
+- **Semantic Vector Search (Wave 1)** — Cosine-similarity code symbol search
+  - `code_embeddings` table (Schema v11): `repo_id + symbol_name` PK, BLOB embedding, `generated_at`
+  - `embedding.rs`: Ollama/OpenAI-compatible generation + `cosine_similarity` + byte serialization
+  - `devkit_semantic_search` MCP tool (Beta): natural-language → embedding → top-K symbols
+- **Multi-Language Symbol Extraction (Wave 2)** — tree-sitter AST parsing beyond Rust
+  - `tree-sitter-python`, `tree-sitter-typescript`, `tree-sitter-go` dependencies
+  - `SymbolType` expanded: Function, Struct, Enum, Trait, Impl, Module, Class, Interface, TypeAlias, Constant, Static
+  - Per-language call-target resolvers for Call Graph construction
+  - Languages supported: Rust, Python, JavaScript, TypeScript, Go
+- **Call Graph Analysis** — Intra-repo function call relationship extraction
+  - `code_call_graph` table (Schema v10): caller → callee edges with line numbers
+  - `devkit_call_graph` MCP tool: "Who calls `register_tool`?"
+- **Cross-Repo Dependency Graph expansion**
+  - `CMakeLists.txt` parsing: `find_package`, `add_subdirectory`, `FetchContent_Declare`, `target_link_libraries`
+  - `ManifestKind::CMake` added to dependency graph builder
+- **Dead Code Detection** — `devkit_dead_code` MCP tool (Experimental)
+  - SQL `NOT EXISTS` query over call graph to find functions with zero incoming edges
+  - `LIKE 'pub%fn%'` heuristic to exclude non-public functions
+- **arXiv Integration** — Pure string-parsing Atom XML fetcher (zero heavy XML deps)
+  - `arxiv.rs`: `PaperMetadata` with title/authors/summary/published/category
+  - `devkit_arxiv_fetch` MCP tool (Beta): fetch by arXiv ID
+- **Performance Benchmarks** — Criterion suite (`benches/semantic_index.rs`)
+  - `index_repo_full` (small/medium/full parameterization)
+  - `cosine_similarity` (128/512/768 dims)
+  - `extract_symbols` (Rust/Python/Go comparison)
+  - `parse_cmake_lists` (CMake parsing)
+- **Structured OpLog (Schema v12)** — Typed event system
+  - `OplogEventType` enum replacing free-text `operation` field
+  - JSON metadata + `duration_ms` for observability
+  - Migration: `CASE` mapping from legacy strings to enum variants
+
+### Fixed
+
+- **`scan` async panic** — `fetch_github_stars` now runs in `std::thread::spawn` isolation
+  - Prevents `reqwest::blocking::Client` drop inside tokio runtime from causing panic
+  - `block_on_async()` helper detects runtime context and uses `mpsc` or temporary runtime
+- **Dead code false positives** — `pub fn` → `pub%fn%` SQL LIKE match covers `pub async fn` / `pub(crate) fn` / `pub unsafe fn`
+  - Excludes `main()` from dead code results
+- **Clippy warnings** — 12+ lints resolved (`manual_strip`, `collapsible_if`, `FromStr`, `type_complexity`, `useless_format`, etc.)
+
+### Changed
+
+- **`nl_filter_repos`** — Now uses Tantivy full-text search as primary path
+  - Falls back to structured SQL filtering when Tantivy is unavailable
+
+---
+
 ## [0.2.2] - 2026-04-21
 
 ### Added
