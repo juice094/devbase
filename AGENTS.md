@@ -137,6 +137,25 @@ devbase 承载外部资源调度的抽象接口：
 3. 输出外部资源调度的请求格式草案
 4. **不做**：调度算法、边界图谱引擎、哲学规则库内容、密码学协议
 
+## Embedding 策略长期规划（已决策）
+
+**方向**：混合方案 — 模型向量语义搜索 + tantivy BM25 降级
+
+| 层级 | 触发条件 | 技术方案 | 状态 |
+|------|----------|----------|------|
+| L1 向量语义 | `code_embeddings` 表有数据 | Ollama/OpenAI-compatible 生成 768-dim embedding，余弦相似度 Top-K | 已实现，待激活（需 Ollama 运行） |
+| L2 全文搜索 | `code_embeddings` 为空或服务不可用时 | tantivy 索引代码符号（function name + signature + doc comment），BM25 评分 | 基础设施就绪，待接入 `semantic_search_symbols` |
+| L3 纯符号匹配 | 查询为精确标识符 | SQLite `LIKE '%name%'` 快速匹配 | 已有 |
+
+**关键决策**：不绑定 Ollama 为唯一 provider。未来可能替换 embedding 生成层为：
+- 本地 C++ 推理引擎（如 llama.cpp / onnxruntime）
+- 纯 Rust 推理引擎（如 rust-bert / candle）
+- 外部 MCP / Skill 封装（embedding 作为独立服务）
+
+**当前阻塞**：`code_embeddings` 表为 0 行，因 Ollama 未运行。激活路径：
+1. 启动 Ollama + `devbase index <repo>` 生成 embedding
+2. 或配置远程 provider（OpenAI / 智谱 / DeepSeek）于 `config.toml [embedding]` 段
+
 ## 禁止事项
 
 - 不得修改 `dev\third_party\*` 外部仓库
