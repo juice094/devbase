@@ -42,7 +42,10 @@ impl WorkspaceRegistry {
                 last_sync,
             ) = row?;
             let local_path = PathBuf::from(local_path);
-            let discovered_at = DateTime::parse_from_rfc3339(&discovered_at)?.with_timezone(&Utc);
+            let discovered_at = DateTime::parse_from_rfc3339(&discovered_at)
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(Utc::now);
             let tags: Vec<String> = tags
                 .map(|s| {
                     s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()
