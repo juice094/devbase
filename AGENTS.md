@@ -63,7 +63,9 @@
 | 6 | 数据层深度能力 (MVP) | 语义索引、调用图、依赖图、死代码检测、Python 依赖解析 | `9fbf7c4` |
 | 7 | 向量语义搜索 | `embedding.rs`, `code_embeddings` 表, `devkit_semantic_search` | `4d400b1` |
 | 8 | 多语言符号提取 | tree-sitter-python/typescript/go, Rust/Python/JS/Go 符号 + Call Graph | `4f4911b` |
-| 9 | scan panic 修复 + arXiv/CMake | `block_on_async` 安全封装, arXiv API 元数据, CMakeLists.txt 依赖解析 | — |
+| 9 | scan panic 修复 + arXiv/CMake | `block_on_async` 安全封装, arXiv API 元数据, CMakeLists.txt 依赖解析 | `881cd32` |
+| 10 | OpLog 结构化 | Schema v12, OplogEventType 枚举, JSON metadata, duration_ms | `7aa2a65` |
+| 11 | 性能基准 | criterion benches: index_repo_full, cosine_similarity, extract_symbols, CMake | `8e0f236` |
 
 ## 敏感文件清单（禁止提交）
 
