@@ -12,6 +12,7 @@ pub mod health;
 pub mod i18n;
 pub mod knowledge_engine;
 pub mod mcp;
+pub mod oplog_analytics;
 pub mod query;
 pub mod registry;
 pub mod scan;

@@ -1842,6 +1842,69 @@ impl McpTool for DevkitArxivFetchTool {
 }
 
 #[derive(Clone)]
+pub struct DevkitKnowledgeReportTool;
+
+impl McpTool for DevkitKnowledgeReportTool {
+    fn name(&self) -> &'static str {
+        "devkit_knowledge_report"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Generate a knowledge coverage report for the workspace or a single repository. Shows symbol counts, embedding coverage, call graph density, health summary, and recent activity.
+
+Use this when the user wants to:
+- Get an overview of how well the workspace is indexed
+- Check which repos have embeddings and which don't
+- See recent scan/index/sync activity
+- Identify knowledge gaps (repos with many symbols but zero embeddings)
+
+Parameters:
+- repo_id: Optional specific repository ID. If omitted, reports on the entire workspace.
+- activity_limit: Number of recent OpLog events to include (default: 20, max: 100).
+
+Returns: JSON object with repo_count, total_symbols, total_embeddings, total_calls, overall_coverage_pct, per-repo breakdown, health_summary, and recent_activity."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": {
+                        "type": "string",
+                        "description": "Optional specific repository to report on"
+                    },
+                    "activity_limit": {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Number of recent activity events to include"
+                    }
+                }
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).map(String::from);
+        let activity_limit = args.get("activity_limit").and_then(|v| v.as_u64()).unwrap_or(20).min(100) as usize;
+
+        tokio::task::spawn_blocking(move || {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let report = crate::oplog_analytics::generate_report(
+                &conn,
+                repo_id.as_deref(),
+                activity_limit,
+            )?;
+
+            let json = serde_json::to_value(report)?;
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "success": true,
+                "report": json,
+            }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
+#[derive(Clone)]
 pub struct DevkitCrossRepoSearchTool;
 
 impl McpTool for DevkitCrossRepoSearchTool {

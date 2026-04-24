@@ -74,6 +74,7 @@ pub enum McpToolEnum {
     EmbeddingStore(DevkitEmbeddingStoreTool),
     EmbeddingSearch(DevkitEmbeddingSearchTool),
     CrossRepoSearch(DevkitCrossRepoSearchTool),
+    KnowledgeReport(DevkitKnowledgeReportTool),
 }
 
 /// Stability tier for MCP tools.
@@ -130,6 +131,7 @@ impl McpToolEnum {
             McpToolEnum::EmbeddingStore(_) => ToolTier::Beta,
             McpToolEnum::EmbeddingSearch(_) => ToolTier::Beta,
             McpToolEnum::CrossRepoSearch(_) => ToolTier::Beta,
+            McpToolEnum::KnowledgeReport(_) => ToolTier::Beta,
         }
     }
 }
@@ -165,6 +167,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::EmbeddingStore(t) => t.name(),
             McpToolEnum::EmbeddingSearch(t) => t.name(),
             McpToolEnum::CrossRepoSearch(t) => t.name(),
+            McpToolEnum::KnowledgeReport(t) => t.name(),
         }
     }
 
@@ -198,6 +201,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::EmbeddingStore(t) => t.schema(),
             McpToolEnum::EmbeddingSearch(t) => t.schema(),
             McpToolEnum::CrossRepoSearch(t) => t.schema(),
+            McpToolEnum::KnowledgeReport(t) => t.schema(),
         }
     }
 
@@ -231,6 +235,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::EmbeddingStore(t) => t.invoke(args).await,
             McpToolEnum::EmbeddingSearch(t) => t.invoke(args).await,
             McpToolEnum::CrossRepoSearch(t) => t.invoke(args).await,
+            McpToolEnum::KnowledgeReport(t) => t.invoke(args).await,
         }
     }
 }
@@ -409,6 +414,7 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::EmbeddingStore(DevkitEmbeddingStoreTool),
         McpToolEnum::EmbeddingSearch(DevkitEmbeddingSearchTool),
         McpToolEnum::CrossRepoSearch(DevkitCrossRepoSearchTool),
+        McpToolEnum::KnowledgeReport(DevkitKnowledgeReportTool),
     ];
     for tool in all_tools {
         if let Some(allowed) = tiers
