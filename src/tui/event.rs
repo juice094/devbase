@@ -1,5 +1,5 @@
 use crate::tui::render::ui;
-use crate::tui::{App, InputMode, MainView, SearchPopupMode, SkillPopupMode, SortMode, SyncPopupMode};
+use crate::tui::{App, InputMode, MainView, SearchPopupMode, SkillPopupMode, SortMode, SyncPopupMode, WorkflowPopupMode};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{Terminal, backend::Backend};
 use std::io;
@@ -117,6 +117,37 @@ pub(crate) async fn run_app<B: Backend>(
                 }
                 SkillPopupMode::Hidden => {}
             }
+            // Workflow popup intercepts when visible
+            match app.workflow_popup_mode {
+                WorkflowPopupMode::List => {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Char('q') => {
+                            app.workflow_popup_mode = WorkflowPopupMode::Hidden;
+                        }
+                        KeyCode::Down => app.next_workflow(),
+                        KeyCode::Up => app.previous_workflow(),
+                        KeyCode::Enter => {
+                            if let Some(wf) = app.current_workflow().cloned() {
+                                app.selected_workflow = Some(wf);
+                                app.workflow_popup_mode = WorkflowPopupMode::Detail;
+                            }
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+                WorkflowPopupMode::Detail => {
+                    match key.code {
+                        KeyCode::Esc => app.workflow_popup_mode = WorkflowPopupMode::List,
+                        KeyCode::Enter => {
+                            app.workflow_popup_mode = WorkflowPopupMode::Hidden;
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+                WorkflowPopupMode::Hidden => {}
+            }
             // Help popup intercepts keys when visible
             if app.help_popup_mode == crate::tui::HelpPopupMode::Visible {
                 match key.code {
@@ -207,6 +238,10 @@ pub(crate) async fn run_app<B: Backend>(
                     KeyCode::Char('k') => {
                         app.load_skills();
                         app.skill_popup_mode = SkillPopupMode::List;
+                    }
+                    KeyCode::Char('w') => {
+                        app.load_workflows();
+                        app.workflow_popup_mode = WorkflowPopupMode::List;
                     }
                     KeyCode::Char('h') | KeyCode::Char('?') => app.toggle_help(),
                     KeyCode::F(1) => app.toggle_help(),

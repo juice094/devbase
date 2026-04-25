@@ -1,6 +1,6 @@
 use crate::tui::layout::AppLayout;
 use crate::tui::theme::Styles;
-use crate::tui::{App, SearchPopupMode, SkillPopupMode, SyncPopupMode};
+use crate::tui::{App, SearchPopupMode, SkillPopupMode, SyncPopupMode, WorkflowPopupMode};
 use ratatui::{
     Frame,
     layout::Margin,
@@ -28,6 +28,12 @@ pub(crate) fn render_popups(frame: &mut Frame, app: &mut App, styles: &Styles) {
         SkillPopupMode::ParamInput => render_skill_param_input(frame, app, styles),
         SkillPopupMode::Result => render_skill_result(frame, app, styles),
         SkillPopupMode::Hidden => {}
+    }
+
+    match app.workflow_popup_mode {
+        WorkflowPopupMode::List => render_workflow_list(frame, app, styles),
+        WorkflowPopupMode::Detail => render_workflow_detail(frame, app, styles),
+        WorkflowPopupMode::Hidden => {}
     }
 }
 
@@ -133,8 +139,9 @@ fn render_skill_list(frame: &mut Frame, app: &App, styles: &Styles) {
         .enumerate()
         .map(|(i, s)| {
             let is_selected = i == app.skill_selected;
+            let cat_tag = s.row.category.as_deref().unwrap_or("uncategorized");
             let line = Span::styled(
-                format!("[{}] {} — {}", s.row.id, s.row.name, s.row.description),
+                format!("[{}] {} [{}] — {}", s.row.id, s.row.name, cat_tag, s.row.description),
                 if is_selected {
                     Style::default().fg(styles.theme.text).add_modifier(Modifier::BOLD)
                 } else {
@@ -178,6 +185,13 @@ fn render_skill_detail(frame: &mut Frame, app: &App, styles: &Styles) {
             Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD),
         )));
         lines.push(Line::from(Span::styled(&skill.description, Style::default().fg(styles.theme.text))));
+        lines.push(Line::from(vec![
+            Span::styled("Category: ", Style::default().fg(styles.theme.info)),
+            Span::styled(skill.category.as_deref().unwrap_or("uncategorized"), Style::default().fg(styles.theme.text)),
+            Span::raw("  |  "),
+            Span::styled("Type: ", Style::default().fg(styles.theme.info)),
+            Span::styled(skill.skill_type.as_str(), Style::default().fg(styles.theme.text)),
+        ]));
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "Inputs:",
@@ -531,6 +545,105 @@ fn render_sync_progress(frame: &mut Frame, app: &App, styles: &Styles) {
         y: popup_inner.y + popup_inner.height.saturating_sub(hint_height),
         width: popup_inner.width,
         height: hint_height,
+    };
+    frame.render_widget(hint, hint_area);
+}
+
+
+fn render_workflow_list(frame: &mut Frame, app: &App, styles: &Styles) {
+    let popup_area = AppLayout::centered(frame.area(), 70, 60);
+    let popup_inner = popup_area.inner(Margin::new(1, 1));
+
+    let title = format!("Workflows ({})", app.workflows.len());
+    let items: Vec<ListItem> = app
+        .workflows
+        .iter()
+        .enumerate()
+        .map(|(i, wf)| {
+            let is_selected = i == app.workflow_selected;
+            let line = Span::styled(
+                format!("[{}] {} — {}", wf.id, wf.name, wf.description.as_deref().unwrap_or("").chars().take(60).collect::<String>()),
+                if is_selected {
+                    Style::default().fg(styles.theme.text).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::Gray)
+                },
+            );
+            ListItem::new(Line::from(line))
+        })
+        .collect();
+
+    let popup_list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(title).border_style(styles.border))
+        .highlight_style(styles.highlight)
+        .highlight_symbol("> ");
+
+    frame.render_widget(Clear, popup_area);
+    frame.render_widget(popup_list, popup_area);
+
+    let hint = Paragraph::new(Span::styled(
+        "[↑/↓] 选择  [Enter] 详情  [Esc] 关闭",
+        styles.hint,
+    ));
+    let hint_area = ratatui::layout::Rect {
+        x: popup_inner.x,
+        y: popup_inner.y + popup_inner.height.saturating_sub(1),
+        width: popup_inner.width,
+        height: 1,
+    };
+    frame.render_widget(hint, hint_area);
+}
+
+fn render_workflow_detail(frame: &mut Frame, app: &App, styles: &Styles) {
+    let popup_area = AppLayout::centered(frame.area(), 60, 50);
+    let popup_inner = popup_area.inner(Margin::new(1, 1));
+
+    let mut lines: Vec<Line> = Vec::new();
+    if let Some(wf) = &app.selected_workflow {
+        lines.push(Line::from(Span::styled(
+            format!("{} v{}", wf.name, wf.version),
+            Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD),
+        )));
+        if let Some(desc) = &wf.description {
+            lines.push(Line::from(Span::styled(desc, Style::default().fg(styles.theme.text))));
+        }
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Steps:",
+            Style::default().fg(styles.theme.info).add_modifier(Modifier::BOLD),
+        )));
+        for step in &wf.steps {
+            let deps = if step.depends_on.is_empty() {
+                "".to_string()
+            } else {
+                format!(" [→ {}]", step.depends_on.join(", "))
+            };
+            lines.push(Line::from(Span::styled(
+                format!("  • {}{}", step.id, deps),
+                Style::default().fg(styles.theme.text),
+            )));
+        }
+    } else {
+        lines.push(Line::from(Span::styled("无法加载 Workflow 详情", Style::default().fg(styles.theme.danger))));
+    }
+
+    let popup_text = Text::from(lines);
+    let popup_para = Paragraph::new(popup_text)
+        .block(Block::default().borders(Borders::ALL).title("Workflow Detail").border_style(styles.border))
+        .wrap(Wrap { trim: true });
+
+    frame.render_widget(Clear, popup_area);
+    frame.render_widget(popup_para, popup_area);
+
+    let hint = Paragraph::new(Span::styled(
+        "[Enter] 关闭  [Esc] 返回列表",
+        styles.hint,
+    ));
+    let hint_area = ratatui::layout::Rect {
+        x: popup_inner.x,
+        y: popup_inner.y + popup_inner.height.saturating_sub(1),
+        width: popup_inner.width,
+        height: 1,
     };
     frame.render_widget(hint, hint_area);
 }

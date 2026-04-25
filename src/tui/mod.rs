@@ -116,6 +116,13 @@ pub(crate) enum SkillPopupMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum WorkflowPopupMode {
+    Hidden,
+    List,
+    Detail,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum SearchPopupMode {
     Hidden,
     Input,
@@ -181,6 +188,11 @@ pub struct App {
     pub(crate) selected_skill: Option<crate::skill_runtime::SkillMeta>,
     pub(crate) skill_param_buffer: String,
     pub(crate) skill_execution_result: Option<crate::skill_runtime::ExecutionResult>,
+    pub(crate) workflow_popup_mode: WorkflowPopupMode,
+    pub(crate) workflows: Vec<crate::workflow::WorkflowDefinition>,
+    pub(crate) workflow_selected: usize,
+    pub(crate) workflow_list_state: ListState,
+    pub(crate) selected_workflow: Option<crate::workflow::WorkflowDefinition>,
 }
 
 pub mod event;

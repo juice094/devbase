@@ -2,7 +2,7 @@ use crate::asyncgit::AsyncNotification;
 use crate::registry::WorkspaceRegistry;
 use crate::tui::{
     App, InputMode, ListState, MainView, RepoItem, SearchPopupMode, SearchResult, SkillItem,
-    SkillPopupMode, SortMode, SyncPopupMode, SyncPreviewItem, VaultItem,
+    SkillPopupMode, SortMode, SyncPopupMode, SyncPreviewItem, VaultItem, WorkflowPopupMode,
 };
 use chrono::Utc;
 use crossbeam_channel::bounded;
@@ -57,6 +57,11 @@ impl App {
             selected_skill: None,
             skill_param_buffer: String::new(),
             skill_execution_result: None,
+            workflow_popup_mode: WorkflowPopupMode::Hidden,
+            workflows: Vec::new(),
+            workflow_selected: 0,
+            workflow_list_state: ListState::default(),
+            selected_workflow: None,
         };
         app.log_info(crate::i18n::current().log.tui_started.to_string());
         app.load_repos()?;
@@ -443,7 +448,7 @@ impl App {
                 return;
             }
         };
-        let rows = match crate::skill_runtime::registry::list_skills(&conn, None) {
+        let rows = match crate::skill_runtime::registry::list_skills(&conn, None, None) {
             Ok(r) => r,
             Err(e) => {
                 self.log_warn(format!("无法列出 Skills: {}", e));
@@ -489,6 +494,50 @@ impl App {
 
     pub(crate) fn current_skill(&self) -> Option<&SkillItem> {
         self.skills.get(self.skill_selected)
+    }
+
+    pub(crate) fn load_workflows(&mut self) {
+        let conn = match WorkspaceRegistry::init_db() {
+            Ok(c) => c,
+            Err(e) => {
+                self.log_warn(format!("无法加载 Workflow 注册表: {}", e));
+                self.workflows.clear();
+                return;
+            }
+        };
+        match crate::workflow::list_workflows(&conn) {
+            Ok(rows) => {
+                self.workflows = rows
+                    .into_iter()
+                    .filter_map(|(id, _, _)| crate::workflow::get_workflow(&conn, &id).ok().flatten())
+                    .collect();
+            }
+            Err(e) => {
+                self.log_warn(format!("无法列出 Workflow: {}", e));
+                self.workflows.clear();
+            }
+        }
+        self.workflow_selected = 0;
+        self.workflow_list_state.select(Some(0));
+        self.log_info(format!("已加载 {} 个 Workflow", self.workflows.len()));
+    }
+
+    pub(crate) fn next_workflow(&mut self) {
+        if !self.workflows.is_empty() {
+            self.workflow_selected = (self.workflow_selected + 1) % self.workflows.len();
+            self.workflow_list_state.select(Some(self.workflow_selected));
+        }
+    }
+
+    pub(crate) fn previous_workflow(&mut self) {
+        if !self.workflows.is_empty() {
+            self.workflow_selected = (self.workflow_selected + self.workflows.len() - 1) % self.workflows.len();
+            self.workflow_list_state.select(Some(self.workflow_selected));
+        }
+    }
+
+    pub(crate) fn current_workflow(&self) -> Option<&crate::workflow::WorkflowDefinition> {
+        self.workflows.get(self.workflow_selected)
     }
 
     pub(crate) fn run_selected_skill(&mut self) {

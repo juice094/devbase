@@ -165,6 +165,11 @@ enum Commands {
         #[command(subcommand)]
         cmd: SkillCommands,
     },
+    /// Workflow Engine — orchestrate multi-Skill pipelines
+    Workflow {
+        #[command(subcommand)]
+        cmd: WorkflowCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -174,6 +179,9 @@ enum SkillCommands {
         /// Filter by skill type (builtin, custom, system)
         #[arg(long)]
         skill_type: Option<String>,
+        /// Filter by category
+        #[arg(long)]
+        category: Option<String>,
         /// Output as JSON
         #[arg(long)]
         json: bool,
@@ -206,6 +214,9 @@ enum SkillCommands {
         /// Use semantic search (requires embeddings)
         #[arg(long)]
         semantic: bool,
+        /// Filter by category
+        #[arg(long)]
+        category: Option<String>,
         /// Maximum results
         #[arg(long, default_value_t = 10)]
         limit: usize,
@@ -260,6 +271,52 @@ enum SkillCommands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+    },
+    /// Recalculate skill scores from execution history
+    RecalcScores,
+    /// Show top-rated skills
+    Top {
+        /// Maximum results
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+    },
+    /// Recommend skills based on execution scores
+    Recommend {
+        /// Filter by category
+        #[arg(long)]
+        category: Option<String>,
+        /// Maximum results
+        #[arg(long, default_value_t = 5)]
+        limit: usize,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorkflowCommands {
+    /// List registered workflows
+    List,
+    /// Show workflow definition
+    Show {
+        /// Workflow ID
+        workflow_id: String,
+    },
+    /// Register a workflow from a YAML file
+    Register {
+        /// Path to workflow.yaml
+        path: String,
+    },
+    /// Run a workflow
+    Run {
+        /// Workflow ID
+        workflow_id: String,
+        /// Workflow inputs as key=value pairs
+        #[arg(long = "input")]
+        inputs: Vec<String>,
+    },
+    /// Delete a workflow
+    Delete {
+        /// Workflow ID
+        workflow_id: String,
     },
 }
 
@@ -773,9 +830,10 @@ async fn main() -> anyhow::Result<()> {
             use skill_runtime::{parser, registry};
             let conn = crate::registry::WorkspaceRegistry::init_db()?;
             match cmd {
-                SkillCommands::List { skill_type, json } => {
+                SkillCommands::List { skill_type, category, json } => {
                     let st = skill_type.as_deref().and_then(|s| s.parse().ok());
-                    let skills = registry::list_skills(&conn, st)?;
+                    let cat = category.as_deref();
+                    let skills = registry::list_skills(&conn, st, cat)?;
                     if json {
                         println!("{}", serde_json::to_string_pretty(&skills)?);
                     } else {
@@ -859,17 +917,18 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
-                SkillCommands::Search { query, semantic, limit, json } => {
+                SkillCommands::Search { query, semantic, category, limit, json } => {
+                    let cat = category.as_deref();
                     let results = if semantic {
                         match generate_query_embedding(&query) {
-                            Ok(embedding) => registry::search_skills_semantic(&conn, &embedding, limit)?,
+                            Ok(embedding) => registry::search_skills_semantic(&conn, &embedding, limit, cat)?,
                             Err(e) => {
                                 eprintln!("Warning: semantic search failed ({}), falling back to text.", e);
-                                registry::search_skills_text(&conn, &query, limit)?
+                                registry::search_skills_text(&conn, &query, limit, cat)?
                             }
                         }
                     } else {
-                        registry::search_skills_text(&conn, &query, limit)?
+                        registry::search_skills_text(&conn, &query, limit, cat)?
                     };
                     if json {
                         println!("{}", serde_json::to_string_pretty(&results)?);
@@ -906,6 +965,10 @@ async fn main() -> anyhow::Result<()> {
                                 &skill, &args, std::time::Duration::from_secs(timeout),
                             )?;
                             registry::record_execution_finish(&conn, exec_id, &result)?;
+                            // Auto-update skill scores after execution
+                            if let Ok(scores) = skill_runtime::scoring::calculate_skill_scores(&conn, &skill_id) {
+                                let _ = skill_runtime::scoring::update_skill_scores(&conn, &skill_id, &scores);
+                            }
                             if json {
                                 println!("{}", serde_json::to_string_pretty(&result)?);
                             } else {
@@ -1078,6 +1141,89 @@ async fn main() -> anyhow::Result<()> {
                             println!("✗ Validation failed: {}", e);
                             std::process::exit(1);
                         }
+                    }
+                }
+            }
+        }
+        Commands::Workflow { cmd } => {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            match cmd {
+                WorkflowCommands::List => {
+                    let workflows = crate::workflow::list_workflows(&conn)?;
+                    if workflows.is_empty() {
+                        println!("No workflows registered.");
+                    } else {
+                        println!("Registered workflows:");
+                        for (id, name, version) in workflows {
+                            println!("  [{}] {} (v{})", id, name, version);
+                        }
+                    }
+                }
+                WorkflowCommands::Show { workflow_id } => {
+                    match crate::workflow::get_workflow(&conn, &workflow_id)? {
+                        Some(wf) => {
+                            println!("Workflow: {} ({})", wf.name, wf.id);
+                            println!("Version: {}", wf.version);
+                            if let Some(desc) = &wf.description {
+                                println!("Description: {}", desc);
+                            }
+                            println!("\nSteps:");
+                            for step in &wf.steps {
+                                let deps = if step.depends_on.is_empty() {
+                                    "".to_string()
+                                } else {
+                                    format!(" [depends_on: {}]", step.depends_on.join(", "))
+                                };
+                                println!("  - {}{}", step.id, deps);
+                            }
+                        }
+                        None => {
+                            println!("Workflow '{}' not found.", workflow_id);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                WorkflowCommands::Register { path } => {
+                    let p = std::path::PathBuf::from(&path);
+                    let wf = crate::workflow::parse_workflow_yaml(&p)?;
+                    crate::workflow::validate_workflow(&wf)?;
+                    crate::workflow::save_workflow(&conn, &wf)?;
+                    println!("Registered workflow '{}' ({} steps).", wf.id, wf.steps.len());
+                }
+                WorkflowCommands::Run { workflow_id, inputs } => {
+                    let wf = crate::workflow::get_workflow(&conn, &workflow_id)?
+                        .ok_or_else(|| anyhow::anyhow!("Workflow '{}' not found", workflow_id))?;
+                    let mut input_map = std::collections::HashMap::new();
+                    for inp in inputs {
+                        if let Some((k, v)) = inp.split_once('=') {
+                            input_map.insert(k.to_string(), v.to_string());
+                        } else {
+                            return Err(anyhow::anyhow!("Invalid input format: '{}'. Expected key=value", inp));
+                        }
+                    }
+                    let exec_id = crate::workflow::create_execution(&conn, &workflow_id, &serde_json::to_string(&input_map)?)?;
+                    crate::workflow::update_execution(&conn, exec_id, &crate::workflow::ExecutionStatus::Running, None, None)?;
+                    println!("Running workflow '{}' (execution #{})...", workflow_id, exec_id);
+                    match crate::workflow::execute_workflow(&conn, &wf, input_map) {
+                        Ok(results) => {
+                            crate::workflow::update_execution(&conn, exec_id, &crate::workflow::ExecutionStatus::Completed, None, None)?;
+                            println!("\nWorkflow completed successfully.");
+                            for (step_id, result) in &results {
+                                println!("  [{}] {:?}", step_id, result.status);
+                            }
+                        }
+                        Err(e) => {
+                            crate::workflow::update_execution(&conn, exec_id, &crate::workflow::ExecutionStatus::Failed, None, None)?;
+                            println!("\nWorkflow failed: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                WorkflowCommands::Delete { workflow_id } => {
+                    if crate::workflow::delete_workflow(&conn, &workflow_id)? {
+                        println!("Deleted workflow '{}'.", workflow_id);
+                    } else {
+                        println!("Workflow '{}' not found.", workflow_id);
                     }
                 }
             }

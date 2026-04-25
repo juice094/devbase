@@ -4,7 +4,7 @@
 > 
 > **最后更新**：2026-04-25
 > 
-> **版本状态**：`0.4.0-alpha` 进行中 → 下一里程碑 `0.4.0`（AI Skill 编排基础设施）
+> **版本状态**：`0.4.2-alpha` → 下一里程碑 `0.5.0`（Workflow Engine）
 
 ---
 
@@ -84,16 +84,34 @@
 | MCP discover tool | `devkit_skill_discover` 暴露给 AI Agent（35 tools） | ✅ |
 | executor 接口修复 | JSON via stdin 传参，与 discover wrapper 兼容 | ✅ |
 
-### Phase 3 待完成（当前）
+### Phase 3 已完成 ✅（v0.4.1–v0.4.2）
 
-| 任务 | 交付物 | 优先级 | 版本 |
+| 任务 | 交付物 | 版本 |
+|------|--------|------|
+| Repo → entities 同步 | `save_repo`/`update_repo_*` 原子双写 entities 表 | v0.4.1 |
+| TUI category 显示 | Skill 列表/详情面板显示 `[category]` 标签 | v0.4.1 |
+| Skill marketplace 过滤 | `skill list --category <cat>` + `skill search --category <cat>` | v0.4.2 |
+
+### Phase 4 已完成 ✅（v0.5.0 — Workflow Engine）
+
+| 任务 | 交付物 | 优先级 | 状态 |
 |------|--------|--------|------|
-| Repo → entities 同步 | `scan`/`register` 操作双向同步到 entities 表 | P1 | v0.4.1 |
-| TUI category 显示 | Skill 列表/详情面板显示分类标签 | P1 | v0.4.1 |
-| Skill marketplace 过滤 | `skill list --category dev/cli` + `skill search` 按分类过滤 | P2 | v0.4.2 |
-| Workflow Engine | YAML 解析 + 拓扑排序调度 + 并行执行 + 状态持久化 | P0 | v0.5.0 |
-| 评分算法 | 基于 `skill_executions` audit 自动计算 `success_rate`/`rating` | P2 | v0.6.0 |
-| Mind market | 从执行数据中提取最佳 practice，推荐高评分 Skill | P2 | v0.6.0 |
+| Workflow YAML Parser | `workflow::parser` — 无 `type` 标签的 `untagged` 反序列化 | P0 | ✅ |
+| Topological Scheduler | `workflow::scheduler` — Kahn 算法分批调度 | P0 | ✅ |
+| Parallel Executor | `workflow::executor` — SkillRuntime 集成 + 错误策略 | P0 | ✅ |
+| State Persistence | Schema v17 + `workflow::state` CRUD | P0 | ✅ |
+| CLI Integration | `devbase workflow {list,show,register,run,delete}` | P0 | ✅ |
+| TUI Workflow Panel | `[w]` 键 workflow 列表/详情弹窗 | P1 | ✅ |
+
+### Phase 5 已完成 ✅（v0.6.0 — Mind Market）
+
+| 任务 | 交付物 | 状态 |
+|------|--------|------|
+| 评分算法 | `skill_runtime::scoring` — success_rate + usage_count + rating (0-5) | ✅ |
+| 自动评分更新 | `skill run` 执行后自动重新计算并写入 skills 表 | ✅ |
+| CLI `skill recalc-scores` | 批量重新计算所有 skill 评分 | ✅ |
+| CLI `skill top` | 按 rating 排序展示 Top-N skills | ✅ |
+| CLI `skill recommend` | 按 category 过滤 + 推荐理由（high reliability / battle-tested / trending） | ✅ |
 
 ### 不做（明确排除）
 

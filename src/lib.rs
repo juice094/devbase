@@ -27,6 +27,7 @@ pub mod syncthing_client;
 pub mod tui;
 pub mod vault;
 pub mod watch;
+pub mod workflow;
 
 #[cfg(test)]
 pub mod test_utils;

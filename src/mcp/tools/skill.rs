@@ -42,7 +42,7 @@ Returns: JSON array of skills with id, name, version, type, description, tags, a
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok());
         let conn = crate::registry::WorkspaceRegistry::init_db()?;
-        let skills = registry::list_skills(&conn, skill_type)?;
+        let skills = registry::list_skills(&conn, skill_type, None)?;
         let results: Vec<serde_json::Value> = skills
             .into_iter()
             .map(|s| {
@@ -110,7 +110,7 @@ Returns: JSON array of matching skills."#,
             .and_then(|v| v.as_i64())
             .unwrap_or(10) as usize;
         let conn = crate::registry::WorkspaceRegistry::init_db()?;
-        let skills = registry::search_skills_text(&conn, query, limit)?;
+        let skills = registry::search_skills_text(&conn, query, limit, None)?;
         let results: Vec<serde_json::Value> = skills
             .into_iter()
             .map(|s| {

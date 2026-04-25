@@ -185,37 +185,61 @@ pub fn get_skill(conn: &Connection, skill_id: &str) -> anyhow::Result<Option<Ski
 pub fn list_skills(
     conn: &Connection,
     skill_type: Option<SkillType>,
+    category: Option<&str>,
 ) -> anyhow::Result<Vec<SkillRow>> {
-    let sql = if skill_type.is_some() {
-        "SELECT id, name, version, description, author, tags, entry_script,
+    let sql = match (skill_type, category) {
+        (Some(_), Some(_)) => "SELECT id, name, version, description, author, tags, entry_script,
                 skill_type, local_path, installed_at, updated_at, last_used_at, dependencies, category
-         FROM skills WHERE skill_type = ?1 ORDER BY name"
-    } else {
-        "SELECT id, name, version, description, author, tags, entry_script,
+         FROM skills WHERE skill_type = ?1 AND category = ?2 ORDER BY name",
+        (Some(_), None) => "SELECT id, name, version, description, author, tags, entry_script,
                 skill_type, local_path, installed_at, updated_at, last_used_at, dependencies, category
-         FROM skills ORDER BY name"
+         FROM skills WHERE skill_type = ?1 ORDER BY name",
+        (None, Some(_)) => "SELECT id, name, version, description, author, tags, entry_script,
+                skill_type, local_path, installed_at, updated_at, last_used_at, dependencies, category
+         FROM skills WHERE category = ?1 ORDER BY name",
+        (None, None) => "SELECT id, name, version, description, author, tags, entry_script,
+                skill_type, local_path, installed_at, updated_at, last_used_at, dependencies, category
+         FROM skills ORDER BY name",
     };
     let mut stmt = conn.prepare(sql)?;
-    let rows = if let Some(st) = skill_type {
-        stmt.query_map([st.as_str()], skill_row_from_sql)?
-    } else {
-        stmt.query_map([], skill_row_from_sql)?
+    let rows = match (skill_type, category) {
+        (Some(st), Some(cat)) => stmt.query_map(params![st.as_str(), cat], skill_row_from_sql)?,
+        (Some(st), None) => stmt.query_map([st.as_str()], skill_row_from_sql)?,
+        (None, Some(cat)) => stmt.query_map([cat], skill_row_from_sql)?,
+        (None, None) => stmt.query_map([], skill_row_from_sql)?,
     };
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 /// Full-text search on skill name and description.
-pub fn search_skills_text(conn: &Connection, query: &str, limit: usize) -> anyhow::Result<Vec<SkillRow>> {
+pub fn search_skills_text(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+    category: Option<&str>,
+) -> anyhow::Result<Vec<SkillRow>> {
     let pattern = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
-    let mut stmt = conn.prepare(
+    let sql = if category.is_some() {
+        "SELECT id, name, version, description, author, tags, entry_script,
+                skill_type, local_path, installed_at, updated_at, last_used_at, dependencies, category
+         FROM skills
+         WHERE (name LIKE ?1 ESCAPE '\\' OR description LIKE ?1 ESCAPE '\\') AND category = ?2
+         ORDER BY name
+         LIMIT ?3"
+    } else {
         "SELECT id, name, version, description, author, tags, entry_script,
                 skill_type, local_path, installed_at, updated_at, last_used_at, dependencies, category
          FROM skills
          WHERE name LIKE ?1 ESCAPE '\\' OR description LIKE ?1 ESCAPE '\\'
          ORDER BY name
          LIMIT ?2"
-    )?;
-    let rows = stmt.query_map(params![&pattern, limit as i64], skill_row_from_sql)?;
+    };
+    let mut stmt = conn.prepare(sql)?;
+    let rows = if let Some(cat) = category {
+        stmt.query_map(params![&pattern, cat, limit as i64], skill_row_from_sql)?
+    } else {
+        stmt.query_map(params![&pattern, limit as i64], skill_row_from_sql)?
+    };
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
@@ -224,6 +248,7 @@ pub fn search_skills_semantic(
     conn: &Connection,
     query_embedding: &[f32],
     limit: usize,
+    category: Option<&str>,
 ) -> anyhow::Result<Vec<SkillRow>> {
     let mut stmt = conn.prepare(
         "SELECT id, name, version, description, author, tags, entry_script,
@@ -247,6 +272,11 @@ pub fn search_skills_semantic(
 
     for row in rows {
         let (score, skill) = row?;
+        if let Some(cat) = category {
+            if skill.category.as_deref() != Some(cat) {
+                continue;
+            }
+        }
         scored.push((score, skill));
     }
 
@@ -415,13 +445,13 @@ mod tests {
         install_skill(&conn, &dummy_skill("custom-a", "Custom A", SkillType::Custom)).unwrap();
         install_skill(&conn, &dummy_skill("builtin-b", "Builtin B", SkillType::Builtin)).unwrap();
 
-        let all = list_skills(&conn, None).unwrap();
+        let all = list_skills(&conn, None, None).unwrap();
         assert_eq!(all.len(), 3);
 
-        let builtins = list_skills(&conn, Some(SkillType::Builtin)).unwrap();
+        let builtins = list_skills(&conn, Some(SkillType::Builtin), None).unwrap();
         assert_eq!(builtins.len(), 2);
 
-        let customs = list_skills(&conn, Some(SkillType::Custom)).unwrap();
+        let customs = list_skills(&conn, Some(SkillType::Custom), None).unwrap();
         assert_eq!(customs.len(), 1);
     }
 
@@ -445,11 +475,11 @@ mod tests {
         install_skill(&conn, &dummy_skill("code-audit", "Code Audit", SkillType::Custom)).unwrap();
         install_skill(&conn, &dummy_skill("embed-repo", "Embed Repo", SkillType::Builtin)).unwrap();
 
-        let results = search_skills_text(&conn, "audit", 10).unwrap();
+        let results = search_skills_text(&conn, "audit", 10, None).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id, "code-audit");
 
-        let results = search_skills_text(&conn, "repo", 10).unwrap();
+        let results = search_skills_text(&conn, "repo", 10, None).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id, "embed-repo");
     }

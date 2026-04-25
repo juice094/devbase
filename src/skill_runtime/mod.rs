@@ -5,6 +5,7 @@ pub mod executor;
 pub mod parser;
 pub mod publish;
 pub mod registry;
+pub mod scoring;
 
 use chrono::{DateTime, Utc};
 
