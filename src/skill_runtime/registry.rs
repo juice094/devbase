@@ -166,6 +166,54 @@ pub fn search_skills_text(conn: &Connection, query: &str, limit: usize) -> anyho
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
+/// Semantic search on skill descriptions using cosine similarity.
+pub fn search_skills_semantic(
+    conn: &Connection,
+    query_embedding: &[f32],
+    limit: usize,
+) -> anyhow::Result<Vec<SkillRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, version, description, author, tags, entry_script,
+                skill_type, local_path, installed_at, updated_at, last_used_at, embedding
+         FROM skills
+         WHERE embedding IS NOT NULL AND LENGTH(embedding) > 0"
+    )?;
+
+    let mut scored: Vec<(f32, SkillRow)> = Vec::new();
+
+    let rows = stmt.query_map([], |row| {
+        let skill = skill_row_from_sql(row)?;
+        let blob: Vec<u8> = row.get(12)?;
+        let emb: Vec<f32> = blob
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect();
+        let score = cosine_similarity(query_embedding, &emb);
+        Ok((score, skill))
+    })?;
+
+    for row in rows {
+        let (score, skill) = row?;
+        scored.push((score, skill));
+    }
+
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(scored.into_iter().take(limit).map(|(_, s)| s).collect())
+}
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm_a == 0.0 || norm_b == 0.0 {
+        return 0.0;
+    }
+    dot / (norm_a * norm_b)
+}
+
 /// Record the start of a skill execution.
 pub fn record_execution_start(
     conn: &Connection,
