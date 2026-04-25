@@ -1224,3 +1224,69 @@ fn search_repo_fallback(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_run_nlp_selected_skill_empty_results() {
+        // Smoke test: calling run_nlp_selected_skill with empty results should not panic
+        let (tx, _rx) = crossbeam_channel::bounded::<AsyncNotification>(1);
+        let mut app = App {
+            repos: vec![],
+            selected: 0,
+            logs: vec![],
+            input_mode: InputMode::Normal,
+            input_buffer: String::new(),
+            list_state: ListState::default(),
+            async_rx: _rx,
+            async_tx: tx.clone(),
+            repo_status_job: crate::asyncgit::AsyncSingleJob::new(tx),
+            loading_repo_status: HashSet::new(),
+            loading_sync: HashSet::new(),
+            sync_orchestrator: crate::sync::SyncOrchestrator::new(1),
+            sync_popup_mode: SyncPopupMode::Hidden,
+            sync_preview_items: vec![],
+            sync_popup_results: vec![],
+            sync_total: 0,
+            sync_start_time: None,
+            sync_running: HashSet::new(),
+            sync_timeout: std::time::Duration::from_secs(60),
+            sort_mode: SortMode::Status,
+            config: crate::config::Config::default(),
+            dry_run: false,
+            search_popup_mode: SearchPopupMode::Hidden,
+            search_results: vec![],
+            search_selected: 0,
+            search_pattern: String::new(),
+            detail_tab: crate::tui::DetailTab::Overview,
+            help_popup_mode: crate::tui::HelpPopupMode::Hidden,
+            search_mode: crate::tui::SearchMode::Code,
+            main_view: MainView::RepoList,
+            vaults: vec![],
+            vault_selected: 0,
+            vault_list_state: ListState::default(),
+            skill_popup_mode: SkillPopupMode::Hidden,
+            skills: vec![],
+            skill_selected: 0,
+            skill_list_state: ListState::default(),
+            selected_skill: None,
+            skill_param_buffer: String::new(),
+            skill_execution_result: None,
+            workflow_popup_mode: WorkflowPopupMode::Hidden,
+            workflows: vec![],
+            workflow_selected: 0,
+            workflow_list_state: ListState::default(),
+            selected_workflow: None,
+            workflow_execution_result: None,
+            workflow_execution_error: None,
+            nlp_popup_mode: NLPPopupMode::Results,
+            nlp_query: "test".to_string(),
+            nlp_results: vec![],
+            nlp_selected: 0,
+        };
+        app.run_nlp_selected_skill(); // should not panic
+        assert!(app.logs.iter().any(|l| l.contains("未选择 NLQ 结果")));
+    }
+}
