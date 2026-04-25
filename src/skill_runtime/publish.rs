@@ -1,4 +1,4 @@
-use super::parser::parse_skill_md;
+﻿use super::parser::parse_skill_md;
 use std::path::Path;
 
 /// Validate a skill directory for publishing.

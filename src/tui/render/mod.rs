@@ -92,6 +92,8 @@ fn render_bottom_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect, 
                 Span::raw(format!("={} ", i18n.tui.help_tag)),
                 Span::styled("o", styles.selected),
                 Span::raw(format!("={} ", i18n.tui.help_sort)),
+                Span::styled("k", styles.selected),
+                Span::raw(format!("={} ", i18n.tui.help_skills)),
                 Span::styled("h", styles.selected),
                 Span::raw(format!("={} ", i18n.tui.help_help)),
             ];

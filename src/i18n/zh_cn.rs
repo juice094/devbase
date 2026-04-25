@@ -50,6 +50,11 @@ pub fn build() -> I18n {
             help_category_system: "系统",
             search_mode_repo: "仓库搜索",
             search_mode_code: "代码搜索",
+            title_skills: "Skills",
+            help_skills: "技能",
+            skill_no_params: "无参数",
+            hint_skill_params: "  [Enter] 执行  [Esc] 取消",
+            skill_result_title: "执行结果",
         },
         cli: CliStrings {
             scanning: "正在扫描目录",
