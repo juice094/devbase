@@ -396,6 +396,18 @@ cache.ttl_seconds = 3600  # Stars 缓存 TTL
 
 ---
 
+## 开发者与贡献
+
+> devbase 是单人维护项目（Bus Factor = 1），欢迎任何形式的贡献——代码、文档、Issue、想法均可。
+
+- **快速开始**: `cargo build --release` → `cargo test --all-targets`
+- **代码规范**: `cargo clippy --all-targets -D warnings` + `cargo fmt --check`
+- **架构文档**: [`ARCHITECTURE.md`](ARCHITECTURE.md) — 三层架构、技术决策记录
+- **Agent 约定**: [`AGENTS.md`](AGENTS.md) — 安全原则、上下文机制、Schema 迁移规范
+- **详细贡献指南**: [`CONTRIBUTING.md`](CONTRIBUTING.md) — 添加 MCP Tool / Skill、子代理协作安全
+
+---
+
 ## 许可证
 
 MIT
