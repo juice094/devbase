@@ -920,8 +920,26 @@ async fn main() -> anyhow::Result<()> {
                             } else if v.git_clean && v.is_git_repo {
                                 let tag = format!("v{}", v.version);
                                 match skill_runtime::publish::create_version_tag(&p, &tag, &format!("Release {} {}", v.name, v.version)) {
-                                    Ok(()) => println!("\n✓ Created git tag: {}", tag),
-                                    Err(e) => println!("\n✗ Failed to create tag: {}", e),
+                                    Ok(()) => {
+                                        match skill_runtime::publish::push_tag_to_remote(&p, &tag) {
+                                            Ok(()) => {
+                                                println!("\n✓ Created and pushed tag: {}", tag);
+                                                if skill_runtime::publish::has_gh_cli() {
+                                                    println!("  Tip: run `gh release create {}` to create a GitHub Release.", tag);
+                                                }
+                                            }
+                                            Err(e) => {
+                                                println!("\n✓ Created git tag: {}", tag);
+                                                println!("✗ Failed to push tag to remote: {}", e);
+                                                println!("  You can push manually with: git push origin {}", tag);
+                                                std::process::exit(1);
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        println!("\n✗ Failed to create tag: {}", e);
+                                        std::process::exit(1);
+                                    }
                                 }
                             } else {
                                 println!("\n✗ Cannot publish: working tree not clean or not a git repo.");
