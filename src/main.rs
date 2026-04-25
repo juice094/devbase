@@ -195,6 +195,9 @@ enum SkillCommands {
     Info {
         /// Skill ID
         skill_id: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Search skills by name or description
     Search {
@@ -206,6 +209,9 @@ enum SkillCommands {
         /// Maximum results
         #[arg(long, default_value_t = 10)]
         limit: usize,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Execute a skill
     Run {
@@ -217,6 +223,9 @@ enum SkillCommands {
         /// Timeout in seconds
         #[arg(long, default_value_t = 30)]
         timeout: u64,
+        /// Output full result as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Validate a local SKILL.md file
     Validate {
@@ -783,25 +792,37 @@ async fn main() -> anyhow::Result<()> {
                         println!("Skill '{}' not found.", skill_id);
                     }
                 }
-                SkillCommands::Info { skill_id } => {
+                SkillCommands::Info { skill_id, json } => {
                     match registry::get_skill(&conn, &skill_id)? {
                         Some(s) => {
-                            println!("ID:          {}", s.id);
-                            println!("Name:        {}", s.name);
-                            println!("Version:     {}", s.version);
-                            println!("Type:        {}", s.skill_type.as_str());
-                            println!("Author:      {}", s.author.as_deref().unwrap_or("-"));
-                            println!("Tags:        {}", s.tags.join(", "));
-                            println!("Path:        {}", s.local_path);
-                            println!("Installed:   {}", s.installed_at.format("%Y-%m-%d %H:%M:%S"));
-                            println!("Description: {}", s.description);
+                            if json {
+                                println!("{}", serde_json::to_string_pretty(&s)?);
+                            } else {
+                                println!("ID:          {}", s.id);
+                                println!("Name:        {}", s.name);
+                                println!("Version:     {}", s.version);
+                                println!("Type:        {}", s.skill_type.as_str());
+                                println!("Author:      {}", s.author.as_deref().unwrap_or("-"));
+                                println!("Tags:        {}", s.tags.join(", "));
+                                println!("Path:        {}", s.local_path);
+                                println!("Installed:   {}", s.installed_at.format("%Y-%m-%d %H:%M:%S"));
+                                println!("Description: {}", s.description);
+                            }
                         }
-                        None => println!("Skill '{}' not found.", skill_id),
+                        None => {
+                            if json {
+                                println!("{{\"error\":\"Skill '{}' not found\"}}", skill_id);
+                            } else {
+                                println!("Skill '{}' not found.", skill_id);
+                            }
+                        }
                     }
                 }
-                SkillCommands::Search { query, semantic: _, limit } => {
+                SkillCommands::Search { query, semantic: _, limit, json } => {
                     let results = registry::search_skills_text(&conn, &query, limit)?;
-                    if results.is_empty() {
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&results)?);
+                    } else if results.is_empty() {
                         println!("No skills matching '{}'.", query);
                     } else {
                         println!("Found {} skill(s):", results.len());
@@ -810,23 +831,33 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
-                SkillCommands::Run { skill_id, args, timeout } => {
+                SkillCommands::Run { skill_id, args, timeout, json } => {
                     match registry::get_skill(&conn, &skill_id)? {
                         Some(skill) => {
+                            let exec_id = registry::record_execution_start(&conn, &skill_id, &serde_json::to_string(&args).unwrap_or_default())?;
                             let result = skill_runtime::executor::run_skill(
                                 &skill, &args, std::time::Duration::from_secs(timeout),
                             )?;
-                            let exec_id = registry::record_execution_start(&conn, &skill_id, &serde_json::to_string(&args).unwrap_or_default())?;
                             registry::record_execution_finish(&conn, exec_id, &result)?;
-                            println!("Exit code: {:?}", result.exit_code);
-                            if !result.stdout.is_empty() {
-                                println!("--- stdout ---\n{}", result.stdout);
-                            }
-                            if !result.stderr.is_empty() {
-                                eprintln!("--- stderr ---\n{}", result.stderr);
+                            if json {
+                                println!("{}", serde_json::to_string_pretty(&result)?);
+                            } else {
+                                println!("Exit code: {:?}", result.exit_code);
+                                if !result.stdout.is_empty() {
+                                    println!("--- stdout ---\n{}", result.stdout);
+                                }
+                                if !result.stderr.is_empty() {
+                                    eprintln!("--- stderr ---\n{}", result.stderr);
+                                }
                             }
                         }
-                        None => println!("Skill '{}' not found.", skill_id),
+                        None => {
+                            if json {
+                                println!("{{\"error\":\"Skill '{}' not found\"}}", skill_id);
+                            } else {
+                                println!("Skill '{}' not found.", skill_id);
+                            }
+                        }
                     }
                 }
                 SkillCommands::Validate { path } => {

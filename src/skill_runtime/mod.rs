@@ -101,7 +101,7 @@ impl SkillMeta {
 }
 
 /// Result of a skill execution.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ExecutionResult {
     pub skill_id: String,
     pub status: ExecutionStatus,
@@ -111,7 +111,8 @@ pub struct ExecutionResult {
     pub duration_ms: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ExecutionStatus {
     Pending,
     Running,
