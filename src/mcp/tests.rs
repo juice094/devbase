@@ -52,6 +52,12 @@ async fn test_tools_list() {
     assert!(names.contains(&"devkit_vault_search"));
     assert!(names.contains(&"devkit_vault_read"));
     assert!(names.contains(&"devkit_vault_write"));
+    assert!(names.contains(&"devkit_vault_backlinks"));
+    assert!(names.contains(&"devkit_project_context"));
+    assert!(names.contains(&"devkit_cross_repo_search"));
+    assert!(names.contains(&"devkit_knowledge_report"));
+    assert!(names.contains(&"devkit_related_symbols"));
+    assert!(names.contains(&"devkit_hybrid_search"));
     assert!(names.contains(&"devkit_skill_list"));
     assert!(names.contains(&"devkit_skill_search"));
     assert!(names.contains(&"devkit_skill_run"));
