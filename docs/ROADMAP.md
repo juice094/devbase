@@ -40,8 +40,8 @@
 - [ ] `cargo install devbase` 发布到 crates.io（可选）
 - [ ] 一键安装脚本（PowerShell / Bash）
 
-**最后一个功能**
-- [x] TUI Skill Panel（`k` 键进入 Skill 列表 → 详情 → 执行 → 结果）— **已设计，~350 行，作为 Wave 19 收尾**
+**Wave 19 收尾（已实现）**
+- [x] TUI Skill Panel（`k` 键进入 Skill 列表 → 详情 → 执行 → 结果）— commit `65bf15d`
 
 ### 明确不做（Deferred）
 
