@@ -202,6 +202,7 @@ mod tests {
                 }
             ],
             outputs: vec![],
+            dependencies: vec![],
             embedding: None,
             installed_at: Utc::now(),
             updated_at: Utc::now(),
@@ -246,6 +247,7 @@ mod tests {
             local_path: std::path::PathBuf::from("/tmp/skills/conflict-test"),
             inputs: vec![],
             outputs: vec![],
+            dependencies: vec![],
             embedding: None,
             installed_at: Utc::now() - chrono::Duration::days(2),
             updated_at: Utc::now() - chrono::Duration::days(2),
@@ -296,6 +298,7 @@ mod tests {
             local_path: std::path::PathBuf::from("/tmp/skills/update-test"),
             inputs: vec![],
             outputs: vec![],
+            dependencies: vec![],
             embedding: None,
             installed_at: Utc::now(),
             updated_at: Utc::now(),

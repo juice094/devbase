@@ -60,6 +60,7 @@ pub fn install_skill(conn: &Connection, skill: &SkillMeta) -> anyhow::Result<()>
     let inputs_json = serde_json::to_string(&skill.inputs).unwrap_or_else(|_| "[]".to_string());
     let outputs_json =
         serde_json::to_string(&skill.outputs).unwrap_or_else(|_| "[]".to_string());
+    let deps_json = serde_json::to_string(&skill.dependencies).unwrap_or_else(|_| "[]".to_string());
     let tags_json = serialize_tags(&skill.tags);
     let embedding_blob = skill
         .embedding
@@ -73,9 +74,9 @@ pub fn install_skill(conn: &Connection, skill: &SkillMeta) -> anyhow::Result<()>
     conn.execute(
         "INSERT INTO skills (
             id, name, version, description, author, tags, entry_script,
-            skill_type, local_path, inputs_schema, outputs_schema, embedding,
+            skill_type, local_path, inputs_schema, outputs_schema, dependencies, embedding,
             installed_at, updated_at, last_used_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
         ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             version = excluded.version,
@@ -87,6 +88,7 @@ pub fn install_skill(conn: &Connection, skill: &SkillMeta) -> anyhow::Result<()>
             local_path = excluded.local_path,
             inputs_schema = excluded.inputs_schema,
             outputs_schema = excluded.outputs_schema,
+            dependencies = excluded.dependencies,
             embedding = excluded.embedding,
             updated_at = excluded.updated_at
         ",
@@ -102,6 +104,7 @@ pub fn install_skill(conn: &Connection, skill: &SkillMeta) -> anyhow::Result<()>
             skill.local_path.to_string_lossy().to_string(),
             &inputs_json,
             &outputs_json,
+            &deps_json,
             embedding_blob,
             skill.installed_at.to_rfc3339(),
             skill.updated_at.to_rfc3339(),
@@ -121,7 +124,7 @@ pub fn uninstall_skill(conn: &Connection, skill_id: &str) -> anyhow::Result<bool
 pub fn get_skill(conn: &Connection, skill_id: &str) -> anyhow::Result<Option<SkillRow>> {
     let mut stmt = conn.prepare(
         "SELECT id, name, version, description, author, tags, entry_script,
-                skill_type, local_path, installed_at, updated_at, last_used_at
+                skill_type, local_path, installed_at, updated_at, last_used_at, dependencies
          FROM skills WHERE id = ?1"
     )?;
     let mut rows = stmt.query_map([skill_id], skill_row_from_sql)?;
@@ -135,11 +138,11 @@ pub fn list_skills(
 ) -> anyhow::Result<Vec<SkillRow>> {
     let sql = if skill_type.is_some() {
         "SELECT id, name, version, description, author, tags, entry_script,
-                skill_type, local_path, installed_at, updated_at, last_used_at
+                skill_type, local_path, installed_at, updated_at, last_used_at, dependencies
          FROM skills WHERE skill_type = ?1 ORDER BY name"
     } else {
         "SELECT id, name, version, description, author, tags, entry_script,
-                skill_type, local_path, installed_at, updated_at, last_used_at
+                skill_type, local_path, installed_at, updated_at, last_used_at, dependencies
          FROM skills ORDER BY name"
     };
     let mut stmt = conn.prepare(sql)?;
@@ -156,7 +159,7 @@ pub fn search_skills_text(conn: &Connection, query: &str, limit: usize) -> anyho
     let pattern = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
     let mut stmt = conn.prepare(
         "SELECT id, name, version, description, author, tags, entry_script,
-                skill_type, local_path, installed_at, updated_at, last_used_at
+                skill_type, local_path, installed_at, updated_at, last_used_at, dependencies
          FROM skills
          WHERE name LIKE ?1 ESCAPE '\\' OR description LIKE ?1 ESCAPE '\\'
          ORDER BY name
@@ -174,7 +177,7 @@ pub fn search_skills_semantic(
 ) -> anyhow::Result<Vec<SkillRow>> {
     let mut stmt = conn.prepare(
         "SELECT id, name, version, description, author, tags, entry_script,
-                skill_type, local_path, installed_at, updated_at, last_used_at, embedding
+                skill_type, local_path, installed_at, updated_at, last_used_at, dependencies, embedding
          FROM skills
          WHERE embedding IS NOT NULL AND LENGTH(embedding) > 0"
     )?;
@@ -183,7 +186,7 @@ pub fn search_skills_semantic(
 
     let rows = stmt.query_map([], |row| {
         let skill = skill_row_from_sql(row)?;
-        let blob: Vec<u8> = row.get(12)?;
+        let blob: Vec<u8> = row.get(13)?;
         let emb: Vec<f32> = blob
             .chunks_exact(4)
             .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
@@ -332,6 +335,7 @@ mod tests {
             local_path: std::path::PathBuf::from(format!("/tmp/skills/{}", id)),
             inputs: vec![],
             outputs: vec![],
+            dependencies: vec![],
             embedding: None,
             installed_at: Utc::now(),
             updated_at: Utc::now(),
@@ -435,6 +439,7 @@ fn skill_row_from_sql(row: &rusqlite::Row) -> rusqlite::Result<SkillRow> {
     let installed_str: String = row.get(9)?;
     let updated_str: String = row.get(10)?;
     let last_used_str: Option<String> = row.get(11)?;
+    let deps_str: Option<String> = row.get(12)?;
 
     Ok(SkillRow {
         id: row.get(0)?,
@@ -451,5 +456,13 @@ fn skill_row_from_sql(row: &rusqlite::Row) -> rusqlite::Result<SkillRow> {
         installed_at: installed_str.parse().unwrap_or_else(|_| Utc::now()),
         updated_at: updated_str.parse().unwrap_or_else(|_| Utc::now()),
         last_used_at: last_used_str.and_then(|s| s.parse().ok()),
+        dependencies: parse_dependencies(deps_str.as_deref()),
     })
+}
+
+fn parse_dependencies(deps_str: Option<&str>) -> Vec<crate::skill_runtime::SkillDependency> {
+    let Some(s) = deps_str else {
+        return Vec::new();
+    };
+    serde_json::from_str(s).unwrap_or_default()
 }

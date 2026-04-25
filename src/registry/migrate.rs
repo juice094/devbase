@@ -304,7 +304,7 @@ impl WorkspaceRegistry {
 
         // Schema versioning for future migrations
         let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        const CURRENT_SCHEMA_VERSION: i32 = 14;
+        const CURRENT_SCHEMA_VERSION: i32 = 15;
         if user_version < CURRENT_SCHEMA_VERSION
             && path.exists()
             && let Err(e) = crate::backup::auto_backup_before_migration(&path)
@@ -589,6 +589,17 @@ impl WorkspaceRegistry {
                 [],
             )?;
             conn.execute("PRAGMA user_version = 14", [])?;
+        }
+        if user_version < 15 {
+            let cols: Vec<String> = {
+                let mut stmt = conn.prepare("PRAGMA table_info(skills)")?;
+                let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+                rows.filter_map(Result::ok).collect()
+            };
+            if !cols.iter().any(|c| c == "dependencies") {
+                conn.execute("ALTER TABLE skills ADD COLUMN dependencies TEXT", [])?;
+            }
+            conn.execute("PRAGMA user_version = 15", [])?;
         }
 
         conn.execute(

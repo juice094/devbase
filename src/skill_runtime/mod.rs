@@ -1,4 +1,5 @@
 pub mod clarity_sync;
+pub mod dependency;
 pub mod executor;
 pub mod parser;
 pub mod publish;
@@ -59,6 +60,14 @@ pub struct SkillOutput {
     pub description: String,
 }
 
+/// A dependency declared by a skill on another skill.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct SkillDependency {
+    pub id: String,
+    pub version: Option<String>,
+    pub source: Option<String>,
+}
+
 /// In-memory representation of a parsed SKILL.md + registry metadata.
 #[derive(Debug, Clone)]
 pub struct SkillMeta {
@@ -73,6 +82,7 @@ pub struct SkillMeta {
     pub local_path: std::path::PathBuf,
     pub inputs: Vec<SkillInput>,
     pub outputs: Vec<SkillOutput>,
+    pub dependencies: Vec<SkillDependency>,
     pub embedding: Option<Vec<f32>>,
     pub installed_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -165,6 +175,7 @@ pub struct SkillRow {
     pub installed_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub last_used_at: Option<DateTime<Utc>>,
+    pub dependencies: Vec<SkillDependency>,
 }
 
 /// Helper: parse a JSON tags array or fall back to CSV.

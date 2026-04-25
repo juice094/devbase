@@ -207,6 +207,7 @@ CREATE TABLE IF NOT EXISTS skills (
     local_path      TEXT NOT NULL,
     inputs_schema   TEXT,
     outputs_schema  TEXT,
+    dependencies    TEXT,
     embedding       BLOB,
     installed_at    TEXT NOT NULL,
     updated_at      TEXT NOT NULL,

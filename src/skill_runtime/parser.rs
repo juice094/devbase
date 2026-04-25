@@ -1,4 +1,4 @@
-use super::{SkillInput, SkillMeta, SkillOutput, SkillType};
+use super::{SkillDependency, SkillInput, SkillMeta, SkillOutput, SkillType};
 
 /// Parse a SKILL.md file into `SkillMeta`.
 ///
@@ -30,6 +30,7 @@ pub fn parse_skill_md(path: &std::path::Path) -> anyhow::Result<SkillMeta> {
             local_path: path.parent().unwrap_or(path).to_path_buf(),
             inputs: Vec::new(),
             outputs: Vec::new(),
+            dependencies: Vec::new(),
             embedding: None,
             installed_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -60,6 +61,8 @@ pub fn parse_skill_md(path: &std::path::Path) -> anyhow::Result<SkillMeta> {
         })
         .collect();
 
+    let dependencies = frontmatter.dependencies.clone();
+
     let now = chrono::Utc::now();
     Ok(SkillMeta {
         id: frontmatter.id.clone().unwrap_or_else(|| id.clone()),
@@ -77,6 +80,7 @@ pub fn parse_skill_md(path: &std::path::Path) -> anyhow::Result<SkillMeta> {
         local_path: path.parent().unwrap_or(path).to_path_buf(),
         inputs,
         outputs,
+        dependencies,
         embedding: None,
         installed_at: now,
         updated_at: now,
@@ -98,6 +102,7 @@ struct SkillFrontmatter {
     pub skill_type: Option<String>,
     pub inputs: Vec<SkillInput>,
     pub outputs: Vec<SkillOutput>,
+    pub dependencies: Vec<SkillDependency>,
 }
 
 /// Extract YAML frontmatter from the top of a Markdown document.
@@ -157,6 +162,13 @@ fn parse_skill_frontmatter(raw: &str) -> SkillFrontmatter {
                         parse_output_field(item, out);
                     }
                 }
+                Some("dependencies") => {
+                    if item.starts_with("id:") {
+                        fm.dependencies.push(parse_dependency_item(item));
+                    } else if let Some(last) = fm.dependencies.last_mut() {
+                        parse_dependency_field(item, last);
+                    }
+                }
                 _ => {
                     // Top-level list (e.g. tags inline)
                     if let Some((key, _)) = line.split_once(':') {
@@ -191,6 +203,10 @@ fn parse_skill_frontmatter(raw: &str) -> SkillFrontmatter {
             }
             if key == "outputs" {
                 current_section = Some("outputs");
+                continue;
+            }
+            if key == "dependencies" {
+                current_section = Some("dependencies");
                 continue;
             }
 
@@ -273,6 +289,26 @@ fn parse_output_field(line: &str, out: &mut SkillOutput) {
             "name" => out.name = unquote(rest).to_string(),
             "type" => out.output_type = unquote(rest).to_string(),
             "description" => out.description = unquote(rest).to_string(),
+            _ => {}
+        }
+    }
+}
+
+fn parse_dependency_item(item: &str) -> SkillDependency {
+    let mut dep = SkillDependency::default();
+    if let Some((_, rest)) = item.split_once(':') {
+        dep.id = unquote(rest.trim()).to_string();
+    }
+    dep
+}
+
+fn parse_dependency_field(line: &str, dep: &mut SkillDependency) {
+    if let Some((key, rest)) = line.split_once(':') {
+        let key = key.trim();
+        let rest = rest.trim();
+        match key {
+            "version" => dep.version = Some(unquote(rest).to_string()),
+            "source" => dep.source = Some(unquote(rest).to_string()),
             _ => {}
         }
     }

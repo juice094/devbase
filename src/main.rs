@@ -780,9 +780,10 @@ async fn main() -> anyhow::Result<()> {
                 }
                 SkillCommands::Install { source, git } => {
                     let is_git = git || source.starts_with("http://") || source.starts_with("https://") || source.starts_with("git@");
-                    if is_git {
-                        let skill = registry::install_skill_from_git(&conn, &source, None)?;
-                        println!("Installed skill '{}' ({}) from {}", skill.name, skill.id, source);
+                    let skill = if is_git {
+                        let s = registry::install_skill_from_git(&conn, &source, None)?;
+                        println!("Installed skill '{}' ({}) from {}", s.name, s.id, source);
+                        s
                     } else {
                         let p = std::path::PathBuf::from(&source);
                         let skill_md = if p.is_dir() {
@@ -794,9 +795,20 @@ async fn main() -> anyhow::Result<()> {
                             println!("SKILL.md not found at: {}", skill_md.display());
                             return Ok(());
                         }
-                        let skill = parser::parse_skill_md(&skill_md)?;
-                        registry::install_skill(&conn, &skill)?;
-                        println!("Installed skill '{}' ({})", skill.name, skill.id);
+                        let s = parser::parse_skill_md(&skill_md)?;
+                        registry::install_skill(&conn, &s)?;
+                        println!("Installed skill '{}' ({})", s.name, s.id);
+                        s
+                    };
+                    // Install dependencies
+                    match skill_runtime::dependency::install_missing_dependencies(&conn, &skill, Some(&source)) {
+                        Ok(deps) if !deps.is_empty() => {
+                            println!("  Installed dependencies: {}", deps.join(", "));
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            eprintln!("Warning: failed to install dependencies: {}", e);
+                        }
                     }
                 }
                 SkillCommands::Uninstall { skill_id } => {
@@ -859,6 +871,22 @@ async fn main() -> anyhow::Result<()> {
                 SkillCommands::Run { skill_id, args, timeout, json } => {
                     match registry::get_skill(&conn, &skill_id)? {
                         Some(skill) => {
+                            // Resolve and validate dependencies
+                            match skill_runtime::dependency::resolve_dependencies(&conn, &skill_id) {
+                                Ok(deps) => {
+                                    if !deps.is_empty() && !json {
+                                        println!("Resolved {} dependency(ies): {}", deps.len(), deps.iter().map(|d| d.id.as_str()).collect::<Vec<_>>().join(", "));
+                                    }
+                                }
+                                Err(e) => {
+                                    if json {
+                                        println!("{{\"error\":\"Dependency resolution failed: {}\"}}", e);
+                                    } else {
+                                        eprintln!("Dependency resolution failed: {}", e);
+                                    }
+                                    std::process::exit(1);
+                                }
+                            }
                             let exec_id = registry::record_execution_start(&conn, &skill_id, &serde_json::to_string(&args).unwrap_or_default())?;
                             let result = skill_runtime::executor::run_skill(
                                 &skill, &args, std::time::Duration::from_secs(timeout),
@@ -896,6 +924,12 @@ async fn main() -> anyhow::Result<()> {
                             }
                             if !skill.outputs.is_empty() {
                                 println!("  Outputs: {}", skill.outputs.len());
+                            }
+                            let missing = skill_runtime::dependency::validate_dependencies(&conn, &skill).unwrap_or_default();
+                            if missing.is_empty() {
+                                println!("  Dependencies: satisfied");
+                            } else {
+                                println!("  Dependencies: MISSING — {}", missing.join(", "));
                             }
                         }
                         Err(e) => {

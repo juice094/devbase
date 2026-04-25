@@ -206,6 +206,7 @@ sys.exit(0)
             installed_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             last_used_at: None,
+            dependencies: vec![],
         };
 
         let result = run_skill(&skill, &[], std::time::Duration::from_secs(5)).unwrap();
@@ -232,6 +233,7 @@ sys.exit(0)
             installed_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             last_used_at: None,
+            dependencies: vec![],
         };
 
         let result = run_skill(&skill, &[], std::time::Duration::from_secs(5)).unwrap();
