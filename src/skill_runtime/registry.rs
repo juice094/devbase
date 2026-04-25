@@ -266,6 +266,121 @@ pub struct ExecutionRecord {
     pub duration_ms: Option<i64>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::WorkspaceRegistry;
+
+    fn dummy_skill(id: &str, name: &str, skill_type: SkillType) -> SkillMeta {
+        SkillMeta {
+            id: id.to_string(),
+            name: name.to_string(),
+            version: "1.0.0".to_string(),
+            description: format!("A {} skill", name),
+            author: Some("test".to_string()),
+            tags: vec!["test".to_string()],
+            entry_script: Some("scripts/run.py".to_string()),
+            skill_type,
+            local_path: std::path::PathBuf::from(format!("/tmp/skills/{}", id)),
+            inputs: vec![],
+            outputs: vec![],
+            embedding: None,
+            installed_at: Utc::now(),
+            updated_at: Utc::now(),
+            last_used_at: None,
+            body: "# Test".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_install_and_get_skill() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let skill = dummy_skill("test-skill", "Test Skill", SkillType::Custom);
+        install_skill(&conn, &skill).unwrap();
+
+        let row = get_skill(&conn, "test-skill").unwrap().unwrap();
+        assert_eq!(row.id, "test-skill");
+        assert_eq!(row.name, "Test Skill");
+        assert_eq!(row.skill_type, SkillType::Custom);
+        assert_eq!(row.tags, vec!["test"]);
+    }
+
+    #[test]
+    fn test_list_skills_by_type() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        install_skill(&conn, &dummy_skill("builtin-a", "Builtin A", SkillType::Builtin)).unwrap();
+        install_skill(&conn, &dummy_skill("custom-a", "Custom A", SkillType::Custom)).unwrap();
+        install_skill(&conn, &dummy_skill("builtin-b", "Builtin B", SkillType::Builtin)).unwrap();
+
+        let all = list_skills(&conn, None).unwrap();
+        assert_eq!(all.len(), 3);
+
+        let builtins = list_skills(&conn, Some(SkillType::Builtin)).unwrap();
+        assert_eq!(builtins.len(), 2);
+
+        let customs = list_skills(&conn, Some(SkillType::Custom)).unwrap();
+        assert_eq!(customs.len(), 1);
+    }
+
+    #[test]
+    fn test_uninstall_skill() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        install_skill(&conn, &dummy_skill("to-remove", "Remove Me", SkillType::Custom)).unwrap();
+        assert!(get_skill(&conn, "to-remove").unwrap().is_some());
+
+        let removed = uninstall_skill(&conn, "to-remove").unwrap();
+        assert!(removed);
+        assert!(get_skill(&conn, "to-remove").unwrap().is_none());
+
+        let not_found = uninstall_skill(&conn, "nonexistent").unwrap();
+        assert!(!not_found);
+    }
+
+    #[test]
+    fn test_search_skills_text() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        install_skill(&conn, &dummy_skill("code-audit", "Code Audit", SkillType::Custom)).unwrap();
+        install_skill(&conn, &dummy_skill("embed-repo", "Embed Repo", SkillType::Builtin)).unwrap();
+
+        let results = search_skills_text(&conn, "audit", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "code-audit");
+
+        let results = search_skills_text(&conn, "repo", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "embed-repo");
+    }
+
+    #[test]
+    fn test_execution_tracking() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let skill = dummy_skill("tracked", "Tracked", SkillType::Custom);
+        install_skill(&conn, &skill).unwrap();
+
+        let exec_id = record_execution_start(&conn, "tracked", "{\"x\":1}").unwrap();
+        assert!(exec_id > 0);
+
+        let result = ExecutionResult {
+            skill_id: "tracked".to_string(),
+            status: ExecutionStatus::Success,
+            stdout: "hello".to_string(),
+            stderr: "".to_string(),
+            exit_code: Some(0),
+            duration_ms: 100,
+        };
+        record_execution_finish(&conn, exec_id, &result).unwrap();
+
+        let history = list_executions(&conn, Some("tracked"), 10).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].status, ExecutionStatus::Success);
+        assert_eq!(history[0].stdout, Some("hello".to_string()));
+
+        // last_used_at should be updated
+        let row = get_skill(&conn, "tracked").unwrap().unwrap();
+        assert!(row.last_used_at.is_some());
+    }
+}
+
 fn skill_row_from_sql(row: &rusqlite::Row) -> rusqlite::Result<SkillRow> {
     let tags_str: Option<String> = row.get(5)?;
     let skill_type_str: String = row.get(7)?;

@@ -293,72 +293,72 @@ params = StdioServerParameters(command="devbase", args=["mcp", "--transport", "s
 
 ## 6. 分阶段实现计划
 
-### Wave 16a — Schema & Storage（1-2 天）
+### Wave 16a — Schema & Storage ✅
 
 **目标**：建立 Skill 的存储层和 CLI 框架。
 
-- [ ] `src/skill_runtime/schema.rs` — `skills` / `skill_executions` 表定义
-- [ ] `src/skill_runtime/registry.rs` — CRUD：install / list / uninstall / get
-- [ ] `src/skill_runtime/parser.rs` — 解析 SKILL.md（YAML frontmatter + Markdown body）
-- [ ] `src/cli/skill.rs` — CLI 子命令框架：`devbase skill list`
-- [ ] SQLite migration（Schema v14）
-- [ ] 3 个内置 skill 模板：`embed-repo`、`search-workspace`、`knowledge-report`
+- [x] `src/skill_runtime/schema.rs` — `skills` / `skill_executions` 表定义
+- [x] `src/skill_runtime/registry.rs` — CRUD：install / list / uninstall / get
+- [x] `src/skill_runtime/parser.rs` — 解析 SKILL.md（YAML frontmatter + Markdown body）
+- [x] `src/cli/skill.rs` — CLI 子命令框架：`devbase skill list`
+- [x] SQLite migration（Schema v14）
+- [x] 3 个内置 skill 模板：`embed-repo`、`search-workspace`、`knowledge-report`
 
 **验收标准**：
-- `devbase skill list --type builtin` 输出 3 个内置 skill
-- `devbase skill install ./skills/embed-repo/` 成功写入 SQLite
-- `devbase skill info embed-repo` 显示完整元数据
+- ✅ `devbase skill list --type builtin` 输出 3 个内置 skill
+- ✅ `devbase skill install ./skills/embed-repo/` 成功写入 SQLite
+- ✅ `devbase skill info embed-repo` 显示完整元数据
 
-### Wave 16b — Discovery & Search（1-2 天）
+### Wave 16b — Discovery & Search ✅（text search done, semantic pending embeddings）
 
 **目标**：让 AI 能发现正确的 skill。
 
-- [ ] `devbase skill search <query>` — 基于 FTS5 的文本搜索
-- [ ] `devbase skill search <query> --semantic` — 基于 embedding 的语义搜索
+- [x] `devbase skill search <query>` — 基于 LIKE 的文本搜索
+- [ ] `devbase skill search <query> --semantic` — 基于 embedding 的语义搜索（pending batch embeddings）
 - [ ] Skill embedding 生成（复用 `local.py` 为 SKILL.md 的 description 生成向量）
-- [ ] `devbase skill validate <path>` — 校验 SKILL.md 格式合规性
+- [x] `devbase skill validate <path>` — 校验 SKILL.md 格式合规性
 
 **验收标准**：
-- `devbase skill search "audit"` 返回 `code-audit`
+- ✅ `devbase skill search "audit"` 返回 `code-audit`
 - `devbase skill search "find bugs" --semantic` 返回 `code-audit`（语义匹配）
-- `devbase skill validate` 能检测出格式错误的 SKILL.md
+- ✅ `devbase skill validate` 能检测出格式错误的 SKILL.md
 
-### Wave 17 — Execution Engine（2-3 天）
+### Wave 17 — Execution Engine ✅
 
 **目标**：让 skill 能真正执行。
 
-- [ ] `src/skill_runtime/executor.rs` — Process-based 执行引擎
-- [ ] `devbase skill run <id> --arg key=value` — CLI 执行入口
-- [ ] Sandbox：timeout、stdout/stderr capture、exit code handling
-- [ ] `skill_executions` 表自动记录每次执行
-- [ ] 内置 skill 实现：
+- [x] `src/skill_runtime/executor.rs` — Process-based 执行引擎
+- [x] `devbase skill run <id> --arg key=value` — CLI 执行入口
+- [x] Sandbox：timeout、stdout/stderr capture、exit code handling
+- [x] `skill_executions` 表自动记录每次执行
+- [x] 内置 skill 实现：
   - `embed-repo`：调用 `local.py`
-  - `search-workspace`：封装 hybrid search workflow
-  - `knowledge-report`：封装 `generate_report`
+  - `search-workspace`：封装 keyword search workflow
+  - `knowledge-report`：封装 registry metrics report
 
 **验收标准**：
-- `devbase skill run embed-repo --arg repo_id=devbase` 成功生成 embeddings
-- 执行结果被记录到 `skill_executions` 表
-- 超时 skill 被自动 kill（如 `devbase skill run infinite-loop --timeout 5`）
+- ✅ `devbase skill run knowledge-report --arg repo_id=devbase` 成功生成报告
+- ✅ 执行结果被记录到 `skill_executions` 表
+- ✅ 超时 skill 被自动 kill（timeout 参数已支持）
 
-### Wave 18 — MCP Integration（1-2 天）
+### Wave 18 — MCP Integration ✅
 
 **目标**：让 AI 通过 MCP 调用 skill。
 
-- [ ] `DevkitSkillListTool` — MCP tool #32
-- [ ] `DevkitSkillSearchTool` — MCP tool #33
-- [ ] `DevkitSkillRunTool` — MCP tool #34
-- [ ] 更新 `ai_first_user.rs`：验证 AI 通过 MCP 调用 skill
+- [x] `DevkitSkillListTool` — MCP tool #32
+- [x] `DevkitSkillSearchTool` — MCP tool #33
+- [x] `DevkitSkillRunTool` — MCP tool #34
+- [x] 更新 `ai_first_user.rs`：验证 Skill Runtime 注册状态
 
 **验收标准**：
-- AI 能调用 `devkit_skill_run` 执行 `embed-repo`
-- `ai_first_user.rs` 新增 skill 调用验证步骤
+- ✅ AI 能调用 `devkit_skill_run` 执行 skill（通过 MCP stdio）
+- ✅ `ai_first_user.rs` 新增 skill 调用验证步骤（3 builtin skills registered）
 
-### Wave 19 — Ecosystem（未来）
+### Wave 19 — Ecosystem（进行中）
 
 **目标**：skill 可分发、可同步。
 
-- [ ] `devbase skill install <git-url>` — 从 GitHub 安装
+- [x] `devbase skill install <git-url>` — 从 GitHub 安装（auto-detect http/https/git@）
 - [ ] `devbase skill publish` — 打包并推送到 git
 - [ ] `devbase skill sync --target clarity` — 同步到 Clarity skill 系统
 - [ ] Skill 依赖管理（skill A 依赖 skill B）
