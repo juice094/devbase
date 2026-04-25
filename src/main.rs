@@ -241,6 +241,12 @@ enum SkillCommands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Sync skills to an external target (e.g. clarity)
+    Sync {
+        /// Target system to sync to
+        #[arg(long)]
+        target: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -898,6 +904,24 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
+                SkillCommands::Sync { target } => {
+                    if target != "clarity" {
+                        eprintln!("Unsupported sync target: '{}'. Only 'clarity' is supported.", target);
+                        std::process::exit(1);
+                    }
+                    let clarity_dir = std::path::PathBuf::from("C:\\Users\\22414\\.clarity");
+                    if !clarity_dir.exists() {
+                        eprintln!("Clarity directory not found: {}", clarity_dir.display());
+                        std::process::exit(1);
+                    }
+                    match skill_runtime::clarity_sync::sync_skills_to_clarity(&conn, &clarity_dir) {
+                        Ok(count) => println!("Synced {} skill(s) to Clarity.", count),
+                        Err(e) => {
+                            eprintln!("Skill sync failed: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
                 SkillCommands::Publish { path, dry_run } => {
                     let p = std::path::PathBuf::from(&path);
                     match skill_runtime::publish::validate_skill_for_publish(&p) {
@@ -921,7 +945,10 @@ async fn main() -> anyhow::Result<()> {
                                 let tag = format!("v{}", v.version);
                                 match skill_runtime::publish::create_version_tag(&p, &tag, &format!("Release {} {}", v.name, v.version)) {
                                     Ok(()) => println!("\n✓ Created git tag: {}", tag),
-                                    Err(e) => println!("\n✗ Failed to create tag: {}", e),
+                                    Err(e) => {
+                                        println!("\n✗ Failed to create tag: {}", e);
+                                        std::process::exit(1);
+                                    }
                                 }
                             } else {
                                 println!("\n✗ Cannot publish: working tree not clean or not a git repo.");
