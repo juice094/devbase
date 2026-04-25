@@ -1,6 +1,14 @@
 # Agent 环境指引
 
-`devbase` 是本地优先的开发者工作区与知识库管理器。当前处于 **v0.2.4**，Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），外置大脑架构贯通。
+`devbase` 是本地优先的开发者工作区与知识库管理器。
+
+- **当前阶段**：阶段一 — 产品化闭环（v0.3.0 准备中）
+- **当前版本**：v0.2.4
+- **下一里程碑**：v0.3.0（首个产品化发布）
+- **核心原则**：功能冻结 — 仅修 bug、补文档、准备分发
+- **阶段二**：v0.3.0 发布后自然启动，详见 `docs/ROADMAP.md`
+
+Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），外置大脑架构贯通。
 
 - **技术栈**：Rust 2024, SQLite, tokio, ratatui, git2, reqwest, tantivy
 - **Registry DB**：`%LOCALAPPDATA%\devbase\registry.db`（轻量索引，用户本地，永不进入版本控制）
@@ -146,6 +154,26 @@ devbase 承载外部资源调度的抽象接口：
 
 ## 当前粗粒度待办
 
+### 阶段一剩余任务（v0.3.0 发布前）
+
+| 优先级 | 任务 | 状态 | 备注 |
+|--------|------|------|------|
+| P0 | 验证 34 tools 通过 MCP Inspector | 🟡 待执行 | stdio 模式全覆盖 |
+| P0 | README Quick Start 端到端走查 | 🟡 待执行 | 新机器、空 registry |
+| P0 | 撰写 v0.3.0 Release Notes | 🟡 待执行 | 首个产品化版本 |
+| P1 | GitHub Release 预编译二进制 | 🟡 待执行 | Windows / Linux / macOS |
+| P1 | 一键安装脚本 | 🟡 待执行 | PowerShell + Bash |
+| P2 | 修复 `tokei` RUSTSEC 上游警告 | 🟡 待评估 | 或标记为 acceptable |
+
+### 阶段二候选（v0.3.0 发布后启动）
+
+- SSE transport (`docs/plans/sse-daemon-design.md`)
+- `.devbase` 目录规范 v1.0
+- IDE 集成申请（Cursor / Claude Desktop / 5ire）
+- Skill 市场 / Registry 服务
+
+### Future / Icebox（无排期）
+
 1. ~~输出 L0-L4 五层知识的 TOML/JSON Schema 草案~~（保持开放，非阻塞）
 2. ~~输出 OpLog 审计事件类型清单~~（已有基础枚举，保持增量）
 3. ~~输出外部资源调度的请求格式草案~~（保持开放）
@@ -158,8 +186,10 @@ devbase 承载外部资源调度的抽象接口：
 | P1 | SSE 传输状态与 README 一致性 | ✅ 已完成 — README 修正为 "stdio only; SSE in development"，见 commit `935dd61` |
 | P2 | 架构预拆分评估 | ✅ 已完成 — 评估报告位于 `docs/architecture/pre-split-evaluation.md`，结论：22.7 KLOC 单 crate 仍最优， defer 至 50+ tools 或编译 > 60s |
 | P3 | 竞品定位标语 | ✅ 已完成 — README 顶部标语更新为 "AI 无法识别你的 GUI，devbase 是它的眼镜。" |
+| P4 | 开发者 onboarding 文档 | ✅ 已完成 — `CONTRIBUTING.md` + README Contributing 章节（devbase + clarity） |
 
 - **Tag**: `v0.2.4` 已打标（commit `935dd61`）
+- **Roadmap**: `docs/ROADMAP.md` 已建立两步走框架
 
 ## Embedding 策略长期规划（已决策）
 

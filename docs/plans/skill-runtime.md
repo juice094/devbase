@@ -4,7 +4,7 @@
 >
 > **理论基础**：AKU Registry (arXiv:2603.14805)、OmniRoute Skills System、LM-Kit.NET SkillRegistry、AGNTCY ADS、Semantic Kernel PluginCollection、BMO Agent Skill System。
 >
-> **版本**：v0.1 draft — 基于成熟工程理论的架构设计，未进入实现阶段。
+> **版本**：v1.0 — Waves 16-20 已全部实现。本文档作为历史设计与实现记录保留，"Skill 市场"等未实现项已 defer 至 `docs/ROADMAP.md` 阶段二。
 
 ---
 
@@ -359,10 +359,10 @@ params = StdioServerParameters(command="devbase", args=["mcp", "--transport", "s
 **目标**：skill 可分发、可同步。
 
 - [x] `devbase skill install <git-url>` — 从 GitHub 安装（auto-detect http/https/git@）
-- [x] `devbase skill publish` — （**已完成**：`validate_skill_for_publish()` + `create_version_tag()` 已实现，支持 dry-run 和 git tag）
-- [ ] `devbase skill sync --target clarity` — 同步到 Clarity skill 系统
-- [ ] Skill 依赖管理（skill A 依赖 skill B）
-- [ ] Skill 市场 / registry 服务
+- [x] `devbase skill publish` — `validate_skill_for_publish()` + `create_version_tag()` + `push_tag_to_remote()`
+- [x] `devbase skill sync --target clarity` — 导出为 Clarity plan JSON（冲突解析：`updated_at` 比对）
+- [x] **Skill 依赖管理** — Schema v15 `dependencies` 列，Kahn 拓扑排序，DFS 环检测，自动安装缺失依赖
+- [ ] **Skill 市场 / Registry 服务** — ❌ 未开始，已 defer 至 `docs/ROADMAP.md` 阶段二或 Future
 
 ---
 
