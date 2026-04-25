@@ -120,6 +120,14 @@ pub(crate) enum WorkflowPopupMode {
     Hidden,
     List,
     Detail,
+    Result,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum NLPPopupMode {
+    Hidden,
+    Input,
+    Results,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -193,6 +201,12 @@ pub struct App {
     pub(crate) workflow_selected: usize,
     pub(crate) workflow_list_state: ListState,
     pub(crate) selected_workflow: Option<crate::workflow::WorkflowDefinition>,
+    pub(crate) workflow_execution_result: Option<std::collections::HashMap<String, crate::workflow::StepResult>>,
+    pub(crate) workflow_execution_error: Option<String>,
+    pub(crate) nlp_popup_mode: NLPPopupMode,
+    pub(crate) nlp_query: String,
+    pub(crate) nlp_results: Vec<SkillItem>,
+    pub(crate) nlp_selected: usize,
 }
 
 pub mod event;

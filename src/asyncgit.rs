@@ -24,6 +24,16 @@ pub enum AsyncNotification {
     StarsUpdated { repo_id: String, stars: Option<u64> },
     VaultChanged,
     SkillRunFinished(crate::skill_runtime::ExecutionResult),
+    WorkflowRunFinished {
+        workflow_id: String,
+        results: std::collections::HashMap<String, crate::workflow::StepResult>,
+        error: Option<String>,
+    },
+    NLPQueryFinished {
+        query: String,
+        skills: Vec<crate::skill_runtime::SkillRow>,
+        error: Option<String>,
+    },
 }
 
 pub trait AsyncJob: Send + Clone + 'static {

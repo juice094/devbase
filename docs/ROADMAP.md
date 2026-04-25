@@ -111,7 +111,18 @@
 | 自动评分更新 | `skill run` 执行后自动重新计算并写入 skills 表 | ✅ |
 | CLI `skill recalc-scores` | 批量重新计算所有 skill 评分 | ✅ |
 | CLI `skill top` | 按 rating 排序展示 Top-N skills | ✅ |
-| CLI `skill recommend` | 按 category 过滤 + 推荐理由（high reliability / battle-tested / trending） | ✅ |
+| CLI `skill recommend` | 按 category 过滤 + 推荐理由 | ✅ |
+| TUI Workflow 执行 | `[w]` 详情页 `r/Enter` 运行 + 结果弹窗 | ✅ |
+
+### Phase 6 已完成 ✅（v0.7.0 — 自然语言查询 + 智能同步建议）
+
+| 任务 | 交付物 | 状态 |
+|------|--------|------|
+| Embedding 查询生成 | `embedding::generate_query_embedding` 迁移到 lib | ✅ |
+| TUI NLQ 输入 | `[:]` 键触发自然语言输入行 | ✅ |
+| 语义搜索 Skill | 后台线程生成 embedding + `search_skills_semantic` | ✅ |
+| NLQ 结果展示 | 弹窗列表展示语义搜索到的 skills | ✅ |
+| 智能同步建议 | `sync/policy.rs::recommend_sync_action` — 基于 safety/ahead/behind 生成建议 | ✅ |
 
 ### 不做（明确排除）
 

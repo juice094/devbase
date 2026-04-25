@@ -1,5 +1,5 @@
 use crate::tui::render::ui;
-use crate::tui::{App, InputMode, MainView, SearchPopupMode, SkillPopupMode, SortMode, SyncPopupMode, WorkflowPopupMode};
+use crate::tui::{App, InputMode, MainView, NLPPopupMode, SearchPopupMode, SkillPopupMode, SortMode, SyncPopupMode, WorkflowPopupMode};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{Terminal, backend::Backend};
 use std::io;
@@ -139,14 +139,72 @@ pub(crate) async fn run_app<B: Backend>(
                 WorkflowPopupMode::Detail => {
                     match key.code {
                         KeyCode::Esc => app.workflow_popup_mode = WorkflowPopupMode::List,
-                        KeyCode::Enter => {
+                        KeyCode::Enter | KeyCode::Char('r') => {
+                            app.run_selected_workflow();
                             app.workflow_popup_mode = WorkflowPopupMode::Hidden;
                         }
                         _ => {}
                     }
                     continue;
                 }
+                WorkflowPopupMode::Result => {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => {
+                            app.workflow_popup_mode = WorkflowPopupMode::Hidden;
+                            app.workflow_execution_result = None;
+                            app.workflow_execution_error = None;
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
                 WorkflowPopupMode::Hidden => {}
+            }
+            // NLP query popup intercepts when visible
+            match app.nlp_popup_mode {
+                NLPPopupMode::Input => {
+                    match key.code {
+                        KeyCode::Enter => {
+                            let query = app.nlp_query.trim().to_string();
+                            if !query.is_empty() {
+                                app.run_nlp_query(query);
+                            }
+                            app.nlp_popup_mode = NLPPopupMode::Hidden;
+                        }
+                        KeyCode::Esc => {
+                            app.nlp_query.clear();
+                            app.nlp_popup_mode = NLPPopupMode::Hidden;
+                        }
+                        KeyCode::Char(c) => app.nlp_query.push(c),
+                        KeyCode::Backspace => {
+                            app.nlp_query.pop();
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+                NLPPopupMode::Results => {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Char('q') => {
+                            app.nlp_popup_mode = NLPPopupMode::Hidden;
+                            app.nlp_results.clear();
+                            app.nlp_selected = 0;
+                        }
+                        KeyCode::Down => {
+                            if app.nlp_selected + 1 < app.nlp_results.len() {
+                                app.nlp_selected += 1;
+                            }
+                        }
+                        KeyCode::Up => {
+                            if app.nlp_selected > 0 {
+                                app.nlp_selected -= 1;
+                            }
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+                NLPPopupMode::Hidden => {}
             }
             // Help popup intercepts keys when visible
             if app.help_popup_mode == crate::tui::HelpPopupMode::Visible {
@@ -242,6 +300,10 @@ pub(crate) async fn run_app<B: Backend>(
                     KeyCode::Char('w') => {
                         app.load_workflows();
                         app.workflow_popup_mode = WorkflowPopupMode::List;
+                    }
+                    KeyCode::Char(':') => {
+                        app.nlp_query.clear();
+                        app.nlp_popup_mode = NLPPopupMode::Input;
                     }
                     KeyCode::Char('h') | KeyCode::Char('?') => app.toggle_help(),
                     KeyCode::F(1) => app.toggle_help(),

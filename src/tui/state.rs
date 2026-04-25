@@ -1,7 +1,7 @@
 use crate::asyncgit::AsyncNotification;
 use crate::registry::WorkspaceRegistry;
 use crate::tui::{
-    App, InputMode, ListState, MainView, RepoItem, SearchPopupMode, SearchResult, SkillItem,
+    App, InputMode, ListState, MainView, NLPPopupMode, RepoItem, SearchPopupMode, SearchResult, SkillItem,
     SkillPopupMode, SortMode, SyncPopupMode, SyncPreviewItem, VaultItem, WorkflowPopupMode,
 };
 use chrono::Utc;
@@ -62,6 +62,12 @@ impl App {
             workflow_selected: 0,
             workflow_list_state: ListState::default(),
             selected_workflow: None,
+            workflow_execution_result: None,
+            workflow_execution_error: None,
+            nlp_popup_mode: NLPPopupMode::Hidden,
+            nlp_query: String::new(),
+            nlp_results: Vec::new(),
+            nlp_selected: 0,
         };
         app.log_info(crate::i18n::current().log.tui_started.to_string());
         app.load_repos()?;
@@ -540,6 +546,103 @@ impl App {
         self.workflows.get(self.workflow_selected)
     }
 
+    pub(crate) fn run_selected_workflow(&mut self) {
+        let wf = match self.selected_workflow.clone() {
+            Some(w) => w,
+            None => {
+                self.log_warn("未选择 Workflow".to_string());
+                return;
+            }
+        };
+
+        let mut inputs = std::collections::HashMap::new();
+        for inp in &wf.inputs {
+            if inp.required && inp.default.is_none() {
+                self.log_warn(format!("Workflow '{}' 缺少必要输入: {}", wf.id, inp.name));
+                return;
+            }
+            if let Some(default) = &inp.default {
+                let val = match default {
+                    serde_yaml::Value::String(s) => s.clone(),
+                    other => serde_yaml::to_string(other).unwrap_or_default().trim().to_string(),
+                };
+                inputs.insert(inp.name.clone(), val);
+            }
+        }
+
+        let tx = self.async_tx.clone();
+        std::thread::spawn(move || {
+            let conn = match crate::registry::WorkspaceRegistry::init_db() {
+                Ok(c) => c,
+                Err(e) => {
+                    let _ = tx.send(crate::asyncgit::AsyncNotification::WorkflowRunFinished {
+                        workflow_id: wf.id.clone(),
+                        results: std::collections::HashMap::new(),
+                        error: Some(e.to_string()),
+                    });
+                    return;
+                }
+            };
+            let result = crate::workflow::execute_workflow(&conn, &wf, inputs);
+            match result {
+                Ok(results) => {
+                    let _ = tx.send(crate::asyncgit::AsyncNotification::WorkflowRunFinished {
+                        workflow_id: wf.id,
+                        results,
+                        error: None,
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(crate::asyncgit::AsyncNotification::WorkflowRunFinished {
+                        workflow_id: wf.id,
+                        results: std::collections::HashMap::new(),
+                        error: Some(e.to_string()),
+                    });
+                }
+            }
+        });
+    }
+
+    pub(crate) fn run_nlp_query(&mut self, query: String) {
+        self.nlp_query = query.clone();
+        self.log_info(format!("NLQ: '{}' ...", query));
+        let tx = self.async_tx.clone();
+        std::thread::spawn(move || {
+            let conn = match crate::registry::WorkspaceRegistry::init_db() {
+                Ok(c) => c,
+                Err(e) => {
+                    let _ = tx.send(crate::asyncgit::AsyncNotification::NLPQueryFinished {
+                        query,
+                        skills: vec![],
+                        error: Some(e.to_string()),
+                    });
+                    return;
+                }
+            };
+            let result = (|| -> anyhow::Result<Vec<crate::skill_runtime::SkillRow>> {
+                let embedding = crate::embedding::generate_query_embedding(&query)?;
+                let skills = crate::skill_runtime::registry::search_skills_semantic(&conn, &embedding, 10, None)?;
+                Ok(skills)
+            })();
+            match result {
+                Ok(skills) => {
+                    let _ = tx.send(crate::asyncgit::AsyncNotification::NLPQueryFinished {
+                        query,
+                        skills,
+                        error: None,
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(crate::asyncgit::AsyncNotification::NLPQueryFinished {
+                        query,
+                        skills: vec![],
+                        error: Some(e.to_string()),
+                    });
+                }
+            }
+        });
+    }
+
     pub(crate) fn run_selected_skill(&mut self) {
         let skill_item = match self.current_skill() {
             Some(s) => s.clone(),
@@ -653,6 +756,28 @@ impl App {
                 ));
                 self.skill_execution_result = Some(result);
                 self.skill_popup_mode = SkillPopupMode::Result;
+            }
+            AsyncNotification::WorkflowRunFinished { workflow_id, results, error } => {
+                if let Some(e) = error {
+                    self.log_error(format!("Workflow [{}] 执行失败: {}", workflow_id, e));
+                    self.workflow_execution_error = Some(e);
+                } else {
+                    self.log_info(format!("Workflow [{}] 执行完成 ({} steps)", workflow_id, results.len()));
+                    self.workflow_execution_error = None;
+                }
+                self.workflow_execution_result = Some(results);
+                self.workflow_popup_mode = crate::tui::WorkflowPopupMode::Result;
+            }
+            AsyncNotification::NLPQueryFinished { query, skills, error } => {
+                if let Some(e) = error {
+                    self.log_error(format!("NLQ '{}' 失败: {}", query, e));
+                    self.nlp_results.clear();
+                } else {
+                    self.log_info(format!("NLQ '{}' 找到 {} 个 skill", query, skills.len()));
+                    self.nlp_results = skills.into_iter().map(SkillItem::from).collect();
+                }
+                self.nlp_selected = 0;
+                self.nlp_popup_mode = NLPPopupMode::Results;
             }
         }
     }

@@ -1,6 +1,6 @@
 use crate::tui::layout::AppLayout;
 use crate::tui::theme::Styles;
-use crate::tui::{App, SearchPopupMode, SkillPopupMode, SyncPopupMode, WorkflowPopupMode};
+use crate::tui::{App, NLPPopupMode, SearchPopupMode, SkillPopupMode, SyncPopupMode, WorkflowPopupMode};
 use ratatui::{
     Frame,
     layout::Margin,
@@ -33,7 +33,14 @@ pub(crate) fn render_popups(frame: &mut Frame, app: &mut App, styles: &Styles) {
     match app.workflow_popup_mode {
         WorkflowPopupMode::List => render_workflow_list(frame, app, styles),
         WorkflowPopupMode::Detail => render_workflow_detail(frame, app, styles),
+        WorkflowPopupMode::Result => render_workflow_result(frame, app, styles),
         WorkflowPopupMode::Hidden => {}
+    }
+
+    match app.nlp_popup_mode {
+        NLPPopupMode::Input => render_nlp_input(frame, app, styles),
+        NLPPopupMode::Results => render_nlp_results(frame, app, styles),
+        NLPPopupMode::Hidden => {}
     }
 }
 
@@ -636,7 +643,140 @@ fn render_workflow_detail(frame: &mut Frame, app: &App, styles: &Styles) {
     frame.render_widget(popup_para, popup_area);
 
     let hint = Paragraph::new(Span::styled(
-        "[Enter] 关闭  [Esc] 返回列表",
+        "[r/Enter] 执行  [Esc] 返回列表",
+        styles.hint,
+    ));
+    let hint_area = ratatui::layout::Rect {
+        x: popup_inner.x,
+        y: popup_inner.y + popup_inner.height.saturating_sub(1),
+        width: popup_inner.width,
+        height: 1,
+    };
+    frame.render_widget(hint, hint_area);
+}
+
+fn render_workflow_result(frame: &mut Frame, app: &App, styles: &Styles) {
+    let popup_area = AppLayout::centered(frame.area(), 60, 50);
+    let popup_inner = popup_area.inner(Margin::new(1, 1));
+
+    let mut lines: Vec<Line> = Vec::new();
+    if let Some(err) = &app.workflow_execution_error {
+        lines.push(Line::from(Span::styled(
+            "Workflow Failed",
+            Style::default().fg(styles.theme.danger).add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(Span::styled(err, Style::default().fg(styles.theme.danger))));
+    } else if let Some(results) = &app.workflow_execution_result {
+        lines.push(Line::from(Span::styled(
+            "Workflow Result",
+            Style::default().fg(styles.theme.success).add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(""));
+        for (step_id, result) in results {
+            let (status_color, status_label) = match result.status {
+                crate::workflow::ExecutionStatus::Completed => (styles.theme.success, "✓"),
+                crate::workflow::ExecutionStatus::Failed => (styles.theme.danger, "✗"),
+                _ => (styles.theme.warning, "?"),
+            };
+            lines.push(Line::from(vec![
+                Span::styled(format!("{} [{}] ", status_label, step_id), Style::default().fg(status_color)),
+                Span::styled(format!("{:?}", result.status), Style::default().fg(status_color)),
+            ]));
+            if let Some(stdout) = &result.stdout {
+                if !stdout.is_empty() {
+                    for line in stdout.lines().take(3) {
+                        lines.push(Line::from(Span::styled(
+                            format!("    {}", line.chars().take(80).collect::<String>()),
+                            Style::default().fg(Color::Gray),
+                        )));
+                    }
+                }
+            }
+            if let Some(err) = &result.error {
+                lines.push(Line::from(Span::styled(
+                    format!("    error: {}", err),
+                    Style::default().fg(styles.theme.danger),
+                )));
+            }
+        }
+    } else {
+        lines.push(Line::from(Span::styled("无执行结果", Style::default().fg(Color::Gray))));
+    }
+
+    let popup_text = Text::from(lines);
+    let popup_para = Paragraph::new(popup_text)
+        .block(Block::default().borders(Borders::ALL).title("Workflow Result").border_style(styles.border))
+        .wrap(Wrap { trim: true });
+
+    frame.render_widget(Clear, popup_area);
+    frame.render_widget(popup_para, popup_area);
+
+    let hint = Paragraph::new(Span::styled(
+        "[Enter/Esc] 关闭",
+        styles.hint,
+    ));
+    let hint_area = ratatui::layout::Rect {
+        x: popup_inner.x,
+        y: popup_inner.y + popup_inner.height.saturating_sub(1),
+        width: popup_inner.width,
+        height: 1,
+    };
+    frame.render_widget(hint, hint_area);
+}
+
+fn render_nlp_input(frame: &mut Frame, app: &App, styles: &Styles) {
+    let area = ratatui::layout::Rect {
+        x: 0,
+        y: frame.area().height.saturating_sub(1),
+        width: frame.area().width,
+        height: 1,
+    };
+    let text = Span::styled(
+        format!(": {}", app.nlp_query),
+        Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD),
+    );
+    frame.render_widget(Paragraph::new(text), area);
+}
+
+fn render_nlp_results(frame: &mut Frame, app: &App, styles: &Styles) {
+    let popup_area = AppLayout::centered(frame.area(), 70, 60);
+    let popup_inner = popup_area.inner(Margin::new(1, 1));
+
+    let title = format!("NLQ: '{}' ({} results)", app.nlp_query, app.nlp_results.len());
+    let items: Vec<ListItem> = app
+        .nlp_results
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let is_selected = i == app.nlp_selected;
+            let line = Span::styled(
+                format!(
+                    "[{}] {} — {} {}",
+                    s.row.id,
+                    s.row.name,
+                    s.row.description,
+                    s.row.category.as_deref().unwrap_or("")
+                ),
+                if is_selected {
+                    Style::default().fg(styles.theme.text).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::Gray)
+                },
+            );
+            ListItem::new(Line::from(line))
+        })
+        .collect();
+
+    let popup_list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(title).border_style(styles.border))
+        .highlight_style(styles.highlight)
+        .highlight_symbol("> ");
+
+    frame.render_widget(Clear, popup_area);
+    frame.render_widget(popup_list, popup_area);
+
+    let hint = Paragraph::new(Span::styled(
+        "[↑/↓] 选择  [Esc] 关闭",
         styles.hint,
     ));
     let hint_area = ratatui::layout::Rect {
