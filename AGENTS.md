@@ -1,15 +1,15 @@
 # Agent 环境指引
 
-`devbase` 是本地优先的开发者工作区与知识库管理器。当前处于 **v0.2.4**，混合检索与显式知识链接已落地，外置大脑架构贯通。
+`devbase` 是本地优先的开发者工作区与知识库管理器。当前处于 **v0.2.4**，Skill Runtime 全生命周期已落地（安装/发现/执行/发布/同步），外置大脑架构贯通。
 
 - **技术栈**：Rust 2024, SQLite, tokio, ratatui, git2, reqwest, tantivy
 - **Registry DB**：`%LOCALAPPDATA%\devbase\registry.db`（轻量索引，用户本地，永不进入版本控制）
 - **Workspace**：`%LOCALAPPDATA%\devbase\workspace/` —— 文件系统 = source of truth
   - `vault/` —— PARA 结构：00-Inbox, 01-Projects, 02-Areas, 03-Resources, 04-Archives, 99-Meta
   - `assets/` —— 二进制资源
-- **MCP Server**：stdio 传输，**31 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 1 个报告工具）；配置见 `mcp.json`
+- **MCP Server**：stdio 传输，**34 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 3 个 Skill Runtime tools + 1 个报告工具 + 1 个 arXiv 工具）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：212 passed / 0 failed / 2 ignored
+- **当前测试**：235 passed / 0 failed / 3 ignored
 - **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
 
 ## 关键约定
@@ -48,7 +48,7 @@
 | 模块拆分 | `sync`→5 / `registry`→7 / `mcp` 测试分离 / `search`→hybrid / `oplog_analytics` / `symbol_links` |
 | 库/二进制 | `src/lib.rs` 导出全部 **26** 个模块；`src/main.rs` 仅 CLI 入口 |
 | TUI 架构 | `render/` 6 子模块 + `theme.rs` Design Token + `layout.rs` 响应式引擎 |
-| 数据层 | Schema v13: repos + repo_tags + code_symbols + code_embeddings + code_call_graph + code_symbol_links + oplog + vault_notes + papers + experiments |
+| 数据层 | Schema v14: repos + repo_tags + code_symbols + code_embeddings + code_call_graph + code_symbol_links + oplog + vault_notes + papers + experiments + **skills + skill_executions** |
 | CI/CD | `.github/workflows/ci.yml`：check / test / fmt / clippy on Windows |
 | 依赖安全 | `cargo audit` 0 漏洞（除上游 `tokei` 的 `RUSTSEC-2020-0163`） |
 
@@ -73,6 +73,12 @@
 | 14b | 知识覆盖报告 | `oplog_analytics.rs`: 表存在性容错, 覆盖度/健康度/活动流, `devkit_knowledge_report` | `869bcbf` |
 | 15a | 显式知识链接 | Schema v13 `code_symbol_links`, Jaccard 签名相似度, 同文件聚类, `devkit_related_symbols` | `d462209` |
 | 15b | 混合检索 MCP Tool | `devkit_hybrid_search`: 向量+RRF+关键词自动降级, 推荐默认搜索入口 | `6df6106` |
+| 16a | Skill Runtime Schema | `skills` + `skill_executions` 表, SKILL.md 解析器, Registry CRUD, 3 内置 skills | `e41eccb` |
+| 16b | Skill 发现与搜索 | 文本搜索 + 语义搜索 (`--semantic`), skill embedding 生成脚本 | `48b96c6` |
+| 17 | Skill 执行引擎 | Process-based executor, interpreter 自动解析, timeout, stdout/stderr 捕获, 执行审计 | `99d818e` |
+| 18 | MCP Skill 集成 | `devkit_skill_list` / `devkit_skill_search` / `devkit_skill_run` 3 个 tools | `c80fdec` |
+| 19a | Skill 生态（安装/发布） | `install_skill_from_git` (git2 clone), `publish` (validate + git tag + push remote) | `8120e4d` |
+| 19b | Skill 生态（同步/TUI） | `sync --target clarity` (导出为 Clarity plan JSON), TUI Skill Panel (`k` keybinding) | `678c70c` |
 
 ## 敏感文件清单（禁止提交）
 
@@ -159,9 +165,11 @@ devbase 承载外部资源调度的抽象接口：
 - 纯 Rust 推理引擎（如 rust-bert / candle）
 - 外部 MCP / Skill 封装（embedding 作为独立服务）
 
-**当前阻塞**：`code_embeddings` 表为 0 行，因 Ollama 未运行。激活路径：
-1. 启动 Ollama + `devbase index <repo>` 生成 embedding
-2. 或配置远程 provider（OpenAI / 智谱 / DeepSeek）于 `config.toml [embedding]` 段
+**Embedding 状态**：
+- `code_embeddings`: **56,722** 行（37.0% 覆盖率），覆盖 10 个仓库
+- `skills.embedding`: 3 个 builtin skill 已有 384-dim 向量
+- 生成工具：`tools/embedding-provider/skills.py`（sentence-transformers `all-MiniLM-L6-v2`）
+- 激活路径：启动 Ollama + `devbase index <repo>` 生成 embedding，或配置远程 provider 于 `config.toml [embedding]` 段
 
 ## 上下文安全机制（Context Safety Mechanism）
 
@@ -169,12 +177,13 @@ devbase 承载外部资源调度的抽象接口：
 
 ### 1. 子代理执行隔离
 
-**教训**：并行子代理在同一 Rust 工作目录操作会导致编译冲突、文件竞态和超时。
+**教训**（2026-04-25 实际发生）：多个子代理在同一 Git 工作目录并行执行 `git checkout`/`git commit` 会导致严重的分支混乱。`agent-publish` 和 `agent-tui` 的修改互相覆盖，最终 commit 被错误地放置到对方分支， stash 中混入了不相关的代码。
 
 **规则**：
-- **串行优先**：多个子代理任务必须串行执行，每次 commit 隔离工作目录状态
-- **目录隔离**：若必须并行，每个子代理分配独立工作目录或临时分支
-- **编译检查**：任何子代理返回前必须通过 `cargo test` + `cargo clippy`，否则标记为脏状态
+- **串行优先**：多个子代理任务必须串行执行，每次 commit 后切回 main 再启动下一个
+- **目录隔离**：若必须并行，每个子代理在独立的 `git clone` 临时目录工作，完成后由主会话 cherry-pick
+- **禁止共享工作目录**：多个 Agent 绝不能同时操作同一个 `.git` 目录
+- **编译检查**：任何子代理返回前必须通过 `cargo test --lib`，否则标记为脏状态
 
 ### 2. MCP 工具幂等性
 
