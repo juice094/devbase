@@ -22,7 +22,7 @@ jobs:
         run: |
           Set-MpPreference -DisableRealtimeMonitoring $true
           Write-Host "Defender real-time monitoring disabled"
-      - name: Redirect devbase data dir to D: drive
+      - name: "Redirect devbase data dir to D: drive"
         shell: powershell
         run: |
           $localData = "$env:LOCALAPPDATA\devbase"
@@ -51,7 +51,7 @@ jobs:
         run: |
           Set-MpPreference -DisableRealtimeMonitoring $true
           Write-Host "Defender real-time monitoring disabled"
-      - name: Redirect devbase data dir to D: drive
+      - name: "Redirect devbase data dir to D: drive"
         shell: powershell
         run: |
           $localData = "$env:LOCALAPPDATA\devbase"
@@ -97,7 +97,7 @@ jobs:
         run: |
           Set-MpPreference -DisableRealtimeMonitoring $true
           Write-Host "Defender real-time monitoring disabled"
-      - name: Redirect devbase data dir to D: drive
+      - name: "Redirect devbase data dir to D: drive"
         shell: powershell
         run: |
           $localData = "$env:LOCALAPPDATA\devbase"
