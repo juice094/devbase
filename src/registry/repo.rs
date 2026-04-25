@@ -264,10 +264,7 @@ impl WorkspaceRegistry {
 }
 
 /// Dual-write helper: mirror a repo row into the unified entities table.
-fn sync_repo_to_entities_by_id(
-    conn: &rusqlite::Connection,
-    repo_id: &str,
-) -> anyhow::Result<()> {
+fn sync_repo_to_entities_by_id(conn: &rusqlite::Connection, repo_id: &str) -> anyhow::Result<()> {
     let row = conn.query_row(
         "SELECT id, local_path, language, discovered_at, workspace_type, data_tier, last_synced_at, stars,
          (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id)
@@ -287,7 +284,17 @@ fn sync_repo_to_entities_by_id(
             ))
         },
     )?;
-    let (id, local_path, language, discovered_at, workspace_type, data_tier, last_synced_at, stars, tags) = row;
+    let (
+        id,
+        local_path,
+        language,
+        discovered_at,
+        workspace_type,
+        data_tier,
+        last_synced_at,
+        stars,
+        tags,
+    ) = row;
     let metadata = serde_json::json!({
         "language": language,
         "discovered_at": discovered_at,

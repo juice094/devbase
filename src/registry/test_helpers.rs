@@ -302,7 +302,6 @@ CREATE TABLE IF NOT EXISTS workflow_executions (
 );
 "#;
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

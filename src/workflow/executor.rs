@@ -1,4 +1,4 @@
-use super::interpolate::{interpolate, interpolate_value, InterpolationContext};
+use super::interpolate::{InterpolationContext, interpolate, interpolate_value};
 use super::model::{
     ErrorPolicy, ExecutionStatus, StepDefinition, StepResult, StepType, WorkflowDefinition,
 };
@@ -26,9 +26,10 @@ pub fn execute_workflow(
                 let step = step.clone();
                 let ctx_ref = std::sync::Arc::clone(&ctx_arc);
                 handles.push(s.spawn(move || {
-                    let conn = crate::registry::WorkspaceRegistry::init_db()
-                        .map_err(|e| anyhow::anyhow!("db open failed for step '{}': {}", step.id, e))?;
-                    let result = execute_step(&conn, &step, &*ctx_ref)?;
+                    let conn = crate::registry::WorkspaceRegistry::init_db().map_err(|e| {
+                        anyhow::anyhow!("db open failed for step '{}': {}", step.id, e)
+                    })?;
+                    let result = execute_step(&conn, &step, ctx_ref.as_ref())?;
                     Ok::<_, anyhow::Error>((step, result))
                 }));
             }
@@ -53,8 +54,8 @@ pub fn execute_workflow(
             ctx.add_step_output(&step_id, result.outputs.clone());
             all_results.insert(step_id.clone(), result);
 
-            match status {
-                ExecutionStatus::Failed => match &step.on_error {
+            if status == ExecutionStatus::Failed {
+                match &step.on_error {
                     ErrorPolicy::Fail => {
                         return Err(anyhow::anyhow!(
                             "workflow failed at step '{step_id}' (on_error: fail)"
@@ -95,8 +96,7 @@ pub fn execute_workflow(
                             ));
                         }
                     }
-                },
-                _ => {}
+                }
             }
         }
     }
@@ -166,7 +166,7 @@ fn execute_skill_step(
 
     let timeout = step
         .timeout_seconds
-        .map(|s| Duration::from_secs(s))
+        .map(Duration::from_secs)
         .unwrap_or(Duration::from_secs(300));
 
     let exec_result = crate::skill_runtime::executor::run_skill(&skill, &args, timeout)?;
@@ -207,7 +207,6 @@ fn execute_skill_step(
     })
 }
 
-
 fn execute_subworkflow_step(
     conn: &rusqlite::Connection,
     step: &StepDefinition,
@@ -235,7 +234,8 @@ fn execute_subworkflow_step(
     for (sub_step_id, result) in &results {
         stdout_lines.push(format!("[{}] {:?}", sub_step_id, result.status));
         if let Some(out) = result.stdout.as_ref() {
-            outputs.insert(format!("{}.stdout", sub_step_id), serde_json::Value::String(out.clone()));
+            outputs
+                .insert(format!("{}.stdout", sub_step_id), serde_json::Value::String(out.clone()));
         }
     }
 
@@ -323,13 +323,12 @@ fn execute_condition_step(
     })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::registry::WorkspaceRegistry;
-    use crate::skill_runtime::{SkillMeta, SkillType};
     use crate::skill_runtime::registry::install_skill;
+    use crate::skill_runtime::{SkillMeta, SkillType};
     use crate::workflow::model::{ErrorPolicy, StepDefinition, StepType, WorkflowDefinition};
     use std::collections::HashMap;
 
@@ -372,16 +371,17 @@ mod tests {
     #[test]
     fn test_condition_step_true() {
         let conn = WorkspaceRegistry::init_in_memory().unwrap();
-        let wf = dummy_wf("cond-test", vec![
-            StepDefinition {
+        let wf = dummy_wf(
+            "cond-test",
+            vec![StepDefinition {
                 id: "check".to_string(),
                 step_type: StepType::Condition { r#if: "true".to_string() },
                 inputs: HashMap::new(),
                 depends_on: vec![],
                 on_error: ErrorPolicy::Fail,
                 timeout_seconds: None,
-            },
-        ]);
+            }],
+        );
         let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
         assert_eq!(results["check"].status, ExecutionStatus::Completed);
         assert_eq!(results["check"].outputs.get("condition"), Some(&serde_json::Value::Bool(true)));
@@ -390,19 +390,23 @@ mod tests {
     #[test]
     fn test_condition_step_false() {
         let conn = WorkspaceRegistry::init_in_memory().unwrap();
-        let wf = dummy_wf("cond-test", vec![
-            StepDefinition {
+        let wf = dummy_wf(
+            "cond-test",
+            vec![StepDefinition {
                 id: "check".to_string(),
                 step_type: StepType::Condition { r#if: "false".to_string() },
                 inputs: HashMap::new(),
                 depends_on: vec![],
                 on_error: ErrorPolicy::Fail,
                 timeout_seconds: None,
-            },
-        ]);
+            }],
+        );
         let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
         assert_eq!(results["check"].status, ExecutionStatus::Completed);
-        assert_eq!(results["check"].outputs.get("condition"), Some(&serde_json::Value::Bool(false)));
+        assert_eq!(
+            results["check"].outputs.get("condition"),
+            Some(&serde_json::Value::Bool(false))
+        );
     }
 
     #[test]
@@ -410,8 +414,9 @@ mod tests {
         let conn = WorkspaceRegistry::init_in_memory().unwrap();
         install_skill(&conn, &dummy_skill_meta("echo-a")).unwrap();
         install_skill(&conn, &dummy_skill_meta("echo-b")).unwrap();
-        let wf = dummy_wf("par-test", vec![
-            StepDefinition {
+        let wf = dummy_wf(
+            "par-test",
+            vec![StepDefinition {
                 id: "parallel".to_string(),
                 step_type: StepType::Parallel {
                     parallel: vec![
@@ -437,8 +442,8 @@ mod tests {
                 depends_on: vec![],
                 on_error: ErrorPolicy::Continue,
                 timeout_seconds: None,
-            },
-        ]);
+            }],
+        );
         let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
         // Skill fails because entry script does not exist, but parallel step itself is valid
         assert!(results.contains_key("parallel"));
@@ -450,29 +455,31 @@ mod tests {
         install_skill(&conn, &dummy_skill_meta("echo-sub")).unwrap();
 
         // Register child workflow
-        let child = dummy_wf("child", vec![
-            StepDefinition {
+        let child = dummy_wf(
+            "child",
+            vec![StepDefinition {
                 id: "sub".to_string(),
                 step_type: StepType::Skill { skill: "echo-sub".to_string() },
                 inputs: HashMap::new(),
                 depends_on: vec![],
                 on_error: ErrorPolicy::Fail,
                 timeout_seconds: None,
-            },
-        ]);
+            }],
+        );
         crate::workflow::save_workflow(&conn, &child).unwrap();
 
         // Parent workflow references child
-        let parent = dummy_wf("parent", vec![
-            StepDefinition {
+        let parent = dummy_wf(
+            "parent",
+            vec![StepDefinition {
                 id: "run_child".to_string(),
                 step_type: StepType::Subworkflow { workflow: "child".to_string() },
                 inputs: HashMap::new(),
                 depends_on: vec![],
                 on_error: ErrorPolicy::Continue,
                 timeout_seconds: None,
-            },
-        ]);
+            }],
+        );
         let results = execute_workflow(&conn, &parent, HashMap::new()).unwrap();
         // Child skill fails (no entry script), but subworkflow step is valid
         assert!(results.contains_key("run_child"));

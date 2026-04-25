@@ -59,21 +59,14 @@ pub fn update_skill_scores(
         "UPDATE skills
          SET usage_count = ?1, success_rate = ?2, rating = ?3
          WHERE id = ?4",
-        params![
-            scores.usage_count,
-            scores.success_rate,
-            scores.rating,
-            skill_id,
-        ],
+        params![scores.usage_count, scores.success_rate, scores.rating, skill_id,],
     )?;
     Ok(())
 }
 
 /// Recalculate scores for every skill that has execution records.
 pub fn recalculate_all_skill_scores(conn: &Connection) -> anyhow::Result<usize> {
-    let mut stmt = conn.prepare(
-        "SELECT DISTINCT skill_id FROM skill_executions"
-    )?;
+    let mut stmt = conn.prepare("SELECT DISTINCT skill_id FROM skill_executions")?;
     let skill_ids: Vec<String> = stmt
         .query_map([], |row| row.get::<_, String>(0))?
         .collect::<Result<Vec<_>, _>>()?;
@@ -88,17 +81,14 @@ pub fn recalculate_all_skill_scores(conn: &Connection) -> anyhow::Result<usize> 
 }
 
 /// Return the top-N skills ordered by rating (desc), then success_rate (desc).
-pub fn get_top_skills(
-    conn: &Connection,
-    limit: usize,
-) -> anyhow::Result<Vec<TopSkill>> {
+pub fn get_top_skills(conn: &Connection, limit: usize) -> anyhow::Result<Vec<TopSkill>> {
     let mut stmt = conn.prepare(
         "SELECT id, name, version, description, skill_type, category,
                 usage_count, success_rate, rating
          FROM skills
          WHERE rating IS NOT NULL
          ORDER BY rating DESC, success_rate DESC
-         LIMIT ?1"
+         LIMIT ?1",
     )?;
     let rows = stmt.query_map([limit as i64], top_skill_from_row)?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -175,8 +165,8 @@ pub struct TopSkill {
 mod tests {
     use super::*;
     use crate::registry::WorkspaceRegistry;
-    use crate::skill_runtime::{ExecutionStatus, SkillMeta, SkillType};
     use crate::skill_runtime::registry::install_skill;
+    use crate::skill_runtime::{ExecutionStatus, SkillMeta, SkillType};
 
     fn dummy_skill_meta(id: &str) -> SkillMeta {
         SkillMeta {
@@ -201,7 +191,12 @@ mod tests {
         }
     }
 
-    fn record_execution(conn: &Connection, skill_id: &str, status: ExecutionStatus, duration_ms: i64) {
+    fn record_execution(
+        conn: &Connection,
+        skill_id: &str,
+        status: ExecutionStatus,
+        duration_ms: i64,
+    ) {
         let started = chrono::Utc::now().to_rfc3339();
         conn.execute(
             "INSERT INTO skill_executions (skill_id, args, status, started_at, finished_at, duration_ms)

@@ -1,8 +1,8 @@
 use super::{
-    parse_tags, serialize_tags, ExecutionResult, ExecutionStatus, SkillMeta, SkillRow, SkillType,
+    ExecutionResult, ExecutionStatus, SkillMeta, SkillRow, SkillType, parse_tags, serialize_tags,
 };
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 /// Clone a skill from a Git URL and install it into the devbase skills directory.
 pub fn install_skill_from_git(
@@ -10,8 +10,7 @@ pub fn install_skill_from_git(
     git_url: &str,
     skill_id: Option<&str>,
 ) -> anyhow::Result<SkillMeta> {
-    let skills_dir = crate::registry::WorkspaceRegistry::workspace_dir()?
-        .join("skills");
+    let skills_dir = crate::registry::WorkspaceRegistry::workspace_dir()?.join("skills");
     std::fs::create_dir_all(&skills_dir)?;
 
     // Derive skill ID from URL or provided name
@@ -58,8 +57,7 @@ pub fn install_skill_from_git(
 /// Install or update a skill in the registry from a parsed `SkillMeta`.
 pub fn install_skill(conn: &Connection, skill: &SkillMeta) -> anyhow::Result<()> {
     let inputs_json = serde_json::to_string(&skill.inputs).unwrap_or_else(|_| "[]".to_string());
-    let outputs_json =
-        serde_json::to_string(&skill.outputs).unwrap_or_else(|_| "[]".to_string());
+    let outputs_json = serde_json::to_string(&skill.outputs).unwrap_or_else(|_| "[]".to_string());
     let deps_json = serde_json::to_string(&skill.dependencies).unwrap_or_else(|_| "[]".to_string());
     let tags_json = serialize_tags(&skill.tags);
     let embedding_blob = skill
@@ -272,10 +270,8 @@ pub fn search_skills_semantic(
 
     for row in rows {
         let (score, skill) = row?;
-        if let Some(cat) = category {
-            if skill.category.as_deref() != Some(cat) {
-                continue;
-            }
+        if category.is_some_and(|cat| skill.category.as_deref() != Some(cat)) {
+            continue;
         }
         scored.push((score, skill));
     }
@@ -397,6 +393,40 @@ pub struct ExecutionRecord {
     pub duration_ms: Option<i64>,
 }
 
+fn skill_row_from_sql(row: &rusqlite::Row) -> rusqlite::Result<SkillRow> {
+    let tags_str: Option<String> = row.get(5)?;
+    let skill_type_str: String = row.get(7)?;
+    let installed_str: String = row.get(9)?;
+    let updated_str: String = row.get(10)?;
+    let last_used_str: Option<String> = row.get(11)?;
+    let deps_str: Option<String> = row.get(12)?;
+    let category: Option<String> = row.get(13)?;
+
+    Ok(SkillRow {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        version: row.get(2)?,
+        description: row.get(3)?,
+        author: row.get(4)?,
+        tags: parse_tags(tags_str.as_deref()),
+        entry_script: row.get(6)?,
+        skill_type: skill_type_str.parse().unwrap_or(SkillType::Custom),
+        local_path: row.get(8)?,
+        installed_at: installed_str.parse().unwrap_or_else(|_| Utc::now()),
+        updated_at: updated_str.parse().unwrap_or_else(|_| Utc::now()),
+        last_used_at: last_used_str.and_then(|s| s.parse().ok()),
+        dependencies: parse_dependencies(deps_str.as_deref()),
+        category,
+    })
+}
+
+fn parse_dependencies(deps_str: Option<&str>) -> Vec<crate::skill_runtime::SkillDependency> {
+    let Some(s) = deps_str else {
+        return Vec::new();
+    };
+    serde_json::from_str(s).unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -512,40 +542,4 @@ mod tests {
         let row = get_skill(&conn, "tracked").unwrap().unwrap();
         assert!(row.last_used_at.is_some());
     }
-}
-
-fn skill_row_from_sql(row: &rusqlite::Row) -> rusqlite::Result<SkillRow> {
-    let tags_str: Option<String> = row.get(5)?;
-    let skill_type_str: String = row.get(7)?;
-    let installed_str: String = row.get(9)?;
-    let updated_str: String = row.get(10)?;
-    let last_used_str: Option<String> = row.get(11)?;
-    let deps_str: Option<String> = row.get(12)?;
-    let category: Option<String> = row.get(13)?;
-
-    Ok(SkillRow {
-        id: row.get(0)?,
-        name: row.get(1)?,
-        version: row.get(2)?,
-        description: row.get(3)?,
-        author: row.get(4)?,
-        tags: parse_tags(tags_str.as_deref()),
-        entry_script: row.get(6)?,
-        skill_type: skill_type_str
-            .parse()
-            .unwrap_or(SkillType::Custom),
-        local_path: row.get(8)?,
-        installed_at: installed_str.parse().unwrap_or_else(|_| Utc::now()),
-        updated_at: updated_str.parse().unwrap_or_else(|_| Utc::now()),
-        last_used_at: last_used_str.and_then(|s| s.parse().ok()),
-        dependencies: parse_dependencies(deps_str.as_deref()),
-        category,
-    })
-}
-
-fn parse_dependencies(deps_str: Option<&str>) -> Vec<crate::skill_runtime::SkillDependency> {
-    let Some(s) = deps_str else {
-        return Vec::new();
-    };
-    serde_json::from_str(s).unwrap_or_default()
 }

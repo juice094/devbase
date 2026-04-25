@@ -1,5 +1,8 @@
 use crate::tui::render::ui;
-use crate::tui::{App, InputMode, MainView, NLPPopupMode, SearchPopupMode, SkillPopupMode, SortMode, SyncPopupMode, WorkflowPopupMode};
+use crate::tui::{
+    App, InputMode, MainView, NLPPopupMode, SearchPopupMode, SkillPopupMode, SortMode,
+    SyncPopupMode, WorkflowPopupMode,
+};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{Terminal, backend::Backend};
 use std::io;

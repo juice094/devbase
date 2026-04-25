@@ -8,8 +8,7 @@ pub type ExecutionBatch = Vec<StepDefinition>;
 /// inter-dependencies, so they may run in parallel.
 pub fn build_schedule(wf: &WorkflowDefinition) -> anyhow::Result<Vec<ExecutionBatch>> {
     let n = wf.steps.len();
-    let mut in_degree: HashMap<&str, usize> =
-        wf.steps.iter().map(|s| (s.id.as_str(), 0)).collect();
+    let mut in_degree: HashMap<&str, usize> = wf.steps.iter().map(|s| (s.id.as_str(), 0)).collect();
     let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
 
     for step in &wf.steps {
@@ -19,11 +18,8 @@ pub fn build_schedule(wf: &WorkflowDefinition) -> anyhow::Result<Vec<ExecutionBa
         }
     }
 
-    let mut queue: VecDeque<&str> = in_degree
-        .iter()
-        .filter(|(_, d)| **d == 0)
-        .map(|(id, _)| *id)
-        .collect();
+    let mut queue: VecDeque<&str> =
+        in_degree.iter().filter(|(_, d)| **d == 0).map(|(id, _)| *id).collect();
 
     let mut batches: Vec<ExecutionBatch> = Vec::new();
     let mut processed = 0;
@@ -35,12 +31,7 @@ pub fn build_schedule(wf: &WorkflowDefinition) -> anyhow::Result<Vec<ExecutionBa
 
         for _ in 0..batch_size {
             let id = queue.pop_front().unwrap();
-            let step = wf
-                .steps
-                .iter()
-                .find(|s| s.id == id)
-                .expect("step id must exist")
-                .clone();
+            let step = wf.steps.iter().find(|s| s.id == id).expect("step id must exist").clone();
             batch.push(step);
             processed += 1;
 
@@ -76,11 +67,11 @@ pub fn transitive_deps(wf: &WorkflowDefinition, target_id: &str) -> HashSet<Stri
         wf.steps.iter().map(|s| (s.id.as_str(), s)).collect();
 
     while let Some(current) = stack.pop() {
-        if visited.insert(current.clone()) {
-            if let Some(step) = step_map.get(current.as_str()) {
-                for dep in &step.depends_on {
-                    stack.push(dep.clone());
-                }
+        if visited.insert(current.clone())
+            && let Some(step) = step_map.get(current.as_str())
+        {
+            for dep in &step.depends_on {
+                stack.push(dep.clone());
             }
         }
     }
@@ -96,9 +87,7 @@ mod tests {
     fn dummy_step(id: &str, deps: Vec<&str>) -> StepDefinition {
         StepDefinition {
             id: id.to_string(),
-            step_type: StepType::Skill {
-                skill: "test".to_string(),
-            },
+            step_type: StepType::Skill { skill: "test".to_string() },
             inputs: HashMap::new(),
             depends_on: deps.into_iter().map(|s| s.to_string()).collect(),
             on_error: ErrorPolicy::Fail,

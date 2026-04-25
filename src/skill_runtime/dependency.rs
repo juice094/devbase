@@ -4,10 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Resolve all transitive dependencies for a skill, returning them in
 /// topological order (dependencies first, then the requested skill's direct deps).
-pub fn resolve_dependencies(
-    conn: &Connection,
-    skill_id: &str,
-) -> anyhow::Result<Vec<SkillRow>> {
+pub fn resolve_dependencies(conn: &Connection, skill_id: &str) -> anyhow::Result<Vec<SkillRow>> {
     let mut visited: HashSet<String> = HashSet::new();
     let mut order: Vec<String> = Vec::new();
     let mut edges: HashMap<String, Vec<String>> = HashMap::new();
@@ -23,11 +20,7 @@ pub fn resolve_dependencies(
             None => continue,
         };
 
-        let deps: Vec<String> = skill
-            .dependencies
-            .iter()
-            .map(|d| d.id.clone())
-            .collect();
+        let deps: Vec<String> = skill.dependencies.iter().map(|d| d.id.clone()).collect();
         edges.insert(current_id.clone(), deps.clone());
 
         for dep_id in deps {
@@ -39,10 +32,7 @@ pub fn resolve_dependencies(
 
     // Detect cycles
     if let Some(cycle) = detect_cycle(skill_id, &edges) {
-        return Err(anyhow::anyhow!(
-            "Dependency cycle detected: {}",
-            cycle.join(" → ")
-        ));
+        return Err(anyhow::anyhow!("Dependency cycle detected: {}", cycle.join(" → ")));
     }
 
     // Build reverse adjacency list: dep -> [skills that depend on it]
@@ -82,9 +72,7 @@ pub fn resolve_dependencies(
     }
 
     if order.len() != visited.len() {
-        return Err(anyhow::anyhow!(
-            "Dependency graph has unreachable nodes (possible cycle)"
-        ));
+        return Err(anyhow::anyhow!("Dependency graph has unreachable nodes (possible cycle)"));
     }
 
     // Exclude the root skill itself; return only its dependencies in topological order
@@ -99,12 +87,13 @@ pub fn resolve_dependencies(
 
 /// Check if the dependency graph starting from `start` contains a cycle.
 /// Returns the cycle path if found.
-fn detect_cycle(
-    start: &str,
-    edges: &HashMap<String, Vec<String>>,
-) -> Option<Vec<String>> {
+fn detect_cycle(start: &str, edges: &HashMap<String, Vec<String>>) -> Option<Vec<String>> {
     #[derive(Clone, Copy)]
-    enum Color { White, Gray, Black }
+    enum Color {
+        White,
+        Gray,
+        Black,
+    }
 
     let mut color: HashMap<String, Color> = HashMap::new();
     let mut parent: HashMap<String, String> = HashMap::new();
@@ -181,7 +170,9 @@ pub fn install_missing_dependencies(
         return Err(anyhow::anyhow!(
             "Dependency '{}' of skill '{}' is not installed and has no source URL. \
              Install it manually with: devbase skill install <url> --id {}",
-            dep.id, skill.id, dep.id
+            dep.id,
+            skill.id,
+            dep.id
         ));
     }
 
@@ -278,10 +269,7 @@ mod tests {
     #[test]
     fn test_resolve_cycle_fails() {
         let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
-        let skills = vec![
-            test_skill("x", vec!["y"]),
-            test_skill("y", vec!["x"]),
-        ];
+        let skills = vec![test_skill("x", vec!["y"]), test_skill("y", vec!["x"])];
         for s in &skills {
             crate::skill_runtime::registry::install_skill(&conn, s).unwrap();
         }

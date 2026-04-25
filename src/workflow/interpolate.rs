@@ -40,10 +40,11 @@ fn resolve(path: &str, ctx: &InterpolationContext) -> anyhow::Result<String> {
             .step_outputs
             .get(*step_id)
             .and_then(|m| m.get(*out_name))
-            .map(|v| json_to_string(v))
+            .map(json_to_string)
             .ok_or_else(|| anyhow::anyhow!("missing output {out_name} for step {step_id}")),
-        ["env", name] => std::env::var(*name)
-            .map_err(|_| anyhow::anyhow!("missing env var: {name}")),
+        ["env", name] => {
+            std::env::var(*name).map_err(|_| anyhow::anyhow!("missing env var: {name}"))
+        }
         _ => Err(anyhow::anyhow!("unsupported variable path: {path}")),
     }
 }
@@ -56,7 +57,10 @@ fn json_to_string(v: &Value) -> String {
 }
 
 /// Interpolate a serde_yaml::Value recursively.
-pub fn interpolate_value(value: &serde_yaml::Value, ctx: &InterpolationContext) -> anyhow::Result<serde_yaml::Value> {
+pub fn interpolate_value(
+    value: &serde_yaml::Value,
+    ctx: &InterpolationContext,
+) -> anyhow::Result<serde_yaml::Value> {
     match value {
         serde_yaml::Value::String(s) => {
             let interpolated = interpolate(s, ctx)?;
@@ -109,10 +113,7 @@ mod tests {
     fn test_interpolate_inputs() {
         let mut ctx = InterpolationContext::default();
         ctx.inputs.insert("repo_path".to_string(), "/home/dev".to_string());
-        assert_eq!(
-            interpolate("path: ${inputs.repo_path}", &ctx).unwrap(),
-            "path: /home/dev"
-        );
+        assert_eq!(interpolate("path: ${inputs.repo_path}", &ctx).unwrap(), "path: /home/dev");
     }
 
     #[test]
@@ -121,10 +122,7 @@ mod tests {
         let mut outputs = HashMap::new();
         outputs.insert("stdout".to_string(), Value::String("ok".to_string()));
         ctx.add_step_output("lint", outputs);
-        assert_eq!(
-            interpolate("${steps.lint.outputs.stdout}", &ctx).unwrap(),
-            "ok"
-        );
+        assert_eq!(interpolate("${steps.lint.outputs.stdout}", &ctx).unwrap(), "ok");
     }
 
     struct EnvGuard {
@@ -146,11 +144,10 @@ mod tests {
         let key = "DEVBASE_TEST_VAR";
         let old = std::env::var(key).ok();
         let _guard = EnvGuard { key, old };
-        unsafe { std::env::set_var(key, "test_value"); }
+        unsafe {
+            std::env::set_var(key, "test_value");
+        }
         let ctx = InterpolationContext::default();
-        assert_eq!(
-            interpolate("${env.DEVBASE_TEST_VAR}", &ctx).unwrap(),
-            "test_value"
-        );
+        assert_eq!(interpolate("${env.DEVBASE_TEST_VAR}", &ctx).unwrap(), "test_value");
     }
 }

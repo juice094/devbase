@@ -1,4 +1,4 @@
-﻿use super::parser::parse_skill_md;
+use super::parser::parse_skill_md;
 use std::path::Path;
 
 /// Validate a skill directory for publishing.
@@ -83,16 +83,9 @@ fn check_git_status(path: &Path) -> anyhow::Result<GitStatus> {
 
     // Get current branch
     let head = repo.head()?;
-    let branch = head
-        .shorthand()
-        .unwrap_or("HEAD")
-        .to_string();
+    let branch = head.shorthand().unwrap_or("HEAD").to_string();
 
-    Ok(GitStatus {
-        is_clean,
-        branch,
-        ahead: 0,
-    })
+    Ok(GitStatus { is_clean, branch, ahead: 0 })
 }
 
 /// Create a git tag for the skill version.
@@ -101,13 +94,7 @@ pub fn create_version_tag(path: &Path, tag: &str, message: &str) -> anyhow::Resu
     let sig = repo.signature()?;
     let head = repo.head()?;
     let target = head.peel_to_commit()?;
-    repo.tag(
-        tag,
-        target.as_object(),
-        &sig,
-        message,
-        false,
-    )?;
+    repo.tag(tag, target.as_object(), &sig, message, false)?;
     Ok(())
 }
 
@@ -174,15 +161,9 @@ fn format_push_error(e: &git2::Error) -> String {
             message
         )
     } else if class == git2::ErrorClass::Net {
-        format!(
-            "Network error — check your internet connection. ({})",
-            message
-        )
+        format!("Network error — check your internet connection. ({})", message)
     } else if message.contains("not found") || message.contains("does not exist") {
-        format!(
-            "Remote reference not found. Ensure the remote URL is correct. ({})",
-            message
-        )
+        format!("Remote reference not found. Ensure the remote URL is correct. ({})", message)
     } else {
         format!("{} (git error class: {:?})", message, class)
     }
@@ -222,11 +203,7 @@ mod tests {
 
         // Create initial commit
         fs::write(path.join("file.txt"), "hello").unwrap();
-        Command::new("git")
-            .args(["add", "."])
-            .current_dir(path)
-            .output()
-            .unwrap();
+        Command::new("git").args(["add", "."]).current_dir(path).output().unwrap();
         Command::new("git")
             .args(["commit", "-m", "initial", "--quiet"])
             .current_dir(path)

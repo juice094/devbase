@@ -17,10 +17,7 @@ pub fn run_skill(
         .ok()
         .and_then(|cwd| cwd.join(&skill_dir).canonicalize().ok())
         .unwrap_or_else(|| skill_dir.clone());
-    let entry = skill
-        .entry_script
-        .as_deref()
-        .unwrap_or("scripts/run.py");
+    let entry = skill.entry_script.as_deref().unwrap_or("scripts/run.py");
     let script_path = skill_dir.join(entry);
 
     if !script_path.exists() {
@@ -145,111 +142,6 @@ pub fn run_skill(
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_resolve_interpreter_python() {
-        let path = std::path::PathBuf::from("scripts/run.py");
-        let (interp, arg0) = super::resolve_interpreter(&path);
-        assert_eq!(interp, Some("python".to_string()));
-        assert_eq!(arg0, "scripts/run.py");
-    }
-
-    #[test]
-    fn test_resolve_interpreter_shell() {
-        let path = std::path::PathBuf::from("scripts/run.sh");
-        let (interp, arg0) = super::resolve_interpreter(&path);
-        assert_eq!(interp, Some("bash".to_string()));
-        assert_eq!(arg0, "scripts/run.sh");
-    }
-
-    #[test]
-    fn test_resolve_interpreter_powershell() {
-        let path = std::path::PathBuf::from("scripts/run.ps1");
-        let (interp, arg0) = super::resolve_interpreter(&path);
-        assert_eq!(interp, Some("powershell".to_string()));
-        assert_eq!(arg0, "scripts/run.ps1");
-    }
-
-    #[test]
-    fn test_resolve_interpreter_binary() {
-        let path = std::path::PathBuf::from("bin/my-tool");
-        let (interp, arg0) = super::resolve_interpreter(&path);
-        assert_eq!(interp, None);
-        assert_eq!(arg0, "bin/my-tool");
-    }
-
-    #[test]
-    fn test_run_skill_success() {
-        let dir = std::env::temp_dir().join("test-skill-run");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir.join("scripts")).unwrap();
-
-        // Create a simple Python script
-        #[cfg(windows)]
-        let script = "scripts/run.py";
-        #[cfg(unix)]
-        let script = "scripts/run.py";
-
-        std::fs::write(dir.join(script), r#"import sys
-print("hello")
-print("stderr msg", file=sys.stderr)
-sys.exit(0)
-"#).unwrap();
-
-        let skill = SkillRow {
-            id: "test-run".to_string(),
-            name: "Test Run".to_string(),
-            version: "1.0.0".to_string(),
-            description: "test".to_string(),
-            author: None,
-            tags: vec![],
-            entry_script: Some(script.to_string()),
-            category: None,
-            skill_type: crate::skill_runtime::SkillType::Builtin,
-            local_path: dir.to_string_lossy().to_string(),
-            installed_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            last_used_at: None,
-            dependencies: vec![],
-        };
-
-        let result = run_skill(&skill, &[], std::time::Duration::from_secs(5)).unwrap();
-        assert_eq!(result.status, ExecutionStatus::Success);
-        assert_eq!(result.exit_code, Some(0));
-        assert!(result.stdout.contains("hello"));
-        assert!(result.stderr.contains("stderr msg"));
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_run_skill_not_found() {
-        let skill = SkillRow {
-            id: "missing".to_string(),
-            name: "Missing".to_string(),
-            version: "1.0.0".to_string(),
-            description: "test".to_string(),
-            author: None,
-            tags: vec![],
-            entry_script: Some("scripts/nonexistent.py".to_string()),
-            category: None,
-            skill_type: crate::skill_runtime::SkillType::Builtin,
-            local_path: std::env::temp_dir().to_string_lossy().to_string(),
-            installed_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            last_used_at: None,
-            dependencies: vec![],
-        };
-
-        let result = run_skill(&skill, &[], std::time::Duration::from_secs(5)).unwrap();
-        assert_eq!(result.status, ExecutionStatus::Failed);
-        assert_eq!(result.exit_code, Some(127));
-    }
-}
-
 fn resolve_interpreter(path: &std::path::Path) -> (Option<String>, String) {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let path_str = path.to_string_lossy().to_string();
@@ -327,5 +219,114 @@ fn wait_with_timeout(
                 std::thread::sleep(Duration::from_millis(50));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_interpreter_python() {
+        let path = std::path::PathBuf::from("scripts/run.py");
+        let (interp, arg0) = super::resolve_interpreter(&path);
+        assert_eq!(interp, Some("python".to_string()));
+        assert_eq!(arg0, "scripts/run.py");
+    }
+
+    #[test]
+    fn test_resolve_interpreter_shell() {
+        let path = std::path::PathBuf::from("scripts/run.sh");
+        let (interp, arg0) = super::resolve_interpreter(&path);
+        assert_eq!(interp, Some("bash".to_string()));
+        assert_eq!(arg0, "scripts/run.sh");
+    }
+
+    #[test]
+    fn test_resolve_interpreter_powershell() {
+        let path = std::path::PathBuf::from("scripts/run.ps1");
+        let (interp, arg0) = super::resolve_interpreter(&path);
+        assert_eq!(interp, Some("powershell".to_string()));
+        assert_eq!(arg0, "scripts/run.ps1");
+    }
+
+    #[test]
+    fn test_resolve_interpreter_binary() {
+        let path = std::path::PathBuf::from("bin/my-tool");
+        let (interp, arg0) = super::resolve_interpreter(&path);
+        assert_eq!(interp, None);
+        assert_eq!(arg0, "bin/my-tool");
+    }
+
+    #[test]
+    fn test_run_skill_success() {
+        let dir = std::env::temp_dir().join("test-skill-run");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("scripts")).unwrap();
+
+        // Create a simple Python script
+        #[cfg(windows)]
+        let script = "scripts/run.py";
+        #[cfg(unix)]
+        let script = "scripts/run.py";
+
+        std::fs::write(
+            dir.join(script),
+            r#"import sys
+print("hello")
+print("stderr msg", file=sys.stderr)
+sys.exit(0)
+"#,
+        )
+        .unwrap();
+
+        let skill = SkillRow {
+            id: "test-run".to_string(),
+            name: "Test Run".to_string(),
+            version: "1.0.0".to_string(),
+            description: "test".to_string(),
+            author: None,
+            tags: vec![],
+            entry_script: Some(script.to_string()),
+            category: None,
+            skill_type: crate::skill_runtime::SkillType::Builtin,
+            local_path: dir.to_string_lossy().to_string(),
+            installed_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            last_used_at: None,
+            dependencies: vec![],
+        };
+
+        let result = run_skill(&skill, &[], std::time::Duration::from_secs(5)).unwrap();
+        assert_eq!(result.status, ExecutionStatus::Success);
+        assert_eq!(result.exit_code, Some(0));
+        assert!(result.stdout.contains("hello"));
+        assert!(result.stderr.contains("stderr msg"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_skill_not_found() {
+        let skill = SkillRow {
+            id: "missing".to_string(),
+            name: "Missing".to_string(),
+            version: "1.0.0".to_string(),
+            description: "test".to_string(),
+            author: None,
+            tags: vec![],
+            entry_script: Some("scripts/nonexistent.py".to_string()),
+            category: None,
+            skill_type: crate::skill_runtime::SkillType::Builtin,
+            local_path: std::env::temp_dir().to_string_lossy().to_string(),
+            installed_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            last_used_at: None,
+            dependencies: vec![],
+        };
+
+        let result = run_skill(&skill, &[], std::time::Duration::from_secs(5)).unwrap();
+        assert_eq!(result.status, ExecutionStatus::Failed);
+        assert_eq!(result.exit_code, Some(127));
     }
 }

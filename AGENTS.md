@@ -2,9 +2,9 @@
 
 `devbase` 是本地优先的 AI Skill 编排基础设施。
 
-- **当前阶段**：阶段二 — AI Skill 编排基础设施（v0.4.0-alpha 进行中）
-- **当前版本**：v0.4.0-alpha
-- **下一里程碑**：v0.4.0（Skill 自动封装正式可用 + Git URL 支持）
+- **当前阶段**：阶段二 — AI Skill 编排基础设施（v0.8.0-alpha 进行中）
+- **当前版本**：v0.8.0-alpha
+- **下一里程碑**：v0.9.0（NLQ 结果可执行 + Loop Step + L0-L4 知识模型）
 - **核心方向**：将 GitHub 项目转换为标准化、可发现、可组合的 Skill，供弱 AI 子代理执行
 - **设计文档**：
   - `docs/architecture/workflow-dsl.md` — Workflow DSL 规范
@@ -17,10 +17,13 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 - **Workspace**：`%LOCALAPPDATA%\devbase\workspace/` —— 文件系统 = source of truth
   - `vault/` —— PARA 结构：00-Inbox, 01-Projects, 02-Areas, 03-Resources, 04-Archives, 99-Meta
   - `assets/` —— 二进制资源
-- **MCP Server**：stdio only（SSE 开发中），**34 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 3 个 Skill Runtime tools + 1 个报告工具 + 1 个 arXiv 工具）；配置见 `mcp.json`
+- **MCP Server**：stdio only（SSE 开发中），**35 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：243 passed / 0 failed / 3 ignored
+- **当前测试**：266 passed / 0 failed / 3 ignored
 - **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
+- **Workflow Engine**：YAML 解析 + 拓扑调度 + batch 并行执行 + 5 种 step 类型（skill/subworkflow/parallel/condition/loop）
+- **NLQ 自然语言查询**：TUI `[:]` 触发 embedding 语义搜索，fallback 降级文本搜索
+- **Mind Market 评分**：success_rate / usage_count / rating（0-5），`skill recalc-scores/top/recommend`
 
 ## 关键约定
 
@@ -56,9 +59,9 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 |------|------|
 | 代码质量 | `rustfmt.toml` + `cargo fmt` + `clippy -D warnings` 全绿 |
 | 模块拆分 | `sync`→5 / `registry`→7 / `mcp` 测试分离 / `search`→hybrid / `oplog_analytics` / `symbol_links` |
-| 库/二进制 | `src/lib.rs` 导出全部 **26** 个模块；`src/main.rs` 仅 CLI 入口 |
+| 库/二进制 | `src/lib.rs` 导出全部 **30+** 个模块；`src/main.rs` 仅 CLI 入口 |
 | TUI 架构 | `render/` 6 子模块 + `theme.rs` Design Token + `layout.rs` 响应式引擎 |
-| 数据层 | Schema v16: repos + repo_tags + code_symbols + code_embeddings + code_call_graph + code_symbol_links + oplog + vault_notes + papers + experiments + **skills + skill_executions** + **entities + entity_types + relations**（统一实体模型，渐进双写） |
+| 数据层 | Schema v17: repos + repo_tags + code_symbols + code_embeddings + code_call_graph + code_symbol_links + oplog + vault_notes + papers + experiments + **skills + skill_executions** + **entities + entity_types + relations** + **workflows + workflow_executions**（统一实体模型，渐进双写） |
 | CI/CD | `.github/workflows/ci.yml`：check / test / fmt / clippy on Windows |
 | 依赖安全 | `cargo audit` 0 漏洞（除上游 `tokei` 的 `RUSTSEC-2020-0163`） |
 
@@ -162,9 +165,14 @@ devbase 承载外部资源调度的抽象接口：
 | 波次 | 任务 | 状态 | 交付物 |
 |------|------|------|--------|
 | Wave 21 | Schema v16 + 自动封装 | ✅ 已完成 | `entity_types/entities/relations` + `devbase skill discover` |
-| Wave 22 | discover 硬化 | 🟡 进行中 | `--install` 真正注册 + Git URL 直接克隆封装 |
+| Wave 22 | discover 硬化 | ✅ 已完成 | `--install` 真正注册 + Git URL 直接克隆封装 |
 | Wave 23 | Workflow 预留 | ✅ 规范已完成 | `docs/architecture/workflow-dsl.md` |
-| Wave 24 | Workflow Engine | 🟡 待启动 | YAML 解析 + 拓扑调度 + 并行执行（v0.5.0） |
+| Wave 24 | Workflow Engine v0.5.0 | ✅ 已完成 | YAML 解析 + 拓扑调度 + batch 并行执行 + 5 step 类型 |
+| Wave 25 | TUI Workflow 可执行 | ✅ 已完成 | `[w]` 详情页 `r/Enter` 运行 + 结果弹窗 |
+| Wave 26 | NLQ 自然语言查询 v0.7.0 | ✅ 已完成 | `[:]` 触发 embedding 语义搜索 + fallback 降级 |
+| Wave 27 | Mind Market 评分 v0.6.0 | ✅ 已完成 | `success_rate`/`usage_count`/`rating` + `recalc-scores`/`top`/`recommend` |
+| Wave 28 | 7 个风险点修复 v0.7.1 | ✅ 已完成 | EnvGuard、NLQ fallback、StepType 显式标签、跨平台解释器探测 |
+| Wave 29 | Workflow 子类型执行 v0.8.0 | ✅ 已完成 | Subworkflow 递归 + Parallel 聚合 + Condition 表达式求值 |
 
 ### 明确不做（已排除）
 

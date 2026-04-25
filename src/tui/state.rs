@@ -1,8 +1,9 @@
 use crate::asyncgit::AsyncNotification;
 use crate::registry::WorkspaceRegistry;
 use crate::tui::{
-    App, InputMode, ListState, MainView, NLPPopupMode, RepoItem, SearchPopupMode, SearchResult, SkillItem,
-    SkillPopupMode, SortMode, SyncPopupMode, SyncPreviewItem, VaultItem, WorkflowPopupMode,
+    App, InputMode, ListState, MainView, NLPPopupMode, RepoItem, SearchPopupMode, SearchResult,
+    SkillItem, SkillPopupMode, SortMode, SyncPopupMode, SyncPreviewItem, VaultItem,
+    WorkflowPopupMode,
 };
 use chrono::Utc;
 use crossbeam_channel::bounded;
@@ -515,7 +516,9 @@ impl App {
             Ok(rows) => {
                 self.workflows = rows
                     .into_iter()
-                    .filter_map(|(id, _, _)| crate::workflow::get_workflow(&conn, &id).ok().flatten())
+                    .filter_map(|(id, _, _)| {
+                        crate::workflow::get_workflow(&conn, &id).ok().flatten()
+                    })
                     .collect();
             }
             Err(e) => {
@@ -537,7 +540,8 @@ impl App {
 
     pub(crate) fn previous_workflow(&mut self) {
         if !self.workflows.is_empty() {
-            self.workflow_selected = (self.workflow_selected + self.workflows.len() - 1) % self.workflows.len();
+            self.workflow_selected =
+                (self.workflow_selected + self.workflows.len() - 1) % self.workflows.len();
             self.workflow_list_state.select(Some(self.workflow_selected));
         }
     }
@@ -622,17 +626,23 @@ impl App {
             // Try semantic search first, fallback to text search if embedding unavailable
             let (skills, fallback) = match crate::embedding::generate_query_embedding(&query) {
                 Ok(embedding) => {
-                    match crate::skill_runtime::registry::search_skills_semantic(&conn, &embedding, 10, None) {
+                    match crate::skill_runtime::registry::search_skills_semantic(
+                        &conn, &embedding, 10, None,
+                    ) {
                         Ok(s) => (s, false),
                         Err(_) => {
-                            match crate::skill_runtime::registry::search_skills_text(&conn, &query, 10, None) {
+                            match crate::skill_runtime::registry::search_skills_text(
+                                &conn, &query, 10, None,
+                            ) {
                                 Ok(s) => (s, true),
                                 Err(e) => {
-                                    let _ = tx.send(crate::asyncgit::AsyncNotification::NLPQueryFinished {
-                                        query,
-                                        skills: vec![],
-                                        error: Some(e.to_string()),
-                                    });
+                                    let _ = tx.send(
+                                        crate::asyncgit::AsyncNotification::NLPQueryFinished {
+                                            query,
+                                            skills: vec![],
+                                            error: Some(e.to_string()),
+                                        },
+                                    );
                                     return;
                                 }
                             }
@@ -640,7 +650,9 @@ impl App {
                     }
                 }
                 Err(_) => {
-                    match crate::skill_runtime::registry::search_skills_text(&conn, &query, 10, None) {
+                    match crate::skill_runtime::registry::search_skills_text(
+                        &conn, &query, 10, None,
+                    ) {
                         Ok(s) => (s, true),
                         Err(e) => {
                             let _ = tx.send(crate::asyncgit::AsyncNotification::NLPQueryFinished {
@@ -675,11 +687,8 @@ impl App {
             }
         };
 
-        let args: Vec<String> = self
-            .skill_param_buffer
-            .split_whitespace()
-            .map(|s| s.to_string())
-            .collect();
+        let args: Vec<String> =
+            self.skill_param_buffer.split_whitespace().map(|s| s.to_string()).collect();
 
         let tx = self.async_tx.clone();
         std::thread::spawn(move || {
@@ -785,7 +794,11 @@ impl App {
                     self.log_error(format!("Workflow [{}] 执行失败: {}", workflow_id, e));
                     self.workflow_execution_error = Some(e);
                 } else {
-                    self.log_info(format!("Workflow [{}] 执行完成 ({} steps)", workflow_id, results.len()));
+                    self.log_info(format!(
+                        "Workflow [{}] 执行完成 ({} steps)",
+                        workflow_id,
+                        results.len()
+                    ));
                     self.workflow_execution_error = None;
                 }
                 self.workflow_execution_result = Some(results);

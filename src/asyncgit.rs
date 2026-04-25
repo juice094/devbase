@@ -21,7 +21,10 @@ pub struct SyncProgressNotification {
 pub enum AsyncNotification {
     RepoStatus(RepoStatusNotification),
     SyncProgress(SyncProgressNotification),
-    StarsUpdated { repo_id: String, stars: Option<u64> },
+    StarsUpdated {
+        repo_id: String,
+        stars: Option<u64>,
+    },
     VaultChanged,
     SkillRunFinished(crate::skill_runtime::ExecutionResult),
     WorkflowRunFinished {

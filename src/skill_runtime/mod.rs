@@ -102,8 +102,7 @@ impl SkillMeta {
             .and_then(|n| n.to_str())
             .unwrap_or("unknown-skill")
             .to_lowercase()
-            .replace('_', "-")
-            .replace(' ', "-")
+            .replace([' ', '_'], "-")
     }
 
     /// Default entry script path relative to the skill directory.

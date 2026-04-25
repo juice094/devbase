@@ -1,4 +1,4 @@
-use super::model::{StepDefinition, WorkflowDefinition};
+use super::model::WorkflowDefinition;
 use std::collections::{HashMap, HashSet};
 
 /// Validate a workflow definition.
@@ -58,10 +58,8 @@ fn detect_cycle(wf: &WorkflowDefinition) -> anyhow::Result<()> {
 
     for step in &wf.steps {
         let id = step.id.as_str();
-        if !visited.contains(id) {
-            if dfs(id, &adj, &mut visited, &mut rec_stack) {
-                return Err(anyhow::anyhow!("circular dependency detected in workflow"));
-            }
+        if !visited.contains(id) && dfs(id, &adj, &mut visited, &mut rec_stack) {
+            return Err(anyhow::anyhow!("circular dependency detected in workflow"));
         }
     }
     Ok(())
@@ -104,15 +102,13 @@ fn extract_step_refs(template: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::model::{ErrorPolicy, StepType};
+    use crate::workflow::model::{ErrorPolicy, StepDefinition, StepType};
     use std::collections::HashMap;
 
     fn dummy_step(id: &str, deps: Vec<&str>) -> StepDefinition {
         StepDefinition {
             id: id.to_string(),
-            step_type: StepType::Skill {
-                skill: "test".to_string(),
-            },
+            step_type: StepType::Skill { skill: "test".to_string() },
             inputs: HashMap::new(),
             depends_on: deps.into_iter().map(|s| s.to_string()).collect(),
             on_error: ErrorPolicy::Fail,

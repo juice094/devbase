@@ -1,5 +1,5 @@
 use super::model::{ExecutionStatus, WorkflowDefinition, WorkflowExecution};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 pub fn save_workflow(conn: &Connection, wf: &WorkflowDefinition) -> anyhow::Result<()> {
     let now = chrono::Utc::now().to_rfc3339();
@@ -19,9 +19,7 @@ pub fn save_workflow(conn: &Connection, wf: &WorkflowDefinition) -> anyhow::Resu
 }
 
 pub fn get_workflow(conn: &Connection, id: &str) -> anyhow::Result<Option<WorkflowDefinition>> {
-    let mut stmt = conn.prepare(
-        "SELECT definition_yaml FROM workflows WHERE id = ?1"
-    )?;
+    let mut stmt = conn.prepare("SELECT definition_yaml FROM workflows WHERE id = ?1")?;
     let mut rows = stmt.query_map([id], |row| {
         let yaml: String = row.get(0)?;
         Ok(yaml)
@@ -35,9 +33,7 @@ pub fn get_workflow(conn: &Connection, id: &str) -> anyhow::Result<Option<Workfl
 }
 
 pub fn list_workflows(conn: &Connection) -> anyhow::Result<Vec<(String, String, String)>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, name, version FROM workflows ORDER BY name"
-    )?;
+    let mut stmt = conn.prepare("SELECT id, name, version FROM workflows ORDER BY name")?;
     let rows = stmt.query_map([], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
     })?;
@@ -71,7 +67,10 @@ pub fn update_execution(
     duration_ms: Option<i64>,
 ) -> anyhow::Result<()> {
     let status_str = format!("{:?}", status);
-    let finished_at = if matches!(status, ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled) {
+    let finished_at = if matches!(
+        status,
+        ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled
+    ) {
         Some(chrono::Utc::now().to_rfc3339())
     } else {
         None
@@ -171,16 +170,16 @@ mod tests {
             description: None,
             inputs: vec![],
             outputs: vec![],
-            steps: vec![
-                StepDefinition {
-                    id: "step1".to_string(),
-                    step_type: StepType::Skill { skill: "nonexistent-skill".to_string() },
-                    inputs: HashMap::new(),
-                    depends_on: vec![],
-                    on_error: ErrorPolicy::Fail,
-                    timeout_seconds: None,
+            steps: vec![StepDefinition {
+                id: "step1".to_string(),
+                step_type: StepType::Skill {
+                    skill: "nonexistent-skill".to_string(),
                 },
-            ],
+                inputs: HashMap::new(),
+                depends_on: vec![],
+                on_error: ErrorPolicy::Fail,
+                timeout_seconds: None,
+            }],
             output_mapping: HashMap::new(),
         };
         validate_workflow(&wf).unwrap();

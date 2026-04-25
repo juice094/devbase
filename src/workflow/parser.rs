@@ -32,7 +32,6 @@ fn validate_workflow_id(id: &str) -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
-
     #[test]
     fn test_parse_basic_workflow() {
         let yaml = r#"

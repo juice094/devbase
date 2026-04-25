@@ -102,41 +102,50 @@ impl<'de> serde::Deserialize<'de> for StepType {
         D: serde::Deserializer<'de>,
     {
         let value = serde_yaml::Value::deserialize(deserializer)?;
-        let map = value.as_mapping().ok_or_else(|| serde::de::Error::custom("step must be a mapping"))?;
+        let map = value
+            .as_mapping()
+            .ok_or_else(|| serde::de::Error::custom("step must be a mapping"))?;
 
         // Prefer explicit 'type' for future-proof extensibility
         if let Some(type_val) = map.get("type") {
-            let type_str = type_val.as_str().ok_or_else(|| serde::de::Error::custom("step 'type' must be a string"))?;
+            let type_str = type_val
+                .as_str()
+                .ok_or_else(|| serde::de::Error::custom("step 'type' must be a string"))?;
             return match type_str {
                 "skill" => {
-                    let skill = map.get("skill")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| serde::de::Error::custom("skill step requires 'skill' field"))?;
+                    let skill = map.get("skill").and_then(|v| v.as_str()).ok_or_else(|| {
+                        serde::de::Error::custom("skill step requires 'skill' field")
+                    })?;
                     Ok(StepType::Skill { skill: skill.to_string() })
                 }
                 "subworkflow" | "workflow" => {
-                    let workflow = map.get("workflow")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| serde::de::Error::custom("subworkflow step requires 'workflow' field"))?;
+                    let workflow =
+                        map.get("workflow").and_then(|v| v.as_str()).ok_or_else(|| {
+                            serde::de::Error::custom("subworkflow step requires 'workflow' field")
+                        })?;
                     Ok(StepType::Subworkflow { workflow: workflow.to_string() })
                 }
                 "parallel" => {
-                    let parallel = map.get("parallel")
-                        .ok_or_else(|| serde::de::Error::custom("parallel step requires 'parallel' field"))?;
+                    let parallel = map.get("parallel").ok_or_else(|| {
+                        serde::de::Error::custom("parallel step requires 'parallel' field")
+                    })?;
                     let parallel: Vec<StepDefinition> = serde_yaml::from_value(parallel.clone())
-                        .map_err(|e| serde::de::Error::custom(format!("invalid parallel steps: {}", e)))?;
+                        .map_err(|e| {
+                            serde::de::Error::custom(format!("invalid parallel steps: {}", e))
+                        })?;
                     Ok(StepType::Parallel { parallel })
                 }
                 "condition" | "if" => {
-                    let r#if = map.get("if")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| serde::de::Error::custom("condition step requires 'if' field"))?;
+                    let r#if = map.get("if").and_then(|v| v.as_str()).ok_or_else(|| {
+                        serde::de::Error::custom("condition step requires 'if' field")
+                    })?;
                     Ok(StepType::Condition { r#if: r#if.to_string() })
                 }
                 "loop" | "for_each" => {
-                    let for_each = map.get("for_each")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| serde::de::Error::custom("loop step requires 'for_each' field"))?;
+                    let for_each =
+                        map.get("for_each").and_then(|v| v.as_str()).ok_or_else(|| {
+                            serde::de::Error::custom("loop step requires 'for_each' field")
+                        })?;
                     Ok(StepType::Loop { for_each: for_each.to_string() })
                 }
                 _ => Err(serde::de::Error::custom(format!("unknown step type: '{}'", type_str))),
@@ -145,38 +154,44 @@ impl<'de> serde::Deserialize<'de> for StepType {
 
         // Backward-compatible field-name inference (legacy YAML without 'type')
         if map.contains_key("skill") {
-            let skill = map.get("skill")
+            let skill = map
+                .get("skill")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| serde::de::Error::custom("skill step requires 'skill' string"))?;
             return Ok(StepType::Skill { skill: skill.to_string() });
         }
         if map.contains_key("workflow") {
-            let workflow = map.get("workflow")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("subworkflow step requires 'workflow' string"))?;
+            let workflow = map.get("workflow").and_then(|v| v.as_str()).ok_or_else(|| {
+                serde::de::Error::custom("subworkflow step requires 'workflow' string")
+            })?;
             return Ok(StepType::Subworkflow { workflow: workflow.to_string() });
         }
         if map.contains_key("parallel") {
-            let parallel = map.get("parallel")
-                .ok_or_else(|| serde::de::Error::custom("parallel step requires 'parallel' field"))?;
+            let parallel = map.get("parallel").ok_or_else(|| {
+                serde::de::Error::custom("parallel step requires 'parallel' field")
+            })?;
             let parallel: Vec<StepDefinition> = serde_yaml::from_value(parallel.clone())
                 .map_err(|e| serde::de::Error::custom(format!("invalid parallel steps: {}", e)))?;
             return Ok(StepType::Parallel { parallel });
         }
         if map.contains_key("if") {
-            let r#if = map.get("if")
+            let r#if = map
+                .get("if")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| serde::de::Error::custom("condition step requires 'if' string"))?;
             return Ok(StepType::Condition { r#if: r#if.to_string() });
         }
         if map.contains_key("for_each") {
-            let for_each = map.get("for_each")
+            let for_each = map
+                .get("for_each")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| serde::de::Error::custom("loop step requires 'for_each' string"))?;
             return Ok(StepType::Loop { for_each: for_each.to_string() });
         }
 
-        Err(serde::de::Error::custom("cannot infer step type: missing known fields (skill, workflow, parallel, if, for_each) or explicit 'type'"))
+        Err(serde::de::Error::custom(
+            "cannot infer step type: missing known fields (skill, workflow, parallel, if, for_each) or explicit 'type'",
+        ))
     }
 }
 

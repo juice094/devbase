@@ -13,11 +13,7 @@ pub fn parse_skill_md(path: &std::path::Path) -> anyhow::Result<SkillMeta> {
     } else {
         // No frontmatter: treat entire file as body with minimal defaults
         let id = id.clone();
-        let name = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or(&id)
-            .to_string();
+        let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or(&id).to_string();
         return Ok(SkillMeta {
             id: id.clone(),
             name: name.clone(),
@@ -138,8 +134,7 @@ fn parse_skill_frontmatter(raw: &str) -> SkillFrontmatter {
         }
 
         // YAML list item within a section
-        if trimmed.starts_with("- ") {
-            let item = &trimmed[2..];
+        if let Some(item) = trimmed.strip_prefix("- ") {
             match current_section {
                 Some("inputs") => {
                     // Flush previous input if we see a new "- name:" without closing the last one
@@ -405,7 +400,10 @@ This skill audits a Rust codebase...
         assert_eq!(skill.name, "embed-repo");
         assert_eq!(skill.version, "1.0.0");
         assert_eq!(skill.skill_type, super::SkillType::Builtin);
-        assert_eq!(skill.description, "Generate semantic embeddings for a repository's code symbols");
+        assert_eq!(
+            skill.description,
+            "Generate semantic embeddings for a repository's code symbols"
+        );
         assert_eq!(skill.tags, vec!["embedding", "semantic-search", "indexing"]);
         assert_eq!(skill.inputs.len(), 2);
         assert_eq!(skill.outputs.len(), 1);

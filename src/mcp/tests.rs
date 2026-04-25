@@ -255,8 +255,8 @@ async fn test_tools_call_devkit_skill_discover() {
     let text = content[0].get("text").unwrap().as_str().unwrap();
     let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
     assert_eq!(parsed.get("success").unwrap(), true);
-    assert!(parsed.get("id").unwrap().as_str().unwrap().len() > 0);
-    assert!(parsed.get("name").unwrap().as_str().unwrap().len() > 0);
+    assert!(!parsed.get("id").unwrap().as_str().unwrap().is_empty());
+    assert!(!parsed.get("name").unwrap().as_str().unwrap().is_empty());
     assert!(parsed.get("version").unwrap().as_str().is_some());
     assert!(parsed.get("category").is_some());
 }

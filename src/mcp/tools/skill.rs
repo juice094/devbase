@@ -37,10 +37,8 @@ Returns: JSON array of skills with id, name, version, type, description, tags, a
     }
 
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
-        let skill_type = args
-            .get("skill_type")
-            .and_then(|v| v.as_str())
-            .and_then(|s| s.parse().ok());
+        let skill_type =
+            args.get("skill_type").and_then(|v| v.as_str()).and_then(|s| s.parse().ok());
         let conn = crate::registry::WorkspaceRegistry::init_db()?;
         let skills = registry::list_skills(&conn, skill_type, None)?;
         let results: Vec<serde_json::Value> = skills
@@ -105,10 +103,7 @@ Returns: JSON array of matching skills."#,
             .get("query")
             .and_then(|v| v.as_str())
             .context("Missing required argument: query")?;
-        let limit = args
-            .get("limit")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(10) as usize;
+        let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(10) as usize;
         let conn = crate::registry::WorkspaceRegistry::init_db()?;
         let skills = registry::search_skills_text(&conn, query, limit, None)?;
         let results: Vec<serde_json::Value> = skills
@@ -256,10 +251,7 @@ Returns: JSON with status, stdout, stderr, exit_code, and duration_ms."#,
             .get("skill_id")
             .and_then(|v| v.as_str())
             .context("Missing required argument: skill_id")?;
-        let timeout = args
-            .get("timeout")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(30);
+        let timeout = args.get("timeout").and_then(|v| v.as_u64()).unwrap_or(30);
         let skill_args: Vec<String> = args
             .get("args")
             .and_then(|v| v.as_object())
@@ -274,7 +266,11 @@ Returns: JSON with status, stdout, stderr, exit_code, and duration_ms."#,
         let skill = registry::get_skill(&conn, skill_id)?
             .context(format!("Skill '{}' not found", skill_id))?;
 
-        let exec_id = registry::record_execution_start(&conn, skill_id, &serde_json::to_string(&skill_args).unwrap_or_default())?;
+        let exec_id = registry::record_execution_start(
+            &conn,
+            skill_id,
+            &serde_json::to_string(&skill_args).unwrap_or_default(),
+        )?;
 
         let result = tokio::task::spawn_blocking(move || {
             crate::skill_runtime::executor::run_skill(

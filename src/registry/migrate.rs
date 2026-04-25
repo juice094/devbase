@@ -633,10 +633,7 @@ impl WorkspaceRegistry {
                 "CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type)",
                 [],
             )?;
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name)",
-                [],
-            )?;
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name)", [])?;
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_entities_source ON entities(source_url)",
                 [],
@@ -668,11 +665,31 @@ impl WorkspaceRegistry {
             )?;
             // Seed default entity types for dual-write alignment
             let seed_types = [
-                ("repo", r#"{"fields":[{"name":"language","type":"string"},{"name":"discovered_at","type":"string"},{"name":"workspace_type","type":"string"},{"name":"data_tier","type":"string"},{"name":"stars","type":"integer"}]}"#, "Git repository discovered in workspace"),
-                ("skill", r#"{"fields":[{"name":"version","type":"string"},{"name":"author","type":"string"},{"name":"skill_type","type":"string"},{"name":"category","type":"string"},{"name":"entry_script","type":"string"},{"name":"inputs_schema","type":"string"},{"name":"outputs_schema","type":"string"},{"name":"dependencies","type":"string"},{"name":"success_rate","type":"real"},{"name":"usage_count","type":"integer"},{"name":"rating","type":"real"}]}"#, "Executable Skill packaged from a project"),
-                ("paper", r#"{"fields":[{"name":"authors","type":"string"},{"name":"venue","type":"string"},{"name":"year","type":"integer"},{"name":"pdf_path","type":"string"},{"name":"bibtex","type":"string"},{"name":"tags","type":"string"}]}"#, "Academic paper or publication"),
-                ("vault_note", r#"{"fields":[{"name":"path","type":"string"},{"name":"title","type":"string"},{"name":"frontmatter","type":"string"},{"name":"tags","type":"string"},{"name":"outgoing_links","type":"string"}]}"#, "Vault markdown note"),
-                ("workflow", r#"{"fields":[{"name":"definition_json","type":"string"},{"name":"status","type":"string"}]}"#, "Multi-Skill orchestration workflow"),
+                (
+                    "repo",
+                    r#"{"fields":[{"name":"language","type":"string"},{"name":"discovered_at","type":"string"},{"name":"workspace_type","type":"string"},{"name":"data_tier","type":"string"},{"name":"stars","type":"integer"}]}"#,
+                    "Git repository discovered in workspace",
+                ),
+                (
+                    "skill",
+                    r#"{"fields":[{"name":"version","type":"string"},{"name":"author","type":"string"},{"name":"skill_type","type":"string"},{"name":"category","type":"string"},{"name":"entry_script","type":"string"},{"name":"inputs_schema","type":"string"},{"name":"outputs_schema","type":"string"},{"name":"dependencies","type":"string"},{"name":"success_rate","type":"real"},{"name":"usage_count","type":"integer"},{"name":"rating","type":"real"}]}"#,
+                    "Executable Skill packaged from a project",
+                ),
+                (
+                    "paper",
+                    r#"{"fields":[{"name":"authors","type":"string"},{"name":"venue","type":"string"},{"name":"year","type":"integer"},{"name":"pdf_path","type":"string"},{"name":"bibtex","type":"string"},{"name":"tags","type":"string"}]}"#,
+                    "Academic paper or publication",
+                ),
+                (
+                    "vault_note",
+                    r#"{"fields":[{"name":"path","type":"string"},{"name":"title","type":"string"},{"name":"frontmatter","type":"string"},{"name":"tags","type":"string"},{"name":"outgoing_links","type":"string"}]}"#,
+                    "Vault markdown note",
+                ),
+                (
+                    "workflow",
+                    r#"{"fields":[{"name":"definition_json","type":"string"},{"name":"status","type":"string"}]}"#,
+                    "Multi-Skill orchestration workflow",
+                ),
             ];
             let now = chrono::Utc::now().to_rfc3339();
             for (name, schema, desc) in &seed_types {
@@ -682,8 +699,10 @@ impl WorkspaceRegistry {
                 )?;
             }
             // Migrate existing repos → entities (one-way seed)
-            let repo_count: i64 = conn.query_row("SELECT COUNT(*) FROM repos", [], |row| row.get(0))?;
-            let entity_count: i64 = conn.query_row("SELECT COUNT(*) FROM entities", [], |row| row.get(0))?;
+            let repo_count: i64 =
+                conn.query_row("SELECT COUNT(*) FROM repos", [], |row| row.get(0))?;
+            let entity_count: i64 =
+                conn.query_row("SELECT COUNT(*) FROM entities", [], |row| row.get(0))?;
             if repo_count > 0 && entity_count == 0 {
                 let mut stmt = conn.prepare(
                     "SELECT id, local_path, language, discovered_at, workspace_type, data_tier, last_synced_at, stars FROM repos"
@@ -701,7 +720,16 @@ impl WorkspaceRegistry {
                     ))
                 })?;
                 for row in rows {
-                    let (id, local_path, language, discovered_at, workspace_type, data_tier, last_synced_at, stars) = row?;
+                    let (
+                        id,
+                        local_path,
+                        language,
+                        discovered_at,
+                        workspace_type,
+                        data_tier,
+                        last_synced_at,
+                        stars,
+                    ) = row?;
                     let metadata = serde_json::json!({
                         "language": language,
                         "discovered_at": discovered_at,
@@ -717,7 +745,8 @@ impl WorkspaceRegistry {
                 }
             }
             // Migrate existing skills → entities
-            let skill_count: i64 = conn.query_row("SELECT COUNT(*) FROM skills", [], |row| row.get(0))?;
+            let skill_count: i64 =
+                conn.query_row("SELECT COUNT(*) FROM skills", [], |row| row.get(0))?;
             if skill_count > 0 && entity_count == 0 {
                 let mut stmt = conn.prepare(
                     "SELECT id, name, version, author, skill_type, local_path, entry_script, inputs_schema, outputs_schema, dependencies, installed_at, updated_at FROM skills"
@@ -739,7 +768,20 @@ impl WorkspaceRegistry {
                     ))
                 })?;
                 for row in rows {
-                    let (id, name, version, author, skill_type, local_path, entry_script, inputs_schema, outputs_schema, dependencies, installed_at, updated_at) = row?;
+                    let (
+                        id,
+                        name,
+                        version,
+                        author,
+                        skill_type,
+                        local_path,
+                        entry_script,
+                        inputs_schema,
+                        outputs_schema,
+                        dependencies,
+                        installed_at,
+                        updated_at,
+                    ) = row?;
                     let metadata = serde_json::json!({
                         "version": version,
                         "author": author,

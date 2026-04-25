@@ -18,20 +18,15 @@ use anyhow::Context;
 use std::path::{Path, PathBuf};
 
 /// Project type detected from manifest files.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum ProjectType {
     Rust,
     Node,
     Python,
     Go,
     Docker,
+    #[default]
     Generic,
-}
-
-impl Default for ProjectType {
-    fn default() -> Self {
-        ProjectType::Generic
-    }
 }
 
 /// Detected CLI/API surface of a project.
@@ -83,8 +78,10 @@ pub fn analyze_project(path: &Path) -> anyhow::Result<ProjectSurface> {
     let abs_path = std::fs::canonicalize(path)?;
 
     // Detection order: most specific to least specific
-    let mut surface = ProjectSurface::default();
-    surface.manifest_path = Some(abs_path.clone());
+    let mut surface = ProjectSurface {
+        manifest_path: Some(abs_path.clone()),
+        ..Default::default()
+    };
 
     if let Some(cargo) = try_read_cargo_toml(&abs_path)? {
         surface.project_type = ProjectType::Rust;
@@ -93,11 +90,15 @@ pub fn analyze_project(path: &Path) -> anyhow::Result<ProjectSurface> {
         surface.description = cargo.description;
         surface.authors = cargo.authors;
         surface.repo_url = cargo.repository;
-        surface.cli_commands = cargo.bin_targets.into_iter().map(|(name, desc)| CliCommand {
-            name,
-            description: desc,
-            args: vec![],
-        }).collect();
+        surface.cli_commands = cargo
+            .bin_targets
+            .into_iter()
+            .map(|(name, desc)| CliCommand {
+                name,
+                description: desc,
+                args: vec![],
+            })
+            .collect();
         surface.tags = vec!["rust".into()];
         if !surface.cli_commands.is_empty() {
             surface.tags.push("cli".into());
@@ -111,17 +112,21 @@ pub fn analyze_project(path: &Path) -> anyhow::Result<ProjectSurface> {
         surface.version = pkg.version;
         surface.description = pkg.description;
         surface.repo_url = pkg.repository;
-        surface.cli_commands = pkg.scripts.into_iter().map(|(name, cmd)| CliCommand {
-            name,
-            description: format!("npm/yarn script: {}", cmd),
-            args: vec![SkillInput {
-                name: "args".into(),
-                input_type: "string".into(),
-                description: "Additional arguments to pass".into(),
-                required: false,
-                default: None,
-            }],
-        }).collect();
+        surface.cli_commands = pkg
+            .scripts
+            .into_iter()
+            .map(|(name, cmd)| CliCommand {
+                name,
+                description: format!("npm/yarn script: {}", cmd),
+                args: vec![SkillInput {
+                    name: "args".into(),
+                    input_type: "string".into(),
+                    description: "Additional arguments to pass".into(),
+                    required: false,
+                    default: None,
+                }],
+            })
+            .collect();
         surface.tags = vec!["node".into(), "javascript".into()];
         if pkg.has_bin {
             surface.tags.push("cli".into());
@@ -135,17 +140,21 @@ pub fn analyze_project(path: &Path) -> anyhow::Result<ProjectSurface> {
         surface.version = py.version;
         surface.description = py.description;
         surface.repo_url = py.repository;
-        surface.cli_commands = py.scripts.into_iter().map(|(name, entry)| CliCommand {
-            name,
-            description: format!("Python console script: {}", entry),
-            args: vec![SkillInput {
-                name: "args".into(),
-                input_type: "string".into(),
-                description: "Command-line arguments".into(),
-                required: false,
-                default: None,
-            }],
-        }).collect();
+        surface.cli_commands = py
+            .scripts
+            .into_iter()
+            .map(|(name, entry)| CliCommand {
+                name,
+                description: format!("Python console script: {}", entry),
+                args: vec![SkillInput {
+                    name: "args".into(),
+                    input_type: "string".into(),
+                    description: "Command-line arguments".into(),
+                    required: false,
+                    default: None,
+                }],
+            })
+            .collect();
         surface.tags = vec!["python".into()];
         return Ok(surface);
     }
@@ -161,7 +170,8 @@ pub fn analyze_project(path: &Path) -> anyhow::Result<ProjectSurface> {
 
     if abs_path.join("Dockerfile").exists() || abs_path.join("docker-compose.yml").exists() {
         surface.project_type = ProjectType::Docker;
-        surface.name = abs_path.file_name()
+        surface.name = abs_path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("docker-project")
             .to_string();
@@ -173,10 +183,7 @@ pub fn analyze_project(path: &Path) -> anyhow::Result<ProjectSurface> {
 
     // Fallback: generic project
     surface.project_type = ProjectType::Generic;
-    surface.name = abs_path.file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("project")
-        .to_string();
+    surface.name = abs_path.file_name().and_then(|n| n.to_str()).unwrap_or("project").to_string();
     surface.version = "0.0.0".to_string();
     surface.description = try_read_readme_summary(&abs_path).unwrap_or_default();
     surface.tags = vec!["generic".into()];
@@ -196,7 +203,10 @@ pub fn generate_skill_md(surface: &ProjectSurface, skill_id: &str) -> String {
         lines.push(format!("author: {}", author));
     }
     if !surface.tags.is_empty() {
-        lines.push(format!("tags: [{}]", surface.tags.iter().map(|t| format!("'{}'", t)).collect::<Vec<_>>().join(", ")));
+        lines.push(format!(
+            "tags: [{}]",
+            surface.tags.iter().map(|t| format!("'{}'", t)).collect::<Vec<_>>().join(", ")
+        ));
     }
     lines.push("skill_type: custom".to_string());
     lines.push("entry_script: scripts/run.py".to_string());
@@ -238,7 +248,10 @@ pub fn generate_skill_md(surface: &ProjectSurface, skill_id: &str) -> String {
     lines.push(format!("# Skill: {}", surface.name));
     lines.push("".to_string());
     lines.push("## Overview".to_string());
-    lines.push(format!("This Skill was auto-discovered from a {} project.", project_type_name(&surface.project_type)));
+    lines.push(format!(
+        "This Skill was auto-discovered from a {} project.",
+        project_type_name(&surface.project_type)
+    ));
     lines.push("".to_string());
     if let Some(ref url) = surface.repo_url {
         lines.push(format!("- **Repository**: {}", url));
@@ -279,9 +292,9 @@ pub fn generate_entry_script(surface: &ProjectSurface, project_root: &Path) -> S
     script.push_str("import sys\n");
     script.push_str("import os\n");
     script.push_str("import subprocess\n");
-    script.push_str("\n");
+    script.push('\n');
     script.push_str(&format!("PROJECT_ROOT = '{}'\n", root_str));
-    script.push_str("\n");
+    script.push('\n');
     script.push_str("def main():\n");
     script.push_str("    # Read input from stdin or args\n");
     script.push_str("    if len(sys.argv) > 1:\n");
@@ -292,11 +305,11 @@ pub fn generate_entry_script(surface: &ProjectSurface, project_root: &Path) -> S
     script.push_str("    else:\n");
     script.push_str("        raw = sys.stdin.read()\n");
     script.push_str("        inp = json.loads(raw) if raw.strip() else {}\n");
-    script.push_str("\n");
+    script.push('\n');
     script.push_str("    command = inp.get('command', '')\n");
     script.push_str("    args = inp.get('args', '')\n");
     script.push_str("    project_root = inp.get('working_dir', PROJECT_ROOT)\n");
-    script.push_str("\n");
+    script.push('\n');
 
     // Project-type-specific execution logic
     match surface.project_type {
@@ -347,7 +360,7 @@ pub fn generate_entry_script(surface: &ProjectSurface, project_root: &Path) -> S
         }
     }
 
-    script.push_str("\n");
+    script.push('\n');
     script.push_str("    output = {\n");
     script.push_str("        'stdout': result.stdout,\n");
     script.push_str("        'stderr': result.stderr,\n");
@@ -355,7 +368,7 @@ pub fn generate_entry_script(surface: &ProjectSurface, project_root: &Path) -> S
     script.push_str("    }\n");
     script.push_str("    print(json.dumps(output, ensure_ascii=False))\n");
     script.push_str("    sys.exit(0 if result.returncode == 0 else 1)\n");
-    script.push_str("\n");
+    script.push('\n');
     script.push_str("if __name__ == '__main__':\n");
     script.push_str("    main()\n");
 
@@ -373,11 +386,14 @@ pub fn discover_and_install(
     let category = infer_category(&surface);
 
     let id = skill_id.map(|s| s.to_string()).unwrap_or_else(|| {
-        surface.name.to_lowercase().replace(' ', "-").replace('_', "-")
+        surface
+            .name
+            .chars()
+            .map(|c| if c == ' ' || c == '_' { '-' } else { c })
+            .collect()
     });
 
-    let skills_dir = crate::registry::WorkspaceRegistry::workspace_dir()?
-        .join("skills");
+    let skills_dir = crate::registry::WorkspaceRegistry::workspace_dir()?.join("skills");
     let skill_dir = skills_dir.join(&id);
 
     if !dry_run {
@@ -461,9 +477,21 @@ pub fn discover_and_install(
                 },
             ],
             outputs: vec![
-                SkillOutput { name: "stdout".into(), output_type: "string".into(), description: "Standard output".into() },
-                SkillOutput { name: "stderr".into(), output_type: "string".into(), description: "Standard error".into() },
-                SkillOutput { name: "exit_code".into(), output_type: "integer".into(), description: "Exit code".into() },
+                SkillOutput {
+                    name: "stdout".into(),
+                    output_type: "string".into(),
+                    description: "Standard output".into(),
+                },
+                SkillOutput {
+                    name: "stderr".into(),
+                    output_type: "string".into(),
+                    description: "Standard error".into(),
+                },
+                SkillOutput {
+                    name: "exit_code".into(),
+                    output_type: "integer".into(),
+                    description: "Exit code".into(),
+                },
             ],
             dependencies: vec![],
             embedding: None,
@@ -508,27 +536,19 @@ fn try_read_cargo_toml(path: &Path) -> anyhow::Result<Option<CargoToml>> {
     let doc: toml::Value = content.parse().context("parse Cargo.toml")?;
 
     let package = doc.get("package").and_then(|p| p.as_table());
-    let Some(pkg) = package else { return Ok(None); };
+    let Some(pkg) = package else {
+        return Ok(None);
+    };
 
-    let name = pkg.get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
-    let version = pkg.get("version")
-        .and_then(|v| v.as_str())
-        .unwrap_or("0.0.0")
-        .to_string();
-    let description = pkg.get("description")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let authors: Vec<String> = pkg.get("authors")
+    let name = pkg.get("name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+    let version = pkg.get("version").and_then(|v| v.as_str()).unwrap_or("0.0.0").to_string();
+    let description = pkg.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let authors: Vec<String> = pkg
+        .get("authors")
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
         .unwrap_or_default();
-    let repository = pkg.get("repository")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+    let repository = pkg.get("repository").and_then(|v| v.as_str()).map(|s| s.to_string());
 
     let mut bin_targets = Vec::new();
     if let Some(bins) = doc.get("bin").and_then(|b| b.as_array()) {
@@ -544,7 +564,14 @@ fn try_read_cargo_toml(path: &Path) -> anyhow::Result<Option<CargoToml>> {
         bin_targets.push((name.clone(), format!("Default binary: {}", name)));
     }
 
-    Ok(Some(CargoToml { name, version, description, authors, repository, bin_targets }))
+    Ok(Some(CargoToml {
+        name,
+        version,
+        description,
+        authors,
+        repository,
+        bin_targets,
+    }))
 }
 
 #[derive(Debug, Clone, Default)]
@@ -568,7 +595,8 @@ fn try_read_package_json(path: &Path) -> anyhow::Result<Option<PackageJson>> {
     let name = doc.get("name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
     let version = doc.get("version").and_then(|v| v.as_str()).unwrap_or("0.0.0").to_string();
     let description = doc.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let repository = doc.get("repository")
+    let repository = doc
+        .get("repository")
         .and_then(|v| v.as_str().or_else(|| v.get("url").and_then(|u| u.as_str())))
         .map(|s| s.to_string());
 
@@ -583,7 +611,14 @@ fn try_read_package_json(path: &Path) -> anyhow::Result<Option<PackageJson>> {
 
     let has_bin = doc.get("bin").is_some();
 
-    Ok(Some(PackageJson { name, version, description, repository, scripts, has_bin }))
+    Ok(Some(PackageJson {
+        name,
+        version,
+        description,
+        repository,
+        scripts,
+        has_bin,
+    }))
 }
 
 #[derive(Debug, Clone, Default)]
@@ -605,9 +640,12 @@ fn try_read_python_project(path: &Path) -> anyhow::Result<Option<PythonProject>>
         let project = doc.get("project").and_then(|p| p.as_table());
         if let Some(proj) = project {
             let name = proj.get("name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
-            let version = proj.get("version").and_then(|v| v.as_str()).unwrap_or("0.0.0").to_string();
-            let description = proj.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let repository = proj.get("urls")
+            let version =
+                proj.get("version").and_then(|v| v.as_str()).unwrap_or("0.0.0").to_string();
+            let description =
+                proj.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let repository = proj
+                .get("urls")
                 .and_then(|u| u.as_table())
                 .and_then(|t| t.get("Repository").or_else(|| t.get("repository")))
                 .and_then(|v| v.as_str())
@@ -622,7 +660,13 @@ fn try_read_python_project(path: &Path) -> anyhow::Result<Option<PythonProject>>
                 }
             }
 
-            return Ok(Some(PythonProject { name, version, description, repository, scripts }));
+            return Ok(Some(PythonProject {
+                name,
+                version,
+                description,
+                repository,
+                scripts,
+            }));
         }
     }
 
@@ -631,8 +675,10 @@ fn try_read_python_project(path: &Path) -> anyhow::Result<Option<PythonProject>>
     if setup_py.exists() {
         let content = std::fs::read_to_string(&setup_py)?;
         // Very naive extraction
-        let name = extract_setup_py_kwarg(&content, "name").unwrap_or_else(|| "unknown".to_string());
-        let version = extract_setup_py_kwarg(&content, "version").unwrap_or_else(|| "0.0.0".to_string());
+        let name =
+            extract_setup_py_kwarg(&content, "name").unwrap_or_else(|| "unknown".to_string());
+        let version =
+            extract_setup_py_kwarg(&content, "version").unwrap_or_else(|| "0.0.0".to_string());
         return Ok(Some(PythonProject {
             name,
             version,
@@ -676,9 +722,10 @@ fn try_read_go_mod(path: &Path) -> anyhow::Result<Option<GoMod>> {
     let content = std::fs::read_to_string(&go_mod)?;
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("module ") {
-            let name = trimmed[7..].trim().to_string();
-            return Ok(Some(GoMod { module_name: name }));
+        if let Some(name) = trimmed.strip_prefix("module ") {
+            return Ok(Some(GoMod {
+                module_name: name.trim().to_string(),
+            }));
         }
     }
     Ok(None)
@@ -687,14 +734,11 @@ fn try_read_go_mod(path: &Path) -> anyhow::Result<Option<GoMod>> {
 fn try_read_readme_summary(path: &Path) -> Option<String> {
     for name in &["README.md", "readme.md", "Readme.md"] {
         let readme = path.join(name);
-        if readme.exists() {
-            if let Ok(content) = std::fs::read_to_string(&readme) {
-                // First non-empty line after optional title
-                let summary = content.lines()
-                    .map(|l| l.trim())
-                    .find(|l| !l.is_empty() && !l.starts_with('#'));
-                return summary.map(|s| s.to_string());
-            }
+        if let Ok(content) = std::fs::read_to_string(&readme) {
+            // First non-empty line after optional title
+            let summary =
+                content.lines().map(|l| l.trim()).find(|l| !l.is_empty() && !l.starts_with('#'));
+            return summary.map(|s| s.to_string());
         }
     }
     None
@@ -722,7 +766,21 @@ fn infer_category(surface: &ProjectSurface) -> Option<String> {
     let _tags: Vec<String> = surface.tags.iter().map(|t| t.to_lowercase()).collect();
 
     // AI / ML
-    let ai_keywords = ["ai", "llm", "model", "gpt", "neural", "ml", "machine learning", "embedding", "vector", "rag", "agent", "claude", "openai"];
+    let ai_keywords = [
+        "ai",
+        "llm",
+        "model",
+        "gpt",
+        "neural",
+        "ml",
+        "machine learning",
+        "embedding",
+        "vector",
+        "rag",
+        "agent",
+        "claude",
+        "openai",
+    ];
     if ai_keywords.iter().any(|k| combined.contains(k)) {
         if combined.contains("agent") || combined.contains("orchestr") {
             return Some("ai/agent".to_string());
@@ -734,25 +792,65 @@ fn infer_category(surface: &ProjectSurface) -> Option<String> {
     }
 
     // Data
-    let data_keywords = ["data", "database", "sql", "etl", "pipeline", "csv", "json", "parquet", "analytics", "warehouse"];
+    let data_keywords = [
+        "data",
+        "database",
+        "sql",
+        "etl",
+        "pipeline",
+        "csv",
+        "json",
+        "parquet",
+        "analytics",
+        "warehouse",
+    ];
     if data_keywords.iter().any(|k| combined.contains(k)) {
         return Some("data".to_string());
     }
 
     // Infrastructure
-    let infra_keywords = ["infra", "server", "deploy", "docker", "kubernetes", "k8s", "cloud", "aws", "monitor", "logging", "observability"];
-    if infra_keywords.iter().any(|k| combined.contains(k)) || surface.project_type == ProjectType::Docker {
+    let infra_keywords = [
+        "infra",
+        "server",
+        "deploy",
+        "docker",
+        "kubernetes",
+        "k8s",
+        "cloud",
+        "aws",
+        "monitor",
+        "logging",
+        "observability",
+    ];
+    if infra_keywords.iter().any(|k| combined.contains(k))
+        || surface.project_type == ProjectType::Docker
+    {
         return Some("infra".to_string());
     }
 
     // Communication / Collaboration
-    let comm_keywords = ["chat", "message", "slack", "discord", "email", "notify", "alert", "gateway", "bridge", "protocol"];
+    let comm_keywords = [
+        "chat", "message", "slack", "discord", "email", "notify", "alert", "gateway", "bridge",
+        "protocol",
+    ];
     if comm_keywords.iter().any(|k| combined.contains(k)) {
         return Some("communication".to_string());
     }
 
     // Development (default fallback for most projects)
-    let dev_keywords = ["dev", "code", "lint", "format", "test", "build", "compiler", "ide", "editor", "git", "version control"];
+    let dev_keywords = [
+        "dev",
+        "code",
+        "lint",
+        "format",
+        "test",
+        "build",
+        "compiler",
+        "ide",
+        "editor",
+        "git",
+        "version control",
+    ];
     if dev_keywords.iter().any(|k| combined.contains(k)) {
         if surface.project_type == ProjectType::Rust || surface.project_type == ProjectType::Go {
             return Some("dev/toolchain".to_string());

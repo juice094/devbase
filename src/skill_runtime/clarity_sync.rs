@@ -1,10 +1,10 @@
 //! Sync devbase skills to Clarity plans.
 
-use std::path::Path;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// Clarity plan step.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,10 +54,13 @@ pub fn sync_skills_to_clarity(conn: &Connection, clarity_dir: &Path) -> Result<u
 
         // Conflict resolution: if plan exists, compare updated_at
         if plan_path.exists() {
-            let existing_content = std::fs::read_to_string(&plan_path)
-                .with_context(|| format!("Failed to read existing plan: {}", plan_path.display()))?;
-            let existing_plan: ClarityPlan = serde_json::from_str(&existing_content)
-                .with_context(|| format!("Failed to parse existing plan: {}", plan_path.display()))?;
+            let existing_content = std::fs::read_to_string(&plan_path).with_context(|| {
+                format!("Failed to read existing plan: {}", plan_path.display())
+            })?;
+            let existing_plan: ClarityPlan =
+                serde_json::from_str(&existing_content).with_context(|| {
+                    format!("Failed to parse existing plan: {}", plan_path.display())
+                })?;
 
             if let Some(existing_updated_str) = &existing_plan.updated_at {
                 if let Ok(existing_updated) = DateTime::parse_from_rfc3339(existing_updated_str) {
@@ -67,7 +70,9 @@ pub fn sync_skills_to_clarity(conn: &Connection, clarity_dir: &Path) -> Result<u
                         continue;
                     }
                 }
-            } else if let Ok(existing_created) = DateTime::parse_from_rfc3339(&existing_plan.created_at) {
+            } else if let Ok(existing_created) =
+                DateTime::parse_from_rfc3339(&existing_plan.created_at)
+            {
                 let existing_created = existing_created.with_timezone(&Utc);
                 if existing_created >= devbase_updated {
                     continue;
@@ -88,7 +93,7 @@ pub fn sync_skills_to_clarity(conn: &Connection, clarity_dir: &Path) -> Result<u
 
 fn fetch_skills_with_inputs(conn: &Connection) -> Result<Vec<SkillWithInputs>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, description, tags, inputs_schema, updated_at FROM skills ORDER BY name"
+        "SELECT id, name, description, tags, inputs_schema, updated_at FROM skills ORDER BY name",
     )?;
     let rows = stmt.query_map([], |row| {
         let updated_str: String = row.get(5)?;
@@ -110,7 +115,8 @@ fn fetch_skills_with_inputs(conn: &Connection) -> Result<Vec<SkillWithInputs>> {
 }
 
 fn skill_to_plan(skill: &SkillWithInputs) -> ClarityPlan {
-    let inputs: Vec<serde_json::Value> = serde_json::from_str(&skill.inputs_schema).unwrap_or_default();
+    let inputs: Vec<serde_json::Value> =
+        serde_json::from_str(&skill.inputs_schema).unwrap_or_default();
 
     let steps: Vec<ClarityPlanStep> = inputs
         .iter()
@@ -126,7 +132,7 @@ fn skill_to_plan(skill: &SkillWithInputs) -> ClarityPlan {
             } else {
                 format!("{}: {} ({})", name, desc, input_type)
             };
-            
+
             let step_desc = if required {
                 format!("{} [required]", step_desc)
             } else {
@@ -143,7 +149,7 @@ fn skill_to_plan(skill: &SkillWithInputs) -> ClarityPlan {
         .collect();
 
     let now = Utc::now().to_rfc3339();
-    
+
     let mut description = skill.description.clone();
     let tags = parse_tags_from_skill(&skill.tags);
     if !tags.is_empty() {
@@ -168,7 +174,11 @@ fn parse_tags_from_skill(tags_str: &str) -> Vec<String> {
     if tags_str.trim().starts_with('[') {
         serde_json::from_str(tags_str).unwrap_or_default()
     } else {
-        tags_str.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()
+        tags_str
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect()
     }
 }
 
@@ -176,7 +186,7 @@ fn parse_tags_from_skill(tags_str: &str) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::registry::WorkspaceRegistry;
-    use crate::skill_runtime::{SkillMeta, SkillType, SkillInput};
+    use crate::skill_runtime::{SkillInput, SkillMeta, SkillType};
     use chrono::Utc;
 
     #[test]
@@ -193,15 +203,13 @@ mod tests {
             category: None,
             skill_type: SkillType::Custom,
             local_path: std::path::PathBuf::from("/tmp/skills/test-skill"),
-            inputs: vec![
-                SkillInput {
-                    name: "path".to_string(),
-                    input_type: "string".to_string(),
-                    description: "Target path".to_string(),
-                    required: true,
-                    default: None,
-                }
-            ],
+            inputs: vec![SkillInput {
+                name: "path".to_string(),
+                input_type: "string".to_string(),
+                description: "Target path".to_string(),
+                required: true,
+                default: None,
+            }],
             outputs: vec![],
             dependencies: vec![],
             embedding: None,
@@ -275,7 +283,8 @@ mod tests {
         std::fs::write(
             plans_dir.join("conflict-test.json"),
             serde_json::to_string_pretty(&existing_plan).unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let count = sync_skills_to_clarity(&conn, clarity_dir).unwrap();
         assert_eq!(count, 0);
@@ -327,7 +336,8 @@ mod tests {
         std::fs::write(
             plans_dir.join("update-test.json"),
             serde_json::to_string_pretty(&existing_plan).unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let count = sync_skills_to_clarity(&conn, clarity_dir).unwrap();
         assert_eq!(count, 1);

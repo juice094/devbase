@@ -840,18 +840,24 @@ async fn main() -> anyhow::Result<()> {
                         if skills.is_empty() {
                             println!("No skills found.");
                         } else {
-                            println!("{:<24} {:<10} {:<12} {}", "ID", "Type", "Version", "Description");
+                            println!("{:<24} {:<10} {:<12} Description", "ID", "Type", "Version");
                             for s in &skills {
                                 println!(
                                     "{:<24} {:<10} {:<12} {}",
-                                    s.id, s.skill_type.as_str(), s.version, s.description
+                                    s.id,
+                                    s.skill_type.as_str(),
+                                    s.version,
+                                    s.description
                                 );
                             }
                         }
                     }
                 }
                 SkillCommands::Install { source, git } => {
-                    let is_git = git || source.starts_with("http://") || source.starts_with("https://") || source.starts_with("git@");
+                    let is_git = git
+                        || source.starts_with("http://")
+                        || source.starts_with("https://")
+                        || source.starts_with("git@");
                     let skill = if is_git {
                         let s = registry::install_skill_from_git(&conn, &source, None)?;
                         println!("Installed skill '{}' ({}) from {}", s.name, s.id, source);
@@ -873,7 +879,11 @@ async fn main() -> anyhow::Result<()> {
                         s
                     };
                     // Install dependencies
-                    match skill_runtime::dependency::install_missing_dependencies(&conn, &skill, Some(&source)) {
+                    match skill_runtime::dependency::install_missing_dependencies(
+                        &conn,
+                        &skill,
+                        Some(&source),
+                    ) {
                         Ok(deps) if !deps.is_empty() => {
                             println!("  Installed dependencies: {}", deps.join(", "));
                         }
@@ -904,7 +914,10 @@ async fn main() -> anyhow::Result<()> {
                                 println!("Author:      {}", s.author.as_deref().unwrap_or("-"));
                                 println!("Tags:        {}", s.tags.join(", "));
                                 println!("Path:        {}", s.local_path);
-                                println!("Installed:   {}", s.installed_at.format("%Y-%m-%d %H:%M:%S"));
+                                println!(
+                                    "Installed:   {}",
+                                    s.installed_at.format("%Y-%m-%d %H:%M:%S")
+                                );
                                 println!("Description: {}", s.description);
                             }
                         }
@@ -917,13 +930,24 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
-                SkillCommands::Search { query, semantic, category, limit, json } => {
+                SkillCommands::Search {
+                    query,
+                    semantic,
+                    category,
+                    limit,
+                    json,
+                } => {
                     let cat = category.as_deref();
                     let results = if semantic {
                         match crate::embedding::generate_query_embedding(&query) {
-                            Ok(embedding) => registry::search_skills_semantic(&conn, &embedding, limit, cat)?,
+                            Ok(embedding) => {
+                                registry::search_skills_semantic(&conn, &embedding, limit, cat)?
+                            }
                             Err(e) => {
-                                eprintln!("Warning: semantic search failed ({}), falling back to text.", e);
+                                eprintln!(
+                                    "Warning: semantic search failed ({}), falling back to text.",
+                                    e
+                                );
                                 registry::search_skills_text(&conn, &query, limit, cat)?
                             }
                         }
@@ -945,29 +969,50 @@ async fn main() -> anyhow::Result<()> {
                     match registry::get_skill(&conn, &skill_id)? {
                         Some(skill) => {
                             // Resolve and validate dependencies
-                            match skill_runtime::dependency::resolve_dependencies(&conn, &skill_id) {
+                            match skill_runtime::dependency::resolve_dependencies(&conn, &skill_id)
+                            {
                                 Ok(deps) => {
                                     if !deps.is_empty() && !json {
-                                        println!("Resolved {} dependency(ies): {}", deps.len(), deps.iter().map(|d| d.id.as_str()).collect::<Vec<_>>().join(", "));
+                                        println!(
+                                            "Resolved {} dependency(ies): {}",
+                                            deps.len(),
+                                            deps.iter()
+                                                .map(|d| d.id.as_str())
+                                                .collect::<Vec<_>>()
+                                                .join(", ")
+                                        );
                                     }
                                 }
                                 Err(e) => {
                                     if json {
-                                        println!("{{\"error\":\"Dependency resolution failed: {}\"}}", e);
+                                        println!(
+                                            "{{\"error\":\"Dependency resolution failed: {}\"}}",
+                                            e
+                                        );
                                     } else {
                                         eprintln!("Dependency resolution failed: {}", e);
                                     }
                                     std::process::exit(1);
                                 }
                             }
-                            let exec_id = registry::record_execution_start(&conn, &skill_id, &serde_json::to_string(&args).unwrap_or_default())?;
+                            let exec_id = registry::record_execution_start(
+                                &conn,
+                                &skill_id,
+                                &serde_json::to_string(&args).unwrap_or_default(),
+                            )?;
                             let result = skill_runtime::executor::run_skill(
-                                &skill, &args, std::time::Duration::from_secs(timeout),
+                                &skill,
+                                &args,
+                                std::time::Duration::from_secs(timeout),
                             )?;
                             registry::record_execution_finish(&conn, exec_id, &result)?;
                             // Auto-update skill scores after execution
-                            if let Ok(scores) = skill_runtime::scoring::calculate_skill_scores(&conn, &skill_id) {
-                                let _ = skill_runtime::scoring::update_skill_scores(&conn, &skill_id, &scores);
+                            if let Ok(scores) =
+                                skill_runtime::scoring::calculate_skill_scores(&conn, &skill_id)
+                            {
+                                let _ = skill_runtime::scoring::update_skill_scores(
+                                    &conn, &skill_id, &scores,
+                                );
                             }
                             if json {
                                 println!("{}", serde_json::to_string_pretty(&result)?);
@@ -1002,7 +1047,9 @@ async fn main() -> anyhow::Result<()> {
                             if !skill.outputs.is_empty() {
                                 println!("  Outputs: {}", skill.outputs.len());
                             }
-                            let missing = skill_runtime::dependency::validate_dependencies(&conn, &skill).unwrap_or_default();
+                            let missing =
+                                skill_runtime::dependency::validate_dependencies(&conn, &skill)
+                                    .unwrap_or_default();
                             if missing.is_empty() {
                                 println!("  Dependencies: satisfied");
                             } else {
@@ -1017,7 +1064,10 @@ async fn main() -> anyhow::Result<()> {
                 }
                 SkillCommands::Sync { target } => {
                     if target != "clarity" {
-                        eprintln!("Unsupported sync target: '{}'. Only 'clarity' is supported.", target);
+                        eprintln!(
+                            "Unsupported sync target: '{}'. Only 'clarity' is supported.",
+                            target
+                        );
                         std::process::exit(1);
                     }
                     let clarity_dir = std::path::PathBuf::from("C:\\Users\\22414\\.clarity");
@@ -1063,11 +1113,19 @@ async fn main() -> anyhow::Result<()> {
                         std::path::PathBuf::from(&path)
                     };
 
-                    match skill_runtime::discover::discover_and_install(&conn, &project_path, skill_id.as_deref(), dry_run) {
+                    match skill_runtime::discover::discover_and_install(
+                        &conn,
+                        &project_path,
+                        skill_id.as_deref(),
+                        dry_run,
+                    ) {
                         Ok(skill) => {
                             if json {
-                                println!("{{\"id\":\"{}\",\"name\":\"{}\",\"version\":\"{}\",\"description\":\"{}\",\"local_path\":\"{}\"}}",
-                                    skill.id, skill.name, skill.version,
+                                println!(
+                                    "{{\"id\":\"{}\",\"name\":\"{}\",\"version\":\"{}\",\"description\":\"{}\",\"local_path\":\"{}\"}}",
+                                    skill.id,
+                                    skill.name,
+                                    skill.version,
                                     skill.description.replace('"', "\\\""),
                                     skill.local_path.display()
                                 );
@@ -1075,7 +1133,10 @@ async fn main() -> anyhow::Result<()> {
                                 println!("Discovered Skill: {} ({})", skill.name, skill.id);
                                 println!("Version: {}", skill.version);
                                 println!("Description: {}", skill.description);
-                                println!("Entry script: {}", skill.entry_script.as_deref().unwrap_or("none"));
+                                println!(
+                                    "Entry script: {}",
+                                    skill.entry_script.as_deref().unwrap_or("none")
+                                );
                                 if dry_run {
                                     println!("\n(Dry-run: no files written or registry updated)");
                                 } else {
@@ -1089,6 +1150,38 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
+                SkillCommands::RecalcScores => {
+                    let updated = skill_runtime::scoring::recalculate_all_skill_scores(&conn)?;
+                    println!("Recalculated scores for {} skill(s).", updated);
+                }
+                SkillCommands::Top { limit } => {
+                    let top = skill_runtime::scoring::get_top_skills(&conn, limit)?;
+                    println!("Top {} skills:", top.len());
+                    for (i, s) in top.iter().enumerate() {
+                        println!(
+                            "  {}. {} — rating: {:.2}, success_rate: {:.1}%, usage: {}",
+                            i + 1,
+                            s.name,
+                            s.rating,
+                            s.success_rate * 100.0,
+                            s.usage_count
+                        );
+                    }
+                }
+                SkillCommands::Recommend { category, limit } => {
+                    let recs = skill_runtime::scoring::recommend_skills(
+                        &conn,
+                        category.as_deref(),
+                        limit,
+                    )?;
+                    println!("Recommended skills ({}):", recs.len());
+                    for s in &recs {
+                        println!(
+                            "  [{}] {} (v{}) — rating: {:.2}",
+                            s.id, s.name, s.version, s.rating
+                        );
+                    }
+                }
                 SkillCommands::Publish { path, dry_run } => {
                     let p = std::path::PathBuf::from(&path);
                     match skill_runtime::publish::validate_skill_for_publish(&p) {
@@ -1097,7 +1190,10 @@ async fn main() -> anyhow::Result<()> {
                             println!("Version: {}", v.version);
                             println!("Description: {}", v.description);
                             if v.is_git_repo {
-                                println!("Git repo: yes (branch: {})", v.git_branch.as_deref().unwrap_or("unknown"));
+                                println!(
+                                    "Git repo: yes (branch: {})",
+                                    v.git_branch.as_deref().unwrap_or("unknown")
+                                );
                                 if v.git_clean {
                                     println!("Git status: clean");
                                 } else {
@@ -1110,19 +1206,29 @@ async fn main() -> anyhow::Result<()> {
                                 println!("\nDry-run complete. No changes made.");
                             } else if v.git_clean && v.is_git_repo {
                                 let tag = format!("v{}", v.version);
-                                match skill_runtime::publish::create_version_tag(&p, &tag, &format!("Release {} {}", v.name, v.version)) {
+                                match skill_runtime::publish::create_version_tag(
+                                    &p,
+                                    &tag,
+                                    &format!("Release {} {}", v.name, v.version),
+                                ) {
                                     Ok(()) => {
                                         match skill_runtime::publish::push_tag_to_remote(&p, &tag) {
                                             Ok(()) => {
                                                 println!("\n✓ Created and pushed tag: {}", tag);
                                                 if skill_runtime::publish::has_gh_cli() {
-                                                    println!("  Tip: run `gh release create {}` to create a GitHub Release.", tag);
+                                                    println!(
+                                                        "  Tip: run `gh release create {}` to create a GitHub Release.",
+                                                        tag
+                                                    );
                                                 }
                                             }
                                             Err(e) => {
                                                 println!("\n✓ Created git tag: {}", tag);
                                                 println!("✗ Failed to push tag to remote: {}", e);
-                                                println!("  You can push manually with: git push origin {}", tag);
+                                                println!(
+                                                    "  You can push manually with: git push origin {}",
+                                                    tag
+                                                );
                                                 std::process::exit(1);
                                             }
                                         }
@@ -1133,7 +1239,9 @@ async fn main() -> anyhow::Result<()> {
                                     }
                                 }
                             } else {
-                                println!("\n✗ Cannot publish: working tree not clean or not a git repo.");
+                                println!(
+                                    "\n✗ Cannot publish: working tree not clean or not a git repo."
+                                );
                                 std::process::exit(1);
                             }
                         }
@@ -1198,22 +1306,47 @@ async fn main() -> anyhow::Result<()> {
                         if let Some((k, v)) = inp.split_once('=') {
                             input_map.insert(k.to_string(), v.to_string());
                         } else {
-                            return Err(anyhow::anyhow!("Invalid input format: '{}'. Expected key=value", inp));
+                            return Err(anyhow::anyhow!(
+                                "Invalid input format: '{}'. Expected key=value",
+                                inp
+                            ));
                         }
                     }
-                    let exec_id = crate::workflow::create_execution(&conn, &workflow_id, &serde_json::to_string(&input_map)?)?;
-                    crate::workflow::update_execution(&conn, exec_id, &crate::workflow::ExecutionStatus::Running, None, None)?;
+                    let exec_id = crate::workflow::create_execution(
+                        &conn,
+                        &workflow_id,
+                        &serde_json::to_string(&input_map)?,
+                    )?;
+                    crate::workflow::update_execution(
+                        &conn,
+                        exec_id,
+                        &crate::workflow::ExecutionStatus::Running,
+                        None,
+                        None,
+                    )?;
                     println!("Running workflow '{}' (execution #{})...", workflow_id, exec_id);
                     match crate::workflow::execute_workflow(&conn, &wf, input_map) {
                         Ok(results) => {
-                            crate::workflow::update_execution(&conn, exec_id, &crate::workflow::ExecutionStatus::Completed, None, None)?;
+                            crate::workflow::update_execution(
+                                &conn,
+                                exec_id,
+                                &crate::workflow::ExecutionStatus::Completed,
+                                None,
+                                None,
+                            )?;
                             println!("\nWorkflow completed successfully.");
                             for (step_id, result) in &results {
                                 println!("  [{}] {:?}", step_id, result.status);
                             }
                         }
                         Err(e) => {
-                            crate::workflow::update_execution(&conn, exec_id, &crate::workflow::ExecutionStatus::Failed, None, None)?;
+                            crate::workflow::update_execution(
+                                &conn,
+                                exec_id,
+                                &crate::workflow::ExecutionStatus::Failed,
+                                None,
+                                None,
+                            )?;
                             println!("\nWorkflow failed: {}", e);
                             std::process::exit(1);
                         }
@@ -1232,5 +1365,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-
-
