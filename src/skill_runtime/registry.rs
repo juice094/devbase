@@ -4,6 +4,57 @@ use super::{
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};
 
+/// Clone a skill from a Git URL and install it into the devbase skills directory.
+pub fn install_skill_from_git(
+    conn: &Connection,
+    git_url: &str,
+    skill_id: Option<&str>,
+) -> anyhow::Result<SkillMeta> {
+    let skills_dir = crate::registry::WorkspaceRegistry::workspace_dir()?
+        .join("skills");
+    std::fs::create_dir_all(&skills_dir)?;
+
+    // Derive skill ID from URL or provided name
+    let id = skill_id.map(|s| s.to_string()).unwrap_or_else(|| {
+        git_url
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or("skill")
+            .trim_end_matches(".git")
+            .to_lowercase()
+            .replace('_', "-")
+    });
+
+    let target_dir = skills_dir.join(&id);
+
+    // Remove existing directory if present
+    if target_dir.exists() {
+        std::fs::remove_dir_all(&target_dir)?;
+    }
+
+    // Clone repository
+    git2::Repository::clone(git_url, &target_dir)
+        .map_err(|e| anyhow::anyhow!("Git clone failed: {}", e))?;
+
+    // Parse SKILL.md
+    let skill_md = target_dir.join("SKILL.md");
+    if !skill_md.exists() {
+        return Err(anyhow::anyhow!(
+            "Cloned repository does not contain SKILL.md at: {}",
+            skill_md.display()
+        ));
+    }
+
+    let mut skill = crate::skill_runtime::parser::parse_skill_md(&skill_md)?;
+    skill.id = id;
+    skill.local_path = target_dir;
+    skill.skill_type = SkillType::Custom;
+
+    install_skill(conn, &skill)?;
+    Ok(skill)
+}
+
 /// Install or update a skill in the registry from a parsed `SkillMeta`.
 pub fn install_skill(conn: &Connection, skill: &SkillMeta) -> anyhow::Result<()> {
     let inputs_json = serde_json::to_string(&skill.inputs).unwrap_or_else(|_| "[]".to_string());

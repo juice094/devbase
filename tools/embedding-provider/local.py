@@ -123,8 +123,8 @@ def main() -> int:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=256,
-        help="Symbols per batch for encoding (default: 256)",
+        default=1024,
+        help="Symbols per batch for encoding (default: 1024)",
     )
     parser.add_argument(
         "--force",

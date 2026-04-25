@@ -178,10 +178,13 @@ enum SkillCommands {
         #[arg(long)]
         json: bool,
     },
-    /// Install a skill from a local path
+    /// Install a skill from a local path or Git URL
     Install {
-        /// Path to the skill directory (must contain SKILL.md)
-        path: String,
+        /// Path to the skill directory or Git URL (must contain SKILL.md)
+        source: String,
+        /// Force treating source as a Git URL
+        #[arg(long)]
+        git: bool,
     },
     /// Uninstall a skill
     Uninstall {
@@ -751,20 +754,26 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
-                SkillCommands::Install { path } => {
-                    let p = std::path::PathBuf::from(&path);
-                    let skill_md = if p.is_dir() {
-                        p.join("SKILL.md")
+                SkillCommands::Install { source, git } => {
+                    let is_git = git || source.starts_with("http://") || source.starts_with("https://") || source.starts_with("git@");
+                    if is_git {
+                        let skill = registry::install_skill_from_git(&conn, &source, None)?;
+                        println!("Installed skill '{}' ({}) from {}", skill.name, skill.id, source);
                     } else {
-                        p.clone()
-                    };
-                    if !skill_md.exists() {
-                        println!("SKILL.md not found at: {}", skill_md.display());
-                        return Ok(());
+                        let p = std::path::PathBuf::from(&source);
+                        let skill_md = if p.is_dir() {
+                            p.join("SKILL.md")
+                        } else {
+                            p.clone()
+                        };
+                        if !skill_md.exists() {
+                            println!("SKILL.md not found at: {}", skill_md.display());
+                            return Ok(());
+                        }
+                        let skill = parser::parse_skill_md(&skill_md)?;
+                        registry::install_skill(&conn, &skill)?;
+                        println!("Installed skill '{}' ({})", skill.name, skill.id);
                     }
-                    let skill = parser::parse_skill_md(&skill_md)?;
-                    registry::install_skill(&conn, &skill)?;
-                    println!("Installed skill '{}' ({})", skill.name, skill.id);
                 }
                 SkillCommands::Uninstall { skill_id } => {
                     let removed = registry::uninstall_skill(&conn, &skill_id)?;
