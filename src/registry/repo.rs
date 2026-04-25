@@ -178,6 +178,8 @@ impl WorkspaceRegistry {
                 ],
             )?;
         }
+        // Dual-write: sync to unified entities table
+        sync_repo_to_entities_by_id(&tx, &repo.id)?;
         tx.commit()?;
         Ok(())
     }
@@ -187,10 +189,13 @@ impl WorkspaceRegistry {
         repo_id: &str,
         language: Option<&str>,
     ) -> anyhow::Result<()> {
-        conn.execute(
+        let tx = conn.unchecked_transaction()?;
+        tx.execute(
             "UPDATE repos SET language = ?1 WHERE id = ?2",
             rusqlite::params![language, repo_id],
         )?;
+        sync_repo_to_entities_by_id(&tx, repo_id)?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -199,10 +204,13 @@ impl WorkspaceRegistry {
         repo_id: &str,
         tier: &str,
     ) -> anyhow::Result<()> {
-        conn.execute(
+        let tx = conn.unchecked_transaction()?;
+        tx.execute(
             "UPDATE repos SET data_tier = ?1 WHERE id = ?2",
             rusqlite::params![tier, repo_id],
         )?;
+        sync_repo_to_entities_by_id(&tx, repo_id)?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -211,10 +219,13 @@ impl WorkspaceRegistry {
         repo_id: &str,
         workspace_type: &str,
     ) -> anyhow::Result<()> {
-        conn.execute(
+        let tx = conn.unchecked_transaction()?;
+        tx.execute(
             "UPDATE repos SET workspace_type = ?1 WHERE id = ?2",
             rusqlite::params![workspace_type, repo_id],
         )?;
+        sync_repo_to_entities_by_id(&tx, repo_id)?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -224,10 +235,13 @@ impl WorkspaceRegistry {
         repo_id: &str,
         timestamp: DateTime<Utc>,
     ) -> anyhow::Result<()> {
-        conn.execute(
+        let tx = conn.unchecked_transaction()?;
+        tx.execute(
             "UPDATE repos SET last_synced_at = ?1 WHERE id = ?2",
             rusqlite::params![timestamp.to_rfc3339(), repo_id],
         )?;
+        sync_repo_to_entities_by_id(&tx, repo_id)?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -247,6 +261,60 @@ impl WorkspaceRegistry {
         )?;
         Self::collect_repos_from_stmt(stmt, &[&tier])
     }
+}
+
+/// Dual-write helper: mirror a repo row into the unified entities table.
+fn sync_repo_to_entities_by_id(
+    conn: &rusqlite::Connection,
+    repo_id: &str,
+) -> anyhow::Result<()> {
+    let row = conn.query_row(
+        "SELECT id, local_path, language, discovered_at, workspace_type, data_tier, last_synced_at, stars,
+         (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id)
+         FROM repos r WHERE r.id = ?1",
+        [repo_id],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<i64>>(7)?,
+                row.get::<_, Option<String>>(8)?,
+            ))
+        },
+    )?;
+    let (id, local_path, language, discovered_at, workspace_type, data_tier, last_synced_at, stars, tags) = row;
+    let metadata = serde_json::json!({
+        "language": language,
+        "discovered_at": discovered_at,
+        "workspace_type": workspace_type,
+        "data_tier": data_tier,
+        "stars": stars,
+        "last_synced_at": last_synced_at,
+        "tags": tags,
+    });
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO entities (id, entity_type, name, source_url, local_path, metadata, created_at, updated_at)
+         VALUES (?1, 'repo', ?2, NULL, ?3, ?4, ?5, ?5)
+         ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            local_path = excluded.local_path,
+            metadata = excluded.metadata,
+            updated_at = excluded.updated_at",
+        rusqlite::params![
+            format!("repo:{}", id),
+            &id,
+            local_path,
+            metadata.to_string(),
+            &now,
+        ],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
