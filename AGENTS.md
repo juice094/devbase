@@ -3,7 +3,7 @@
 `devbase` 是本地优先的 AI Skill 编排基础设施。
 
 - **当前阶段**：阶段二 — AI Skill 编排基础设施（v0.8.0-alpha 进行中）
-- **当前版本**：v0.8.0-alpha
+- **当前版本**：v0.8.0
 - **下一里程碑**：v0.9.0（NLQ 结果可执行 + Loop Step + L0-L4 知识模型）
 - **核心方向**：将 GitHub 项目转换为标准化、可发现、可组合的 Skill，供弱 AI 子代理执行
 - **设计文档**：
@@ -19,7 +19,7 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
   - `assets/` —— 二进制资源
 - **MCP Server**：stdio only（SSE 开发中），**35 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：266 passed / 0 failed / 3 ignored
+- **当前测试**：267 passed / 0 failed / 3 ignored
 - **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
 - **Workflow Engine**：YAML 解析 + 拓扑调度 + batch 并行执行 + 5 种 step 类型（skill/subworkflow/parallel/condition/loop）
 - **NLQ 自然语言查询**：TUI `[:]` 触发 embedding 语义搜索，fallback 降级文本搜索
@@ -173,6 +173,10 @@ devbase 承载外部资源调度的抽象接口：
 | Wave 27 | Mind Market 评分 v0.6.0 | ✅ 已完成 | `success_rate`/`usage_count`/`rating` + `recalc-scores`/`top`/`recommend` |
 | Wave 28 | 7 个风险点修复 v0.7.1 | ✅ 已完成 | EnvGuard、NLQ fallback、StepType 显式标签、跨平台解释器探测 |
 | Wave 29 | Workflow 子类型执行 v0.8.0 | ✅ 已完成 | Subworkflow 递归 + Parallel 聚合 + Condition 表达式求值 |
+| Wave 30 | 生产代码 unwrap 清零 | ✅ 已完成 | 29 个生产代码 unwrap → 0，`cargo clippy -D warnings` 全绿 |
+| Wave 31 | NLQ 结果可执行 v0.8.1 | ✅ 已完成 | `[:]` 搜索结果按 Enter 直接运行 skill，event+state+render 三文件修改 |
+| Wave 32 | NLQ  smoke test | ✅ 已完成 | `run_nlp_selected_skill` 空列表/无技能/执行管道测试，267 tests passed |
+| Wave 33 | TUI SkillPanel 拆分 | ✅ 已完成 | 7 个 skill 字段提取到 `SkillPanelState`，App 51→44 字段 |
 
 ### 明确不做（已排除）
 
