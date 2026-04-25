@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_TARGET_DIR: D:\cargo-target
 
 jobs:
   check:
@@ -21,14 +22,22 @@ jobs:
         run: |
           Set-MpPreference -DisableRealtimeMonitoring $true
           Write-Host "Defender real-time monitoring disabled"
+      - name: Redirect devbase data dir to D: drive
+        shell: powershell
+        run: |
+          $localData = "$env:LOCALAPPDATA\devbase"
+          $tempData = "D:\devbase-ci-data"
+          if (Test-Path $localData) { Remove-Item -Recurse -Force $localData }
+          New-Item -ItemType Directory -Force -Path $tempData | Out-Null
+          cmd /c mklink /D "$localData" "$tempData"
+          Write-Host "Linked $localData -> $tempData"
       - name: Diagnostics
         shell: powershell
         run: |
           rustc --version
           cargo --version
           Write-Host "LOCALAPPDATA: $env:LOCALAPPDATA"
-          Write-Host "USERPROFILE: $env:USERPROFILE"
-          Write-Host "TEMP: $env:TEMP"
+          Write-Host "CARGO_TARGET_DIR: $env:CARGO_TARGET_DIR"
       - run: cargo check --all-targets
 
   test:
@@ -42,14 +51,22 @@ jobs:
         run: |
           Set-MpPreference -DisableRealtimeMonitoring $true
           Write-Host "Defender real-time monitoring disabled"
+      - name: Redirect devbase data dir to D: drive
+        shell: powershell
+        run: |
+          $localData = "$env:LOCALAPPDATA\devbase"
+          $tempData = "D:\devbase-ci-data"
+          if (Test-Path $localData) { Remove-Item -Recurse -Force $localData }
+          New-Item -ItemType Directory -Force -Path $tempData | Out-Null
+          cmd /c mklink /D "$localData" "$tempData"
+          Write-Host "Linked $localData -> $tempData"
       - name: Diagnostics
         shell: powershell
         run: |
           rustc --version
           cargo --version
           Write-Host "LOCALAPPDATA: $env:LOCALAPPDATA"
-          Write-Host "USERPROFILE: $env:USERPROFILE"
-          Write-Host "TEMP: $env:TEMP"
+          Write-Host "CARGO_TARGET_DIR: $env:CARGO_TARGET_DIR"
       - run: cargo test --lib -- --test-threads=1 --nocapture
 
   fmt:
@@ -80,10 +97,19 @@ jobs:
         run: |
           Set-MpPreference -DisableRealtimeMonitoring $true
           Write-Host "Defender real-time monitoring disabled"
+      - name: Redirect devbase data dir to D: drive
+        shell: powershell
+        run: |
+          $localData = "$env:LOCALAPPDATA\devbase"
+          $tempData = "D:\devbase-ci-data"
+          if (Test-Path $localData) { Remove-Item -Recurse -Force $localData }
+          New-Item -ItemType Directory -Force -Path $tempData | Out-Null
+          cmd /c mklink /D "$localData" "$tempData"
+          Write-Host "Linked $localData -> $tempData"
       - name: Diagnostics
         shell: powershell
         run: |
           rustc --version
           cargo --version
           cargo clippy --version
-      - run: cargo clippy --all-targets -- -W warnings
+      - run: cargo clippy --all-targets --verbose -- -W warnings
