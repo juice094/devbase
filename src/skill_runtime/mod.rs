@@ -1,3 +1,4 @@
+pub mod clarity_sync;
 pub mod executor;
 pub mod parser;
 pub mod publish;

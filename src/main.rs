@@ -241,6 +241,12 @@ enum SkillCommands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Sync skills to an external target (e.g. clarity)
+    Sync {
+        /// Target system to sync to
+        #[arg(long)]
+        target: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -894,6 +900,24 @@ async fn main() -> anyhow::Result<()> {
                         }
                         Err(e) => {
                             println!("✗ Invalid SKILL.md: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                SkillCommands::Sync { target } => {
+                    if target != "clarity" {
+                        eprintln!("Unsupported sync target: '{}'. Only 'clarity' is supported.", target);
+                        std::process::exit(1);
+                    }
+                    let clarity_dir = std::path::PathBuf::from("C:\\Users\\22414\\.clarity");
+                    if !clarity_dir.exists() {
+                        eprintln!("Clarity directory not found: {}", clarity_dir.display());
+                        std::process::exit(1);
+                    }
+                    match skill_runtime::clarity_sync::sync_skills_to_clarity(&conn, &clarity_dir) {
+                        Ok(count) => println!("Synced {} skill(s) to Clarity.", count),
+                        Err(e) => {
+                            eprintln!("Skill sync failed: {}", e);
                             std::process::exit(1);
                         }
                     }
