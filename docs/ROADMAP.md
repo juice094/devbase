@@ -4,44 +4,39 @@
 > 
 > **最后更新**：2026-04-25
 > 
-> **版本状态**：`0.2.4` → 下一里程碑 `0.3.0`（首个产品化发布）
+> **版本状态**：`0.3.0` 已发布 → 下一里程碑 `0.4.0`（个人知识库跃迁）
 
 ---
 
-## 阶段一：产品化闭环（v0.3.0）
+## 阶段一：产品化闭环（v0.3.0）— ✅ 已完成
 
 **核心原则：功能冻结。不修 bug、不补文档之外的一切代码。**
 
-### 验收标准（全部达成方可打标 v0.3.0）
+### 验收标准
 
-| # | 标准 | 状态 | 说明 |
-|---|------|------|------|
-| 1 | 34 MCP tools 全量通过 MCP Inspector | 🟡 待验证 | stdio 模式全覆盖；SSE 移出本阶段 |
-| 2 | README Quick Start 三步内跑通 | 🟡 待验证 | `install` → `scan` → `tui` 无报错 |
-| 3 | 无"计划中"残留文档 | 🟡 进行中 | 清理 roadmap-2026.md 等过期计划 |
-| 4 | CONTRIBUTING.md + ARCHITECTURE.md + AGENTS.md 闭环 | ✅ 已完成 | 开发者 onboarding 已就位 |
-| 5 | `cargo test --all-targets` 全绿 + `cargo clippy -D warnings` 零警告 | ✅ 已完成 | 239 passed / 0 failed / 3 ignored |
-| 6 | 三平台 CI 通过（Windows/Linux/macOS） | 🟡 待确认 | 当前仅 Windows CI 活跃 |
+| # | 标准 | 状态 |
+|---|------|------|
+| 1 | 34 MCP tools 全量通过 MCP Inspector | ✅ `cargo test --lib mcp` 14 passed |
+| 2 | README Quick Start 三步内跑通 | ✅ 已走查，移除虚假声明 |
+| 3 | 无"计划中"残留文档 | ✅ roadmap-2026.md 已归档 |
+| 4 | CONTRIBUTING.md + ARCHITECTURE.md + AGENTS.md 闭环 | ✅ |
+| 5 | Tests 全绿 + Clippy 零警告 | ✅ 239 passed / 0 failed / 3 ignored |
+| 6 | GitHub Release 预编译二进制 | ✅ `devbase.exe` 22.6 MB 已上传 |
 
-### 阶段一剩余工作清单
+**Release**: https://github.com/juice094/devbase/releases/tag/v0.3.0
 
-**文档**
-- [ ] 验证 34 tools 通过 MCP Inspector（stdio）
-- [ ] README Quick Start 端到端走查（新机器、空 registry）
-- [ ] 归档过期计划文件（`plans/roadmap-2026.md` 等）
-- [ ] 撰写 v0.3.0 Release Notes
+### 明确不做（Deferred）
 
-**Bugfix**
-- [ ] 修复 `tokei` RUSTSEC-2020-0163 上游警告（或标记为 acceptable）
-- [ ] 确认 Linux/macOS 编译无平台相关问题
-
-**分发**
-- [ ] GitHub Release 预编译二进制（Windows x64 / Linux x64 / macOS x64+ARM）
-- [ ] `cargo install devbase` 发布到 crates.io（可选）
-- [ ] 一键安装脚本（PowerShell / Bash）
-
-**Wave 19 收尾（已实现）**
-- [x] TUI Skill Panel（`k` 键进入 Skill 列表 → 详情 → 执行 → 结果）— commit `65bf15d`
+| 功能 | 原因 | 预计阶段 |
+|------|------|---------|
+| SSE transport | 未实现，无 ETA | 阶段二或更晚 |
+| 跨仓库搜索 (`/`) | TUI grep，新功能 | 阶段二 |
+| Stars 趋势可视化 | 新功能，非阻塞 | 阶段二 |
+| 自然语言查询 | 新功能，非阻塞 | 阶段二 |
+| 智能同步建议 | 新功能，非阻塞 | 阶段二 |
+| Skill 市场 / Registry 服务 | 需社区规模支撑 | 阶段二 |
+| 跨设备注册表同步 | 依赖 syncthing-rust | 阶段二 |
+| 架构拆分为多 crate | 22.7 KLOC 单 crate 仍最优 | 50+ tools 或编译 > 60s 时 |
 
 ### 明确不做（Deferred）
 
@@ -58,29 +53,42 @@
 
 ---
 
-## 阶段二：协议层跃迁（v0.4.0+）
+## 阶段二：个人知识库跃迁（v0.4.0）— 进行中
 
-**触发条件：v0.3.0 已发布且稳定运行。**
+**方向调整**：放弃"协议标准权/商业化"的宏大叙事，转向**"个人外置大脑"**——解决你自己的真实痛点。
 
-阶段二不是需要"外部许可"才能启动的宏大叙事，而是 **v0.3.0 发布后的自然下一步**。外部指标（Star 数、IDE 收录、付费意愿）**仅作为参考**，用于调整阶段二的具体优先级，而非准入门槛。
+> 你有 50 个 AI 项目参考库，但 devbase 只能回答 `lang:rust`，无法回答"和 clarity 相似的项目有哪些"。
 
-### 里程碑
+### 核心文档
 
-| 优先级 | 里程碑 | 交付物 |
-|--------|--------|--------|
-| P0 | SSE transport | `run_sse()` + HTTP 流式传输 |
-| P0 | `.devbase` 目录规范 v1.0 | 配置文件、缓存、索引的标准化目录结构 |
-| P1 | IDE 集成申请 | Cursor / Claude Desktop / 5ire 的配置模板 + 申请提交 |
-| P1 | MCP 协议扩展提案 | 针对"本地仓库上下文"的标准化接口提案 |
-| P2 | 社区自治 | CONTRIBUTING.md 已就位；阶段二视反馈决定是否拆分核心 crate |
-| P2 | 商业化验证 | 团队级知识库同步托管版 PoC |
+[`docs/plans/personal-knowledge-graph.md`](plans/personal-knowledge-graph.md) — 完整设计。
 
-### 降级方案
+### 波次规划
 
-若 v0.3.0 发布后市场反馈冷淡：
-- **阶段二收缩**为"细分场景深度优化"（TUI grep、Stars 趋势、性能优化）
-- **不强行推进**协议标准权、社区扩张、商业化
-- **保持节奏**：每 2-4 周一个小版本，持续打磨核心体验
+| 波次 | 主题 | 交付物 | 预计 |
+|------|------|--------|------|
+| Wave 21 | Repo 画像 | Schema v16 + README/Cargo.toml 解析器 + `devbase profile` | 1 天 |
+| Wave 22 | 相似度计算 | `repo_embeddings` + `devbase similar` + `devbase stack` | 1 天 |
+| Wave 23 | 对比与笔记 | `devbase compare` + `devbase why` + `.devbase/notes.md` | 1 天 |
+| Wave 24 | TUI 知识面板 | DetailTab::Knowledge + NL 查询 | 1-2 天 |
+
+### 核心 CLI
+
+```bash
+devbase similar clarity        # 相似仓库排序（zeroclaw 预计第一）
+devbase compare clarity zeroclaw  # 技术栈对比报告
+devbase why zeroclaw           # 显示"为什么 clone"笔记
+devbase stack ratatui          # 使用 ratatui 的所有仓库
+devbase query "rust llm provider" # 自然语言查询
+```
+
+### 不做（明确排除）
+
+- ❌ SSE transport（stdio 已足够）
+- ❌ `.devbase` 目录规范（无外部采纳者）
+- ❌ MCP 协议扩展提案（Star = 0，不会被采纳）
+- ❌ 商业化 / 付费版
+- ❌ 拆分 crate
 
 ---
 
