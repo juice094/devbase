@@ -80,6 +80,7 @@ pub enum McpToolEnum {
     SkillList(DevkitSkillListTool),
     SkillSearch(DevkitSkillSearchTool),
     SkillRun(DevkitSkillRunTool),
+    SkillDiscover(DevkitSkillDiscoverTool),
 }
 
 /// Stability tier for MCP tools.
@@ -142,6 +143,7 @@ impl McpToolEnum {
             McpToolEnum::SkillList(_) => ToolTier::Beta,
             McpToolEnum::SkillSearch(_) => ToolTier::Beta,
             McpToolEnum::SkillRun(_) => ToolTier::Beta,
+            McpToolEnum::SkillDiscover(_) => ToolTier::Beta,
         }
     }
 }
@@ -183,6 +185,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillList(t) => t.name(),
             McpToolEnum::SkillSearch(t) => t.name(),
             McpToolEnum::SkillRun(t) => t.name(),
+            McpToolEnum::SkillDiscover(t) => t.name(),
         }
     }
 
@@ -222,6 +225,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillList(t) => t.schema(),
             McpToolEnum::SkillSearch(t) => t.schema(),
             McpToolEnum::SkillRun(t) => t.schema(),
+            McpToolEnum::SkillDiscover(t) => t.schema(),
         }
     }
 
@@ -261,6 +265,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillList(t) => t.invoke(args).await,
             McpToolEnum::SkillSearch(t) => t.invoke(args).await,
             McpToolEnum::SkillRun(t) => t.invoke(args).await,
+            McpToolEnum::SkillDiscover(t) => t.invoke(args).await,
         }
     }
 }
@@ -445,6 +450,7 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::SkillList(DevkitSkillListTool),
         McpToolEnum::SkillSearch(DevkitSkillSearchTool),
         McpToolEnum::SkillRun(DevkitSkillRunTool),
+        McpToolEnum::SkillDiscover(DevkitSkillDiscoverTool),
     ];
     for tool in all_tools {
         if let Some(allowed) = tiers

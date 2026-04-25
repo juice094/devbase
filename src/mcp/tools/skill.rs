@@ -129,6 +129,83 @@ Returns: JSON array of matching skills."#,
 }
 
 #[derive(Clone)]
+pub struct DevkitSkillDiscoverTool;
+
+impl McpTool for DevkitSkillDiscoverTool {
+    fn name(&self) -> &'static str {
+        "devkit_skill_discover"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Auto-discover a project directory or Git URL and package it as a devbase Skill.
+
+Use this when the user wants to:
+- Convert a GitHub project into an executable AI Skill
+- Analyze a local project's CLI/API surface and generate a SKILL.md draft
+- Package a Rust/Node/Python/Go/Docker project for AI agent consumption
+
+Parameters:
+- path: Local directory path or Git URL (http/https/git@) to analyze.
+- skill_id: Optional explicit skill ID. Defaults to project name.
+- dry_run: If true, print generated files without installing. Default false.
+
+Returns: JSON with discovered skill id, name, version, description, category, and entry_script path."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Local directory path or Git URL to discover"
+                    },
+                    "skill_id": {
+                        "type": "string",
+                        "description": "Optional explicit skill ID"
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "Preview without installing",
+                        "default": false
+                    }
+                },
+                "required": ["path"]
+            }
+        })
+    }
+
+    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let path = args
+            .get("path")
+            .and_then(|v| v.as_str())
+            .context("Missing required argument: path")?;
+        let skill_id = args.get("skill_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
+
+        let conn = crate::registry::WorkspaceRegistry::init_db()?;
+        let project_path = std::path::PathBuf::from(path);
+        let skill = crate::skill_runtime::discover::discover_and_install(
+            &conn,
+            &project_path,
+            skill_id.as_deref(),
+            dry_run,
+        )?;
+
+        Ok(serde_json::json!({
+            "success": true,
+            "id": skill.id,
+            "name": skill.name,
+            "version": skill.version,
+            "description": skill.description,
+            "category": skill.category,
+            "skill_type": skill.skill_type.as_str(),
+            "entry_script": skill.entry_script,
+            "local_path": skill.local_path.to_string_lossy().to_string(),
+            "dry_run": dry_run,
+        }))
+    }
+}
+
+#[derive(Clone)]
 pub struct DevkitSkillRunTool;
 
 impl McpTool for DevkitSkillRunTool {

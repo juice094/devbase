@@ -975,19 +975,20 @@ async fn main() -> anyhow::Result<()> {
                         || path.starts_with("https://")
                         || path.starts_with("git@");
 
+                    let computed_id = skill_id.clone().unwrap_or_else(|| {
+                        path.trim_end_matches('/')
+                            .rsplit('/')
+                            .next()
+                            .unwrap_or("discovered-skill")
+                            .trim_end_matches(".git")
+                            .to_lowercase()
+                            .replace('_', "-")
+                    });
+
                     let project_path = if is_git_url {
-                        let id = skill_id.as_deref().unwrap_or_else(|| {
-                            path.trim_end_matches('/')
-                                .rsplit('/')
-                                .next()
-                                .unwrap_or("discovered-skill")
-                                .trim_end_matches(".git")
-                                .to_lowercase()
-                                .replace('_', "-")
-                        });
                         let skill_dir = crate::registry::WorkspaceRegistry::workspace_dir()?
                             .join("skills")
-                            .join(&id);
+                            .join(&computed_id);
                         if skill_dir.exists() {
                             std::fs::remove_dir_all(&skill_dir)?;
                         }
