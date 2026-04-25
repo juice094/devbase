@@ -1,25 +1,27 @@
-﻿# devbase
+# devbase
 
-**AI Skill Orchestration Infrastructure** — AI Skill 编排基础设施
+[![Version](https://img.shields.io/badge/version-v0.8.0-blue)](https://github.com/juice094/devbase/releases)
+[![Tests](https://img.shields.io/badge/tests-267%20passed-brightgreen)](./AGENTS.md)
+[![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
+[![License](https://img.shields.io/badge/license-MIT-orange)](./LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.94%2B-9cf)](https://www.rust-lang.org)
+
+**本地优先的 AI Skill 编排基础设施**
 
 > 把 GitHub 项目变成 AI 能执行的 Skill。  
 > One dashboard for humans. One skill registry for agents.
 
-devbase 是一个**本地优先的 AI Skill 编排基础设施**：它将 GitHub 项目自动封装为标准化、可发现、可组合的 **Skill**，让弱 AI 子代理能够发现、调用、编排这些 Skill 完成复杂任务。对人类开发者，它是**多仓库 TUI 仪表盘**；对 AI Agent，它是**Skill 注册表与执行运行时**。
-
 ---
 
-## 一句话介绍
+## 30 秒了解
+
+devbase 将 GitHub 项目自动封装为**标准化、可发现、可组合的 Skill**，让弱 AI 子代理能够发现、调用、编排这些 Skill 完成复杂任务。
 
 | 你是谁 | devbase 为你做什么 |
-|--------|------------------|
-| **人类开发者** | `devbase tui` 打开终端仪表盘，一眼看清 50 个仓库的 Git 状态，按 `s` 批量安全同步 |
+|:---|:---|
+| **人类开发者** | `devbase tui` 打开终端仪表盘，一眼看清 N 个仓库的 Git 状态，按 `s` 批量安全同步 |
 | **AI Agent** | 通过 MCP 调用 `devkit_skill_run`，AI 能发现、执行、编排 Skill——不再重复造轮子 |
 | **项目维护者** | `devbase skill discover .` 一键将项目封装为 Skill，让 AI 用户能够发现和调用 |
-
----
-
-## 双模态架构 (Bimodal Architecture)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -27,224 +29,26 @@ devbase 是一个**本地优先的 AI Skill 编排基础设施**：它将 GitHub
 │              Bimodal Developer Workspace OS                 │
 ├─────────────────────────────┬───────────────────────────────┤
 │       Human Layer           │         AI Layer              │
-│     (人类交互层)             │       (智能体接口层)           │
-│                             │                               │
 │  ┌─────────────────────┐    │    ┌─────────────────────┐    │
 │  │   TUI Dashboard     │    │    │   MCP Server        │    │
 │  │   终端交互仪表盘     │    │    │   35 Tools          │    │
-│  │                     │    │    │   stdio only         │    │
-│  │ • 多仓库健康总览     │    │    │                     │    │
-│  │ • 跨仓库代码搜索 /   │    │    │ • devkit_scan       │    │
-│  │ • Stars 趋势图       │    │    │ • devkit_health     │    │
-│  │ • AI 洞察面板        │    │    │ • devkit_sync       │    │
-│  │ • 智能同步建议       │    │    │ • devkit_query_repos│    │
-│  │ • gitui/lazygit 启动 │    │    │ • devkit_code_metrics│   │
-│  │                      │    │    │ • devkit_module_graph│   │
-│  └─────────────────────┘    │    │ • devkit_natural... │    │
+│  │   • 多仓库健康总览   │    │    │   stdio only         │    │
+│  │   • 跨仓库代码搜索   │    │    │                     │    │
+│  │   • 一键启动 gitui   │    │    │   • devkit_scan     │    │
+│  │   • Skill / Workflow │    │    │   • devkit_skill_run│    │
+│  └─────────────────────┘    │    │   • devkit_hybrid_search│  │
 │                             │    └─────────────────────┘    │
-│  一眼看遍所有仓库状态        │    让 AI 拥有本地代码库的       │
-│  批量操作 + 深度集成         │    结构化世界观                 │
 ├─────────────────────────────┴───────────────────────────────┤
 │                      Data Layer                             │
-│                    (数据与引擎层)                            │
-│                                                             │
-│   Filesystem (Source of Truth) │ SQLite (Lightweight Index) │ Tantivy (Search)
-   ─────────────────────────────────────────────────────────────
-   vault/  • repos.toml  • assets/      registry.db        search-index/│
-│                                                             │
-│   • Git 仓库 + 标记目录的自动发现与持久化                     │
-│   • Vault 笔记系统（PARA 结构，Obsidian 兼容）                │
-│   • Stars 历史缓存 (趋势图数据源)                            │
-│   • 代码统计 (tokei) + 模块图 (cargo metadata)               │
-│   • 多语言 AST 符号提取 + Call Graph + 依赖图               │
-│   • 外置大脑 Embedding 存储协议 (SQLite BLOB)               │
-│   • 安全同步策略 (Mirror / Conservative / Rebase / Merge)    │
-│   • 操作审计日志与 schema 迁移快照                           │
+│   Filesystem (Source of Truth) │ SQLite │ Tantivy (Search)   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## TUI 功能一览 (Human Mode)
+## 安装
 
-基于 [ratatui](https://github.com/ratatui/ratatui) 的终端交互界面，专为**多仓库场景**设计：
-
-| 按键 | 功能 |
-|:---|:---|
-| `↑/↓` | 在仓库列表中导航 |
-| `PgUp/PgDn` | 快速翻页 |
-| `Home/End` | 跳到列表顶部/底部 |
-| `/` | **跨仓库代码搜索** — Tantivy 仓库语义搜索 / ripgrep 代码搜索（`Ctrl+R` 切换模式） |
-| `Enter` | 启动 **gitui** / **lazygit** 进行单仓库深度操作（自动检测并挂起/恢复终端） |
-| `s` | 生成 Safe Sync Preview（dry-run 预览） |
-| `S` | 执行安全同步 |
-| `t` | 为选中仓库打标签 |
-| `o` | 切换排序模式：Status ↔ Stars |
-| `Tab` / `Shift+Tab` | 切换详情面板标签页：Overview ↔ Health ↔ Insights |
-| `r` | 刷新仓库列表 |
-| `k` | 打开 **Skill 列表** — 浏览、搜索、执行 devbase Skills |
-| `w` | 打开 **Workflow 列表** — 浏览、执行 YAML 编排的自动化工作流 |
-| `[:]` | **自然语言查询** — 语义搜索 Skills，智能匹配需求 |
-| `d` | **发现 Skill** — 将当前项目自动封装为可执行的 Skill（`devbase skill discover`） |
-| `h` / `?` / `F1` | 显示快捷键帮助弹窗 |
-| `q` / `Esc` | 退出 / 关闭弹窗 |
-
-### TUI 面板
-
-- **左侧 35%**：仓库列表，状态图标（⏳ 加载中 / ● dirty / ◆ diverged / ▼ behind / ▲ ahead / ✓ 正常 / ○ 无远程）
-- **右侧 65%**：三标签页详情面板
-  - **Overview**：Git 状态、HEAD、SyncPolicy、标签、语言、upstream、last sync
-  - **Health**：完整健康报告（dirty / detached / diverged / ahead / behind）
-  - **Insights**：AI 智能洞察 + Stars Trend Sparkline（最近 30 次 fetch 的历史）
-
----
-
-## MCP Tool 矩阵 (AI Mode)
-
-基于 [Model Context Protocol](https://modelcontextprotocol.io) 的标准化接口。当前支持 **stdio**（本地进程通信）；**SSE**（HTTP 流式传输）正在开发中。
-
-**新增 (v0.8.0)**：Workflow 执行工具 + Skill 评分查询工具。35 个 tools 覆盖仓库管理、代码分析、知识库、Skill 运行时、Workflow 编排五大域。
-
-| Tool | 功能 | 示例查询 |
-|------|------|---------|
-| `devkit_scan` | 扫描目录并注册工作区 | "扫描 ~/projects" |
-| `devkit_health` | 健康检查（所有仓库状态） | "我本地有哪些项目需要同步？" |
-| `devkit_sync` | 批量同步（dry-run 默认） | "预览同步这些仓库会发生什么" |
-| `devkit_query_repos` | 结构化查询（语言/标签/状态） | "列出所有 dirty 的 Rust 项目" |
-| `devkit_code_metrics` | 代码统计（行数、文件数、语言） | "我最大的项目是什么？" |
-| `devkit_module_graph` | Rust 模块/目标结构 | "devbase 有哪些二进制目标？" |
-| `devkit_natural_language_query` | **自然语言查询** | "show dirty rust repos with more than 100 stars" |
-| `devkit_index` | 索引仓库摘要和模块结构 | "为所有仓库生成知识索引" |
-| `devkit_query` | 知识库搜索（tantivy） | "搜索关于 sync policy 的知识" |
-| `devkit_note` | 为仓库添加笔记 | "给 devbase 项目添加一条笔记" |
-| `devkit_digest` | 生成每日知识简报 | "生成今天的知识日报" |
-| `devkit_github_info` | 查询 GitHub 元数据 | "devbase 项目有多少 stars？" |
-| `devkit_paper_index` | 索引 PDF 论文 | "索引 ~/papers 目录" |
-| `devkit_experiment_log` | 记录实验运行 | "记录这次实验的配置" |
-| `devkit_vault_search` | 搜索 Vault 笔记 | "搜索关于 API 设计的笔记" |
-| `devkit_vault_read` | 读取 Vault 笔记内容 | "读取 01-Projects/devbase.md" |
-| `devkit_vault_write` | 创建/更新 Vault 笔记 | "新建一篇关于重构的笔记" |
-| `devkit_vault_backlinks` | 查询笔记反向链接 | "哪些笔记链接到了 devbase？" |
-| `devkit_project_context` | **统一项目上下文** | "获取 devbase 项目的 repo + vault + assets 全景" |
-| `devkit_code_symbols` | **代码语义索引** | "函数 `build_server` 在哪个文件第几行？" |
-| `devkit_call_graph` | **调用关系分析** | "谁调用了 `register_tool`？" |
-| `devkit_dependency_graph` | **跨仓库依赖图** | "改了 `shared-lib` 会影响哪些仓库？" |
-| `devkit_dead_code` | **死代码检测** | "这个仓库有哪些函数从没被调用过？" |
-| `devkit_semantic_search` | **向量语义搜索** | "搜索与错误处理相关的函数（传入 query_embedding）" |
-| `devkit_embedding_store` | **Embedding 存储** | "将外部生成的向量存入 devbase" |
-| `devkit_embedding_search` | **向量搜索** | "用外部 query 向量搜索相似符号" |
-| `devkit_arxiv_fetch` | **arXiv 论文抓取** | "获取 arXiv 2401.12345 的元数据" |
-| `devkit_hybrid_search` | **混合检索（推荐）** | "搜索错误处理相关函数，自动融合向量+关键词" |
-| `devkit_cross_repo_search` | **跨仓库语义搜索** | "在所有 Rust CLI 项目中搜索配置解析逻辑" |
-| `devkit_knowledge_report` | **知识覆盖报告** | "workspace 的索引覆盖度如何？" |
-| `devkit_related_symbols` | **概念关联搜索** | "与 `authenticate` 签名相似的其他函数" |
-| `devkit_skill_list` | **列出可用 Skills** | "devbase 有哪些内置 skill？" |
-| `devkit_skill_search` | **搜索 Skills**（文本 + 语义） | "查找与代码审计相关的 skill" |
-| `devkit_skill_run` | **执行 Skill** | "运行 embed-repo skill 为 devbase 生成 embeddings" |
-| `devkit_workflow_list` | **列出工作流** | "有哪些已注册的工作流？" |
-| `devkit_workflow_run` | **执行工作流** | "运行 deploy-staging 工作流" |
-| `devkit_skill_top` | **Top 评分 Skills** | "评分最高的 skill 有哪些？" |
-
-### AI 助手集成指南
-
-- [Claude Code 集成](docs/guides/mcp-integration-guide.md)
-- [5ire 集成](docs/guides/mcp-5ire-integration.md)
-
----
-
-## 为什么 devbase？
-
-### 不是替代，是连接
-
-| 工具 | 定位 | devbase 的角色 |
-|------|------|---------------|
-| **lazygit** | 单仓库 TUI，人类逐仓操作 | devbase 是**多仓库入口**——在 lazygit 之前，先告诉你「哪些仓库需要关注」，按 `Enter` 一键进入 |
-| **gitui** | 轻量 Rust TUI | devbase 的**深度操作伙伴**——批量管理后，单仓库精细操作交给 gitui |
-| **5ire / Claude Code** | AI 助手，对话式编程 | devbase 是**代码库知识源**——让 AI 拥有本地工作区的结构化上下文，不再「盲人摸象」 |
-| **GitHub Desktop** | GUI Git 客户端 | devbase 是**TUI 替代方案**——轻量 30 倍，SSH 可用，支持批量操作 |
-| **GitHub / GitLab** | 远程代码托管 | devbase 是**本地镜像管家**——批量管理远程同步，dirty/diverged 自动保护 |
-
-### AI 无法识别你的 GUI
-
-你的 IDE、文件管理器、甚至 lazygit 的界面，对 AI 来说都是不可见的黑箱。devbase 通过 MCP Server 将本地代码库的状态、结构、健康度翻译成 AI 能理解的结构化数据——这是 AI 介入本地开发流程的**基础设施**。
-
----
-
-## 安全同步策略 (Safe Sync)
-
-devbase 的同步不是粗暴的 `git pull --all`，而是分级的安全策略：
-
-| 策略 | 行为 | 适用场景 | TUI 颜色 |
-|------|------|---------|:-------:|
-| **Mirror** | 仅 fetch，永不修改本地分支 | 参考仓库、第三方依赖 | 🔵 Blue |
-| **Conservative** | 仅 fast-forward，diverged 自动跳过 | 日常开发，安全第一 | 🟡 Yellow |
-| **Rebase** | 自动 rebase 本地提交到远程分支 | 个人分支，保持线性历史 | 🟢 Green |
-| **Merge** | 自动 merge 远程变更 | 协作分支，接受合并历史 | 🟣 Magenta |
-
-同步前自动预检：dirty 工作区、diverged 分支、protected 分支均会被跳过并记录到 OpLog，绝不擅自破坏你的工作成果。
-
-**智能同步建议**：在 Sync Preview 弹窗中，每个仓库下方会显示 AI 生成的同步建议，例如：
-- `→ Safe to fast-forward 3 commit(s)`
-- `→ Working tree dirty — commit or stash before sync`
-- `→ Diverged (2 ahead, 3 behind) — switch to Rebase/Merge policy`
-
----
-
-## 功能清单
-
-- **工作区扫描与注册**：自动发现 Git 仓库 **以及** `SOUL.md` / `MEMORY.md` / `.devbase` 标记的非 Git 工作区，持久化到 SQLite
-- **GitHub Stars 追踪**：显示、缓存、TTL 刷新、历史趋势图
-- **代码统计**：集成 `tokei`，统计代码行数、文件数、语言分布（扫描时自动计算）
-- **Rust 模块图**：通过 `cargo metadata` 提取 bin/lib/test 目标
-- **健康检查**：追踪 Git 仓库的 dirty / ahead / behind，以及非 Git 工作区的 blake3 哈希快照变更检测
-- **知识日报**：基于仓库健康状态和摘要生成每日简报
-- **TUI 交互界面**：
-  - 多仓库健康总览、标签聚类排序、Stars 排序
-  - 跨仓库代码搜索 `/`
-  - AI Insights 面板
-  - Stars Trend sparkline
-  - 一键启动 gitui/lazygit
-  - 智能同步建议
-- **MCP Server**：35 个 tools（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 3 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具），stdio / SSE 双传输
-- **代码语义索引**：tree-sitter AST 解析，支持 Rust / Python / JavaScript / TypeScript / Go，提取函数/结构体/枚举/trait/impl/class/接口 定义到 SQLite
-- **调用关系分析**：遍历 AST 提取 `call_expression` / `macro_invocation`，构建 intra-repo call graph
-- **跨仓库依赖图**：解析 Cargo.toml / package.json / go.mod / pyproject.toml / requirements.txt / CMakeLists.txt，构建 repo 间依赖边
-- **死代码检测**：基于 call graph 的 `NOT EXISTS` 查询，识别无 incoming edges 的函数
-- **自然语言查询** (v0.7.0)：AI 可通过自然语言查询仓库（"dirty rust repos with more than 100 stars"）
-  - TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索
-  - 覆盖 Skills 语义搜索，计划扩展至 repos/vaults
-- **外置大脑 Embedding 架构**：devbase 不内置 embedding 生成引擎（由外部 Skill/MCP Server 提供），只负责向量存储协议（SQLite BLOB）和相似度检索接口
-- **Skill Runtime**：安装、发现、执行 AI Skills 的完整生命周期
-  - 内置 `embed-repo`、`search-workspace`、`knowledge-report`
-  - **自动封装**：`devbase skill discover <path>` — 分析项目 CLI/API 表面，自动生成 SKILL.md + entry_script 包装器（支持 Rust/Node/Python/Go/Docker/Generic）
-  - **语义搜索**：`devbase skill search "audit code" --semantic`（基于 sentence-transformers 384-dim 向量）
-  - **执行引擎**：Process-based，支持 Python/Bash/PowerShell/Node.js/二进制，自动 interpreter 解析，timeout，stdout/stderr 捕获
-  - **Mind Market 评分**：自动从执行历史计算 success_rate / usage_count / rating（0-5），支持 `skill recalc-scores` / `top` / `recommend`
-  - **发布**：`devbase skill publish ./my-skill/` — 自动校验 + git tag + push to remote
-  - **同步**：`devbase skill sync --target clarity` — 导出为 Clarity plan JSON
-  - **MCP 暴露**：`devkit_skill_list` / `devkit_skill_search` / `devkit_skill_run` / `devkit_skill_top` 共 4 个 tools
-- **Workflow Engine** (v0.8.0)：YAML 编排多步骤自动化
-  - 5 种 step 类型：`skill` / `subworkflow` / `parallel` / `condition` / `loop`（预留）
-  - 拓扑调度 + batch 并行执行（`std::thread::scope`）
-  - 变量插值：`${inputs.x}` / `${steps.y.outputs.z}` / `${env.VAR}`
-  - 错误策略：Fail / Continue / Retry / Fallback
-  - CLI：`devbase workflow list` / `show` / `run` / `validate` / `register`
-  - TUI：`[w]` 面板浏览 + `r/Enter` 执行 + 结果弹窗
-  - MCP：`devkit_workflow_list` / `devkit_workflow_run`
-- **arXiv 集成**：通过 MCP 抓取论文元数据（标题/作者/摘要/分类）
-- **性能基准测试**：Criterion 覆盖索引流水线、向量相似度、AST 提取、CMake 解析
-- **Registry 备份**：`export`/`import`/`backups`/`clean`，schema 迁移前自动快照
-- **操作日志 (OpLog)**：`scan`/`sync`/`health` 自动记录，可追溯审计
-- **i18n**：中文 / 英文双语支持
-- **数据分级**：`public` / `cooperative` / `private` 三级，控制同步边界
-
----
-
-## 快速开始
-
-### 安装
-
-**一键安装（推荐）**
+**一键安装**
 
 ```powershell
 # Windows
@@ -254,51 +58,70 @@ irm https://raw.githubusercontent.com/juice094/devbase/main/scripts/install.ps1 
 curl -fsSL https://raw.githubusercontent.com/juice094/devbase/main/scripts/install.sh | bash
 ```
 
-**从源码构建**
+**从源码**
 
 ```bash
-cargo install --path .
-# 或未来从 crates.io
-# cargo install devbase
+git clone https://github.com/juice094/devbase.git
+cd devbase && cargo install --path .
 ```
 
-### 初始化
+---
+
+## 核心能力
+
+### Human Layer — TUI 仪表盘
+
+基于 [ratatui](https://github.com/ratatui/ratatui) 的终端界面，专为**多仓库场景**设计：
+
+| 按键 | 功能 |
+|:---|:---|
+| `↑/↓` `PgUp/PgDn` | 导航仓库列表 |
+| `/` | 跨仓库代码搜索（Tantivy / ripgrep） |
+| `Enter` | 一键启动 gitui / lazygit |
+| `s` / `S` | 预览 / 执行安全同步 |
+| `k` / `w` | Skill 列表 / Workflow 列表 |
+| `[:]` | 自然语言查询 Skills |
+| `d` | 发现 Skill（自动封装当前项目） |
+| `h` / `?` | 快捷键帮助 |
+
+**面板布局**：左侧 35% 仓库列表（状态图标 ● dirty ◆ diverged ▼ behind ✓ 正常），右侧 65% 三标签页详情（Overview / Health / Insights）。
+
+### AI Layer — 35 个 MCP Tools
+
+基于 [Model Context Protocol](https://modelcontextprotocol.io) 标准化接口，stdio 本地进程通信。
+
+| 域 | Tools | 代表能力 |
+|:---|:---|:---|
+| 仓库管理 | `scan`, `health`, `sync`, `query_repos` | 批量管理 + 安全同步策略 |
+| 代码分析 | `code_metrics`, `module_graph`, `code_symbols`, `call_graph`, `dependency_graph`, `dead_code` | AST 符号 + 调用图 + 死代码检测 |
+| 知识检索 | `semantic_search`, `hybrid_search`, `cross_repo_search`, `related_symbols`, `knowledge_report` | 向量语义 + RRF 混合检索 |
+| Skill 运行时 | `skill_list`, `skill_search`, `skill_run`, `skill_top` | 发现 / 搜索 / 执行 / 评分 |
+| Workflow 编排 | `workflow_list`, `workflow_run` | YAML 多步骤自动化 |
+| Vault / 其他 | `vault_search`, `vault_read`, `vault_write`, `arxiv_fetch`, ... | PARA 笔记 + 论文抓取 |
+
+> 完整 Tool 矩阵见下文 [MCP Tool 矩阵](#mcp-tool-矩阵)。
+
+### Data Layer — 本地优先知识库
+
+| 组件 | 技术 | 说明 |
+|:---|:---|:---|
+| 索引 | SQLite + Tantivy | 仓库元数据 + 全文检索 |
+| 语义 | SQLite BLOB (768-dim) | 外置 Embedding 存储协议，不绑定特定模型 |
+| AST | tree-sitter | Rust / Python / TS / Go 多语言符号提取 |
+| 审计 | SQLite `oplog` | 所有 `scan`/`sync`/`health` 自动记录，schema 迁移前自动快照 |
+
+---
+
+## 快速开始
 
 ```bash
-# 扫描并注册当前目录下的所有工作区（Git + 非 Git）
+# 1. 扫描并注册工作区
 devbase scan . --register
 
-# 查看工作区健康状态
-devbase health --detail
-
-# 批量同步全部仓库（fetch-only）
-devbase sync
-
-# 生成知识日报
-devbase digest
-```
-
-### TUI
-
-```bash
-# 启动 TUI 仪表盘
+# 2. 启动 TUI 仪表盘
 devbase tui
-```
 
-常用按键：
-- `↑/↓` 导航仓库
-- `Enter` 启动 gitui/lazygit（如果已安装）
-- `s` 预览同步
-- `S` 执行同步
-- `t` 打标签
-- `o` 切换排序（Status ↔ Stars）
-- `r` 刷新
-- `q` 退出
-
-### MCP Server
-
-```bash
-# stdio 模式（本地 AI 助手，如 Claude Desktop / 5ire / Cursor）
+# 3. 启动 MCP Server（供 AI 助手调用）
 devbase mcp
 ```
 
@@ -315,118 +138,147 @@ devbase mcp
 }
 ```
 
-**Cursor 配置**（`~/.cursor/mcp.json`）：同上。
+---
 
-> 当前 MCP 仅支持 stdio 传输。SSE 远程模式计划在未来版本中提供。
+## 功能深度
 
-### 其他 CLI 命令
+### 安全同步 (Safe Sync)
 
-```bash
-# 查看操作日志
-devbase oplog --limit 20
+不是粗暴的 `git pull --all`，而是分级策略：
 
-# 导出 registry 备份
-devbase registry export --format json
+| 策略 | 行为 | 场景 | 颜色 |
+|:---|:---|:---|:---:|
+| **Mirror** | 仅 fetch，永不修改 | 参考仓库、第三方依赖 | 🔵 |
+| **Conservative** | 仅 fast-forward，diverged 跳过 | 日常开发，安全第一 | 🟡 |
+| **Rebase** | 自动 rebase 本地提交 | 个人分支，线性历史 | 🟢 |
+| **Merge** | 自动 merge | 协作分支 | 🟣 |
 
-# 导入备份
-devbase registry import backup-20260101.db
+同步前预检：dirty / diverged / protected 分支自动跳过并记录到 OpLog。
+
+### Skill 全生命周期
+
+```
+discover → install → run → score → publish
+    ↑_________________________________|
 ```
 
----
+- **发现**：`devbase skill discover <path>` — 自动分析项目 CLI/API，生成 `SKILL.md` + entry_script（支持 Rust/Node/Python/Go/Docker）
+- **执行**：Process-based，自动 interpreter 探测，timeout，stdout/stderr 捕获
+- **评分**：Mind Market 算法自动计算 `success_rate` / `usage_count` / `rating`（0-5）
+- **依赖**：Schema v15 `dependencies`，Kahn 拓扑排序 + DFS 环检测
 
-## 非 Git 工作区支持
+### Workflow 引擎 (v0.8.0)
 
-devbase 不仅管理 Git 仓库，也支持任意被标记的目录：
+YAML 编排多步骤自动化：
 
-| 标记文件 | 工作区类型 | 变更检测 |
-|---------|-----------|---------|
-| `.git/` | `git` | `git2` ahead/behind/dirty |
-| `SOUL.md` / `.claude/` | `openclaw` | blake3 哈希快照 |
-| `MEMORY.md` / `.devbase` | `generic` | blake3 哈希快照 |
+- 5 种 step 类型：`skill` / `subworkflow` / `parallel` / `condition` / `loop`
+- 拓扑调度 + batch 并行执行
+- 变量插值：`${inputs.x}` / `${steps.y.outputs.z}`
+- 错误策略：Fail / Continue / Retry / Fallback
 
----
+### 自然语言查询 (v0.8.1)
 
-## 竞品分析
+TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI 可以说：
 
-devbase 不是 Git 客户端，不是 AI 编码助手，而是**连接两者的基础设施**。
-
-| 竞品 | 赛道 | 关系 |
-|------|------|------|
-| lazygit | 单仓库 Git TUI | **互补** — devbase 是多仓库入口，lazygit 是单仓库深度操作 |
-| gitui | 单仓库 Git TUI | **互补** — 同上 |
-| GitHub Desktop | Git GUI | **无关** — 不同用户群体，devbase 是 TUI 方案 |
-| 5ire | AI 助手 + 知识库 | **竞合** — 5ire 是 MCP Client，devbase 是 MCP Server |
-| Claude Code | AI 编码助手 | **上下游** — Claude 调用 devbase 获取本地上下文 |
-
-完整的 36 项目竞品分析见 [docs/research/competitive-analysis.md](docs/research/competitive-analysis.md)。
+> "show dirty rust repos with more than 100 stars"
 
 ---
 
-## 依赖
+## MCP Tool 矩阵
 
-- Rust 2024 edition
-- SQLite (bundled via `rusqlite`)
-- `tokei` (代码统计)
-- `tree-sitter` + `tree-sitter-rust` + `tree-sitter-python` + `tree-sitter-typescript` + `tree-sitter-go` (多语言 AST 解析)
-- `criterion`（性能基准测试，dev-only）
-- 可选：`clarity-core`（用于 LLM 驱动的仓库摘要生成）
+| Tool | 功能 | 示例查询 |
+|:---|:---|:---|
+| `devkit_scan` | 扫描并注册工作区 | "扫描 ~/projects" |
+| `devkit_health` | 健康检查 | "哪些项目需要同步？" |
+| `devkit_sync` | 批量同步（dry-run 默认） | "预览同步结果" |
+| `devkit_query_repos` | 结构化查询 | "列出所有 dirty 的 Rust 项目" |
+| `devkit_code_metrics` | 代码统计 | "我最大的项目是什么？" |
+| `devkit_module_graph` | 模块结构 | "有哪些二进制目标？" |
+| `devkit_natural_language_query` | 自然语言查询 | "dirty rust repos with >100 stars" |
+| `devkit_index` | 索引仓库摘要 | "为所有仓库生成索引" |
+| `devkit_query` | 知识库搜索 | "搜索 sync policy" |
+| `devkit_note` | 添加笔记 | "给 devbase 添加笔记" |
+| `devkit_digest` | 知识日报 | "今天的知识日报" |
+| `devkit_github_info` | GitHub 元数据 | "devbase 多少 stars？" |
+| `devkit_paper_index` | 索引 PDF 论文 | "索引 ~/papers" |
+| `devkit_experiment_log` | 记录实验 | "记录这次实验配置" |
+| `devkit_vault_search` | 搜索 Vault 笔记 | "搜索 API 设计笔记" |
+| `devkit_vault_read` | 读取 Vault 笔记 | "读取 01-Projects/devbase.md" |
+| `devkit_vault_write` | 创建/更新 Vault 笔记 | "新建重构笔记" |
+| `devkit_vault_backlinks` | 反向链接 | "哪些笔记链接到 devbase？" |
+| `devkit_project_context` | 统一项目上下文 | "devbase 的全景视图" |
+| `devkit_code_symbols` | 代码语义索引 | "`build_server` 在哪？" |
+| `devkit_call_graph` | 调用关系分析 | "谁调用了 `register_tool`？" |
+| `devkit_dependency_graph` | 跨仓库依赖图 | "改 `shared-lib` 影响哪些？" |
+| `devkit_dead_code` | 死代码检测 | "哪些函数没被调用过？" |
+| `devkit_semantic_search` | 向量语义搜索 | "搜索错误处理相关函数" |
+| `devkit_embedding_store` | Embedding 存储 | "将向量存入 devbase" |
+| `devkit_embedding_search` | 向量搜索 | "用 query 向量搜索符号" |
+| `devkit_arxiv_fetch` | arXiv 论文抓取 | "获取 arXiv 2401.12345" |
+| `devkit_hybrid_search` | 混合检索（推荐） | "自动融合向量+关键词" |
+| `devkit_cross_repo_search` | 跨仓库语义搜索 | "所有 Rust CLI 中搜配置解析" |
+| `devkit_knowledge_report` | 知识覆盖报告 | "索引覆盖度如何？" |
+| `devkit_related_symbols` | 概念关联搜索 | "与 `authenticate` 相似的函数" |
+| `devkit_skill_list` | 列出 Skills | "有哪些内置 skill？" |
+| `devkit_skill_search` | 搜索 Skills | "查找代码审计相关 skill" |
+| `devkit_skill_run` | 执行 Skill | "运行 embed-repo skill" |
+| `devkit_workflow_list` | 列出工作流 | "有哪些工作流？" |
+| `devkit_workflow_run` | 执行工作流 | "运行 deploy-staging" |
+| `devkit_skill_top` | Top 评分 Skills | "评分最高的 skill？" |
+
+### AI 助手集成
+
+- [Claude Code 集成](docs/guides/mcp-integration-guide.md)
+- [5ire 集成](docs/guides/mcp-5ire-integration.md)
+
+---
+
+## 为什么 devbase？
+
+### 不是替代，是连接
+
+| 工具 | 定位 | devbase 的角色 |
+|:---|:---|:---|
+| **lazygit** | 单仓库 TUI | **多仓库入口** — 先告诉你哪些仓库需要关注，再按 `Enter` 进入 |
+| **5ire / Claude Code** | AI 助手 | **代码库知识源** — 让 AI 拥有本地工作区的结构化上下文 |
+| **GitHub Desktop** | GUI Git 客户端 | **TUI 替代** — 轻量 30 倍，SSH 可用，支持批量操作 |
+
+### AI 无法识别你的 GUI
+
+你的 IDE、文件管理器、甚至 lazygit 的界面对 AI 都是不可见的黑箱。devbase 通过 MCP Server 将本地代码库的状态、结构、健康度翻译成 AI 能理解的结构化数据——这是 AI 介入本地开发流程的**基础设施**。
 
 ---
 
 ## 隐私与安全
 
-devbase 遵循**本地优先（Local-First）**原则：
+**本地优先（Local-First）**：
 
-- **你的代码不会离开本地机器**。Registry、索引、日志全部存储在用户目录下的 SQLite 中
-- **MCP Server** 仅通过 stdio 本地进程通信，不监听任何网络端口
-- **GitHub Token / LLM API Key** 存储在本地 `config.toml` 中，该文件位于用户配置目录，不会进入 git 仓库
-- `.gitignore` 已覆盖 `*.db`、`.devbase/`、`*.log`、`.env*` 等敏感文件，防止意外提交
-
-### 凭证管理最佳实践
+- 代码不会离开本地机器 — Registry、索引、日志全部存储在用户目录的 SQLite 中
+- MCP Server 仅通过 stdio 本地进程通信，不监听网络端口
+- GitHub Token / LLM API Key 存储在用户配置目录的 `config.toml` 中，不会进入 git 仓库
+- `.gitignore` 已覆盖 `*.db`、`.devbase/`、`*.log`、`.env*` 等敏感文件
 
 ```toml
-# ~/.config/devbase/config.toml (Linux/macOS)
 # %LOCALAPPDATA%\devbase\config.toml (Windows)
+# ~/.config/devbase/config.toml (Linux/macOS)
 [github]
-token = "<YOUR_GITHUB_PAT>"  #  NEVER 将此文件提交到版本控制
-
-[llm]
-# api_key = "<YOUR_LLM_API_KEY>"
-```
-
-## 配置
-
-配置文件位于：
-- Windows: `%LOCALAPPDATA%\devbase\config.toml`
-- Linux/macOS: `~/.config/devbase/config.toml`
-
-首次运行会自动生成带注释的默认模板。
-
-```toml
-[github]
-# token = "<YOUR_GITHUB_PAT>"  # 提高 GitHub API 限流阈值
-
-[sync]
-concurrency = 8     # 批量同步并发数
-timeout_seconds = 60
-
-cache.ttl_seconds = 3600  # Stars 缓存 TTL
+token = "<YOUR_GITHUB_PAT>"
 ```
 
 ---
 
 ## 开发者与贡献
 
-> devbase 是单人维护项目（Bus Factor = 1），欢迎任何形式的贡献——代码、文档、Issue、想法均可。
+> devbase 当前为单人维护项目（Bus Factor = 1），欢迎任何形式的贡献。
 
 - **快速开始**: `cargo build --release` → `cargo test --all-targets`
 - **代码规范**: `cargo clippy --all-targets -D warnings` + `cargo fmt --check`
-- **架构文档**: [`ARCHITECTURE.md`](ARCHITECTURE.md) — 三层架构、技术决策记录
-- **Agent 约定**: [`AGENTS.md`](AGENTS.md) — 安全原则、上下文机制、Schema 迁移规范
-- **详细贡献指南**: [`CONTRIBUTING.md`](CONTRIBUTING.md) — 添加 MCP Tool / Skill、子代理协作安全
+- **架构文档**: [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- **Agent 约定**: [`AGENTS.md`](AGENTS.md)
+- **贡献指南**: [`CONTRIBUTING.md`](CONTRIBUTING.md) — 如何添加 MCP Tool / Skill、Schema 迁移规范
 
 ---
 
 ## 许可证
 
-MIT
+[MIT](./LICENSE)
