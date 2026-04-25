@@ -77,6 +77,9 @@ pub enum McpToolEnum {
     KnowledgeReport(DevkitKnowledgeReportTool),
     RelatedSymbols(DevkitRelatedSymbolsTool),
     HybridSearch(DevkitHybridSearchTool),
+    SkillList(DevkitSkillListTool),
+    SkillSearch(DevkitSkillSearchTool),
+    SkillRun(DevkitSkillRunTool),
 }
 
 /// Stability tier for MCP tools.
@@ -136,6 +139,9 @@ impl McpToolEnum {
             McpToolEnum::KnowledgeReport(_) => ToolTier::Beta,
             McpToolEnum::RelatedSymbols(_) => ToolTier::Experimental,
             McpToolEnum::HybridSearch(_) => ToolTier::Beta,
+            McpToolEnum::SkillList(_) => ToolTier::Beta,
+            McpToolEnum::SkillSearch(_) => ToolTier::Beta,
+            McpToolEnum::SkillRun(_) => ToolTier::Beta,
         }
     }
 }
@@ -174,6 +180,9 @@ impl McpTool for McpToolEnum {
             McpToolEnum::KnowledgeReport(t) => t.name(),
             McpToolEnum::RelatedSymbols(t) => t.name(),
             McpToolEnum::HybridSearch(t) => t.name(),
+            McpToolEnum::SkillList(t) => t.name(),
+            McpToolEnum::SkillSearch(t) => t.name(),
+            McpToolEnum::SkillRun(t) => t.name(),
         }
     }
 
@@ -210,6 +219,9 @@ impl McpTool for McpToolEnum {
             McpToolEnum::KnowledgeReport(t) => t.schema(),
             McpToolEnum::RelatedSymbols(t) => t.schema(),
             McpToolEnum::HybridSearch(t) => t.schema(),
+            McpToolEnum::SkillList(t) => t.schema(),
+            McpToolEnum::SkillSearch(t) => t.schema(),
+            McpToolEnum::SkillRun(t) => t.schema(),
         }
     }
 
@@ -246,6 +258,9 @@ impl McpTool for McpToolEnum {
             McpToolEnum::KnowledgeReport(t) => t.invoke(args).await,
             McpToolEnum::RelatedSymbols(t) => t.invoke(args).await,
             McpToolEnum::HybridSearch(t) => t.invoke(args).await,
+            McpToolEnum::SkillList(t) => t.invoke(args).await,
+            McpToolEnum::SkillSearch(t) => t.invoke(args).await,
+            McpToolEnum::SkillRun(t) => t.invoke(args).await,
         }
     }
 }
@@ -391,7 +406,7 @@ impl McpServer {
 
 /// Build an MCP server with optional tier filtering.
 ///
-/// If `tiers` is `None`, all 25 tools are registered (backward compatible).
+/// If `tiers` is `None`, all 28 tools are registered (backward compatible).
 /// If `tiers` is provided, only tools whose tier is in the set are registered.
 pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
     let mut server = McpServer::new();
@@ -427,6 +442,9 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::KnowledgeReport(DevkitKnowledgeReportTool),
         McpToolEnum::RelatedSymbols(DevkitRelatedSymbolsTool),
         McpToolEnum::HybridSearch(DevkitHybridSearchTool),
+        McpToolEnum::SkillList(DevkitSkillListTool),
+        McpToolEnum::SkillSearch(DevkitSkillSearchTool),
+        McpToolEnum::SkillRun(DevkitSkillRunTool),
     ];
     for tool in all_tools {
         if let Some(allowed) = tiers

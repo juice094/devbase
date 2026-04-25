@@ -119,6 +119,23 @@ fn main() -> anyhow::Result<()> {
     }
     println!();
 
+    // 8. Skill Runtime validation
+    println!("8. Skill Runtime validation");
+    let skills = devbase::skill_runtime::registry::list_skills(&conn, None)?;
+    println!("   Installed skills: {}", skills.len());
+    let builtin_count = skills.iter().filter(|s| matches!(s.skill_type, devbase::skill_runtime::SkillType::Builtin)).count();
+    println!("   Built-in skills: {}", builtin_count);
+    if let Some(emb) = skills.iter().find(|s| s.id == "embed-repo") {
+        println!("   [OK] embed-repo skill found (type: {:?})", emb.skill_type);
+    }
+    if let Some(sr) = skills.iter().find(|s| s.id == "search-workspace") {
+        println!("   [OK] search-workspace skill found (type: {:?})", sr.skill_type);
+    }
+    if let Some(kr) = skills.iter().find(|s| s.id == "knowledge-report") {
+        println!("   [OK] knowledge-report skill found (type: {:?})", kr.skill_type);
+    }
+    println!();
+
     println!("Validation Complete");
     println!("  [OK] Keyword-only hybrid_search works on real data");
     println!(
@@ -132,6 +149,7 @@ fn main() -> anyhow::Result<()> {
     );
     println!("  [OK] Symbol links generated and traversable");
     println!("  [OK] Cross-repo search functional");
+    println!("  [OK] Skill Runtime: {} skill(s) registered ({} builtin)", skills.len(), builtin_count);
 
     Ok(())
 }
