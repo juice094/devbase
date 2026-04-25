@@ -232,6 +232,15 @@ enum SkillCommands {
         /// Path to SKILL.md or skill directory
         path: String,
     },
+    /// Validate and prepare a skill for publishing
+    Publish {
+        /// Path to skill directory (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+        /// Dry-run: validate without creating tag
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -875,6 +884,42 @@ async fn main() -> anyhow::Result<()> {
                         }
                         Err(e) => {
                             println!("✗ Invalid SKILL.md: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                SkillCommands::Publish { path, dry_run } => {
+                    let p = std::path::PathBuf::from(&path);
+                    match skill_runtime::publish::validate_skill_for_publish(&p) {
+                        Ok(v) => {
+                            println!("Skill: {} ({})", v.name, v.skill_id);
+                            println!("Version: {}", v.version);
+                            println!("Description: {}", v.description);
+                            if v.is_git_repo {
+                                println!("Git repo: yes (branch: {})", v.git_branch.as_deref().unwrap_or("unknown"));
+                                if v.git_clean {
+                                    println!("Git status: clean");
+                                } else {
+                                    println!("Git status: ✗ has uncommitted changes");
+                                }
+                            } else {
+                                println!("Git repo: no (not a git repository)");
+                            }
+                            if dry_run {
+                                println!("\nDry-run complete. No changes made.");
+                            } else if v.git_clean && v.is_git_repo {
+                                let tag = format!("v{}", v.version);
+                                match skill_runtime::publish::create_version_tag(&p, &tag, &format!("Release {} {}", v.name, v.version)) {
+                                    Ok(()) => println!("\n✓ Created git tag: {}", tag),
+                                    Err(e) => println!("\n✗ Failed to create tag: {}", e),
+                                }
+                            } else {
+                                println!("\n✗ Cannot publish: working tree not clean or not a git repo.");
+                                std::process::exit(1);
+                            }
+                        }
+                        Err(e) => {
+                            println!("✗ Validation failed: {}", e);
                             std::process::exit(1);
                         }
                     }

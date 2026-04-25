@@ -1,5 +1,6 @@
 pub mod executor;
 pub mod parser;
+pub mod publish;
 pub mod registry;
 
 use chrono::{DateTime, Utc};
