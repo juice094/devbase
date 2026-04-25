@@ -247,6 +247,20 @@ enum SkillCommands {
         #[arg(long)]
         target: String,
     },
+    /// Discover and auto-package a project as a Skill
+    Discover {
+        /// Path to the project directory (or Git URL)
+        path: String,
+        /// Explicit skill ID (defaults to project name)
+        #[arg(long)]
+        skill_id: Option<String>,
+        /// Dry-run: print generated files without installing
+        #[arg(long)]
+        dry_run: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -952,6 +966,34 @@ async fn main() -> anyhow::Result<()> {
                         Ok(count) => println!("Synced {} skill(s) to Clarity.", count),
                         Err(e) => {
                             eprintln!("Skill sync failed: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                SkillCommands::Discover { path, skill_id, dry_run, json } => {
+                    let project_path = std::path::PathBuf::from(&path);
+                    match skill_runtime::discover::discover_and_install(&conn, &project_path, skill_id.as_deref(), dry_run) {
+                        Ok(skill) => {
+                            if json {
+                                println!("{{\"id\":\"{}\",\"name\":\"{}\",\"version\":\"{}\",\"description\":\"{}\",\"local_path\":\"{}\"}}",
+                                    skill.id, skill.name, skill.version,
+                                    skill.description.replace('"', "\\\""),
+                                    skill.local_path.display()
+                                );
+                            } else {
+                                println!("Discovered Skill: {} ({})", skill.name, skill.id);
+                                println!("Version: {}", skill.version);
+                                println!("Description: {}", skill.description);
+                                println!("Entry script: {}", skill.entry_script.as_deref().unwrap_or("none"));
+                                if dry_run {
+                                    println!("\n(Dry-run: no files written or registry updated)");
+                                } else {
+                                    println!("Installed to: {}", skill.local_path.display());
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Skill discovery failed: {}", e);
                             std::process::exit(1);
                         }
                     }

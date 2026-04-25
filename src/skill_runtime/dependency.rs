@@ -216,6 +216,7 @@ mod tests {
             author: None,
             tags: vec![],
             entry_script: None,
+            category: None,
             skill_type: SkillType::Builtin,
             local_path: std::path::PathBuf::from(format!("skills/{}", id)),
             inputs: vec![],

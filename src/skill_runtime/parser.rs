@@ -36,6 +36,7 @@ pub fn parse_skill_md(path: &std::path::Path) -> anyhow::Result<SkillMeta> {
             updated_at: chrono::Utc::now(),
             last_used_at: None,
             body: content,
+            category: None,
         });
     };
 
@@ -86,6 +87,7 @@ pub fn parse_skill_md(path: &std::path::Path) -> anyhow::Result<SkillMeta> {
         updated_at: now,
         last_used_at: None,
         body,
+        category: None,
     })
 }
 

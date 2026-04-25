@@ -190,6 +190,7 @@ mod tests {
             author: Some("test".to_string()),
             tags: vec!["rust".to_string(), "deploy".to_string()],
             entry_script: None,
+            category: None,
             skill_type: SkillType::Custom,
             local_path: std::path::PathBuf::from("/tmp/skills/test-skill"),
             inputs: vec![
@@ -243,6 +244,7 @@ mod tests {
             author: None,
             tags: vec![],
             entry_script: None,
+            category: None,
             skill_type: SkillType::Custom,
             local_path: std::path::PathBuf::from("/tmp/skills/conflict-test"),
             inputs: vec![],
@@ -294,6 +296,7 @@ mod tests {
             author: None,
             tags: vec![],
             entry_script: None,
+            category: None,
             skill_type: SkillType::Custom,
             local_path: std::path::PathBuf::from("/tmp/skills/update-test"),
             inputs: vec![],

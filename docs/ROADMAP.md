@@ -4,7 +4,7 @@
 > 
 > **最后更新**：2026-04-25
 > 
-> **版本状态**：`0.3.0` 已发布 → 下一里程碑 `0.4.0`（个人知识库跃迁）
+> **版本状态**：`0.4.0-alpha` 进行中 → 下一里程碑 `0.4.0`（AI Skill 编排基础设施）
 
 ---
 
@@ -53,34 +53,37 @@
 
 ---
 
-## 阶段二：个人知识库跃迁（v0.4.0）— 进行中
+## 阶段二：AI Skill 编排基础设施（v0.4.0）— 进行中
 
-**方向调整**：放弃"协议标准权/商业化"的宏大叙事，转向**"个人外置大脑"**——解决你自己的真实痛点。
+**方向调整**：devbase 不是"个人外置大脑"，而是**将 GitHub 项目转换为 AI 可执行 Skill 的编排基础设施**。
 
-> 你有 50 个 AI 项目参考库，但 devbase 只能回答 `lang:rust`，无法回答"和 clarity 相似的项目有哪些"。
+> 50 个仓库不是给人浏览的参考库，而是 AI Skill 的原材料。devbase 的职责是：分析项目 CLI/API 表面 → 自动生成 SKILL.md → 注册到 Skill Registry → 让弱 AI 子代理能够发现、组合、执行。
 
 ### 核心文档
 
-[`docs/plans/personal-knowledge-graph.md`](plans/personal-knowledge-graph.md) — 完整设计。
+- [`docs/architecture/workflow-dsl.md`](architecture/workflow-dsl.md) — Workflow DSL 规范（v0.4.0-reserved）
+- [`docs/architecture/workspace-as-schema.md`](architecture/workspace-as-schema.md) — 统一实体模型设计
 
-### 波次规划
+### Phase 1 已完成 ✅
 
-| 波次 | 主题 | 交付物 | 预计 |
-|------|------|--------|------|
-| Wave 21 | Repo 画像 | Schema v16 + README/Cargo.toml 解析器 + `devbase profile` | 1 天 |
-| Wave 22 | 相似度计算 | `repo_embeddings` + `devbase similar` + `devbase stack` | 1 天 |
-| Wave 23 | 对比与笔记 | `devbase compare` + `devbase why` + `.devbase/notes.md` | 1 天 |
-| Wave 24 | TUI 知识面板 | DetailTab::Knowledge + NL 查询 | 1-2 天 |
+| 任务 | 状态 | 说明 |
+|------|------|------|
+| Schema v16 | ✅ | `entity_types` + `entities` + `relations` 统一模型，渐进双写 |
+| Skill 自动封装 | ✅ | `devbase skill discover <path>` — Rust/Node/Python/Go/Docker/Generic 检测 |
+| 分类体系 | ✅ | `ai`/`dev`/`data`/`infra`/`communication` 二级分类自动推断 |
+| Workflow DSL 规范 | ✅ | YAML Schema 冻结，Engine 延后至 v0.5.0 |
+| 评分预留 | ✅ | `success_rate`/`usage_count`/`rating` 字段入库，算法 v0.6.0 实现 |
 
-### 核心 CLI
+### Phase 2 待完成（当前）
 
-```bash
-devbase similar clarity        # 相似仓库排序（zeroclaw 预计第一）
-devbase compare clarity zeroclaw  # 技术栈对比报告
-devbase why zeroclaw           # 显示"为什么 clone"笔记
-devbase stack ratatui          # 使用 ratatui 的所有仓库
-devbase query "rust llm provider" # 自然语言查询
-```
+| 任务 | 交付物 | 优先级 |
+|------|--------|--------|
+| discover 非 dry-run | `devbase skill discover <path> --install` 真正注册 Skill | P0 |
+| Git URL discover | `devbase skill discover https://github.com/...` 直接克隆+封装 | P0 |
+| Skill 执行验证 | 将 devbase/zeroclaw 封装后 `skill run` 验证 entry_script | P0 |
+| MCP discover tool | `devkit_skill_discover` 暴露给 AI Agent | P1 |
+| Workflow Engine | v0.5.0：YAML 解析 + 拓扑排序 + 并行调度 | P2 |
+| 评分算法 | v0.6.0：基于 execution audit 自动计算 success_rate/rating | P2 |
 
 ### 不做（明确排除）
 

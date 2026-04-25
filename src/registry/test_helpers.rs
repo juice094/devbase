@@ -211,7 +211,11 @@ CREATE TABLE IF NOT EXISTS skills (
     embedding       BLOB,
     installed_at    TEXT NOT NULL,
     updated_at      TEXT NOT NULL,
-    last_used_at    TEXT
+    last_used_at    TEXT,
+    category        TEXT,
+    success_rate    REAL,
+    usage_count     INTEGER DEFAULT 0,
+    rating          REAL
 );
 CREATE INDEX IF NOT EXISTS idx_skills_type ON skills(skill_type);
 
@@ -223,6 +227,71 @@ CREATE TABLE IF NOT EXISTS skill_executions (
     stdout          TEXT,
     stderr          TEXT,
     exit_code       INTEGER,
+    started_at      TEXT NOT NULL,
+    finished_at     TEXT,
+    duration_ms     INTEGER
+);
+
+-- v16: Unified Entity Model
+CREATE TABLE IF NOT EXISTS entity_types (
+    name            TEXT PRIMARY KEY,
+    schema_json     TEXT NOT NULL,
+    description     TEXT,
+    created_at      TEXT NOT NULL
+);
+INSERT OR IGNORE INTO entity_types (name, schema_json, description, created_at) VALUES
+    ('repo', '{"fields":[]}', 'Git repository', '2024-01-01T00:00:00Z'),
+    ('skill', '{"fields":[]}', 'Executable Skill', '2024-01-01T00:00:00Z'),
+    ('paper', '{"fields":[]}', 'Academic paper', '2024-01-01T00:00:00Z'),
+    ('vault_note', '{"fields":[]}', 'Vault markdown note', '2024-01-01T00:00:00Z'),
+    ('workflow', '{"fields":[]}', 'Workflow definition', '2024-01-01T00:00:00Z');
+
+CREATE TABLE IF NOT EXISTS entities (
+    id              TEXT PRIMARY KEY,
+    entity_type     TEXT NOT NULL REFERENCES entity_types(name),
+    name            TEXT NOT NULL,
+    source_url      TEXT,
+    local_path      TEXT,
+    metadata        TEXT,
+    content_hash    TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
+CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
+CREATE INDEX IF NOT EXISTS idx_entities_source ON entities(source_url);
+
+CREATE TABLE IF NOT EXISTS relations (
+    id              TEXT PRIMARY KEY,
+    from_entity_id  TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    to_entity_id    TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    relation_type   TEXT NOT NULL,
+    metadata        TEXT,
+    confidence      REAL NOT NULL DEFAULT 1.0,
+    created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_relations_from ON relations(from_entity_id);
+CREATE INDEX IF NOT EXISTS idx_relations_to ON relations(to_entity_id);
+CREATE INDEX IF NOT EXISTS idx_relations_type ON relations(relation_type);
+
+-- v0.5.0 reserved: Workflow Engine
+CREATE TABLE IF NOT EXISTS workflows (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    version         TEXT NOT NULL,
+    description     TEXT,
+    definition_yaml TEXT NOT NULL,
+    status          TEXT DEFAULT 'draft',
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workflow_executions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    workflow_id     TEXT NOT NULL,
+    inputs_json     TEXT,
+    status          TEXT NOT NULL,
+    current_step    TEXT,
     started_at      TEXT NOT NULL,
     finished_at     TEXT,
     duration_ms     INTEGER

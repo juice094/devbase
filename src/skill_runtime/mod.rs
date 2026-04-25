@@ -1,5 +1,6 @@
 pub mod clarity_sync;
 pub mod dependency;
+pub mod discover;
 pub mod executor;
 pub mod parser;
 pub mod publish;
@@ -89,6 +90,8 @@ pub struct SkillMeta {
     pub last_used_at: Option<DateTime<Utc>>,
     /// Markdown body after the YAML frontmatter.
     pub body: String,
+    /// Taxonomy category (ai, dev, data, infra, communication + sub-category).
+    pub category: Option<String>,
 }
 
 impl SkillMeta {
@@ -176,6 +179,7 @@ pub struct SkillRow {
     pub updated_at: DateTime<Utc>,
     pub last_used_at: Option<DateTime<Utc>>,
     pub dependencies: Vec<SkillDependency>,
+    pub category: Option<String>,
 }
 
 /// Helper: parse a JSON tags array or fall back to CSV.
