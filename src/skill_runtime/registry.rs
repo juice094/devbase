@@ -71,7 +71,10 @@ pub fn install_skill(conn: &Connection, skill: &SkillMeta) -> anyhow::Result<()>
         })
         .unwrap_or_default();
 
-    conn.execute(
+    // Atomic dual-write: both skills and entities in a single transaction
+    let tx = conn.unchecked_transaction()?;
+
+    tx.execute(
         "INSERT INTO skills (
             id, name, version, description, author, tags, entry_script,
             skill_type, local_path, inputs_schema, outputs_schema, dependencies, embedding,
@@ -121,8 +124,9 @@ pub fn install_skill(conn: &Connection, skill: &SkillMeta) -> anyhow::Result<()>
     )?;
 
     // Dual-write: sync to unified entities table
-    sync_skill_to_entities(conn, skill)?;
+    sync_skill_to_entities(&tx, skill)?;
 
+    tx.commit()?;
     Ok(())
 }
 

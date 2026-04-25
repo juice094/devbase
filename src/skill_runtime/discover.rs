@@ -270,7 +270,8 @@ pub fn generate_skill_md(surface: &ProjectSurface, skill_id: &str) -> String {
 }
 
 /// Generate a Python entry_script wrapper.
-pub fn generate_entry_script(surface: &ProjectSurface) -> String {
+pub fn generate_entry_script(surface: &ProjectSurface, project_root: &Path) -> String {
+    let root_str = project_root.to_string_lossy().replace('\\', "/");
     let mut script = String::new();
     script.push_str("#!/usr/bin/env python3\n");
     script.push_str("\"\"\"Auto-generated entry script for devbase Skill execution.\"\"\"\n");
@@ -278,6 +279,8 @@ pub fn generate_entry_script(surface: &ProjectSurface) -> String {
     script.push_str("import sys\n");
     script.push_str("import os\n");
     script.push_str("import subprocess\n");
+    script.push_str("\n");
+    script.push_str(&format!("PROJECT_ROOT = '{}'\n", root_str));
     script.push_str("\n");
     script.push_str("def main():\n");
     script.push_str("    # Read input from stdin or args\n");
@@ -292,9 +295,7 @@ pub fn generate_entry_script(surface: &ProjectSurface) -> String {
     script.push_str("\n");
     script.push_str("    command = inp.get('command', '')\n");
     script.push_str("    args = inp.get('args', '')\n");
-    script.push_str("    working_dir = inp.get('working_dir', os.path.dirname(os.path.abspath(__file__)))\n");
-    script.push_str("    # Resolve to project root (parent of scripts/)\n");
-    script.push_str("    project_root = os.path.dirname(working_dir)\n");
+    script.push_str("    project_root = inp.get('working_dir', PROJECT_ROOT)\n");
     script.push_str("\n");
 
     // Project-type-specific execution logic
@@ -385,6 +386,15 @@ pub fn discover_and_install(
         std::fs::create_dir_all(&scripts_dir)?;
     }
 
+    // Determine project root for the entry script.
+    // For local paths: point back to the original source directory.
+    // For git-cloned paths (where project_path == skill_dir): point to skill_dir itself.
+    let project_root = if project_path == skill_dir.as_path() {
+        skill_dir.clone()
+    } else {
+        std::fs::canonicalize(project_path).unwrap_or_else(|_| project_path.to_path_buf())
+    };
+
     // Generate SKILL.md
     let skill_md = generate_skill_md(&surface, &id);
     let skill_md_path = skill_dir.join("SKILL.md");
@@ -396,7 +406,7 @@ pub fn discover_and_install(
     }
 
     // Generate entry script
-    let entry_script = generate_entry_script(&surface);
+    let entry_script = generate_entry_script(&surface, &project_root);
     let entry_path = skill_dir.join("scripts").join("run.py");
     if dry_run {
         println!("\n=== entry_script (dry-run) ===");
@@ -810,10 +820,12 @@ mod tests {
             project_type: ProjectType::Rust,
             ..Default::default()
         };
-        let script = generate_entry_script(&surface);
+        let tmp = std::env::temp_dir();
+        let script = generate_entry_script(&surface, &tmp);
         assert!(script.contains("'cargo'"));
         assert!(script.contains("'run'"));
         assert!(script.contains("subprocess.run"));
+        assert!(script.contains("PROJECT_ROOT"));
     }
 
     #[test]
@@ -822,7 +834,8 @@ mod tests {
             project_type: ProjectType::Node,
             ..Default::default()
         };
-        let script = generate_entry_script(&surface);
+        let tmp = std::env::temp_dir();
+        let script = generate_entry_script(&surface, &tmp);
         assert!(script.contains("npm run") || script.contains("npx"));
     }
 
@@ -832,7 +845,8 @@ mod tests {
             project_type: ProjectType::Python,
             ..Default::default()
         };
-        let script = generate_entry_script(&surface);
+        let tmp = std::env::temp_dir();
+        let script = generate_entry_script(&surface, &tmp);
         assert!(script.contains("python -m") || script.contains("sys.executable"));
     }
 }

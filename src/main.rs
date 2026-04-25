@@ -971,7 +971,34 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
                 SkillCommands::Discover { path, skill_id, dry_run, json } => {
-                    let project_path = std::path::PathBuf::from(&path);
+                    let is_git_url = path.starts_with("http://")
+                        || path.starts_with("https://")
+                        || path.starts_with("git@");
+
+                    let project_path = if is_git_url {
+                        let id = skill_id.as_deref().unwrap_or_else(|| {
+                            path.trim_end_matches('/')
+                                .rsplit('/')
+                                .next()
+                                .unwrap_or("discovered-skill")
+                                .trim_end_matches(".git")
+                                .to_lowercase()
+                                .replace('_', "-")
+                        });
+                        let skill_dir = crate::registry::WorkspaceRegistry::workspace_dir()?
+                            .join("skills")
+                            .join(&id);
+                        if skill_dir.exists() {
+                            std::fs::remove_dir_all(&skill_dir)?;
+                        }
+                        println!("Cloning {} ...", path);
+                        git2::Repository::clone(&path, &skill_dir)
+                            .map_err(|e| anyhow::anyhow!("Git clone failed: {}", e))?;
+                        skill_dir
+                    } else {
+                        std::path::PathBuf::from(&path)
+                    };
+
                     match skill_runtime::discover::discover_and_install(&conn, &project_path, skill_id.as_deref(), dry_run) {
                         Ok(skill) => {
                             if json {
