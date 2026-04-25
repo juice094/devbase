@@ -175,8 +175,8 @@ pub fn discover_similar_projects(conn: &rusqlite::Connection) -> anyhow::Result<
         for j in (i + 1)..repo_ids.len() {
             let a = &repo_ids[i];
             let b = &repo_ids[j];
-            let set_a = keywords_map.get(a).unwrap();
-            let set_b = keywords_map.get(b).unwrap();
+            let set_a = keywords_map.get(a).expect("repo id from keywords_map keys");
+            let set_b = keywords_map.get(b).expect("repo id from keywords_map keys");
 
             let intersection: HashSet<String> = set_a.intersection(set_b).cloned().collect();
             if intersection.is_empty() {

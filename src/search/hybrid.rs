@@ -88,7 +88,7 @@ pub fn rrf_merge(lists: Vec<Vec<SemanticSearchRow>>, k: f32) -> Vec<SemanticSear
         return Vec::new();
     }
     if lists.len() == 1 {
-        return lists.into_iter().next().unwrap();
+        return lists.into_iter().next().expect("lists len == 1 checked above");
     }
 
     let mut accum: HashMap<String, (SemanticSearchRow, f32)> = HashMap::new();
@@ -150,7 +150,13 @@ pub fn hybrid_search_symbols(
 
     match lists.len() {
         0 => Ok(Vec::new()),
-        1 => Ok(lists.into_iter().next().unwrap().into_iter().take(limit).collect()),
+        1 => Ok(lists
+            .into_iter()
+            .next()
+            .expect("lists len == 1 checked above")
+            .into_iter()
+            .take(limit)
+            .collect()),
         _ => {
             let merged = rrf_merge(lists, 60.0);
             Ok(merged.into_iter().take(limit).collect())

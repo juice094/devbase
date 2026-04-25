@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 static VAR_RE: OnceLock<Regex> = OnceLock::new();
 
 fn var_regex() -> &'static Regex {
-    VAR_RE.get_or_init(|| Regex::new(r"\$\{([^}]+)\}").unwrap())
+    VAR_RE.get_or_init(|| Regex::new(r"\$\{([^}]+)\}").expect("static regex is valid"))
 }
 
 /// Interpolate variables in a string using the provided context.
@@ -20,8 +20,8 @@ pub fn interpolate(template: &str, ctx: &InterpolationContext) -> anyhow::Result
     let re = var_regex();
     let mut result = template.to_string();
     for cap in re.captures_iter(template) {
-        let full = cap.get(0).unwrap().as_str();
-        let path = cap.get(1).unwrap().as_str();
+        let full = cap.get(0).expect("capture group 0 always exists").as_str();
+        let path = cap.get(1).expect("capture group 1 exists for matched pattern").as_str();
         let value = resolve(path, ctx)?;
         result = result.replace(full, &value);
     }

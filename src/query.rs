@@ -19,7 +19,7 @@ pub(crate) fn parse_cmp_expr(value: &str) -> Option<(String, i64)> {
     if value.is_empty() {
         return None;
     }
-    let first = value.chars().next().unwrap();
+    let first = value.chars().next().expect("value not empty: checked above");
     if first == '>' || first == '<' || first == '=' {
         let num = value[1..].parse().ok()?;
         Some((first.to_string(), num))

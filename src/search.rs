@@ -87,11 +87,15 @@ fn add_doc(
     tags: &[String],
     doc_type: &str,
 ) -> Result<(), TantivyError> {
-    let id_f = schema.get_field("id").unwrap();
-    let title_f = schema.get_field("title").unwrap();
-    let content_f = schema.get_field("content").unwrap();
-    let tags_f = schema.get_field("tags").unwrap();
-    let doc_type_f = schema.get_field("doc_type").unwrap();
+    let id_f = schema.get_field("id").expect("schema field 'id' defined in init_index");
+    let title_f = schema.get_field("title").expect("schema field 'title' defined in init_index");
+    let content_f = schema
+        .get_field("content")
+        .expect("schema field 'content' defined in init_index");
+    let tags_f = schema.get_field("tags").expect("schema field 'tags' defined in init_index");
+    let doc_type_f = schema
+        .get_field("doc_type")
+        .expect("schema field 'doc_type' defined in init_index");
 
     let mut doc = TantivyDocument::default();
     doc.add_text(id_f, id);
@@ -109,7 +113,7 @@ pub fn delete_repo_doc(
     schema: &Schema,
     repo_id: &str,
 ) -> Result<(), TantivyError> {
-    let id = schema.get_field("id").unwrap();
+    let id = schema.get_field("id").expect("schema field 'id' defined in init_index");
     let term = tantivy::Term::from_field_text(id, repo_id);
     writer.delete_term(term);
     Ok(())
@@ -143,10 +147,14 @@ fn search_by_doc_type(
     let schema = index.schema();
     let searcher = reader.searcher();
 
-    let title = schema.get_field("title").unwrap();
-    let content = schema.get_field("content").unwrap();
-    let tags = schema.get_field("tags").unwrap();
-    let doc_type_f = schema.get_field("doc_type").unwrap();
+    let title = schema.get_field("title").expect("schema field 'title' defined in init_index");
+    let content = schema
+        .get_field("content")
+        .expect("schema field 'content' defined in init_index");
+    let tags = schema.get_field("tags").expect("schema field 'tags' defined in init_index");
+    let doc_type_f = schema
+        .get_field("doc_type")
+        .expect("schema field 'doc_type' defined in init_index");
 
     let query_parser = QueryParser::for_index(&index, vec![title, content, tags]);
     let text_query = query_parser.parse_query(query_str)?;
@@ -167,7 +175,7 @@ fn search_by_doc_type(
 
     let top_docs = searcher.search(&*final_query, &TopDocs::with_limit(limit).order_by_score())?;
 
-    let id_field = schema.get_field("id").unwrap();
+    let id_field = schema.get_field("id").expect("schema field 'id' defined in init_index");
     let mut results = Vec::new();
     for (score, doc_address) in top_docs {
         let doc: TantivyDocument = searcher.doc(doc_address)?;

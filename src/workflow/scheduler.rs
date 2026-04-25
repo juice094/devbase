@@ -13,7 +13,7 @@ pub fn build_schedule(wf: &WorkflowDefinition) -> anyhow::Result<Vec<ExecutionBa
 
     for step in &wf.steps {
         for dep in &step.depends_on {
-            *in_degree.get_mut(step.id.as_str()).unwrap() += 1;
+            *in_degree.get_mut(step.id.as_str()).expect("step id initialized in in_degree") += 1;
             adj.entry(dep.as_str()).or_default().push(step.id.as_str());
         }
     }
@@ -30,14 +30,14 @@ pub fn build_schedule(wf: &WorkflowDefinition) -> anyhow::Result<Vec<ExecutionBa
         let mut next_queue: VecDeque<&str> = VecDeque::new();
 
         for _ in 0..batch_size {
-            let id = queue.pop_front().unwrap();
+            let id = queue.pop_front().expect("queue not empty: checked by while condition");
             let step = wf.steps.iter().find(|s| s.id == id).expect("step id must exist").clone();
             batch.push(step);
             processed += 1;
 
             if let Some(children) = adj.get(id) {
                 for &child in children {
-                    let deg = in_degree.get_mut(child).unwrap();
+                    let deg = in_degree.get_mut(child).expect("child id initialized in in_degree");
                     *deg -= 1;
                     if *deg == 0 {
                         next_queue.push_back(child);

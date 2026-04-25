@@ -254,14 +254,18 @@ pub async fn run_json(
 pub async fn run(detail: bool, limit: usize, page: usize, ttl_seconds: i64) -> anyhow::Result<()> {
     let result = run_json(detail, limit, page, ttl_seconds).await?;
 
-    let summary = result["summary"].as_object().unwrap();
+    let summary = result["summary"]
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("summary is not an object"))?;
     println!("{}:", crate::i18n::current().log.health_summary);
     println!("  total_repos: {}", summary["total_repos"].as_u64().unwrap_or(0));
     println!("  dirty_repos: {}", summary["dirty_repos"].as_u64().unwrap_or(0));
     println!("  behind_upstream: {}", summary["behind_upstream"].as_u64().unwrap_or(0));
     println!("  no_upstream: {}", summary["no_upstream"].as_u64().unwrap_or(0));
 
-    let env = result["environment"].as_object().unwrap();
+    let env = result["environment"]
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("environment is not an object"))?;
     println!("\n{}:", crate::i18n::current().log.health_environment);
     println!(
         "  rustc: {}",
@@ -285,7 +289,9 @@ pub async fn run(detail: bool, limit: usize, page: usize, ttl_seconds: i64) -> a
     );
 
     if detail {
-        let repos = result["repos"].as_array().unwrap();
+        let repos = result["repos"]
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("repos is not an array"))?;
         if !repos.is_empty() {
             if let Some(pagination) = result.get("pagination") {
                 if pagination != &serde_json::Value::Null {

@@ -139,7 +139,8 @@ fn parse_skill_frontmatter(raw: &str) -> SkillFrontmatter {
                 Some("inputs") => {
                     // Flush previous input if we see a new "- name:" without closing the last one
                     if item.starts_with("name:") && current_input.is_some() {
-                        fm.inputs.push(current_input.take().unwrap());
+                        fm.inputs
+                            .push(current_input.take().expect("current_input checked by is_some"));
                     }
                     if current_input.is_none() && item.starts_with("name:") {
                         current_input = Some(SkillInput::default());
@@ -150,7 +151,9 @@ fn parse_skill_frontmatter(raw: &str) -> SkillFrontmatter {
                 }
                 Some("outputs") => {
                     if item.starts_with("name:") && current_output.is_some() {
-                        fm.outputs.push(current_output.take().unwrap());
+                        fm.outputs.push(
+                            current_output.take().expect("current_output checked by is_some"),
+                        );
                     }
                     if current_output.is_none() && item.starts_with("name:") {
                         current_output = Some(SkillOutput::default());
@@ -181,11 +184,12 @@ fn parse_skill_frontmatter(raw: &str) -> SkillFrontmatter {
 
         // Flush any open input/output before moving to a new key
         if current_input.is_some() && trimmed.starts_with("name:") {
-            fm.inputs.push(current_input.take().unwrap());
+            fm.inputs.push(current_input.take().expect("current_input checked by is_some"));
             current_input = Some(SkillInput::default());
         }
         if current_output.is_some() && trimmed.starts_with("name:") {
-            fm.outputs.push(current_output.take().unwrap());
+            fm.outputs
+                .push(current_output.take().expect("current_output checked by is_some"));
             current_output = Some(SkillOutput::default());
         }
 
