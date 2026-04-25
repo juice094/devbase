@@ -1,15 +1,15 @@
 # Agent 环境指引
 
-`devbase` 是本地优先的开发者工作区与知识库管理器。当前处于 **v0.2.4**，Skill Runtime 全生命周期已落地（安装/发现/执行/发布/同步），外置大脑架构贯通。
+`devbase` 是本地优先的开发者工作区与知识库管理器。当前处于 **v0.2.4**，Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），外置大脑架构贯通。
 
 - **技术栈**：Rust 2024, SQLite, tokio, ratatui, git2, reqwest, tantivy
 - **Registry DB**：`%LOCALAPPDATA%\devbase\registry.db`（轻量索引，用户本地，永不进入版本控制）
 - **Workspace**：`%LOCALAPPDATA%\devbase\workspace/` —— 文件系统 = source of truth
   - `vault/` —— PARA 结构：00-Inbox, 01-Projects, 02-Areas, 03-Resources, 04-Archives, 99-Meta
   - `assets/` —— 二进制资源
-- **MCP Server**：stdio 传输，**34 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 3 个 Skill Runtime tools + 1 个报告工具 + 1 个 arXiv 工具）；配置见 `mcp.json`
+- **MCP Server**：stdio only（SSE 开发中），**34 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 3 个 Skill Runtime tools + 1 个报告工具 + 1 个 arXiv 工具）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：235 passed / 0 failed / 3 ignored
+- **当前测试**：239 passed / 0 failed / 3 ignored
 - **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
 
 ## 关键约定
@@ -48,7 +48,7 @@
 | 模块拆分 | `sync`→5 / `registry`→7 / `mcp` 测试分离 / `search`→hybrid / `oplog_analytics` / `symbol_links` |
 | 库/二进制 | `src/lib.rs` 导出全部 **26** 个模块；`src/main.rs` 仅 CLI 入口 |
 | TUI 架构 | `render/` 6 子模块 + `theme.rs` Design Token + `layout.rs` 响应式引擎 |
-| 数据层 | Schema v14: repos + repo_tags + code_symbols + code_embeddings + code_call_graph + code_symbol_links + oplog + vault_notes + papers + experiments + **skills + skill_executions** |
+| 数据层 | Schema v15: repos + repo_tags + code_symbols + code_embeddings + code_call_graph + code_symbol_links + oplog + vault_notes + papers + experiments + **skills + skill_executions**（含 `dependencies` 列） |
 | CI/CD | `.github/workflows/ci.yml`：check / test / fmt / clippy on Windows |
 | 依赖安全 | `cargo audit` 0 漏洞（除上游 `tokei` 的 `RUSTSEC-2020-0163`） |
 
@@ -79,6 +79,7 @@
 | 18 | MCP Skill 集成 | `devkit_skill_list` / `devkit_skill_search` / `devkit_skill_run` 3 个 tools | `c80fdec` |
 | 19a | Skill 生态（安装/发布） | `install_skill_from_git` (git2 clone), `publish` (validate + git tag + push remote) | `8120e4d` |
 | 19b | Skill 生态（同步/TUI） | `sync --target clarity` (导出为 Clarity plan JSON), TUI Skill Panel (`k` keybinding) | `678c70c` |
+| 20 | Skill 依赖管理 | Schema v15 `dependencies` 列，Kahn 拓扑排序，DFS 环检测，自动安装缺失依赖，`install`/`run`/`validate` 集成 | `75fed3c` |
 
 ## 敏感文件清单（禁止提交）
 
@@ -145,10 +146,20 @@ devbase 承载外部资源调度的抽象接口：
 
 ## 当前粗粒度待办
 
-1. 输出 L0-L4 五层知识的 TOML/JSON Schema 草案
-2. 输出 OpLog 审计事件类型清单（含 P3 追踪、边界快照、验证消息）
-3. 输出外部资源调度的请求格式草案
+1. ~~输出 L0-L4 五层知识的 TOML/JSON Schema 草案~~（保持开放，非阻塞）
+2. ~~输出 OpLog 审计事件类型清单~~（已有基础枚举，保持增量）
+3. ~~输出外部资源调度的请求格式草案~~（保持开放）
 4. **不做**：调度算法、边界图谱引擎、哲学规则库内容、密码学协议
+
+### Post-Wave 19  triage 结论（2026-04-25）
+
+| 优先级 | 事项 | 状态 |
+|--------|------|------|
+| P1 | SSE 传输状态与 README 一致性 | ✅ 已完成 — README 修正为 "stdio only; SSE in development"，见 commit `935dd61` |
+| P2 | 架构预拆分评估 | ✅ 已完成 — 评估报告位于 `docs/architecture/pre-split-evaluation.md`，结论：22.7 KLOC 单 crate 仍最优， defer 至 50+ tools 或编译 > 60s |
+| P3 | 竞品定位标语 | ✅ 已完成 — README 顶部标语更新为 "AI 无法识别你的 GUI，devbase 是它的眼镜。" |
+
+- **Tag**: `v0.2.4` 已打标（commit `935dd61`）
 
 ## Embedding 策略长期规划（已决策）
 
