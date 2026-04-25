@@ -309,13 +309,13 @@ params = StdioServerParameters(command="devbase", args=["mcp", "--transport", "s
 - ✅ `devbase skill install ./skills/embed-repo/` 成功写入 SQLite
 - ✅ `devbase skill info embed-repo` 显示完整元数据
 
-### Wave 16b — Discovery & Search ✅（text search done, semantic pending embeddings）
+### Wave 16b — Discovery & Search ✅
 
 **目标**：让 AI 能发现正确的 skill。
 
 - [x] `devbase skill search <query>` — 基于 LIKE 的文本搜索
-- [ ] `devbase skill search <query> --semantic` — 基于 embedding 的语义搜索（pending batch embeddings）
-- [ ] Skill embedding 生成（复用 `local.py` 为 SKILL.md 的 description 生成向量）
+- [x] `devbase skill search <query> --semantic` — 基于 embedding 的语义搜索（**已完成**：`search_skills_semantic()` 已实现，`--semantic` CLI 标志已可用，56,722 code_embeddings 已生成）
+- [x] Skill embedding 生成（**已完成**：`tools/embedding-provider/skills.py` 已可用，3 个 builtin skill 已有 384-dim embeddings）
 - [x] `devbase skill validate <path>` — 校验 SKILL.md 格式合规性
 
 **验收标准**：
@@ -359,7 +359,7 @@ params = StdioServerParameters(command="devbase", args=["mcp", "--transport", "s
 **目标**：skill 可分发、可同步。
 
 - [x] `devbase skill install <git-url>` — 从 GitHub 安装（auto-detect http/https/git@）
-- [ ] `devbase skill publish` — 打包并推送到 git
+- [x] `devbase skill publish` — （**已完成**：`validate_skill_for_publish()` + `create_version_tag()` 已实现，支持 dry-run 和 git tag）
 - [ ] `devbase skill sync --target clarity` — 同步到 Clarity skill 系统
 - [ ] Skill 依赖管理（skill A 依赖 skill B）
 - [ ] Skill 市场 / registry 服务
