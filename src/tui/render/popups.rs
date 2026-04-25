@@ -816,7 +816,7 @@ fn render_nlp_results(frame: &mut Frame, app: &App, styles: &Styles) {
     frame.render_widget(Clear, popup_area);
     frame.render_widget(popup_list, popup_area);
 
-    let hint = Paragraph::new(Span::styled("[↑/↓] 选择  [Esc] 关闭", styles.hint));
+    let hint = Paragraph::new(Span::styled("[↑/↓] 选择  [Enter] 执行  [Esc] 关闭", styles.hint));
     let hint_area = ratatui::layout::Rect {
         x: popup_inner.x,
         y: popup_inner.y + popup_inner.height.saturating_sub(1),

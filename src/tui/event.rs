@@ -193,6 +193,12 @@ pub(crate) async fn run_app<B: Backend>(
                             app.nlp_results.clear();
                             app.nlp_selected = 0;
                         }
+                        KeyCode::Enter => {
+                            app.run_nlp_selected_skill();
+                            app.nlp_popup_mode = NLPPopupMode::Hidden;
+                            app.nlp_results.clear();
+                            app.nlp_selected = 0;
+                        }
                         KeyCode::Down => {
                             if app.nlp_selected + 1 < app.nlp_results.len() {
                                 app.nlp_selected += 1;

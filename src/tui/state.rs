@@ -686,10 +686,24 @@ impl App {
                 return;
             }
         };
+        self.run_skill_item(
+            skill_item,
+            self.skill_param_buffer.split_whitespace().map(|s| s.to_string()).collect(),
+        );
+    }
 
-        let args: Vec<String> =
-            self.skill_param_buffer.split_whitespace().map(|s| s.to_string()).collect();
+    pub(crate) fn run_nlp_selected_skill(&mut self) {
+        let skill_item = match self.nlp_results.get(self.nlp_selected) {
+            Some(s) => s.clone(),
+            None => {
+                self.log_warn("未选择 NLQ 结果".to_string());
+                return;
+            }
+        };
+        self.run_skill_item(skill_item, vec![]);
+    }
 
+    fn run_skill_item(&mut self, skill_item: SkillItem, args: Vec<String>) {
         let tx = self.async_tx.clone();
         std::thread::spawn(move || {
             let result = crate::skill_runtime::executor::run_skill(
