@@ -23,6 +23,7 @@ pub enum AsyncNotification {
     SyncProgress(SyncProgressNotification),
     StarsUpdated { repo_id: String, stars: Option<u64> },
     VaultChanged,
+    SkillRunFinished(crate::skill_runtime::ExecutionResult),
 }
 
 pub trait AsyncJob: Send + Clone + 'static {

@@ -1,8 +1,8 @@
 use crate::asyncgit::AsyncNotification;
 use crate::registry::WorkspaceRegistry;
 use crate::tui::{
-    App, InputMode, ListState, MainView, RepoItem, SearchPopupMode, SearchResult, SortMode,
-    SyncPopupMode, SyncPreviewItem, VaultItem,
+    App, InputMode, ListState, MainView, RepoItem, SearchPopupMode, SearchResult, SkillItem,
+    SkillPopupMode, SortMode, SyncPopupMode, SyncPreviewItem, VaultItem,
 };
 use chrono::Utc;
 use crossbeam_channel::bounded;
@@ -50,6 +50,13 @@ impl App {
             vaults: Vec::new(),
             vault_selected: 0,
             vault_list_state: ListState::default(),
+            skill_popup_mode: SkillPopupMode::Hidden,
+            skills: Vec::new(),
+            skill_selected: 0,
+            skill_list_state: ListState::default(),
+            selected_skill: None,
+            skill_param_buffer: String::new(),
+            skill_execution_result: None,
         };
         app.log_info(crate::i18n::current().log.tui_started.to_string());
         app.load_repos()?;
@@ -425,6 +432,102 @@ impl App {
         Ok(())
     }
 
+    pub(crate) fn load_skills(&mut self) {
+        let conn = match WorkspaceRegistry::init_db() {
+            Ok(c) => c,
+            Err(e) => {
+                self.log_warn(format!("无法加载 Skill 注册表: {}", e));
+                self.skills.clear();
+                self.skill_selected = 0;
+                self.skill_list_state.select(Some(0));
+                return;
+            }
+        };
+        let rows = match crate::skill_runtime::registry::list_skills(&conn, None) {
+            Ok(r) => r,
+            Err(e) => {
+                self.log_warn(format!("无法列出 Skills: {}", e));
+                self.skills.clear();
+                self.skill_selected = 0;
+                self.skill_list_state.select(Some(0));
+                return;
+            }
+        };
+        self.skills = rows.into_iter().map(SkillItem::from).collect();
+        self.skill_selected = 0;
+        self.skill_list_state.select(Some(0));
+        self.log_info(crate::i18n::current().log.loaded_skills(self.skills.len()));
+    }
+
+    pub(crate) fn next_skill(&mut self) {
+        if !self.skills.is_empty() {
+            self.skill_selected = (self.skill_selected + 1) % self.skills.len();
+            self.skill_list_state.select(Some(self.skill_selected));
+        }
+    }
+
+    pub(crate) fn previous_skill(&mut self) {
+        if !self.skills.is_empty() {
+            self.skill_selected = (self.skill_selected + self.skills.len() - 1) % self.skills.len();
+            self.skill_list_state.select(Some(self.skill_selected));
+        }
+    }
+
+    pub(crate) fn jump_to_top_skill(&mut self) {
+        if !self.skills.is_empty() {
+            self.skill_selected = 0;
+            self.skill_list_state.select(Some(self.skill_selected));
+        }
+    }
+
+    pub(crate) fn jump_to_bottom_skill(&mut self) {
+        if !self.skills.is_empty() {
+            self.skill_selected = self.skills.len() - 1;
+            self.skill_list_state.select(Some(self.skill_selected));
+        }
+    }
+
+    pub(crate) fn current_skill(&self) -> Option<&SkillItem> {
+        self.skills.get(self.skill_selected)
+    }
+
+    pub(crate) fn run_selected_skill(&mut self) {
+        let skill_item = match self.current_skill() {
+            Some(s) => s.clone(),
+            None => {
+                self.log_warn("未选择 Skill".to_string());
+                return;
+            }
+        };
+
+        let args: Vec<String> = self
+            .skill_param_buffer
+            .split_whitespace()
+            .map(|s| s.to_string())
+            .collect();
+
+        let tx = self.async_tx.clone();
+        std::thread::spawn(move || {
+            let result = crate::skill_runtime::executor::run_skill(
+                &skill_item.row,
+                &args,
+                std::time::Duration::from_secs(30),
+            );
+            let execution_result = match result {
+                Ok(r) => r,
+                Err(e) => crate::skill_runtime::ExecutionResult {
+                    skill_id: skill_item.row.id.clone(),
+                    status: crate::skill_runtime::ExecutionStatus::Failed,
+                    stdout: String::new(),
+                    stderr: e.to_string(),
+                    exit_code: Some(1),
+                    duration_ms: 0,
+                },
+            };
+            let _ = tx.send(crate::asyncgit::AsyncNotification::SkillRunFinished(execution_result));
+        });
+    }
+
     pub(crate) fn update_async(&mut self, notification: AsyncNotification) {
         match notification {
             AsyncNotification::RepoStatus(n) => {
@@ -489,6 +592,18 @@ impl App {
                 if let Err(e) = self.load_vaults() {
                     self.log_error(format!("Vault refresh failed: {}", e));
                 }
+            }
+            AsyncNotification::SkillRunFinished(result) => {
+                let status_label = match result.status {
+                    crate::skill_runtime::ExecutionStatus::Success => "成功",
+                    _ => "失败",
+                };
+                self.log_info(format!(
+                    "Skill [{}] 执行{} (exit_code={:?}, {}ms)",
+                    result.skill_id, status_label, result.exit_code, result.duration_ms
+                ));
+                self.skill_execution_result = Some(result);
+                self.skill_popup_mode = SkillPopupMode::Result;
             }
         }
     }

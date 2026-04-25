@@ -57,6 +57,11 @@ pub struct TuiStrings {
     pub help_category_system: &'static str,
     pub search_mode_repo: &'static str,
     pub search_mode_code: &'static str,
+    pub title_skills: &'static str,
+    pub help_skills: &'static str,
+    pub skill_no_params: &'static str,
+    pub hint_skill_params: &'static str,
+    pub skill_result_title: &'static str,
 }
 
 #[allow(dead_code)]
@@ -149,6 +154,9 @@ impl LogStrings {
     }
     pub fn loaded_vaults(&self, count: usize) -> String {
         format!("已加载 {} 个笔记。", count)
+    }
+    pub fn loaded_skills(&self, count: usize) -> String {
+        format!("已加载 {} 个 Skills。", count)
     }
     pub fn fetching_preview(&self, repo_id: &str) -> String {
         format!("正在为 {} 获取预览...", repo_id)

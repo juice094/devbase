@@ -1,5 +1,5 @@
 use crate::tui::render::ui;
-use crate::tui::{App, InputMode, MainView, SearchPopupMode, SortMode, SyncPopupMode};
+use crate::tui::{App, InputMode, MainView, SearchPopupMode, SkillPopupMode, SortMode, SyncPopupMode};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{Terminal, backend::Backend};
 use std::io;
@@ -40,6 +40,82 @@ pub(crate) async fn run_app<B: Backend>(
                     continue; // 弹窗显示时不处理其他按键
                 }
                 SyncPopupMode::Hidden => {}
+            }
+            // Skill popup intercepts when visible
+            match app.skill_popup_mode {
+                SkillPopupMode::List => {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Char('q') => {
+                            app.skill_popup_mode = SkillPopupMode::Hidden;
+                        }
+                        KeyCode::Down => app.next_skill(),
+                        KeyCode::Up => app.previous_skill(),
+                        KeyCode::Home | KeyCode::PageUp => app.jump_to_top_skill(),
+                        KeyCode::End | KeyCode::PageDown => app.jump_to_bottom_skill(),
+                        KeyCode::Enter => {
+                            if let Some(skill_item) = app.current_skill().cloned() {
+                                let skill_md = std::path::PathBuf::from(&skill_item.row.local_path)
+                                    .join("SKILL.md");
+                                app.selected_skill =
+                                    crate::skill_runtime::parser::parse_skill_md(&skill_md).ok();
+                                app.skill_popup_mode = SkillPopupMode::Detail;
+                            }
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+                SkillPopupMode::Detail => {
+                    match key.code {
+                        KeyCode::Esc => app.skill_popup_mode = SkillPopupMode::List,
+                        KeyCode::Enter => {
+                            let has_inputs = app
+                                .selected_skill
+                                .as_ref()
+                                .map(|m| !m.inputs.is_empty())
+                                .unwrap_or(false);
+                            if has_inputs {
+                                app.skill_param_buffer.clear();
+                                app.skill_popup_mode = SkillPopupMode::ParamInput;
+                            } else {
+                                app.run_selected_skill();
+                                app.skill_popup_mode = SkillPopupMode::Hidden;
+                            }
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+                SkillPopupMode::ParamInput => {
+                    match key.code {
+                        KeyCode::Enter => {
+                            app.run_selected_skill();
+                            app.skill_param_buffer.clear();
+                            app.skill_popup_mode = SkillPopupMode::Hidden;
+                        }
+                        KeyCode::Esc => {
+                            app.skill_param_buffer.clear();
+                            app.skill_popup_mode = SkillPopupMode::Detail;
+                        }
+                        KeyCode::Char(c) => app.skill_param_buffer.push(c),
+                        KeyCode::Backspace => {
+                            app.skill_param_buffer.pop();
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+                SkillPopupMode::Result => {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => {
+                            app.skill_popup_mode = SkillPopupMode::Hidden;
+                            app.skill_execution_result = None;
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+                SkillPopupMode::Hidden => {}
             }
             // Help popup intercepts keys when visible
             if app.help_popup_mode == crate::tui::HelpPopupMode::Visible {
@@ -127,6 +203,10 @@ pub(crate) async fn run_app<B: Backend>(
                         if let Err(e) = app.load_repos() {
                             app.log_error(crate::i18n::current().log.refresh_failed(e));
                         }
+                    }
+                    KeyCode::Char('k') => {
+                        app.load_skills();
+                        app.skill_popup_mode = SkillPopupMode::List;
                     }
                     KeyCode::Char('h') | KeyCode::Char('?') => app.toggle_help(),
                     KeyCode::F(1) => app.toggle_help(),

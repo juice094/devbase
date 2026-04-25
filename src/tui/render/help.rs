@@ -69,7 +69,7 @@ pub(crate) fn render_help(frame: &mut Frame, _app: &App, area: Rect, styles: &St
     );
     let system_lines = help_section(
         i18n.tui.help_category_system,
-        &[("h / ? / F1", "显示帮助"), ("q / Esc", "退出 / 关闭弹窗")],
+        &[("k", "Skills"), ("h / ? / F1", "显示帮助"), ("q / Esc", "退出 / 关闭弹窗")],
         styles,
     );
     let mut search_system = search_lines;

@@ -50,6 +50,11 @@ pub fn build() -> I18n {
             help_category_system: "System",
             search_mode_repo: "Repo Search",
             search_mode_code: "Code Search",
+            title_skills: "Skills",
+            help_skills: "Skills",
+            skill_no_params: "No params",
+            hint_skill_params: "  [Enter] execute  [Esc] cancel",
+            skill_result_title: "Execution Result",
         },
         cli: CliStrings {
             scanning: "Scanning directory",

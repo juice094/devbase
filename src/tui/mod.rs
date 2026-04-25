@@ -81,6 +81,17 @@ pub(crate) struct VaultItem {
     pub(crate) outgoing_links: Vec<String>,
 }
 
+#[derive(Clone)]
+pub(crate) struct SkillItem {
+    pub(crate) row: crate::skill_runtime::SkillRow,
+}
+
+impl From<crate::skill_runtime::SkillRow> for SkillItem {
+    fn from(row: crate::skill_runtime::SkillRow) -> Self {
+        Self { row }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum InputMode {
     Normal,
@@ -93,6 +104,15 @@ pub(crate) enum SyncPopupMode {
     Hidden,
     Preview,
     Progress,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum SkillPopupMode {
+    Hidden,
+    List,
+    Detail,
+    ParamInput,
+    Result,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -154,6 +174,13 @@ pub struct App {
     pub(crate) vaults: Vec<VaultItem>,
     pub(crate) vault_selected: usize,
     pub(crate) vault_list_state: ListState,
+    pub(crate) skill_popup_mode: SkillPopupMode,
+    pub(crate) skills: Vec<SkillItem>,
+    pub(crate) skill_selected: usize,
+    pub(crate) skill_list_state: ListState,
+    pub(crate) selected_skill: Option<crate::skill_runtime::SkillMeta>,
+    pub(crate) skill_param_buffer: String,
+    pub(crate) skill_execution_result: Option<crate::skill_runtime::ExecutionResult>,
 }
 
 pub mod event;

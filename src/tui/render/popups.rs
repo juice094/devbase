@@ -1,6 +1,6 @@
 use crate::tui::layout::AppLayout;
 use crate::tui::theme::Styles;
-use crate::tui::{App, SearchPopupMode, SyncPopupMode};
+use crate::tui::{App, SearchPopupMode, SkillPopupMode, SyncPopupMode};
 use ratatui::{
     Frame,
     layout::Margin,
@@ -20,6 +20,14 @@ pub(crate) fn render_popups(frame: &mut Frame, app: &mut App, styles: &Styles) {
         SyncPopupMode::Preview => render_sync_preview(frame, app, styles),
         SyncPopupMode::Progress => render_sync_progress(frame, app, styles),
         SyncPopupMode::Hidden => {}
+    }
+
+    match app.skill_popup_mode {
+        SkillPopupMode::List => render_skill_list(frame, app, styles),
+        SkillPopupMode::Detail => render_skill_detail(frame, app, styles),
+        SkillPopupMode::ParamInput => render_skill_param_input(frame, app, styles),
+        SkillPopupMode::Result => render_skill_result(frame, app, styles),
+        SkillPopupMode::Hidden => {}
     }
 }
 
@@ -105,6 +113,185 @@ fn render_search_results(frame: &mut Frame, app: &App, styles: &Styles) {
         y: popup_inner.y + popup_inner.height.saturating_sub(hint_height),
         width: popup_inner.width,
         height: hint_height,
+    };
+    frame.render_widget(hint, hint_area);
+}
+
+// ---------------------------------------------------------------------------
+// Skill Panel
+// ---------------------------------------------------------------------------
+
+fn render_skill_list(frame: &mut Frame, app: &App, styles: &Styles) {
+    let popup_area = AppLayout::centered(frame.area(), 70, 60);
+    let popup_inner = popup_area.inner(Margin::new(1, 1));
+    let i18n = crate::i18n::current();
+
+    let title = format!("{} ({})", i18n.tui.title_skills, app.skills.len());
+    let items: Vec<ListItem> = app
+        .skills
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let is_selected = i == app.skill_selected;
+            let line = Span::styled(
+                format!("[{}] {} — {}", s.row.id, s.row.name, s.row.description),
+                if is_selected {
+                    Style::default().fg(styles.theme.text).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::Gray)
+                },
+            );
+            ListItem::new(Line::from(line))
+        })
+        .collect();
+
+    let popup_list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(title).border_style(styles.border))
+        .highlight_style(styles.highlight)
+        .highlight_symbol("> ");
+
+    frame.render_widget(Clear, popup_area);
+    frame.render_widget(popup_list, popup_area);
+
+    let hint = Paragraph::new(Span::styled(
+        "[↑/↓] 选择  [Enter] 详情/执行  [Esc] 关闭",
+        styles.hint,
+    ));
+    let hint_area = ratatui::layout::Rect {
+        x: popup_inner.x,
+        y: popup_inner.y + popup_inner.height.saturating_sub(1),
+        width: popup_inner.width,
+        height: 1,
+    };
+    frame.render_widget(hint, hint_area);
+}
+
+fn render_skill_detail(frame: &mut Frame, app: &App, styles: &Styles) {
+    let popup_area = AppLayout::centered(frame.area(), 60, 50);
+    let popup_inner = popup_area.inner(Margin::new(1, 1));
+    let i18n = crate::i18n::current();
+
+    let mut lines: Vec<Line> = Vec::new();
+    if let Some(skill) = &app.selected_skill {
+        lines.push(Line::from(Span::styled(
+            format!("{} v{}", skill.name, skill.version),
+            Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(Span::styled(&skill.description, Style::default().fg(styles.theme.text))));
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Inputs:",
+            Style::default().fg(styles.theme.info).add_modifier(Modifier::BOLD),
+        )));
+        if skill.inputs.is_empty() {
+            lines.push(Line::from(Span::styled(i18n.tui.skill_no_params, Style::default().fg(Color::Gray))));
+        } else {
+            for inp in &skill.inputs {
+                let required = if inp.required { "(required)" } else { "" };
+                lines.push(Line::from(vec![
+                    Span::raw(format!("  • {} ({}) ", inp.name, inp.input_type)),
+                    Span::styled(required, Style::default().fg(styles.theme.warning)),
+                ]));
+                lines.push(Line::from(Span::styled(
+                    format!("    {}", inp.description),
+                    Style::default().fg(Color::Gray),
+                )));
+            }
+        }
+    } else {
+        lines.push(Line::from(Span::styled("无法加载 Skill 详情", Style::default().fg(styles.theme.danger))));
+    }
+
+    let popup_text = Text::from(lines);
+    let popup_para = Paragraph::new(popup_text)
+        .block(Block::default().borders(Borders::ALL).title("Skill Detail").border_style(styles.border))
+        .wrap(Wrap { trim: true });
+
+    frame.render_widget(Clear, popup_area);
+    frame.render_widget(popup_para, popup_area);
+
+    let hint = Paragraph::new(Span::styled(
+        "[Enter] 执行  [Esc] 返回列表",
+        styles.hint,
+    ));
+    let hint_area = ratatui::layout::Rect {
+        x: popup_inner.x,
+        y: popup_inner.y + popup_inner.height.saturating_sub(1),
+        width: popup_inner.width,
+        height: 1,
+    };
+    frame.render_widget(hint, hint_area);
+}
+
+fn render_skill_param_input(frame: &mut Frame, app: &App, styles: &Styles) {
+    let area = ratatui::layout::Rect {
+        x: 0,
+        y: frame.area().height.saturating_sub(1),
+        width: frame.area().width,
+        height: 1,
+    };
+    let i18n = crate::i18n::current();
+    let input_text = Line::from(vec![
+        Span::styled(
+            format!("[{}] ", i18n.tui.skill_result_title),
+            Style::default().fg(styles.theme.warning).add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(&app.skill_param_buffer),
+        Span::styled(i18n.tui.hint_skill_params, styles.hint),
+    ]);
+    frame.render_widget(Paragraph::new(input_text), area);
+}
+
+fn render_skill_result(frame: &mut Frame, app: &App, styles: &Styles) {
+    let popup_area = AppLayout::centered(frame.area(), 80, 70);
+    let popup_inner = popup_area.inner(Margin::new(1, 1));
+    let i18n = crate::i18n::current();
+
+    let mut lines: Vec<Line> = Vec::new();
+    if let Some(result) = &app.skill_execution_result {
+        let status_label = match result.status {
+            crate::skill_runtime::ExecutionStatus::Success => ("✓ Success", styles.theme.success),
+            crate::skill_runtime::ExecutionStatus::Failed => ("✗ Failed", styles.theme.danger),
+            crate::skill_runtime::ExecutionStatus::Timeout => ("⏱ Timeout", styles.theme.warning),
+            _ => ("… Running", styles.theme.warning),
+        };
+        lines.push(Line::from(Span::styled(
+            format!("{} | exit_code={:?} | {}ms",
+                status_label.0, result.exit_code, result.duration_ms),
+            Style::default().fg(status_label.1).add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(""));
+        if !result.stdout.is_empty() {
+            lines.push(Line::from(Span::styled("stdout:", Style::default().fg(styles.theme.info).add_modifier(Modifier::BOLD))));
+            for line in result.stdout.lines() {
+                lines.push(Line::from(Span::raw(line)));
+            }
+        }
+        if !result.stderr.is_empty() {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled("stderr:", Style::default().fg(styles.theme.danger).add_modifier(Modifier::BOLD))));
+            for line in result.stderr.lines() {
+                lines.push(Line::from(Span::raw(line)));
+            }
+        }
+    } else {
+        lines.push(Line::from(Span::styled("No result available", Style::default().fg(Color::Gray))));
+    }
+
+    let popup_text = Text::from(lines);
+    let popup_para = Paragraph::new(popup_text)
+        .block(Block::default().borders(Borders::ALL).title(i18n.tui.skill_result_title).border_style(styles.border))
+        .wrap(Wrap { trim: true });
+
+    frame.render_widget(Clear, popup_area);
+    frame.render_widget(popup_para, popup_area);
+
+    let hint = Paragraph::new(Span::styled(i18n.tui.hint_popup_close, styles.hint));
+    let hint_area = ratatui::layout::Rect {
+        x: popup_inner.x,
+        y: popup_inner.y + popup_inner.height.saturating_sub(1),
+        width: popup_inner.width,
+        height: 1,
     };
     frame.render_widget(hint, hint_area);
 }
