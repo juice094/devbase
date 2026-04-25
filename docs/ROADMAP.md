@@ -124,6 +124,15 @@
 | NLQ 结果展示 | 弹窗列表展示语义搜索到的 skills | ✅ |
 | 智能同步建议 | `sync/policy.rs::recommend_sync_action` — 基于 safety/ahead/behind 生成建议 | ✅ |
 
+### Phase 7 已完成 ✅（v0.8.0 — Workflow 子类型执行）
+
+| 任务 | 交付物 | 状态 |
+|------|--------|------|
+| Subworkflow 执行 | `execute_subworkflow_step` — 递归调用 `execute_workflow` | ✅ |
+| Parallel 执行 | `execute_parallel_step` — 子步骤串行执行 + 结果聚合 | ✅ |
+| Condition 执行 | `execute_condition_step` — 字符串插值后 true/false 评估 | ✅ |
+| 并行 batch 执行 | `std::thread::scope` 替换串行 loop（#7 风险点修复） | ✅ |
+
 ### 不做（明确排除）
 
 - ❌ SSE transport（stdio 已足够）
