@@ -2,11 +2,11 @@
 
 `devbase` 是本地优先的开发者工作区与知识库管理器。
 
-- **当前阶段**：阶段一 — 产品化闭环（v0.3.0 准备中）
-- **当前版本**：v0.2.4
-- **下一里程碑**：v0.3.0（首个产品化发布）
-- **核心原则**：功能冻结 — 仅修 bug、补文档、准备分发
-- **阶段二**：v0.3.0 发布后自然启动，详见 `docs/ROADMAP.md`
+- **当前阶段**：阶段二 — 个人知识库跃迁（v0.4.0 进行中）
+- **当前版本**：v0.3.0（已发布）
+- **下一里程碑**：v0.4.0（Repo 语义理解 + 跨仓库知识图谱）
+- **核心方向**：不是协议标准权/商业化，而是"个人外置大脑"
+- **设计文档**：`docs/plans/personal-knowledge-graph.md`
 
 Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），外置大脑架构贯通。
 
@@ -154,23 +154,22 @@ devbase 承载外部资源调度的抽象接口：
 
 ## 当前粗粒度待办
 
-### 阶段一剩余任务（v0.3.0 发布前）
+### 阶段二任务（v0.4.0 个人知识库跃迁）
 
-| 优先级 | 任务 | 状态 | 备注 |
-|--------|------|------|------|
-| P0 | 验证 34 tools 通过 MCP Inspector | 🟡 待执行 | stdio 模式全覆盖 |
-| P0 | README Quick Start 端到端走查 | 🟡 待执行 | 新机器、空 registry |
-| P0 | 撰写 v0.3.0 Release Notes | 🟡 待执行 | 首个产品化版本 |
-| P1 | GitHub Release 预编译二进制 | 🟡 待执行 | Windows / Linux / macOS |
-| P1 | 一键安装脚本 | 🟡 待执行 | PowerShell + Bash |
-| P2 | 修复 `tokei` RUSTSEC 上游警告 | 🟡 待评估 | 或标记为 acceptable |
+| 波次 | 任务 | 状态 | 交付物 |
+|------|------|------|--------|
+| Wave 21 | Repo 画像提取器 | 🟡 待启动 | Schema v16 + README/Cargo.toml 解析器 |
+| Wave 22 | 相似度计算 + similar/stack CLI | 🟡 待启动 | `devbase similar clarity` |
+| Wave 23 | 对比报告 + 笔记系统 | 🟡 待启动 | `devbase compare` + `devbase why` + `.devbase/notes.md` |
+| Wave 24 | TUI Knowledge Tab + NL 查询 | 🟡 待启动 | DetailTab::Knowledge |
 
-### 阶段二候选（v0.3.0 发布后启动）
+### 明确不做（已排除）
 
-- SSE transport (`docs/plans/sse-daemon-design.md`)
-- `.devbase` 目录规范 v1.0
-- IDE 集成申请（Cursor / Claude Desktop / 5ire）
-- Skill 市场 / Registry 服务
+- SSE transport（stdio 已覆盖主流 Client）
+- `.devbase` 目录规范（无外部采纳者）
+- MCP 协议扩展提案（Star = 0，不会被采纳）
+- 商业化 / 付费版
+- 拆分 crate（50+ tools 后再评估）
 
 ### Future / Icebox（无排期）
 
