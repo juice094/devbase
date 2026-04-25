@@ -183,6 +183,76 @@ async fn test_tools_call_devkit_arxiv_fetch() {
 }
 
 #[tokio::test]
+async fn test_tools_call_devkit_skill_list() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_skill_list",
+            "arguments": {}
+        }
+    });
+    let resp = server.handle_request(req).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    assert!(parsed.get("skills").unwrap().is_array());
+    assert!(parsed.get("count").unwrap().as_i64().unwrap() >= 0);
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_skill_search() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 10,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_skill_search",
+            "arguments": { "query": "report" }
+        }
+    });
+    let resp = server.handle_request(req).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    assert!(parsed.get("skills").unwrap().is_array());
+    assert!(parsed.get("count").unwrap().as_i64().unwrap() >= 0);
+}
+
+#[tokio::test]
+#[ignore = "requires knowledge-report skill installed and may run external Python process"]
+async fn test_tools_call_devkit_skill_run() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_skill_run",
+            "arguments": {
+                "skill_id": "knowledge-report",
+                "args": { "repo_id": "devbase" }
+            }
+        }
+    });
+    let resp = server.handle_request(req).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    assert!(parsed.get("status").is_some());
+    assert!(parsed.get("stdout").is_some());
+}
+
+#[tokio::test]
 async fn test_stdio_content_length_format() {
     let body = serde_json::json!({ "jsonrpc": "2.0", "id": 1, "result": {} });
     let msg = format_mcp_message(&body);
