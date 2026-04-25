@@ -16,6 +16,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Disable Windows Defender real-time protection
+        shell: powershell
+        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true
+          Write-Host "Defender real-time monitoring disabled"
+      - name: Diagnostics
+        shell: powershell
+        run: |
+          rustc --version
+          cargo --version
+          Write-Host "LOCALAPPDATA: $env:LOCALAPPDATA"
+          Write-Host "USERPROFILE: $env:USERPROFILE"
+          Write-Host "TEMP: $env:TEMP"
       - run: cargo check --all-targets
 
   test:
@@ -24,7 +37,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: rustc --version && cargo --version
+      - name: Disable Windows Defender real-time protection
+        shell: powershell
+        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true
+          Write-Host "Defender real-time monitoring disabled"
+      - name: Diagnostics
+        shell: powershell
+        run: |
+          rustc --version
+          cargo --version
+          Write-Host "LOCALAPPDATA: $env:LOCALAPPDATA"
+          Write-Host "USERPROFILE: $env:USERPROFILE"
+          Write-Host "TEMP: $env:TEMP"
       - run: cargo test --lib -- --test-threads=1 --nocapture
 
   fmt:
@@ -35,6 +60,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - name: Disable Windows Defender real-time protection
+        shell: powershell
+        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true
+          Write-Host "Defender real-time monitoring disabled"
       - run: cargo fmt --check
 
   clippy:
@@ -45,4 +75,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - run: cargo clippy --all-targets -- -D warnings
+      - name: Disable Windows Defender real-time protection
+        shell: powershell
+        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true
+          Write-Host "Defender real-time monitoring disabled"
+      - name: Diagnostics
+        shell: powershell
+        run: |
+          rustc --version
+          cargo --version
+          cargo clippy --version
+      - run: cargo clippy --all-targets -- -W warnings
