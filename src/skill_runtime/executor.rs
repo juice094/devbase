@@ -51,16 +51,17 @@ pub fn run_skill(
         .env("DEVBASE_SKILL_ID", &skill.id)
         .env("DEVBASE_HOME", devbase_home()?);
 
-    // Parse key=value args and pass as --kebab-case value
+    // Build JSON input from key=value args and pass via stdin
+    let mut json_args = serde_json::Map::new();
     for arg in args {
         if let Some((k, v)) = arg.split_once('=') {
-            let flag = k.replace('_', "-");
-            cmd.arg(format!("--{}", flag));
-            cmd.arg(v);
+            json_args.insert(k.to_string(), serde_json::Value::String(v.to_string()));
         } else {
-            cmd.arg(arg);
+            json_args.insert("command".to_string(), serde_json::Value::String(arg.to_string()));
         }
     }
+    let json_input = serde_json::Value::Object(json_args).to_string();
+    cmd.stdin(Stdio::piped());
 
     let start = Instant::now();
     let mut child = match cmd.spawn() {
@@ -76,6 +77,11 @@ pub fn run_skill(
             });
         }
     };
+
+    // Write JSON input to stdin
+    if let Some(stdin) = child.stdin.take() {
+        let _ = std::io::Write::write_all(&mut { stdin }, json_input.as_bytes());
+    }
 
     // Wait with timeout
     let status = match wait_with_timeout(&mut child, timeout) {

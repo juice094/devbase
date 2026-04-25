@@ -234,6 +234,34 @@ async fn test_tools_call_devkit_skill_search() {
 }
 
 #[tokio::test]
+async fn test_tools_call_devkit_skill_discover() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_skill_discover",
+            "arguments": {
+                "path": ".",
+                "skill_id": "mcp-test-discover",
+                "dry_run": true
+            }
+        }
+    });
+    let resp = server.handle_request(req).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    assert!(parsed.get("id").unwrap().as_str().unwrap().len() > 0);
+    assert!(parsed.get("name").unwrap().as_str().unwrap().len() > 0);
+    assert!(parsed.get("version").unwrap().as_str().is_some());
+    assert!(parsed.get("category").is_some());
+}
+
+#[tokio::test]
 #[ignore = "requires knowledge-report skill installed and may run external Python process"]
 async fn test_tools_call_devkit_skill_run() {
     let server = build_server();
