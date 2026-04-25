@@ -74,16 +74,26 @@
 | Workflow DSL 规范 | ✅ | YAML Schema 冻结，Engine 延后至 v0.5.0 |
 | 评分预留 | ✅ | `success_rate`/`usage_count`/`rating` 字段入库，算法 v0.6.0 实现 |
 
-### Phase 2 待完成（当前）
+### Phase 2 已完成 ✅（v0.4.0 发布）
 
-| 任务 | 交付物 | 优先级 |
-|------|--------|--------|
-| discover 非 dry-run | `devbase skill discover <path> --install` 真正注册 Skill | P0 |
-| Git URL discover | `devbase skill discover https://github.com/...` 直接克隆+封装 | P0 |
-| Skill 执行验证 | 将 devbase/zeroclaw 封装后 `skill run` 验证 entry_script | P0 |
-| MCP discover tool | `devkit_skill_discover` 暴露给 AI Agent | P1 |
-| Workflow Engine | v0.5.0：YAML 解析 + 拓扑排序 + 并行调度 | P2 |
-| 评分算法 | v0.6.0：基于 execution audit 自动计算 success_rate/rating | P2 |
+| 任务 | 交付物 | 状态 |
+|------|--------|------|
+| discover 非 dry-run | `devbase skill discover <path>` 默认注册， `--dry-run` 可选预览 | ✅ |
+| Git URL discover | `devbase skill discover https://github.com/...` 克隆+分析+注册 | ✅ |
+| Skill 执行验证 | devbase/zeroclaw 封装后 `skill run` 验证 entry_script | ✅ |
+| MCP discover tool | `devkit_skill_discover` 暴露给 AI Agent（35 tools） | ✅ |
+| executor 接口修复 | JSON via stdin 传参，与 discover wrapper 兼容 | ✅ |
+
+### Phase 3 待完成（当前）
+
+| 任务 | 交付物 | 优先级 | 版本 |
+|------|--------|--------|------|
+| Repo → entities 同步 | `scan`/`register` 操作双向同步到 entities 表 | P1 | v0.4.1 |
+| TUI category 显示 | Skill 列表/详情面板显示分类标签 | P1 | v0.4.1 |
+| Skill marketplace 过滤 | `skill list --category dev/cli` + `skill search` 按分类过滤 | P2 | v0.4.2 |
+| Workflow Engine | YAML 解析 + 拓扑排序调度 + 并行执行 + 状态持久化 | P0 | v0.5.0 |
+| 评分算法 | 基于 `skill_executions` audit 自动计算 `success_rate`/`rating` | P2 | v0.6.0 |
+| Mind market | 从执行数据中提取最佳 practice，推荐高评分 Skill | P2 | v0.6.0 |
 
 ### 不做（明确排除）
 
