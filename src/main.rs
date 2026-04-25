@@ -160,6 +160,66 @@ enum Commands {
         #[command(subcommand)]
         cmd: VaultCommands,
     },
+    /// Skill Runtime — install, discover, and execute AI skills
+    Skill {
+        #[command(subcommand)]
+        cmd: SkillCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum SkillCommands {
+    /// List installed skills
+    List {
+        /// Filter by skill type (builtin, custom, system)
+        #[arg(long)]
+        skill_type: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Install a skill from a local path
+    Install {
+        /// Path to the skill directory (must contain SKILL.md)
+        path: String,
+    },
+    /// Uninstall a skill
+    Uninstall {
+        /// Skill ID to remove
+        skill_id: String,
+    },
+    /// Show skill details
+    Info {
+        /// Skill ID
+        skill_id: String,
+    },
+    /// Search skills by name or description
+    Search {
+        /// Query string
+        query: String,
+        /// Use semantic search (requires embeddings)
+        #[arg(long)]
+        semantic: bool,
+        /// Maximum results
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+    },
+    /// Execute a skill
+    Run {
+        /// Skill ID
+        skill_id: String,
+        /// Arguments as key=value pairs
+        #[arg(long = "arg")]
+        args: Vec<String>,
+        /// Timeout in seconds
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
+    },
+    /// Validate a local SKILL.md file
+    Validate {
+        /// Path to SKILL.md or skill directory
+        path: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -261,7 +321,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Clean => {
             info!("正在清理注册表中的备份条目");
-            let conn = registry::WorkspaceRegistry::init_db()?;
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
             let deleted = conn.execute(
                 "DELETE FROM repos WHERE id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%'",
                 [],
@@ -668,6 +728,119 @@ async fn main() -> anyhow::Result<()> {
                 println!("Vault search index rebuilt.");
             }
         },
+        Commands::Skill { cmd } => {
+            use skill_runtime::{parser, registry};
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            match cmd {
+                SkillCommands::List { skill_type, json } => {
+                    let st = skill_type.as_deref().and_then(|s| s.parse().ok());
+                    let skills = registry::list_skills(&conn, st)?;
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&skills)?);
+                    } else {
+                        if skills.is_empty() {
+                            println!("No skills found.");
+                        } else {
+                            println!("{:<24} {:<10} {:<12} {}", "ID", "Type", "Version", "Description");
+                            for s in &skills {
+                                println!(
+                                    "{:<24} {:<10} {:<12} {}",
+                                    s.id, s.skill_type.as_str(), s.version, s.description
+                                );
+                            }
+                        }
+                    }
+                }
+                SkillCommands::Install { path } => {
+                    let p = std::path::PathBuf::from(&path);
+                    let skill_md = if p.is_dir() {
+                        p.join("SKILL.md")
+                    } else {
+                        p.clone()
+                    };
+                    if !skill_md.exists() {
+                        println!("SKILL.md not found at: {}", skill_md.display());
+                        return Ok(());
+                    }
+                    let skill = parser::parse_skill_md(&skill_md)?;
+                    registry::install_skill(&conn, &skill)?;
+                    println!("Installed skill '{}' ({})", skill.name, skill.id);
+                }
+                SkillCommands::Uninstall { skill_id } => {
+                    let removed = registry::uninstall_skill(&conn, &skill_id)?;
+                    if removed {
+                        println!("Uninstalled skill '{}'.", skill_id);
+                    } else {
+                        println!("Skill '{}' not found.", skill_id);
+                    }
+                }
+                SkillCommands::Info { skill_id } => {
+                    match registry::get_skill(&conn, &skill_id)? {
+                        Some(s) => {
+                            println!("ID:          {}", s.id);
+                            println!("Name:        {}", s.name);
+                            println!("Version:     {}", s.version);
+                            println!("Type:        {}", s.skill_type.as_str());
+                            println!("Author:      {}", s.author.as_deref().unwrap_or("-"));
+                            println!("Tags:        {}", s.tags.join(", "));
+                            println!("Path:        {}", s.local_path);
+                            println!("Installed:   {}", s.installed_at.format("%Y-%m-%d %H:%M:%S"));
+                            println!("Description: {}", s.description);
+                        }
+                        None => println!("Skill '{}' not found.", skill_id),
+                    }
+                }
+                SkillCommands::Search { query, semantic: _, limit } => {
+                    let results = registry::search_skills_text(&conn, &query, limit)?;
+                    if results.is_empty() {
+                        println!("No skills matching '{}'.", query);
+                    } else {
+                        println!("Found {} skill(s):", results.len());
+                        for s in &results {
+                            println!("  [{}] {} — {}", s.id, s.name, s.description);
+                        }
+                    }
+                }
+                SkillCommands::Run { skill_id, args, timeout } => {
+                    match registry::get_skill(&conn, &skill_id)? {
+                        Some(skill) => {
+                            let result = skill_runtime::executor::run_skill(
+                                &skill, &args, std::time::Duration::from_secs(timeout),
+                            )?;
+                            let exec_id = registry::record_execution_start(&conn, &skill_id, &serde_json::to_string(&args).unwrap_or_default())?;
+                            registry::record_execution_finish(&conn, exec_id, &result)?;
+                            println!("Exit code: {:?}", result.exit_code);
+                            if !result.stdout.is_empty() {
+                                println!("--- stdout ---\n{}", result.stdout);
+                            }
+                            if !result.stderr.is_empty() {
+                                eprintln!("--- stderr ---\n{}", result.stderr);
+                            }
+                        }
+                        None => println!("Skill '{}' not found.", skill_id),
+                    }
+                }
+                SkillCommands::Validate { path } => {
+                    let p = std::path::PathBuf::from(&path);
+                    let skill_md = if p.is_dir() { p.join("SKILL.md") } else { p };
+                    match parser::parse_skill_md(&skill_md) {
+                        Ok(skill) => {
+                            println!("✓ Valid SKILL.md: '{}' ({})", skill.name, skill.id);
+                            if !skill.inputs.is_empty() {
+                                println!("  Inputs:  {}", skill.inputs.len());
+                            }
+                            if !skill.outputs.is_empty() {
+                                println!("  Outputs: {}", skill.outputs.len());
+                            }
+                        }
+                        Err(e) => {
+                            println!("✗ Invalid SKILL.md: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Ok(())

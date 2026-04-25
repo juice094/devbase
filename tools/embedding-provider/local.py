@@ -167,7 +167,10 @@ def main() -> int:
 
     device = None if args.device == "auto" else args.device
     print(f"Loading model '{model_name}' (device={device or 'auto-detect'})...")
-    model = SentenceTransformer(model_name, device=device)
+    kwargs = {}
+    if device is not None:
+        kwargs["device"] = device
+    model = SentenceTransformer(model_name, **kwargs)
     dim = model.get_embedding_dimension()
     print(f"Model loaded. Embedding dimension: {dim}")
 
