@@ -51,13 +51,7 @@ impl App {
             vaults: Vec::new(),
             vault_selected: 0,
             vault_list_state: ListState::default(),
-            skill_popup_mode: SkillPopupMode::Hidden,
-            skills: Vec::new(),
-            skill_selected: 0,
-            skill_list_state: ListState::default(),
-            selected_skill: None,
-            skill_param_buffer: String::new(),
-            skill_execution_result: None,
+            skill_panel: crate::tui::SkillPanelState::default(),
             workflow_popup_mode: WorkflowPopupMode::Hidden,
             workflows: Vec::new(),
             workflow_selected: 0,
@@ -449,9 +443,9 @@ impl App {
             Ok(c) => c,
             Err(e) => {
                 self.log_warn(format!("无法加载 Skill 注册表: {}", e));
-                self.skills.clear();
-                self.skill_selected = 0;
-                self.skill_list_state.select(Some(0));
+                self.skill_panel.items.clear();
+                self.skill_panel.selected = 0;
+                self.skill_panel.list_state.select(Some(0));
                 return;
             }
         };
@@ -459,48 +453,48 @@ impl App {
             Ok(r) => r,
             Err(e) => {
                 self.log_warn(format!("无法列出 Skills: {}", e));
-                self.skills.clear();
-                self.skill_selected = 0;
-                self.skill_list_state.select(Some(0));
+                self.skill_panel.items.clear();
+                self.skill_panel.selected = 0;
+                self.skill_panel.list_state.select(Some(0));
                 return;
             }
         };
-        self.skills = rows.into_iter().map(SkillItem::from).collect();
-        self.skill_selected = 0;
-        self.skill_list_state.select(Some(0));
-        self.log_info(crate::i18n::current().log.loaded_skills(self.skills.len()));
+        self.skill_panel.items = rows.into_iter().map(SkillItem::from).collect();
+        self.skill_panel.selected = 0;
+        self.skill_panel.list_state.select(Some(0));
+        self.log_info(crate::i18n::current().log.loaded_skills(self.skill_panel.items.len()));
     }
 
     pub(crate) fn next_skill(&mut self) {
-        if !self.skills.is_empty() {
-            self.skill_selected = (self.skill_selected + 1) % self.skills.len();
-            self.skill_list_state.select(Some(self.skill_selected));
+        if !self.skill_panel.items.is_empty() {
+            self.skill_panel.selected = (self.skill_panel.selected + 1) % self.skill_panel.items.len();
+            self.skill_panel.list_state.select(Some(self.skill_panel.selected));
         }
     }
 
     pub(crate) fn previous_skill(&mut self) {
-        if !self.skills.is_empty() {
-            self.skill_selected = (self.skill_selected + self.skills.len() - 1) % self.skills.len();
-            self.skill_list_state.select(Some(self.skill_selected));
+        if !self.skill_panel.items.is_empty() {
+            self.skill_panel.selected = (self.skill_panel.selected + self.skill_panel.items.len() - 1) % self.skill_panel.items.len();
+            self.skill_panel.list_state.select(Some(self.skill_panel.selected));
         }
     }
 
     pub(crate) fn jump_to_top_skill(&mut self) {
-        if !self.skills.is_empty() {
-            self.skill_selected = 0;
-            self.skill_list_state.select(Some(self.skill_selected));
+        if !self.skill_panel.items.is_empty() {
+            self.skill_panel.selected = 0;
+            self.skill_panel.list_state.select(Some(self.skill_panel.selected));
         }
     }
 
     pub(crate) fn jump_to_bottom_skill(&mut self) {
-        if !self.skills.is_empty() {
-            self.skill_selected = self.skills.len() - 1;
-            self.skill_list_state.select(Some(self.skill_selected));
+        if !self.skill_panel.items.is_empty() {
+            self.skill_panel.selected = self.skill_panel.items.len() - 1;
+            self.skill_panel.list_state.select(Some(self.skill_panel.selected));
         }
     }
 
     pub(crate) fn current_skill(&self) -> Option<&SkillItem> {
-        self.skills.get(self.skill_selected)
+        self.skill_panel.items.get(self.skill_panel.selected)
     }
 
     pub(crate) fn load_workflows(&mut self) {
@@ -688,7 +682,7 @@ impl App {
         };
         self.run_skill_item(
             skill_item,
-            self.skill_param_buffer.split_whitespace().map(|s| s.to_string()).collect(),
+            self.skill_panel.param_buffer.split_whitespace().map(|s| s.to_string()).collect(),
         );
     }
 
@@ -800,8 +794,8 @@ impl App {
                     "Skill [{}] 执行{} (exit_code={:?}, {}ms)",
                     result.skill_id, status_label, result.exit_code, result.duration_ms
                 ));
-                self.skill_execution_result = Some(result);
-                self.skill_popup_mode = SkillPopupMode::Result;
+                self.skill_panel.execution_result = Some(result);
+                self.skill_panel.popup_mode = SkillPopupMode::Result;
             }
             AsyncNotification::WorkflowRunFinished { workflow_id, results, error } => {
                 if let Some(e) = error {
@@ -1267,13 +1261,7 @@ mod tests {
             vaults: vec![],
             vault_selected: 0,
             vault_list_state: ListState::default(),
-            skill_popup_mode: SkillPopupMode::Hidden,
-            skills: vec![],
-            skill_selected: 0,
-            skill_list_state: ListState::default(),
-            selected_skill: None,
-            skill_param_buffer: String::new(),
-            skill_execution_result: None,
+            skill_panel: crate::tui::SkillPanelState::default(),
             workflow_popup_mode: WorkflowPopupMode::Hidden,
             workflows: vec![],
             workflow_selected: 0,

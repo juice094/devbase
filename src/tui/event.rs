@@ -45,11 +45,11 @@ pub(crate) async fn run_app<B: Backend>(
                 SyncPopupMode::Hidden => {}
             }
             // Skill popup intercepts when visible
-            match app.skill_popup_mode {
+            match app.skill_panel.popup_mode {
                 SkillPopupMode::List => {
                     match key.code {
                         KeyCode::Esc | KeyCode::Char('q') => {
-                            app.skill_popup_mode = SkillPopupMode::Hidden;
+                            app.skill_panel.popup_mode = SkillPopupMode::Hidden;
                         }
                         KeyCode::Down => app.next_skill(),
                         KeyCode::Up => app.previous_skill(),
@@ -59,9 +59,9 @@ pub(crate) async fn run_app<B: Backend>(
                             if let Some(skill_item) = app.current_skill().cloned() {
                                 let skill_md = std::path::PathBuf::from(&skill_item.row.local_path)
                                     .join("SKILL.md");
-                                app.selected_skill =
+                                app.skill_panel.selected_item =
                                     crate::skill_runtime::parser::parse_skill_md(&skill_md).ok();
-                                app.skill_popup_mode = SkillPopupMode::Detail;
+                                app.skill_panel.popup_mode = SkillPopupMode::Detail;
                             }
                         }
                         _ => {}
@@ -70,19 +70,19 @@ pub(crate) async fn run_app<B: Backend>(
                 }
                 SkillPopupMode::Detail => {
                     match key.code {
-                        KeyCode::Esc => app.skill_popup_mode = SkillPopupMode::List,
+                        KeyCode::Esc => app.skill_panel.popup_mode = SkillPopupMode::List,
                         KeyCode::Enter => {
                             let has_inputs = app
-                                .selected_skill
+                                .skill_panel.selected_item
                                 .as_ref()
                                 .map(|m| !m.inputs.is_empty())
                                 .unwrap_or(false);
                             if has_inputs {
-                                app.skill_param_buffer.clear();
-                                app.skill_popup_mode = SkillPopupMode::ParamInput;
+                                app.skill_panel.param_buffer.clear();
+                                app.skill_panel.popup_mode = SkillPopupMode::ParamInput;
                             } else {
                                 app.run_selected_skill();
-                                app.skill_popup_mode = SkillPopupMode::Hidden;
+                                app.skill_panel.popup_mode = SkillPopupMode::Hidden;
                             }
                         }
                         _ => {}
@@ -93,16 +93,16 @@ pub(crate) async fn run_app<B: Backend>(
                     match key.code {
                         KeyCode::Enter => {
                             app.run_selected_skill();
-                            app.skill_param_buffer.clear();
-                            app.skill_popup_mode = SkillPopupMode::Hidden;
+                            app.skill_panel.param_buffer.clear();
+                            app.skill_panel.popup_mode = SkillPopupMode::Hidden;
                         }
                         KeyCode::Esc => {
-                            app.skill_param_buffer.clear();
-                            app.skill_popup_mode = SkillPopupMode::Detail;
+                            app.skill_panel.param_buffer.clear();
+                            app.skill_panel.popup_mode = SkillPopupMode::Detail;
                         }
-                        KeyCode::Char(c) => app.skill_param_buffer.push(c),
+                        KeyCode::Char(c) => app.skill_panel.param_buffer.push(c),
                         KeyCode::Backspace => {
-                            app.skill_param_buffer.pop();
+                            app.skill_panel.param_buffer.pop();
                         }
                         _ => {}
                     }
@@ -111,8 +111,8 @@ pub(crate) async fn run_app<B: Backend>(
                 SkillPopupMode::Result => {
                     match key.code {
                         KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => {
-                            app.skill_popup_mode = SkillPopupMode::Hidden;
-                            app.skill_execution_result = None;
+                            app.skill_panel.popup_mode = SkillPopupMode::Hidden;
+                            app.skill_panel.execution_result = None;
                         }
                         _ => {}
                     }
@@ -304,7 +304,7 @@ pub(crate) async fn run_app<B: Backend>(
                     }
                     KeyCode::Char('k') => {
                         app.load_skills();
-                        app.skill_popup_mode = SkillPopupMode::List;
+                        app.skill_panel.popup_mode = SkillPopupMode::List;
                     }
                     KeyCode::Char('w') => {
                         app.load_workflows();

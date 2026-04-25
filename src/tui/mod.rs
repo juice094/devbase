@@ -115,6 +115,31 @@ pub(crate) enum SkillPopupMode {
     Result,
 }
 
+#[derive(Clone)]
+pub(crate) struct SkillPanelState {
+    pub popup_mode: SkillPopupMode,
+    pub items: Vec<SkillItem>,
+    pub selected: usize,
+    pub list_state: ListState,
+    pub selected_item: Option<crate::skill_runtime::SkillMeta>,
+    pub param_buffer: String,
+    pub execution_result: Option<crate::skill_runtime::ExecutionResult>,
+}
+
+impl Default for SkillPanelState {
+    fn default() -> Self {
+        Self {
+            popup_mode: SkillPopupMode::Hidden,
+            items: Vec::new(),
+            selected: 0,
+            list_state: ListState::default(),
+            selected_item: None,
+            param_buffer: String::new(),
+            execution_result: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum WorkflowPopupMode {
     Hidden,
@@ -189,13 +214,7 @@ pub struct App {
     pub(crate) vaults: Vec<VaultItem>,
     pub(crate) vault_selected: usize,
     pub(crate) vault_list_state: ListState,
-    pub(crate) skill_popup_mode: SkillPopupMode,
-    pub(crate) skills: Vec<SkillItem>,
-    pub(crate) skill_selected: usize,
-    pub(crate) skill_list_state: ListState,
-    pub(crate) selected_skill: Option<crate::skill_runtime::SkillMeta>,
-    pub(crate) skill_param_buffer: String,
-    pub(crate) skill_execution_result: Option<crate::skill_runtime::ExecutionResult>,
+    pub(crate) skill_panel: SkillPanelState,
     pub(crate) workflow_popup_mode: WorkflowPopupMode,
     pub(crate) workflows: Vec<crate::workflow::WorkflowDefinition>,
     pub(crate) workflow_selected: usize,

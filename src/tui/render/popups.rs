@@ -24,7 +24,7 @@ pub(crate) fn render_popups(frame: &mut Frame, app: &mut App, styles: &Styles) {
         SyncPopupMode::Hidden => {}
     }
 
-    match app.skill_popup_mode {
+    match app.skill_panel.popup_mode {
         SkillPopupMode::List => render_skill_list(frame, app, styles),
         SkillPopupMode::Detail => render_skill_detail(frame, app, styles),
         SkillPopupMode::ParamInput => render_skill_param_input(frame, app, styles),
@@ -141,13 +141,13 @@ fn render_skill_list(frame: &mut Frame, app: &App, styles: &Styles) {
     let popup_inner = popup_area.inner(Margin::new(1, 1));
     let i18n = crate::i18n::current();
 
-    let title = format!("{} ({})", i18n.tui.title_skills, app.skills.len());
+    let title = format!("{} ({})", i18n.tui.title_skills, app.skill_panel.items.len());
     let items: Vec<ListItem> = app
-        .skills
+        .skill_panel.items
         .iter()
         .enumerate()
         .map(|(i, s)| {
-            let is_selected = i == app.skill_selected;
+            let is_selected = i == app.skill_panel.selected;
             let cat_tag = s.row.category.as_deref().unwrap_or("uncategorized");
             let line = Span::styled(
                 format!("[{}] {} [{}] — {}", s.row.id, s.row.name, cat_tag, s.row.description),
@@ -186,7 +186,7 @@ fn render_skill_detail(frame: &mut Frame, app: &App, styles: &Styles) {
     let i18n = crate::i18n::current();
 
     let mut lines: Vec<Line> = Vec::new();
-    if let Some(skill) = &app.selected_skill {
+    if let Some(skill) = &app.skill_panel.selected_item {
         lines.push(Line::from(Span::styled(
             format!("{} v{}", skill.name, skill.version),
             Style::default().fg(styles.theme.primary).add_modifier(Modifier::BOLD),
@@ -271,7 +271,7 @@ fn render_skill_param_input(frame: &mut Frame, app: &App, styles: &Styles) {
             format!("[{}] ", i18n.tui.skill_result_title),
             Style::default().fg(styles.theme.warning).add_modifier(Modifier::BOLD),
         ),
-        Span::raw(&app.skill_param_buffer),
+        Span::raw(&app.skill_panel.param_buffer),
         Span::styled(i18n.tui.hint_skill_params, styles.hint),
     ]);
     frame.render_widget(Paragraph::new(input_text), area);
@@ -283,7 +283,7 @@ fn render_skill_result(frame: &mut Frame, app: &App, styles: &Styles) {
     let i18n = crate::i18n::current();
 
     let mut lines: Vec<Line> = Vec::new();
-    if let Some(result) = &app.skill_execution_result {
+    if let Some(result) = &app.skill_panel.execution_result {
         let status_label = match result.status {
             crate::skill_runtime::ExecutionStatus::Success => ("✓ Success", styles.theme.success),
             crate::skill_runtime::ExecutionStatus::Failed => ("✗ Failed", styles.theme.danger),
