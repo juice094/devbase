@@ -17,14 +17,39 @@ pub fn execute_workflow(
     let mut all_results: HashMap<String, StepResult> = HashMap::new();
 
     for batch in &batches {
-        // Simple sequential execution within batch for MVP;
-        // parallel execution can be added with rayon/tokio later.
-        for step in batch {
-            let result = execute_step(conn, step, &ctx)?;
+        // Execute independent steps within each batch in parallel.
+        // Error handling (retry/fallback) remains sequential to preserve ordering.
+        let ctx_arc = std::sync::Arc::new(ctx);
+        let batch_results: Vec<(StepDefinition, StepResult)> = std::thread::scope(|s| {
+            let mut handles = Vec::with_capacity(batch.len());
+            for step in batch {
+                let step = step.clone();
+                let ctx_ref = std::sync::Arc::clone(&ctx_arc);
+                handles.push(s.spawn(move || {
+                    let conn = crate::registry::WorkspaceRegistry::init_db()
+                        .map_err(|e| anyhow::anyhow!("db open failed for step '{}': {}", step.id, e))?;
+                    let result = execute_step(&conn, &step, &*ctx_ref)?;
+                    Ok::<_, anyhow::Error>((step, result))
+                }));
+            }
+            let mut results = Vec::with_capacity(handles.len());
+            for handle in handles {
+                match handle.join() {
+                    Ok(Ok(r)) => results.push(r),
+                    Ok(Err(e)) => return Err(e),
+                    Err(_) => return Err(anyhow::anyhow!("step thread panicked")),
+                }
+            }
+            Ok(results)
+        })?;
+        ctx = std::sync::Arc::try_unwrap(ctx_arc)
+            .map_err(|_| anyhow::anyhow!("parallel step references leaked"))?;
+
+        // Sequential post-processing: update context and handle errors
+        for (step, result) in batch_results {
             let status = result.status.clone();
             let step_id = step.id.clone();
 
-            // Collect outputs for downstream interpolation
             ctx.add_step_output(&step_id, result.outputs.clone());
             all_results.insert(step_id.clone(), result);
 
@@ -42,7 +67,7 @@ pub fn execute_workflow(
                         let mut retry_ok = false;
                         for i in 0..*count {
                             std::thread::sleep(Duration::from_millis(*backoff_ms));
-                            let retry_result = execute_step(conn, step, &ctx)?;
+                            let retry_result = execute_step(conn, &step, &ctx)?;
                             if retry_result.status != ExecutionStatus::Failed {
                                 ctx.add_step_output(&step_id, retry_result.outputs.clone());
                                 all_results.insert(step_id.clone(), retry_result);
@@ -60,7 +85,6 @@ pub fn execute_workflow(
                         }
                     }
                     ErrorPolicy::Fallback { step_id: fallback_id } => {
-                        // Find fallback step in workflow and execute it
                         if let Some(fb_step) = wf.steps.iter().find(|s| s.id == *fallback_id) {
                             let fb_result = execute_step(conn, fb_step, &ctx)?;
                             ctx.add_step_output(&step_id, fb_result.outputs.clone());

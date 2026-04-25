@@ -254,17 +254,29 @@ fn resolve_interpreter(path: &std::path::Path) -> (Option<String>, String) {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let path_str = path.to_string_lossy().to_string();
     match ext {
-        "py" => (Some("python".to_string()), path_str),
-        "sh" => {
-            // On Windows, try bash from Git Bash or WSL
-            if cfg!(windows) {
-                (Some("bash".to_string()), path_str)
+        "py" => {
+            let candidates = if cfg!(windows) {
+                vec!["python", "python3", "py"]
             } else {
-                (Some("bash".to_string()), path_str)
-            }
+                vec!["python3", "python"]
+            };
+            let found = candidates.into_iter().find(|c| which::which(c).is_ok());
+            (found.map(|c| c.to_string()), path_str)
+        }
+        "sh" => {
+            let candidates = if cfg!(windows) {
+                vec!["bash", "sh", "cmd"]
+            } else {
+                vec!["bash", "sh"]
+            };
+            let found = candidates.into_iter().find(|c| which::which(c).is_ok());
+            (found.map(|c| c.to_string()), path_str)
         }
         "ps1" => (Some("powershell".to_string()), path_str),
-        "js" => (Some("node".to_string()), path_str),
+        "js" => {
+            let found = which::which("node").ok().map(|_| "node".to_string());
+            (found, path_str)
+        }
         _ => (None, path_str),
     }
 }

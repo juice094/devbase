@@ -1,6 +1,8 @@
 use super::*;
 use std::path::PathBuf;
 
+pub const CURRENT_SCHEMA_VERSION: i32 = 17;
+
 impl WorkspaceRegistry {
     pub fn db_path() -> anyhow::Result<PathBuf> {
         let data_dir = dirs::data_local_dir()
@@ -304,7 +306,6 @@ impl WorkspaceRegistry {
 
         // Schema versioning for future migrations
         let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        const CURRENT_SCHEMA_VERSION: i32 = 17;
         if user_version < CURRENT_SCHEMA_VERSION
             && path.exists()
             && let Err(e) = crate::backup::auto_backup_before_migration(&path)

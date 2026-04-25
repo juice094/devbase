@@ -619,27 +619,50 @@ impl App {
                     return;
                 }
             };
-            let result = (|| -> anyhow::Result<Vec<crate::skill_runtime::SkillRow>> {
-                let embedding = crate::embedding::generate_query_embedding(&query)?;
-                let skills = crate::skill_runtime::registry::search_skills_semantic(&conn, &embedding, 10, None)?;
-                Ok(skills)
-            })();
-            match result {
-                Ok(skills) => {
-                    let _ = tx.send(crate::asyncgit::AsyncNotification::NLPQueryFinished {
-                        query,
-                        skills,
-                        error: None,
-                    });
+            // Try semantic search first, fallback to text search if embedding unavailable
+            let (skills, fallback) = match crate::embedding::generate_query_embedding(&query) {
+                Ok(embedding) => {
+                    match crate::skill_runtime::registry::search_skills_semantic(&conn, &embedding, 10, None) {
+                        Ok(s) => (s, false),
+                        Err(_) => {
+                            match crate::skill_runtime::registry::search_skills_text(&conn, &query, 10, None) {
+                                Ok(s) => (s, true),
+                                Err(e) => {
+                                    let _ = tx.send(crate::asyncgit::AsyncNotification::NLPQueryFinished {
+                                        query,
+                                        skills: vec![],
+                                        error: Some(e.to_string()),
+                                    });
+                                    return;
+                                }
+                            }
+                        }
+                    }
                 }
-                Err(e) => {
-                    let _ = tx.send(crate::asyncgit::AsyncNotification::NLPQueryFinished {
-                        query,
-                        skills: vec![],
-                        error: Some(e.to_string()),
-                    });
+                Err(_) => {
+                    match crate::skill_runtime::registry::search_skills_text(&conn, &query, 10, None) {
+                        Ok(s) => (s, true),
+                        Err(e) => {
+                            let _ = tx.send(crate::asyncgit::AsyncNotification::NLPQueryFinished {
+                                query,
+                                skills: vec![],
+                                error: Some(e.to_string()),
+                            });
+                            return;
+                        }
+                    }
                 }
-            }
+            };
+            let error = if fallback {
+                Some("Semantic search unavailable; showing text search results".to_string())
+            } else {
+                None
+            };
+            let _ = tx.send(crate::asyncgit::AsyncNotification::NLPQueryFinished {
+                query,
+                skills,
+                error,
+            });
         });
     }
 

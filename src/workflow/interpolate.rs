@@ -127,9 +127,26 @@ mod tests {
         );
     }
 
+    struct EnvGuard {
+        key: &'static str,
+        old: Option<String>,
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.old {
+                Some(v) => unsafe { std::env::set_var(self.key, v) },
+                None => unsafe { std::env::remove_var(self.key) },
+            }
+        }
+    }
+
     #[test]
     fn test_interpolate_env() {
-        unsafe { std::env::set_var("DEVBASE_TEST_VAR", "test_value"); }
+        let key = "DEVBASE_TEST_VAR";
+        let old = std::env::var(key).ok();
+        let _guard = EnvGuard { key, old };
+        unsafe { std::env::set_var(key, "test_value"); }
         let ctx = InterpolationContext::default();
         assert_eq!(
             interpolate("${env.DEVBASE_TEST_VAR}", &ctx).unwrap(),

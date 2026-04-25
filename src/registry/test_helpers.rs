@@ -7,6 +7,10 @@ impl WorkspaceRegistry {
     pub fn init_in_memory() -> anyhow::Result<rusqlite::Connection> {
         let conn = rusqlite::Connection::open_in_memory()?;
         conn.execute_batch(SCHEMA_DDL)?;
+        conn.execute(
+            &format!("PRAGMA user_version = {}", crate::registry::migrate::CURRENT_SCHEMA_VERSION),
+            [],
+        )?;
         Ok(conn)
     }
 }
@@ -297,3 +301,42 @@ CREATE TABLE IF NOT EXISTS workflow_executions (
     duration_ms     INTEGER
 );
 "#;
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_in_memory_schema_version() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap();
+        assert_eq!(version, crate::registry::migrate::CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_workflows_table_exists() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='workflows'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        assert!(exists, "workflows table must exist in current schema");
+    }
+
+    #[test]
+    fn test_workflow_executions_table_exists() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='workflow_executions'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        assert!(exists, "workflow_executions table must exist in current schema");
+    }
+}
