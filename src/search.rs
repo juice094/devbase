@@ -16,7 +16,7 @@ const INDEX_DIR: &str = "devbase/search_index";
 fn index_path() -> Result<PathBuf, TantivyError> {
     crate::storage::DefaultStorageBackend {}
         .index_path()
-        .map_err(|e| TantivyError::InvalidArgument(e.to_string().into()))
+        .map_err(|e| TantivyError::InvalidArgument(e.to_string()))
 }
 
 fn build_schema() -> Schema {
