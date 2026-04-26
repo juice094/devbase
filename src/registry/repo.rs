@@ -499,4 +499,58 @@ mod tests {
         let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
         assert!(repos[0].last_synced_at.is_some());
     }
+
+    #[test]
+    fn test_list_repos_stale_health() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
+
+        // No health record → should be stale
+        let now = chrono::Utc::now().to_rfc3339();
+        let stale = WorkspaceRegistry::list_repos_stale_health(&conn, &now).unwrap();
+        assert_eq!(stale.len(), 1);
+        assert_eq!(stale[0].id, "repo-a");
+
+        // Save health with current timestamp
+        let health = crate::registry::HealthEntry {
+            status: "healthy".to_string(),
+            ahead: 0,
+            behind: 0,
+            checked_at: chrono::Utc::now(),
+        };
+        WorkspaceRegistry::save_health(&conn, "repo-a", &health).unwrap();
+
+        // With current threshold → checked_at is not earlier than threshold → not stale
+        let stale = WorkspaceRegistry::list_repos_stale_health(&conn, &now).unwrap();
+        assert!(stale.is_empty());
+
+        // With future threshold → checked_at < future → stale again
+        let future = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+        let stale = WorkspaceRegistry::list_repos_stale_health(&conn, &future).unwrap();
+        assert_eq!(stale.len(), 1);
+    }
+
+    #[test]
+    fn test_list_repos_need_index() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
+
+        // No summary → should need index
+        let now = chrono::Utc::now().to_rfc3339();
+        let need = WorkspaceRegistry::list_repos_need_index(&conn, &now).unwrap();
+        assert_eq!(need.len(), 1);
+        assert_eq!(need[0].id, "repo-a");
+
+        // Save summary with current timestamp
+        WorkspaceRegistry::save_summary(&conn, "repo-a", "A test summary", "test").unwrap();
+
+        // With current threshold → generated_at is not earlier → not need index
+        let need = WorkspaceRegistry::list_repos_need_index(&conn, &now).unwrap();
+        assert!(need.is_empty());
+
+        // With future threshold → generated_at < future → need index again
+        let future = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+        let need = WorkspaceRegistry::list_repos_need_index(&conn, &future).unwrap();
+        assert_eq!(need.len(), 1);
+    }
 }
