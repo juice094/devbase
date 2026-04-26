@@ -17,27 +17,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Disable Windows Defender real-time protection
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: check
+      - name: Windows environment setup
         shell: powershell
         run: |
-          Set-MpPreference -DisableRealtimeMonitoring $true
-          Write-Host "Defender real-time monitoring disabled"
-      - name: "Redirect devbase data dir to D: drive"
-        shell: powershell
-        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
           $localData = "$env:LOCALAPPDATA\devbase"
           $tempData = "D:\devbase-ci-data"
           if (Test-Path $localData) { Remove-Item -Recurse -Force $localData }
           New-Item -ItemType Directory -Force -Path $tempData | Out-Null
-          cmd /c mklink /D "$localData" "$tempData"
-          Write-Host "Linked $localData -> $tempData"
-      - name: Diagnostics
-        shell: powershell
-        run: |
-          rustc --version
-          cargo --version
-          Write-Host "LOCALAPPDATA: $env:LOCALAPPDATA"
-          Write-Host "CARGO_TARGET_DIR: $env:CARGO_TARGET_DIR"
+          cmd /c mklink /D "$localData" "$tempData" | Out-Null
+          Write-Host "rustc: $(rustc --version)"
+          Write-Host "cargo: $(cargo --version)"
       - run: cargo check --all-targets
 
   test:
@@ -46,28 +39,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Disable Windows Defender real-time protection
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: test
+      - name: Windows environment setup
         shell: powershell
         run: |
-          Set-MpPreference -DisableRealtimeMonitoring $true
-          Write-Host "Defender real-time monitoring disabled"
-      - name: "Redirect devbase data dir to D: drive"
-        shell: powershell
-        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
           $localData = "$env:LOCALAPPDATA\devbase"
           $tempData = "D:\devbase-ci-data"
           if (Test-Path $localData) { Remove-Item -Recurse -Force $localData }
           New-Item -ItemType Directory -Force -Path $tempData | Out-Null
-          cmd /c mklink /D "$localData" "$tempData"
-          Write-Host "Linked $localData -> $tempData"
-      - name: Diagnostics
-        shell: powershell
-        run: |
-          rustc --version
-          cargo --version
-          Write-Host "LOCALAPPDATA: $env:LOCALAPPDATA"
-          Write-Host "CARGO_TARGET_DIR: $env:CARGO_TARGET_DIR"
-      - run: cargo test --lib -- --test-threads=1 --nocapture
+          cmd /c mklink /D "$localData" "$tempData" | Out-Null
+          Write-Host "rustc: $(rustc --version)"
+          Write-Host "cargo: $(cargo --version)"
+      - run: cargo test --all-targets -- --test-threads=1 --nocapture
 
   fmt:
     name: Rustfmt
@@ -77,11 +63,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Disable Windows Defender real-time protection
-        shell: powershell
-        run: |
-          Set-MpPreference -DisableRealtimeMonitoring $true
-          Write-Host "Defender real-time monitoring disabled"
       - run: cargo fmt --check
 
   clippy:
@@ -92,24 +73,32 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - name: Disable Windows Defender real-time protection
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: clippy
+      - name: Windows environment setup
         shell: powershell
         run: |
-          Set-MpPreference -DisableRealtimeMonitoring $true
-          Write-Host "Defender real-time monitoring disabled"
-      - name: "Redirect devbase data dir to D: drive"
-        shell: powershell
-        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
           $localData = "$env:LOCALAPPDATA\devbase"
           $tempData = "D:\devbase-ci-data"
           if (Test-Path $localData) { Remove-Item -Recurse -Force $localData }
           New-Item -ItemType Directory -Force -Path $tempData | Out-Null
-          cmd /c mklink /D "$localData" "$tempData"
-          Write-Host "Linked $localData -> $tempData"
-      - name: Diagnostics
-        shell: powershell
-        run: |
-          rustc --version
-          cargo --version
-          cargo clippy --version
+          cmd /c mklink /D "$localData" "$tempData" | Out-Null
+          Write-Host "rustc: $(rustc --version)"
+          Write-Host "cargo: $(cargo --version)"
+          Write-Host "clippy: $(cargo clippy --version)"
       - run: cargo clippy --all-targets --verbose -- -W warnings
+
+  audit:
+    name: Security Audit
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: audit
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - run: cargo audit
