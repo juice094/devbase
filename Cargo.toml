@@ -13,6 +13,10 @@ harness = false
 name = "registry_bench"
 harness = false
 
+[features]
+default = ["tui"]
+tui = ["ratatui", "crossterm"]
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 git2 = "0.20"
@@ -30,8 +34,8 @@ dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
 rusqlite = { version = "0.34", features = ["bundled", "chrono"] }
 blake3 = "1.5"
-ratatui = "0.30"
-crossterm = "0.28"
+ratatui = { version = "0.30", optional = true }
+crossterm = { version = "0.28", optional = true }
 crossbeam-channel = "0.5"
 notify = "8.2.0"
 which = "7"

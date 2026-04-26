@@ -25,6 +25,7 @@ pub mod symbol_links;
 pub mod sync;
 pub mod sync_protocol;
 pub mod syncthing_client;
+#[cfg(feature = "tui")]
 pub mod tui;
 pub mod vault;
 pub mod watch;

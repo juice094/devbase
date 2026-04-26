@@ -88,6 +88,7 @@ pub(crate) enum Commands {
         workspace_type: Option<String>,
     },
     /// Launch interactive TUI
+    #[cfg(feature = "tui")]
     Tui,
     /// Run as an MCP server (stdio transport)
     Mcp {
@@ -462,6 +463,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Meta { repo_id, tier, workspace_type } => {
             commands::simple::run_meta(&repo_id, tier, workspace_type)?;
         }
+        #[cfg(feature = "tui")]
         Commands::Tui => {
             commands::simple::run_tui().await?;
         }

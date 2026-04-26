@@ -36,6 +36,7 @@ pub async fn run_index(path: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "tui")]
 pub async fn run_tui() -> anyhow::Result<()> {
     info!("{}", i18n::current().cli.launching_tui);
     tui::run().await
