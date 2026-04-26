@@ -13,6 +13,27 @@ impl WorkspaceRegistry {
         )?;
         Ok(conn)
     }
+
+    /// Seed a minimal test repo into the registry so that FK-dependent tables can be tested.
+    pub fn seed_test_repo(
+        conn: &mut rusqlite::Connection,
+        id: &str,
+    ) -> anyhow::Result<RepoEntry> {
+        let repo = RepoEntry {
+            id: id.to_string(),
+            local_path: std::path::PathBuf::from(format!("/tmp/{}", id)),
+            tags: vec![],
+            language: Some("rust".to_string()),
+            discovered_at: chrono::Utc::now(),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        };
+        Self::save_repo(conn, &repo)?;
+        Ok(repo)
+    }
 }
 
 #[cfg(test)]

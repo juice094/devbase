@@ -121,19 +121,7 @@ mod tests {
     #[test]
     fn test_health_roundtrip() {
         let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
-        let repo = crate::registry::RepoEntry {
-            id: "repo-a".to_string(),
-            local_path: std::path::PathBuf::from("/tmp/repo-a"),
-            tags: vec![],
-            language: Some("rust".to_string()),
-            discovered_at: Utc::now(),
-            workspace_type: "git".to_string(),
-            data_tier: "private".to_string(),
-            last_synced_at: None,
-            stars: None,
-            remotes: vec![],
-        };
-        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
         let health = HealthEntry {
             status: "healthy".to_string(),
             ahead: 2,
@@ -150,20 +138,7 @@ mod tests {
     #[test]
     fn test_stars_cache_roundtrip() {
         let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
-        // repo_stars_cache has FK to repos, seed a repo first
-        let repo = crate::registry::RepoEntry {
-            id: "repo-a".to_string(),
-            local_path: std::path::PathBuf::from("/tmp/repo-a"),
-            tags: vec![],
-            language: Some("rust".to_string()),
-            discovered_at: Utc::now(),
-            workspace_type: "git".to_string(),
-            data_tier: "private".to_string(),
-            last_synced_at: None,
-            stars: None,
-            remotes: vec![],
-        };
-        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
         WorkspaceRegistry::save_stars_cache(&conn, "repo-a", 42).unwrap();
         let (stars, _) = WorkspaceRegistry::get_stars_cache(&conn, "repo-a").unwrap().unwrap();
         assert_eq!(stars, 42);
@@ -172,19 +147,7 @@ mod tests {
     #[test]
     fn test_stars_history() {
         let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
-        let repo = crate::registry::RepoEntry {
-            id: "repo-a".to_string(),
-            local_path: std::path::PathBuf::from("/tmp/repo-a"),
-            tags: vec![],
-            language: Some("rust".to_string()),
-            discovered_at: Utc::now(),
-            workspace_type: "git".to_string(),
-            data_tier: "private".to_string(),
-            last_synced_at: None,
-            stars: None,
-            remotes: vec![],
-        };
-        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
         WorkspaceRegistry::save_stars_cache(&conn, "repo-a", 10).unwrap();
         WorkspaceRegistry::save_stars_cache(&conn, "repo-a", 20).unwrap();
         let history = WorkspaceRegistry::get_stars_history(&conn, "repo-a", 10).unwrap();

@@ -488,20 +488,7 @@ mod tests {
     #[test]
     fn test_save_summary_smoke() {
         let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
-        // repo_summaries has FK to repos, so seed a repo first
-        let repo = crate::registry::RepoEntry {
-            id: "repo-a".to_string(),
-            local_path: std::path::PathBuf::from("/tmp/repo-a"),
-            tags: vec![],
-            language: Some("rust".to_string()),
-            discovered_at: chrono::Utc::now(),
-            workspace_type: "git".to_string(),
-            data_tier: "private".to_string(),
-            last_synced_at: None,
-            stars: None,
-            remotes: vec![],
-        };
-        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
         WorkspaceRegistry::save_summary(&conn, "repo-a", "A Rust CLI tool", "rust,cli").unwrap();
     }
 
@@ -522,33 +509,8 @@ mod tests {
     #[test]
     fn test_save_relation_smoke() {
         let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
-        // repo_relations may have FK constraints, seed repos first
-        let repo_a = crate::registry::RepoEntry {
-            id: "repo-a".to_string(),
-            local_path: std::path::PathBuf::from("/tmp/repo-a"),
-            tags: vec![],
-            language: Some("rust".to_string()),
-            discovered_at: chrono::Utc::now(),
-            workspace_type: "git".to_string(),
-            data_tier: "private".to_string(),
-            last_synced_at: None,
-            stars: None,
-            remotes: vec![],
-        };
-        let repo_b = crate::registry::RepoEntry {
-            id: "repo-b".to_string(),
-            local_path: std::path::PathBuf::from("/tmp/repo-b"),
-            tags: vec![],
-            language: Some("python".to_string()),
-            discovered_at: chrono::Utc::now(),
-            workspace_type: "git".to_string(),
-            data_tier: "private".to_string(),
-            last_synced_at: None,
-            stars: None,
-            remotes: vec![],
-        };
-        WorkspaceRegistry::save_repo(&mut conn, &repo_a).unwrap();
-        WorkspaceRegistry::save_repo(&mut conn, &repo_b).unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-b").unwrap();
         WorkspaceRegistry::save_relation(&conn, "repo-a", "repo-b", "depends_on", 0.95).unwrap();
     }
 
