@@ -65,6 +65,128 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 | CI/CD | `.github/workflows/ci.yml`：check / test / fmt / clippy on Windows |
 | 依赖安全 | `cargo audit` 0 漏洞（除上游 `tokei` 的 `RUSTSEC-2020-0163`） |
 
+## 架构红线（Architecture Guardrails）
+
+> 基于第一性原理的工程约束。违反任意一条 = HALT，转交人类裁决或回滚。
+> 规则编号 `RF-XX`（Red-line / Fitness function），带客观测量标准，非主观描述。
+
+### RF-1: 依赖注入优于全局状态（Global State Anti-Pattern）
+
+**理论锚定**：全局可变状态使组件隐式耦合，破坏可测试性与可复用性（参考：Pure Function / DI 原则）。
+
+**规则**：
+- 禁止新增 `dirs::data_local_dir()` / `std::env::var_os` 硬编码路径。
+- 所有 IO 边界路径（DB、索引、备份、配置）必须通过参数、构造函数或 `trait` 注入。
+- **例外（Grandfathered）**：现有 3 处（`backup_dir`、`db_path`、`index_path`）在重构前不得新增第 4 处。
+
+**Fitness Function**：
+```bash
+# 新增 PR 中不得出现新的全局路径硬编码
+grep -rn "dirs::data_local_dir\|std::env::var_os\|std::env::var(\"LOCALAPPDATA\"" src/ \
+  | grep -v "backup.rs\|migrate.rs\|search.rs"
+# 预期输出：空
+```
+
+### RF-2: 测试密封性（Hermetic Testing）
+
+**理论锚定**：测试失败必须仅因被测代码缺陷，不因外部因素、测试顺序或并行调度（参考：Google Test Blog — Hermetic Servers）。
+
+**规则**：
+- 所有测试禁止修改全局进程状态（`std::env::set_var`、`static mut`、全局文件系统句柄）。
+- 文件系统测试必须使用 `tempfile` + 注入式路径，禁止直接操作 `%LOCALAPPDATA%` 或 `~/.config`。
+- Tantivy / SQLite 文件系统测试必须获取 `SEARCH_TEST_LOCK`（或同等级串行化机制）。
+
+**Fitness Function**：
+```bash
+# 高并发下 100% 通过，无 flaky
+cargo test --test-threads=16
+```
+
+### RF-3: Schema 单一事实来源（Single Source of Truth）
+
+**理论锚定**：重复信息必然 drift（参考：DRY 原则 + Evolutionary Architecture 的版本一致性约束）。
+
+**规则**：
+- `SCHEMA_DDL`（`registry/test_helpers.rs`）与 `migrate.rs` 必须原子同步。
+- 新增表、索引、列必须同时出现在两者中；禁止仅更新其一。
+
+**Fitness Function**：
+- CI 运行 `test_in_memory_schema_version` + schema 结构比对脚本（可手动运行 `cargo test registry::test_helpers::tests` 验证）。
+
+### RF-4: 二进制入口限界（Bounded Context）
+
+**理论锚定**：CLI 入口应仅做命令分发，业务逻辑应在 lib 模块中（参考：Hexagonal Architecture / Ports & Adapters）。
+
+**规则**：
+- `main.rs` 行数不得超过 **1000 行**。
+- 新增 CLI 命令必须先拆分为 `commands/` 子模块或独立函数，禁止在 `main.rs` 中堆积业务逻辑。
+
+**Fitness Function**：
+```bash
+# 当前 1518 行（ grandfathered 技术债），禁止继续增长
+[ $(wc -l < src/main.rs) -le 1000 ] || exit 1
+```
+
+### RF-5: 无循环依赖（Acyclic Dependencies）
+
+**理论锚定**：循环依赖破坏模块化，使增量编译和独立复用不可能（参考：John Lakos — Large-Scale C++ Software Design）。
+
+**规则**：
+- 禁止模块间双向 `use crate::` 引用。
+- 新增模块必须通过脚本验证无循环（当前已满足，未来 PR 保持）。
+
+**Fitness Function**：
+```bash
+# 文件级双向依赖检测（当前输出应为空）
+for f in src/**/*.rs; do
+  name=$(basename "$f" .rs)
+  refs=$(grep -o 'use crate::[a-z_]*' "$f" | sed 's/use crate:://')
+  for r in $refs; do
+    if [ -f "src/$r.rs" ] && grep -q "use crate::$name\b" "src/$r.rs"; then
+      echo "CYCLE: $name <-> $r"
+    fi
+  done
+done
+```
+
+### RF-6: 生产代码无 panic（Crash-only Software）
+
+**理论锚定**：Rust 的 `Result` 类型将错误显式化；`unwrap` 是将运行时崩溃隐藏在类型系统背后（参考：Joe Armstrong — Let it crash，但 Rust 中崩溃 = 进程终止，不可接受）。
+
+**规则**：
+- 生产代码（`src/**/*.rs` 中不在 `#[cfg(test)]` 块内的代码）禁止 `unwrap()`、`expect()`、`panic!()`。
+- 测试代码不受此限，但鼓励使用 `?` 传播。
+
+**Fitness Function**：
+```bash
+# 生产代码 unwrap 计数必须为 0
+grep -rn "unwrap()\|expect()\|panic!(" src/ \
+  | grep -v "#\[cfg(test)\]" | grep -v "mod tests" | grep -v "tests/"
+# 预期输出：空
+```
+
+---
+
+## 技术债登记簿（Technical Debt Ledger）
+
+> 已识别的架构债，按严重程度排序。清偿前不得新增同类债务。
+
+| 债项 | 严重 | 当前值 | 目标阈值 | 清理路径 | 引入 Wave |
+|---|---|---|---|---|---|
+| `main.rs` 上帝文件 | 🔴 | 1518 行 | ≤1000 行 | 拆分为 `commands/*.rs`，每个命令独立模块 | ≤15 |
+| `init_db()` 全局路径 | 🔴 | 3 处硬编码 | 0 新增 | 引入 `trait StorageBackend { fn db_path(&self) -> PathBuf; }`， grandfathered 逐步迁移 | ≤15 |
+| Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调 | 补偿机制 | 设计 `sync_index_to_db()` 回滚或两阶段提交；或改为 SQLite FTS5 替代 Tantivy | 7 |
+| tree-sitter 编译成本 | 🟡 | ~15-20s | 可控 | 评估 `ccache` 或 grammar 预编译；或按需 feature-gate | 8 |
+| Feature flags 缺失 | 🟡 | 0 个可选 feature | ≥2 (tui, mcp) | `Cargo.toml` 添加 `[features]`，使 library-only 用户不必编译 ratatui/crossterm | ≤15 |
+| `LOCALAPPDATA` 测试模式残留 | 🟢 | 1 处（mcp/tests.rs 已修复） | 0 | 全面废弃 `LOCALAPPDATA` 环境变量覆盖，统一为 `DEVBASE_DATA_DIR` | 47 |
+
+**清偿原则**：
+1. 禁止在清偿现有 🔴 债务前新增同类别债务。
+2. 每个债务必须关联至少一个 `TODO(#<issue>)` 或 `FIXME` 代码注释。
+3. 每季度（90 天）由 MODE-O 审查一次，更新当前值与优先级。
+
+---
+
 ## 历史 Waves
 
 | Wave | 主题 | 关键产出 | Commit |
