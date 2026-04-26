@@ -2,9 +2,9 @@
 
 `devbase` 是本地优先的 AI Skill 编排基础设施。
 
-- **当前阶段**：阶段三 — v0.10.0 开发中（Wave 35）
-- **当前版本**：v0.9.0（tagged）
-- **下一里程碑**：v0.10.0（L3 Risk Layer MVP → L0-L4 验证）
+- **当前阶段**：阶段三 — v0.10.0 发布闭环 / v0.11.0 规划
+- **当前版本**：v0.10.0（tagged）
+- **下一里程碑**：v0.11.0（待定）
 - **核心方向**：将 GitHub 项目转换为标准化、可发现、可组合的 Skill，供弱 AI 子代理执行
 - **设计文档**：
   - `docs/architecture/workflow-dsl.md` — Workflow DSL 规范
