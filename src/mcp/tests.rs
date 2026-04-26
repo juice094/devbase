@@ -402,3 +402,26 @@ fn test_nl_filter_repos_tantivy_finds_devbase() {
         }
     }
 }
+
+#[test]
+fn test_format_mcp_message() {
+    let body = serde_json::json!({"jsonrpc": "2.0", "id": 1});
+    let msg = format_mcp_message(&body);
+    assert!(msg.starts_with("Content-Length:"));
+    assert!(msg.contains("\r\n\r\n"));
+    assert!(msg.ends_with("\n"));
+}
+
+#[test]
+fn test_parse_tool_tiers() {
+    let tiers = parse_tool_tiers("stable,beta");
+    assert!(tiers.contains(&ToolTier::Stable));
+    assert!(tiers.contains(&ToolTier::Beta));
+    assert!(!tiers.contains(&ToolTier::Experimental));
+}
+
+#[test]
+fn test_parse_tool_tiers_empty() {
+    let tiers = parse_tool_tiers("");
+    assert!(tiers.is_empty());
+}
