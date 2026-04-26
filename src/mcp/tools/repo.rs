@@ -2180,3 +2180,69 @@ Returns: JSON array of symbols with repo_id, file_path, name, line_start, and si
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_github_repo_https() {
+        assert_eq!(
+            parse_github_repo("https://github.com/owner/repo"),
+            Some(("owner".to_string(), "repo".to_string()))
+        );
+        assert_eq!(
+            parse_github_repo("https://github.com/owner/repo.git"),
+            Some(("owner".to_string(), "repo".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_github_repo_ssh() {
+        assert_eq!(
+            parse_github_repo("git@github.com:owner/repo"),
+            Some(("owner".to_string(), "repo".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_github_repo_invalid() {
+        assert_eq!(parse_github_repo("https://gitlab.com/owner/repo"), None);
+        assert_eq!(parse_github_repo("not-a-url"), None);
+    }
+
+    #[test]
+    fn test_parse_stars_condition() {
+        assert_eq!(parse_stars_condition("stars > 100"), Some(('>', 100)));
+        assert_eq!(parse_stars_condition("more than 50 stars"), Some(('>', 50)));
+        assert_eq!(parse_stars_condition("less than 10 stars"), Some(('<', 10)));
+        assert_eq!(parse_stars_condition("stars 42"), Some(('=', 42)));
+        assert_eq!(parse_stars_condition("just a query"), None);
+    }
+
+    #[test]
+    fn test_extract_tag_from_query() {
+        assert_eq!(
+            extract_tag_from_query("show repos tag rust"),
+            Some("rust".to_string())
+        );
+        assert_eq!(
+            extract_tag_from_query("repos with tag python"),
+            Some("python".to_string())
+        );
+        assert_eq!(extract_tag_from_query("show all repos"), None);
+    }
+
+    #[test]
+    fn test_parse_f32_array() {
+        let value = serde_json::json!({"embedding": [0.1, 0.2, 0.3]});
+        let arr = parse_f32_array(&value, "embedding").unwrap();
+        assert_eq!(arr, vec![0.1_f32, 0.2_f32, 0.3_f32]);
+
+        let empty = serde_json::json!({"embedding": []});
+        assert!(parse_f32_array(&empty, "embedding").unwrap().is_empty());
+
+        let bad = serde_json::json!({"embedding": ["not", "numbers"]});
+        assert!(parse_f32_array(&bad, "embedding").is_err());
+    }
+}
