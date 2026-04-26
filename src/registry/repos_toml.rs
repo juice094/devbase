@@ -57,4 +57,30 @@ workspace_type = "rust"
         assert_eq!(parsed.repos[0].tags, vec!["rust", "cli"]);
         assert_eq!(parsed.repos[0].tier, Some("hot".to_string()));
     }
+
+    #[test]
+    fn test_apply_overrides() {
+        let mut repo = crate::registry::RepoEntry {
+            id: "devbase".to_string(),
+            local_path: std::path::PathBuf::from("/tmp/devbase"),
+            tags: vec!["old".to_string()],
+            language: Some("rust".to_string()),
+            discovered_at: chrono::Utc::now(),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        };
+        let overrides = RepoOverride {
+            path: "devbase".to_string(),
+            tags: vec!["rust".to_string(), "cli".to_string()],
+            tier: Some("hot".to_string()),
+            workspace_type: Some("rust".to_string()),
+        };
+        apply_overrides(&mut repo, &overrides);
+        assert_eq!(repo.tags, vec!["rust", "cli"]);
+        assert_eq!(repo.data_tier, "hot");
+        assert_eq!(repo.workspace_type, "rust");
+    }
 }
