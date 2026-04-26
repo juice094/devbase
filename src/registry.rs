@@ -96,6 +96,7 @@ pub enum OplogEventType {
     Sync,
     Index,
     HealthCheck,
+    KnownLimit,
 }
 
 impl OplogEventType {
@@ -105,6 +106,7 @@ impl OplogEventType {
             OplogEventType::Sync => "sync",
             OplogEventType::Index => "index",
             OplogEventType::HealthCheck => "health_check",
+            OplogEventType::KnownLimit => "known_limit",
         }
     }
 }
@@ -118,6 +120,7 @@ impl std::str::FromStr for OplogEventType {
             "index" => Ok(OplogEventType::Index),
             "health_check" => Ok(OplogEventType::HealthCheck),
             "health" => Ok(OplogEventType::HealthCheck),
+            "known_limit" => Ok(OplogEventType::KnownLimit),
             _ => Err(()),
         }
     }

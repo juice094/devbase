@@ -148,6 +148,7 @@ fn test_oplog_event_type_roundtrip() {
     assert_eq!(OplogEventType::Sync.as_str(), "sync");
     assert_eq!(OplogEventType::Index.as_str(), "index");
     assert_eq!(OplogEventType::HealthCheck.as_str(), "health_check");
+    assert_eq!(OplogEventType::KnownLimit.as_str(), "known_limit");
 
     assert_eq!("scan".parse::<OplogEventType>().unwrap(), OplogEventType::Scan);
     assert_eq!("sync".parse::<OplogEventType>().unwrap(), OplogEventType::Sync);

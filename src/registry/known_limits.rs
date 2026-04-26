@@ -16,6 +16,9 @@ pub struct KnownLimit {
 
 impl WorkspaceRegistry {
     pub fn save_known_limit(conn: &rusqlite::Connection, limit: &KnownLimit) -> anyhow::Result<()> {
+        let is_update: bool = conn
+            .query_row("SELECT 1 FROM known_limits WHERE id = ?1", [&limit.id], |_| Ok(true))
+            .unwrap_or(false);
         conn.execute(
             "INSERT OR REPLACE INTO known_limits
              (id, category, description, source, severity, first_seen_at, last_checked_at, mitigated)
@@ -31,6 +34,25 @@ impl WorkspaceRegistry {
                 if limit.mitigated { 1 } else { 0 },
             ],
         )?;
+        let action = if is_update { "updated" } else { "created" };
+        let details = serde_json::json!({
+            "action": action,
+            "limit_id": &limit.id,
+            "category": &limit.category,
+        });
+        let _ = super::WorkspaceRegistry::save_oplog(
+            conn,
+            &super::OplogEntry {
+                id: None,
+                event_type: super::OplogEventType::KnownLimit,
+                repo_id: None,
+                details: Some(details.to_string()),
+                status: "success".to_string(),
+                timestamp: Utc::now(),
+                duration_ms: None,
+                event_version: 1,
+            },
+        );
         Ok(())
     }
 
@@ -113,7 +135,24 @@ impl WorkspaceRegistry {
 
     pub fn delete_known_limit(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<bool> {
         let rows = conn.execute("DELETE FROM known_limits WHERE id = ?1", [id])?;
-        Ok(rows > 0)
+        let deleted = rows > 0;
+        if deleted {
+            let details = serde_json::json!({ "action": "deleted", "limit_id": id });
+            let _ = super::WorkspaceRegistry::save_oplog(
+                conn,
+                &super::OplogEntry {
+                    id: None,
+                    event_type: super::OplogEventType::KnownLimit,
+                    repo_id: None,
+                    details: Some(details.to_string()),
+                    status: "success".to_string(),
+                    timestamp: Utc::now(),
+                    duration_ms: None,
+                    event_version: 1,
+                },
+            );
+        }
+        Ok(deleted)
     }
 
     pub fn resolve_known_limit(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<bool> {
@@ -121,7 +160,24 @@ impl WorkspaceRegistry {
             "UPDATE known_limits SET mitigated = 1, last_checked_at = ?1 WHERE id = ?2",
             [Utc::now().to_rfc3339(), id.to_string()],
         )?;
-        Ok(rows > 0)
+        let resolved = rows > 0;
+        if resolved {
+            let details = serde_json::json!({ "action": "resolved", "limit_id": id });
+            let _ = super::WorkspaceRegistry::save_oplog(
+                conn,
+                &super::OplogEntry {
+                    id: None,
+                    event_type: super::OplogEventType::KnownLimit,
+                    repo_id: None,
+                    details: Some(details.to_string()),
+                    status: "success".to_string(),
+                    timestamp: Utc::now(),
+                    duration_ms: None,
+                    event_version: 1,
+                },
+            );
+        }
+        Ok(resolved)
     }
 
     /// Seed known_limits with hard vetoes from AGENTS.md.
@@ -141,7 +197,7 @@ impl WorkspaceRegistry {
                 .unwrap_or(false);
             if !exists {
                 let limit = KnownLimit {
-                    id,
+                    id: id.clone(),
                     category: category.to_string(),
                     description: description.to_string(),
                     source: source.map(|s| s.to_string()),
@@ -153,6 +209,22 @@ impl WorkspaceRegistry {
                 Self::save_known_limit(conn, &limit)?;
                 inserted += 1;
             }
+        }
+        if inserted > 0 {
+            let details = serde_json::json!({ "action": "seed", "count": inserted });
+            let _ = super::WorkspaceRegistry::save_oplog(
+                conn,
+                &super::OplogEntry {
+                    id: None,
+                    event_type: super::OplogEventType::KnownLimit,
+                    repo_id: None,
+                    details: Some(details.to_string()),
+                    status: "success".to_string(),
+                    timestamp: Utc::now(),
+                    duration_ms: None,
+                    event_version: 1,
+                },
+            );
         }
         Ok(inserted)
     }
@@ -192,6 +264,14 @@ mod tests {
         let deleted = WorkspaceRegistry::delete_known_limit(&conn, "test-limit-1").unwrap();
         assert!(deleted);
         assert!(WorkspaceRegistry::get_known_limit(&conn, "test-limit-1").unwrap().is_none());
+
+        // Verify oplog entries
+        let oplog = WorkspaceRegistry::list_oplog(&conn, 10).unwrap();
+        let limit_logs: Vec<_> = oplog.into_iter().filter(|e| matches!(e.event_type, super::super::OplogEventType::KnownLimit)).collect();
+        assert_eq!(limit_logs.len(), 3, "expected create + resolve + delete oplog entries");
+        assert!(limit_logs.iter().any(|e| e.details.as_ref().unwrap().contains("created")));
+        assert!(limit_logs.iter().any(|e| e.details.as_ref().unwrap().contains("resolved")));
+        assert!(limit_logs.iter().any(|e| e.details.as_ref().unwrap().contains("deleted")));
     }
 
     #[test]

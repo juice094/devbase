@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **L3 Risk Layer MVP** — `known_limits` 表 + Registry CRUD + MCP tools + CLI subcommand
+  - Schema v18: `known_limits` 表（id, category, description, source, severity, first_seen_at, last_checked_at, mitigated）
+  - Registry CRUD: `save`/`get`/`list`/`delete`/`resolve`/`seed_hard_vetoes`
+  - MCP tools: `devkit_known_limit_store` / `devkit_known_limit_list`（Beta tier）
+  - CLI: `devbase limit {add,list,resolve,delete,seed}`
+  - OpLog 集成: create/update/resolve/delete/seed 自动写入 oplog（event_type = `KnownLimit`）
+  - Hard Veto 种子: AGENTS.md 中的 5 条硬约束自动填充
+
+### Changed
+
+- `cargo test --all-targets`: 279 → 284 passed
+- MCP tool 总数: 35 → 37
+
 ## [0.9.0] - 2026-04-26
 
 ### Added
