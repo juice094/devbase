@@ -110,3 +110,106 @@ impl WorkspaceRegistry {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_workspace_snapshot_roundtrip() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
+        let snapshot = WorkspaceSnapshot {
+            repo_id: "repo-a".to_string(),
+            file_hash: "abc123".to_string(),
+            checked_at: Utc::now(),
+        };
+        WorkspaceRegistry::save_workspace_snapshot(&conn, &snapshot).unwrap();
+        let fetched = WorkspaceRegistry::get_latest_workspace_snapshot(&conn, "repo-a").unwrap().unwrap();
+        assert_eq!(fetched.repo_id, "repo-a");
+        assert_eq!(fetched.file_hash, "abc123");
+    }
+
+    #[test]
+    fn test_workspace_snapshot_missing() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let result = WorkspaceRegistry::get_latest_workspace_snapshot(&conn, "missing").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_oplog_roundtrip() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let entry = OplogEntry {
+            id: None,
+            event_type: OplogEventType::HealthCheck,
+            repo_id: Some("repo-a".to_string()),
+            details: Some("details".to_string()),
+            status: "ok".to_string(),
+            timestamp: Utc::now(),
+            duration_ms: Some(42),
+            event_version: 1,
+        };
+        WorkspaceRegistry::save_oplog(&conn, &entry).unwrap();
+        let logs = WorkspaceRegistry::list_oplog(&conn, 10).unwrap();
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].event_type, OplogEventType::HealthCheck);
+        assert_eq!(logs[0].status, "ok");
+        assert_eq!(logs[0].duration_ms, Some(42));
+    }
+
+    #[test]
+    fn test_list_oplog_by_repo() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let e1 = OplogEntry {
+            id: None,
+            event_type: OplogEventType::Sync,
+            repo_id: Some("repo-a".to_string()),
+            details: None,
+            status: "ok".to_string(),
+            timestamp: Utc::now(),
+            duration_ms: None,
+            event_version: 1,
+        };
+        let e2 = OplogEntry {
+            id: None,
+            event_type: OplogEventType::HealthCheck,
+            repo_id: Some("repo-b".to_string()),
+            details: None,
+            status: "ok".to_string(),
+            timestamp: Utc::now(),
+            duration_ms: None,
+            event_version: 1,
+        };
+        WorkspaceRegistry::save_oplog(&conn, &e1).unwrap();
+        WorkspaceRegistry::save_oplog(&conn, &e2).unwrap();
+
+        let logs_a = WorkspaceRegistry::list_oplog_by_repo(&conn, "repo-a", 10).unwrap();
+        assert_eq!(logs_a.len(), 1);
+        assert_eq!(logs_a[0].event_type, OplogEventType::Sync);
+
+        let logs_b = WorkspaceRegistry::list_oplog_by_repo(&conn, "repo-b", 10).unwrap();
+        assert_eq!(logs_b.len(), 1);
+        assert_eq!(logs_b[0].event_type, OplogEventType::HealthCheck);
+    }
+
+    #[test]
+    fn test_list_oplog_limit() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        for i in 0..5 {
+            let entry = OplogEntry {
+                id: None,
+                event_type: OplogEventType::Scan,
+                repo_id: None,
+                details: Some(format!("entry {}", i)),
+                status: "ok".to_string(),
+                timestamp: Utc::now(),
+                duration_ms: None,
+                event_version: 1,
+            };
+            WorkspaceRegistry::save_oplog(&conn, &entry).unwrap();
+        }
+        let logs = WorkspaceRegistry::list_oplog(&conn, 3).unwrap();
+        assert_eq!(logs.len(), 3);
+    }
+}

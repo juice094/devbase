@@ -58,3 +58,77 @@ impl WorkspaceRegistry {
         rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::registry::{VaultNote, WorkspaceRegistry};
+
+    fn sample_note(id: &str, repo_id: Option<&str>) -> VaultNote {
+        VaultNote {
+            id: id.to_string(),
+            path: format!("/tmp/{}.md", id),
+            title: Some("Title".to_string()),
+            content: "Content".to_string(),
+            frontmatter: None,
+            tags: vec![],
+            outgoing_links: vec![],
+            linked_repo: repo_id.map(|s| s.to_string()),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    #[test]
+    fn test_get_linked_repos() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
+        let note = sample_note("note1", Some("repo-a"));
+        WorkspaceRegistry::save_vault_note(&mut conn, &note).unwrap();
+
+        let repos = WorkspaceRegistry::get_linked_repos(&conn, "note1").unwrap();
+        assert_eq!(repos, vec!["repo-a"]);
+    }
+
+    #[test]
+    fn test_get_linked_vaults() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
+        let note = sample_note("note1", Some("repo-a"));
+        WorkspaceRegistry::save_vault_note(&mut conn, &note).unwrap();
+
+        let vaults = WorkspaceRegistry::get_linked_vaults(&conn, "repo-a").unwrap();
+        assert_eq!(vaults, vec!["note1"]);
+    }
+
+    #[test]
+    fn test_get_linked_vault_notes() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
+        let note = sample_note("note1", Some("repo-a"));
+        WorkspaceRegistry::save_vault_note(&mut conn, &note).unwrap();
+
+        let notes = WorkspaceRegistry::get_linked_vault_notes(&conn, "repo-a").unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].0, "note1");
+        assert_eq!(notes[0].1, Some("Title".to_string()));
+    }
+
+    #[test]
+    fn test_get_linked_repos_full() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
+        let note = sample_note("note1", Some("repo-a"));
+        WorkspaceRegistry::save_vault_note(&mut conn, &note).unwrap();
+
+        let repos = WorkspaceRegistry::get_linked_repos_full(&conn, "note1").unwrap();
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].0, "repo-a");
+    }
+
+    #[test]
+    fn test_get_linked_repos_empty() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let repos = WorkspaceRegistry::get_linked_repos(&conn, "note-none").unwrap();
+        assert!(repos.is_empty());
+    }
+}

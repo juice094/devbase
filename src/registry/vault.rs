@@ -82,3 +82,55 @@ impl WorkspaceRegistry {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::VaultNote;
+
+    fn sample_note(id: &str) -> VaultNote {
+        VaultNote {
+            id: id.to_string(),
+            path: format!("/tmp/{}.md", id),
+            title: Some("Title".to_string()),
+            content: "Content".to_string(),
+            frontmatter: None,
+            tags: vec!["tag1".to_string(), "tag2".to_string()],
+            outgoing_links: vec!["link1".to_string()],
+            linked_repo: Some("repo-a".to_string()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn test_save_and_list_vault_note() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let note = sample_note("note1");
+        WorkspaceRegistry::save_vault_note(&mut conn, &note).unwrap();
+
+        let notes = WorkspaceRegistry::list_vault_notes(&conn).unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].id, "note1");
+        assert_eq!(notes[0].tags, vec!["tag1", "tag2"]);
+        assert_eq!(notes[0].outgoing_links, vec!["link1"]);
+    }
+
+    #[test]
+    fn test_delete_vault_note() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let note = sample_note("note1");
+        WorkspaceRegistry::save_vault_note(&mut conn, &note).unwrap();
+        WorkspaceRegistry::delete_vault_note(&conn, "note1").unwrap();
+
+        let notes = WorkspaceRegistry::list_vault_notes(&conn).unwrap();
+        assert!(notes.is_empty());
+    }
+
+    #[test]
+    fn test_list_vault_notes_empty() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let notes = WorkspaceRegistry::list_vault_notes(&conn).unwrap();
+        assert!(notes.is_empty());
+    }
+}

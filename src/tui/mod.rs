@@ -291,3 +291,22 @@ pub async fn run() -> anyhow::Result<()> {
     ratatui::restore();
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_main_view_toggle() {
+        assert_eq!(MainView::RepoList.toggle(), MainView::VaultList);
+        assert_eq!(MainView::VaultList.toggle(), MainView::RepoList);
+    }
+
+    #[test]
+    fn test_detail_tab_label() {
+        let _ = crate::i18n::init("en");
+        assert_eq!(DetailTab::Overview.label(), "Overview");
+        assert_eq!(DetailTab::Health.label(), "Health");
+        assert_eq!(DetailTab::Insights.label(), "Insights");
+    }
+}

@@ -152,6 +152,21 @@ fn test_assess_safety_no_upstream() {
 }
 
 #[test]
+fn test_map_action() {
+    assert_eq!(map_action("SKIP", ""), "skipped");
+    assert_eq!(map_action("OK", ""), "skipped");
+    assert_eq!(map_action("FETCH", ""), "fetch_only");
+    assert_eq!(map_action("BLOCKED", ""), "blocked_dirty");
+    assert_eq!(map_action("MERGED_FF", ""), "merged_ff");
+    assert_eq!(map_action("MERGED_COMMIT", ""), "merged_commit");
+    assert_eq!(map_action("MERGED", ""), "merged_ff");
+    assert_eq!(map_action("CONFLICT", ""), "conflict");
+    assert_eq!(map_action("TIMEOUT", ""), "timeout");
+    assert_eq!(map_action("ERROR", ""), "error");
+    assert_eq!(map_action("UNKNOWN", ""), "skipped");
+}
+
+#[test]
 fn test_write_syncdone_marker() {
     let dir = TempDir::new().unwrap();
     write_syncdone_marker(dir.path(), "FETCH", Some("abc1234"));

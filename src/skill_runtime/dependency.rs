@@ -277,4 +277,22 @@ mod tests {
         let err = resolve_dependencies(&conn, "x").unwrap_err();
         assert!(err.to_string().contains("cycle"));
     }
+
+    #[test]
+    fn test_validate_dependencies_missing() {
+        let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
+        let skill = test_skill("a", vec!["missing-dep"]);
+        let missing = validate_dependencies(&conn, &skill).unwrap();
+        assert_eq!(missing, vec!["missing-dep"]);
+    }
+
+    #[test]
+    fn test_validate_dependencies_all_satisfied() {
+        let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
+        let dep = test_skill("dep1", vec![]);
+        crate::skill_runtime::registry::install_skill(&conn, &dep).unwrap();
+        let skill = test_skill("a", vec!["dep1"]);
+        let missing = validate_dependencies(&conn, &skill).unwrap();
+        assert!(missing.is_empty());
+    }
 }

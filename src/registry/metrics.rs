@@ -89,3 +89,70 @@ impl WorkspaceRegistry {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_metrics() -> CodeMetrics {
+        CodeMetrics {
+            total_lines: 1000,
+            source_lines: 700,
+            test_lines: 200,
+            comment_lines: 100,
+            file_count: 10,
+            language_breakdown: serde_json::json!({"rust": 500, "python": 300}),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn test_save_and_get_code_metrics() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
+        let metrics = sample_metrics();
+        WorkspaceRegistry::save_code_metrics(&conn, "repo-a", &metrics).unwrap();
+
+        let fetched = WorkspaceRegistry::get_code_metrics(&conn, "repo-a").unwrap().unwrap();
+        assert_eq!(fetched.total_lines, 1000);
+        assert_eq!(fetched.source_lines, 700);
+        assert_eq!(fetched.test_lines, 200);
+        assert_eq!(fetched.comment_lines, 100);
+        assert_eq!(fetched.file_count, 10);
+        assert_eq!(
+            fetched.language_breakdown,
+            serde_json::json!({"rust": 500, "python": 300})
+        );
+    }
+
+    #[test]
+    fn test_get_code_metrics_missing() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let result = WorkspaceRegistry::get_code_metrics(&conn, "missing").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_list_code_metrics() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-b").unwrap();
+        let m1 = sample_metrics();
+        let mut m2 = sample_metrics();
+        m2.total_lines = 500;
+        WorkspaceRegistry::save_code_metrics(&conn, "repo-a", &m1).unwrap();
+        WorkspaceRegistry::save_code_metrics(&conn, "repo-b", &m2).unwrap();
+
+        let all = WorkspaceRegistry::list_code_metrics(&conn).unwrap();
+        assert_eq!(all.len(), 2);
+        let total: usize = all.iter().map(|(_, m)| m.total_lines).sum();
+        assert_eq!(total, 1500);
+    }
+
+    #[test]
+    fn test_list_code_metrics_empty() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let all = WorkspaceRegistry::list_code_metrics(&conn).unwrap();
+        assert!(all.is_empty());
+    }
+}
