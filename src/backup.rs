@@ -1,4 +1,5 @@
 use crate::registry::{RepoEntry, WorkspaceRegistry};
+use crate::storage::StorageBackend;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::info;
@@ -7,15 +8,7 @@ const MAX_AUTO_BACKUPS: usize = 10;
 
 /// Determine the backup directory path.
 pub fn backup_dir() -> anyhow::Result<PathBuf> {
-    let data_dir = if let Some(dir) = std::env::var_os("DEVBASE_DATA_DIR") {
-        PathBuf::from(dir)
-    } else {
-        dirs::data_local_dir()
-            .ok_or_else(|| anyhow::anyhow!("Could not determine local data directory"))?
-    };
-    let dir = data_dir.join("devbase").join("backup");
-    fs::create_dir_all(&dir)?;
-    Ok(dir)
+    crate::storage::DefaultStorageBackend {}.backup_dir()
 }
 
 /// Generate a timestamped backup filename.

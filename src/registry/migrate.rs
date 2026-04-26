@@ -1,33 +1,17 @@
 use super::*;
+use crate::storage::StorageBackend;
 use std::path::PathBuf;
 
 pub const CURRENT_SCHEMA_VERSION: i32 = 19;
 
 impl WorkspaceRegistry {
     pub fn db_path() -> anyhow::Result<PathBuf> {
-        let data_dir = if let Some(dir) = std::env::var_os("DEVBASE_DATA_DIR") {
-            PathBuf::from(dir)
-        } else {
-            dirs::data_local_dir()
-                .ok_or_else(|| anyhow::anyhow!("Could not determine local data directory"))?
-        };
-        let db_dir = data_dir.join("devbase");
-        std::fs::create_dir_all(&db_dir)?;
-        Ok(db_dir.join("registry.db"))
+        crate::storage::DefaultStorageBackend {}.db_path()
     }
 
     /// Workspace root directory where vault notes, assets, and repo manifests live.
     pub fn workspace_dir() -> anyhow::Result<PathBuf> {
-        let data_dir = if let Some(dir) = std::env::var_os("DEVBASE_DATA_DIR") {
-            PathBuf::from(dir)
-        } else {
-            dirs::data_local_dir()
-                .ok_or_else(|| anyhow::anyhow!("Could not determine local data directory"))?
-        };
-        let ws = data_dir.join("devbase").join("workspace");
-        std::fs::create_dir_all(&ws)?;
-        std::fs::create_dir_all(ws.join("vault"))?;
-        std::fs::create_dir_all(ws.join("assets"))?;
+        let ws = crate::storage::DefaultStorageBackend {}.workspace_dir()?;
 
         // P2-lite: create sample repos.toml if not exists
         let repos_toml = ws.join("repos.toml");

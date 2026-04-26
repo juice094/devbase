@@ -17,6 +17,7 @@ pub mod query;
 pub mod registry;
 pub mod scan;
 pub mod search;
+pub mod storage;
 pub mod semantic_index;
 pub mod skill_runtime;
 pub mod skill_sync;
