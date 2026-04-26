@@ -304,7 +304,7 @@ mod tests {
 
     #[test]
     fn test_detail_tab_label() {
-        let _ = crate::i18n::init("en");
+        crate::i18n::init("en");
         assert_eq!(DetailTab::Overview.label(), "Overview");
         assert_eq!(DetailTab::Health.label(), "Health");
         assert_eq!(DetailTab::Insights.label(), "Insights");

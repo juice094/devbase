@@ -13,8 +13,12 @@ use tantivy::{
 const INDEX_DIR: &str = "devbase/search_index";
 
 fn index_path() -> Result<PathBuf, TantivyError> {
-    let base = dirs::data_local_dir()
-        .ok_or_else(|| TantivyError::InvalidArgument("local data dir not found".into()))?;
+    let base = if let Some(dir) = std::env::var_os("DEVBASE_DATA_DIR") {
+        PathBuf::from(dir)
+    } else {
+        dirs::data_local_dir()
+            .ok_or_else(|| TantivyError::InvalidArgument("local data dir not found".into()))?
+    };
     Ok(base.join(INDEX_DIR))
 }
 

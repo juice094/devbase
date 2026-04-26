@@ -205,7 +205,7 @@ fn test_sync_repo_skip_no_syncdone() {
 
 #[test]
 fn test_perform_merge_fast_forward() {
-    let _ = crate::i18n::init("en");
+    crate::i18n::init("en");
     let (_dir, repo) = setup_repo_with_remote_commits(0, 1);
 
     let local_oid = repo.head().unwrap().target().unwrap();
@@ -225,7 +225,7 @@ fn test_perform_merge_fast_forward() {
 
 #[test]
 fn test_perform_merge_up_to_date() {
-    let _ = crate::i18n::init("en");
+    crate::i18n::init("en");
     let (_dir, repo) = setup_repo_with_remote_commits(0, 0);
 
     let local_oid = repo.head().unwrap().target().unwrap();
