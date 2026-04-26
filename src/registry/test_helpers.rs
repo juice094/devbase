@@ -300,6 +300,20 @@ CREATE TABLE IF NOT EXISTS workflow_executions (
     finished_at     TEXT,
     duration_ms     INTEGER
 );
+
+-- v18: Known Limits (L3 risk layer)
+CREATE TABLE IF NOT EXISTS known_limits (
+    id              TEXT PRIMARY KEY,
+    category        TEXT NOT NULL,
+    description     TEXT NOT NULL,
+    source          TEXT,
+    severity        INTEGER,
+    first_seen_at   TEXT NOT NULL,
+    last_checked_at TEXT,
+    mitigated       INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_known_limits_category ON known_limits(category);
+CREATE INDEX IF NOT EXISTS idx_known_limits_mitigated ON known_limits(mitigated);
 "#;
 
 #[cfg(test)]
@@ -337,5 +351,18 @@ mod tests {
             )
             .unwrap_or(false);
         assert!(exists, "workflow_executions table must exist in current schema");
+    }
+
+    #[test]
+    fn test_known_limits_table_exists() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='known_limits'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        assert!(exists, "known_limits table must exist in current schema");
     }
 }

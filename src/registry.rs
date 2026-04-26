@@ -163,6 +163,7 @@ impl Default for WorkspaceRegistry {
 
 mod health;
 mod knowledge;
+mod known_limits;
 mod links;
 mod metrics;
 mod migrate;
