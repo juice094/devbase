@@ -136,4 +136,30 @@ mod tests {
         assert_eq!(batches[1].len(), 2); // b, c
         assert_eq!(batches[2].len(), 1); // d
     }
+
+    #[test]
+    fn test_transitive_deps() {
+        let wf = dummy_wf(vec![
+            dummy_step("a", vec![]),
+            dummy_step("b", vec!["a"]),
+            dummy_step("c", vec!["b"]),
+            dummy_step("d", vec!["a", "c"]),
+        ]);
+        let deps = transitive_deps(&wf, "d");
+        assert!(deps.contains("a"));
+        assert!(deps.contains("b"));
+        assert!(deps.contains("c"));
+        assert!(deps.contains("d"));
+        assert_eq!(deps.len(), 4);
+    }
+
+    #[test]
+    fn test_transitive_deps_leaf() {
+        let wf = dummy_wf(vec![
+            dummy_step("a", vec![]),
+            dummy_step("b", vec!["a"]),
+        ]);
+        let deps = transitive_deps(&wf, "a");
+        assert_eq!(deps, std::collections::HashSet::from(["a".to_string()]));
+    }
 }

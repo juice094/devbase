@@ -121,4 +121,13 @@ mod tests {
         let recovered = bytes_to_embedding(&bytes);
         assert_eq!(emb, recovered);
     }
+
+    #[test]
+    #[ignore = "requires local Python with sentence-transformers"]
+    fn test_generate_query_embedding_smoke() {
+        let emb = generate_query_embedding("hello world").unwrap();
+        assert!(!emb.is_empty());
+        // all-MiniLM-L6-v2 produces 384-dim vectors
+        assert_eq!(emb.len(), 384);
+    }
 }

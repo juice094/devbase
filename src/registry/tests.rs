@@ -296,3 +296,76 @@ fn test_dead_code_include_pub() {
     let dead: Vec<String> = rows.filter_map(Result::ok).collect();
     assert_eq!(dead, vec!["pub_fn"]);
 }
+
+#[test]
+fn test_primary_remote_prefers_origin() {
+    let entry = RepoEntry {
+        id: "test".to_string(),
+        local_path: std::path::PathBuf::from("/tmp/test"),
+        tags: vec![],
+        discovered_at: Utc::now(),
+        language: None,
+        workspace_type: "git".to_string(),
+        data_tier: "private".to_string(),
+        last_synced_at: None,
+        stars: None,
+        remotes: vec![
+            RemoteEntry {
+                remote_name: "upstream".to_string(),
+                upstream_url: Some("https://example.com/upstream".to_string()),
+                default_branch: Some("main".to_string()),
+                last_sync: None,
+            },
+            RemoteEntry {
+                remote_name: "origin".to_string(),
+                upstream_url: Some("https://example.com/origin".to_string()),
+                default_branch: Some("main".to_string()),
+                last_sync: None,
+            },
+        ],
+    };
+    let remote = entry.primary_remote().unwrap();
+    assert_eq!(remote.remote_name, "origin");
+}
+
+#[test]
+fn test_primary_remote_fallback_to_first() {
+    let entry = RepoEntry {
+        id: "test".to_string(),
+        local_path: std::path::PathBuf::from("/tmp/test"),
+        tags: vec![],
+        discovered_at: Utc::now(),
+        language: None,
+        workspace_type: "git".to_string(),
+        data_tier: "private".to_string(),
+        last_synced_at: None,
+        stars: None,
+        remotes: vec![
+            RemoteEntry {
+                remote_name: "upstream".to_string(),
+                upstream_url: Some("https://example.com/upstream".to_string()),
+                default_branch: Some("main".to_string()),
+                last_sync: None,
+            },
+        ],
+    };
+    let remote = entry.primary_remote().unwrap();
+    assert_eq!(remote.remote_name, "upstream");
+}
+
+#[test]
+fn test_primary_remote_none() {
+    let entry = RepoEntry {
+        id: "test".to_string(),
+        local_path: std::path::PathBuf::from("/tmp/test"),
+        tags: vec![],
+        discovered_at: Utc::now(),
+        language: None,
+        workspace_type: "git".to_string(),
+        data_tier: "private".to_string(),
+        last_synced_at: None,
+        stars: None,
+        remotes: vec![],
+    };
+    assert!(entry.primary_remote().is_none());
+}

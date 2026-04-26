@@ -51,6 +51,9 @@ impl WorkspaceRegistry {
         let path = Self::db_path()?;
         let conn = rusqlite::Connection::open(&path)?;
         conn.execute("PRAGMA foreign_keys = ON", [])?;
+        // Prevent TOCTOU races when multiple threads/processes open the same DB
+        // concurrently (e.g. workflow executor's parallel step threads).
+        conn.execute("BEGIN EXCLUSIVE", [])?;
 
         // Detect legacy schema: old repos table has upstream_url column
         let old_has_upstream = {
@@ -1035,6 +1038,7 @@ impl WorkspaceRegistry {
             }
         }
 
+        conn.execute("COMMIT", [])?;
         Ok(conn)
     }
 }

@@ -19,7 +19,7 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
   - `assets/` —— 二进制资源
 - **MCP Server**：stdio only（SSE 开发中），**35 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：288 passed / 0 failed / 3 ignored
+- **当前测试**：374 passed / 0 failed / 4 ignored
 - **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
 - **Workflow Engine**：YAML 解析 + 拓扑调度 + batch 并行执行 + 5 种 step 类型（skill/subworkflow/parallel/condition/loop）
 - **NLQ 自然语言查询**：TUI `[:]` 触发 embedding 语义搜索，fallback 降级文本搜索
@@ -69,6 +69,8 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 
 | Wave | 主题 | 关键产出 | Commit |
 |------|------|---------|--------|
+| 42-44 | 测试基础设施 | 22 个 smoke tests, CLI 集成测试层 (`tests/cli.rs`), Criterion 基准测试 (`benches/registry_bench.rs`) | — |
+| 45-47 | Tier 1 测试收尾 | 28 个 smoke tests 覆盖 embeddings/semantic_search/cross-repo/search/workflow/backup/registry；`SCHEMA_DDL` 补录 4 表；`init_db()` 并发安全 (`BEGIN EXCLUSIVE`)；测试数据隔离统一为 `DEVBASE_DATA_DIR` | — |
 | 1 | 代码质量 | `rustfmt.toml`, clippy 清零 | `4efcd58` |
 | 2 | 模块拆分 | `sync/`, `registry/`, `mcp/tests.rs` | `4efcd58` |
 | 3 | 工程化 | `src/lib.rs`, CI workflow, `main.rs` 简化 | `4efcd58` |

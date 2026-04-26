@@ -239,4 +239,33 @@ mod tests {
         assert_eq!(top.len(), 2);
         assert_eq!(top[0].id, "a"); // a has higher success_rate
     }
+
+    #[test]
+    fn test_recommend_skills() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        install_skill(&conn, &dummy_skill_meta("high")).unwrap();
+        install_skill(&conn, &dummy_skill_meta("low")).unwrap();
+
+        // high: 3 successes → high rating
+        record_execution(&conn, "high", ExecutionStatus::Success, 200);
+        record_execution(&conn, "high", ExecutionStatus::Success, 200);
+        record_execution(&conn, "high", ExecutionStatus::Success, 200);
+
+        // low: 1 success, 2 failures → lower rating
+        record_execution(&conn, "low", ExecutionStatus::Success, 200);
+        record_execution(&conn, "low", ExecutionStatus::Failed, 200);
+        record_execution(&conn, "low", ExecutionStatus::Failed, 200);
+
+        let high_scores = calculate_skill_scores(&conn, "high").unwrap();
+        update_skill_scores(&conn, "high", &high_scores).unwrap();
+
+        let low_scores = calculate_skill_scores(&conn, "low").unwrap();
+        update_skill_scores(&conn, "low", &low_scores).unwrap();
+
+        let recommended = recommend_skills(&conn, None, 10).unwrap();
+        assert_eq!(recommended.len(), 2);
+        assert_eq!(recommended[0].id, "high");
+        assert_eq!(recommended[1].id, "low");
+        assert!(recommended[0].rating > recommended[1].rating);
+    }
 }

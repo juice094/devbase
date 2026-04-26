@@ -533,4 +533,175 @@ mod tests {
         assert_eq!(papers.len(), 1);
         assert_eq!(papers[0].id, "paper-1");
     }
+
+    #[test]
+    fn test_find_papers_by_venue() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let paper1 = crate::registry::PaperEntry {
+            id: "p1".to_string(),
+            title: "Paper One".to_string(),
+            authors: None,
+            venue: Some("NeurIPS".to_string()),
+            year: Some(2024),
+            pdf_path: None,
+            bibtex: None,
+            tags: vec![],
+            added_at: chrono::Utc::now(),
+        };
+        let paper2 = crate::registry::PaperEntry {
+            id: "p2".to_string(),
+            title: "Paper Two".to_string(),
+            authors: None,
+            venue: Some("ICML".to_string()),
+            year: Some(2023),
+            pdf_path: None,
+            bibtex: None,
+            tags: vec![],
+            added_at: chrono::Utc::now(),
+        };
+        WorkspaceRegistry::save_paper(&conn, &paper1).unwrap();
+        WorkspaceRegistry::save_paper(&conn, &paper2).unwrap();
+
+        let neurips = WorkspaceRegistry::find_papers_by_venue(&conn, "NeurIPS").unwrap();
+        assert_eq!(neurips.len(), 1);
+        assert_eq!(neurips[0].id, "p1");
+
+        let icml = WorkspaceRegistry::find_papers_by_venue(&conn, "ICML").unwrap();
+        assert_eq!(icml.len(), 1);
+        assert_eq!(icml[0].id, "p2");
+
+        let empty = WorkspaceRegistry::find_papers_by_venue(&conn, "Unknown").unwrap();
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn test_save_embeddings() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
+        let embeddings = vec![
+            ("func_a".to_string(), vec![1.0_f32, 0.0, 0.0]),
+            ("func_b".to_string(), vec![0.0_f32, 1.0, 0.0]),
+        ];
+        let count = WorkspaceRegistry::save_embeddings(&mut conn, "repo-a", &embeddings).unwrap();
+        assert_eq!(count, 2);
+
+        let mut stmt = conn
+            .prepare("SELECT symbol_name, embedding FROM code_embeddings WHERE repo_id = ?1 ORDER BY symbol_name")
+            .unwrap();
+        let rows = stmt
+            .query_map(["repo-a"], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
+            })
+            .unwrap();
+        let results: Vec<_> = rows.collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].0, "func_a");
+        let emb = crate::embedding::bytes_to_embedding(&results[0].1);
+        assert_eq!(emb, vec![1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn test_find_related_symbols() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        conn.execute(
+            "INSERT INTO code_symbol_links (source_repo, source_symbol, target_repo, target_symbol, link_type, strength, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params!["repo-a", "main", "repo-b", "helper", "calls", 0.95_f64, chrono::Utc::now().to_rfc3339()],
+        )
+        .unwrap();
+
+        let related = WorkspaceRegistry::find_related_symbols(&conn, "repo-a", "main", 10).unwrap();
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].0, "repo-a");
+        assert_eq!(related[0].1, "main");
+        assert_eq!(related[0].2, "repo-b");
+        assert_eq!(related[0].3, "helper");
+        assert_eq!(related[0].4, "calls");
+        assert!((related[0].5 - 0.95).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_semantic_search_symbols() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
+
+        conn.execute(
+            "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start, line_end, signature) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params!["repo-a", "src/lib.rs", "function", "hello", 1_i64, 3_i64, Option::<&str>::None],
+        )
+        .unwrap();
+
+        let emb = crate::embedding::embedding_to_bytes(&[1.0_f32, 0.0, 0.0]);
+        conn.execute(
+            "INSERT INTO code_embeddings (repo_id, symbol_name, embedding, generated_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params!["repo-a", "hello", emb, chrono::Utc::now().to_rfc3339()],
+        )
+        .unwrap();
+
+        let results =
+            WorkspaceRegistry::semantic_search_symbols(&conn, "repo-a", &[1.0_f32, 0.0, 0.0], 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].1, "hello");
+        assert!((results[0].4 - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_cross_repo_search_symbols() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
+        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-b").unwrap();
+
+        // Tag repo-a with "rust"
+        conn.execute(
+            "INSERT INTO repo_tags (repo_id, tag) VALUES (?1, ?2)",
+            rusqlite::params!["repo-a", "rust"],
+        )
+        .unwrap();
+
+        // Insert symbols and embeddings for repo-a
+        conn.execute(
+            "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start, line_end, signature) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params!["repo-a", "src/lib.rs", "function", "hello", 1_i64, 3_i64, Option::<&str>::None],
+        )
+        .unwrap();
+
+        let emb = crate::embedding::embedding_to_bytes(&[1.0_f32, 0.0, 0.0]);
+        conn.execute(
+            "INSERT INTO code_embeddings (repo_id, symbol_name, embedding, generated_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params!["repo-a", "hello", emb, chrono::Utc::now().to_rfc3339()],
+        )
+        .unwrap();
+
+        // Search with matching tag should find repo-a
+        let results = WorkspaceRegistry::cross_repo_search_symbols(
+            &conn,
+            &["rust".to_string()],
+            "hello",
+            Some(&[1.0_f32, 0.0, 0.0]),
+            10,
+        )
+        .unwrap();
+        assert!(!results.is_empty());
+
+        // Search with non-matching tag should return empty
+        let empty = WorkspaceRegistry::cross_repo_search_symbols(
+            &conn,
+            &["python".to_string()],
+            "hello",
+            Some(&[1.0_f32, 0.0, 0.0]),
+            10,
+        )
+        .unwrap();
+        assert!(empty.is_empty());
+
+        // Empty tags should search all repos
+        let all = WorkspaceRegistry::cross_repo_search_symbols(
+            &conn,
+            &[],
+            "hello",
+            Some(&[1.0_f32, 0.0, 0.0]),
+            10,
+        )
+        .unwrap();
+        assert!(!all.is_empty());
+    }
 }

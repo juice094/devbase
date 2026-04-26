@@ -248,4 +248,17 @@ mod tests {
         fs::copy(&db_path, &out).unwrap();
         assert!(out.exists());
     }
+
+    #[test]
+    fn test_backup_filename_format() {
+        let name = backup_filename("prefix", "ext");
+        assert!(name.starts_with("prefix-"));
+        assert!(name.ends_with(".ext"));
+        // Should contain a timestamp: prefix-YYYYMMDD-HHMMSS.ext
+        let parts: Vec<&str> = name.split('-').collect();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0], "prefix");
+        assert!(parts[1].len() == 8); // YYYYMMDD
+        assert!(parts[2].len() >= 7); // HHMMSS.ext
+    }
 }

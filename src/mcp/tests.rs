@@ -349,11 +349,12 @@ fn test_nl_filter_repos_fallback_finds_by_language() {
 #[test]
 fn test_nl_filter_repos_tantivy_finds_devbase() {
     let _guard = NL_FILTER_TEST_LOCK.lock().unwrap();
+    let _search_guard = crate::search::SEARCH_TEST_LOCK.lock().unwrap();
 
     let tmp = tempfile::tempdir().unwrap();
-    let old = std::env::var("LOCALAPPDATA").ok();
+    let old = std::env::var("DEVBASE_DATA_DIR").ok();
     unsafe {
-        std::env::set_var("LOCALAPPDATA", tmp.path());
+        std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
     }
 
     // Ensure DB schema exists in temp dir
@@ -394,7 +395,7 @@ fn test_nl_filter_repos_tantivy_finds_devbase() {
 
     if let Some(v) = old {
         unsafe {
-            std::env::set_var("LOCALAPPDATA", v);
+            std::env::set_var("DEVBASE_DATA_DIR", v);
         }
     } else {
         unsafe {

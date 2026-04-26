@@ -347,6 +347,53 @@ CREATE TABLE IF NOT EXISTS knowledge_meta (
     created_at      TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_knowledge_meta_target ON knowledge_meta(target_level, target_id);
+
+CREATE TABLE IF NOT EXISTS code_symbols (
+    repo_id TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    symbol_type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    line_start INTEGER,
+    line_end INTEGER,
+    signature TEXT,
+    PRIMARY KEY (repo_id, file_path, name)
+);
+CREATE INDEX IF NOT EXISTS idx_code_symbols_repo ON code_symbols(repo_id);
+CREATE INDEX IF NOT EXISTS idx_code_symbols_name ON code_symbols(name);
+CREATE INDEX IF NOT EXISTS idx_code_symbols_type ON code_symbols(symbol_type);
+
+CREATE TABLE IF NOT EXISTS code_call_graph (
+    repo_id TEXT NOT NULL,
+    caller_file TEXT NOT NULL,
+    caller_symbol TEXT NOT NULL,
+    caller_line INTEGER,
+    callee_name TEXT NOT NULL
+);
+CREATE INDEX idx_call_graph_repo ON code_call_graph(repo_id);
+CREATE INDEX idx_call_graph_callee ON code_call_graph(callee_name);
+CREATE INDEX idx_call_graph_caller ON code_call_graph(repo_id, caller_file, caller_symbol);
+
+CREATE TABLE IF NOT EXISTS code_embeddings (
+    repo_id TEXT NOT NULL,
+    symbol_name TEXT NOT NULL,
+    embedding BLOB NOT NULL,
+    generated_at TEXT NOT NULL,
+    PRIMARY KEY (repo_id, symbol_name),
+    FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS code_symbol_links (
+    source_repo TEXT NOT NULL,
+    source_symbol TEXT NOT NULL,
+    target_repo TEXT NOT NULL,
+    target_symbol TEXT NOT NULL,
+    link_type TEXT NOT NULL,
+    strength REAL NOT NULL DEFAULT 0.0,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (source_repo, source_symbol, target_repo, target_symbol, link_type)
+);
+CREATE INDEX IF NOT EXISTS idx_symbol_links_source ON code_symbol_links(source_repo, source_symbol);
+CREATE INDEX IF NOT EXISTS idx_symbol_links_target ON code_symbol_links(target_repo, target_symbol);
 "#;
 
 #[cfg(test)]

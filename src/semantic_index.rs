@@ -1016,4 +1016,122 @@ func (s *MyStruct) Method() string {
         assert_eq!(symbols[0].symbol_type, SymbolType::Function);
         assert_eq!(symbols[0].name, "Method");
     }
+
+    #[test]
+    fn test_save_symbols() {
+        let mut conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
+        let symbols = vec![
+            CodeSymbol {
+                symbol_type: SymbolType::Function,
+                name: "hello".to_string(),
+                file_path: std::path::PathBuf::from("src/main.rs"),
+                line_start: 1,
+                line_end: 3,
+                signature: Some("fn hello()".to_string()),
+            },
+            CodeSymbol {
+                symbol_type: SymbolType::Struct,
+                name: "Point".to_string(),
+                file_path: std::path::PathBuf::from("src/lib.rs"),
+                line_start: 5,
+                line_end: 8,
+                signature: None,
+            },
+        ];
+
+        let count = save_symbols(&mut conn, "repo-a", &symbols).unwrap();
+        assert_eq!(count, 2);
+
+        let mut stmt = conn
+            .prepare("SELECT name, symbol_type FROM code_symbols WHERE repo_id = ?1 ORDER BY name")
+            .unwrap();
+        let rows = stmt
+            .query_map(["repo-a"], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .unwrap();
+        let results: Vec<_> = rows.collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].0, "Point");
+        assert_eq!(results[0].1, "struct");
+        assert_eq!(results[1].0, "hello");
+        assert_eq!(results[1].1, "function");
+    }
+
+    #[test]
+    fn test_save_calls() {
+        let mut conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
+        let calls = vec![CodeCall {
+            caller_file: std::path::PathBuf::from("src/main.rs"),
+            caller_symbol: "main".to_string(),
+            caller_line: 10,
+            callee_name: "helper".to_string(),
+        }];
+
+        let count = save_calls(&mut conn, "repo-a", &calls).unwrap();
+        assert_eq!(count, 1);
+
+        let mut stmt = conn
+            .prepare("SELECT caller_symbol, callee_name FROM code_call_graph WHERE repo_id = ?1")
+            .unwrap();
+        let rows = stmt
+            .query_map(["repo-a"], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .unwrap();
+        let results: Vec<_> = rows.collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "main");
+        assert_eq!(results[0].1, "helper");
+    }
+
+    #[test]
+    fn test_index_repo_full() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_dir = tmp.path().join("src");
+        std::fs::create_dir(&src_dir).unwrap();
+
+        std::fs::write(
+            src_dir.join("main.rs"),
+            r#"
+fn main() {
+    hello();
+}
+
+fn hello() -> &'static str {
+    "hello"
+}
+
+struct Point { x: i32, y: i32 }
+"#,
+        )
+        .unwrap();
+
+        std::fs::write(
+            src_dir.join("lib.py"),
+            r#"
+def helper():
+    return 42
+
+class MyClass:
+    pass
+"#,
+        )
+        .unwrap();
+
+        let (symbols, calls) = index_repo_full(tmp.path());
+        assert!(!symbols.is_empty());
+
+        let names: Vec<_> = symbols.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"main"));
+        assert!(names.contains(&"hello"));
+        assert!(names.contains(&"Point"));
+        assert!(names.contains(&"helper"));
+        assert!(names.contains(&"MyClass"));
+
+        // Calls: main -> hello
+        assert!(!calls.is_empty());
+        let call_names: Vec<_> = calls.iter().map(|c| c.callee_name.as_str()).collect();
+        assert!(call_names.contains(&"hello"));
+    }
 }

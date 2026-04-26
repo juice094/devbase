@@ -193,4 +193,44 @@ mod tests {
         let ctx = InterpolationContext::default();
         assert!(interpolate("${loop.item}", &ctx).is_err());
     }
+
+    #[test]
+    fn test_interpolate_value_string() {
+        let mut ctx = InterpolationContext::default();
+        ctx.inputs.insert("name".to_string(), "world".to_string());
+        let input = serde_yaml::Value::String("hello ${inputs.name}".to_string());
+        let result = interpolate_value(&input, &ctx).unwrap();
+        assert_eq!(result, serde_yaml::Value::String("hello world".to_string()));
+    }
+
+    #[test]
+    fn test_interpolate_value_sequence() {
+        let mut ctx = InterpolationContext::default();
+        ctx.inputs.insert("a".to_string(), "1".to_string());
+        let input = serde_yaml::Value::Sequence(vec![
+            serde_yaml::Value::String("${inputs.a}".to_string()),
+            serde_yaml::Value::String("static".to_string()),
+        ]);
+        let result = interpolate_value(&input, &ctx).unwrap();
+        assert_eq!(result.as_sequence().unwrap().len(), 2);
+        assert_eq!(result.as_sequence().unwrap()[0], serde_yaml::Value::String("1".to_string()));
+    }
+
+    #[test]
+    fn test_interpolate_value_mapping() {
+        let mut ctx = InterpolationContext::default();
+        ctx.inputs.insert("key".to_string(), "replaced".to_string());
+        let mut map = serde_yaml::Mapping::new();
+        map.insert(
+            serde_yaml::Value::String("k".to_string()),
+            serde_yaml::Value::String("${inputs.key}".to_string()),
+        );
+        let input = serde_yaml::Value::Mapping(map);
+        let result = interpolate_value(&input, &ctx).unwrap();
+        let out_map = result.as_mapping().unwrap();
+        assert_eq!(
+            out_map.get(serde_yaml::Value::String("k".to_string())),
+            Some(&serde_yaml::Value::String("replaced".to_string()))
+        );
+    }
 }
