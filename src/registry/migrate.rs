@@ -1030,3 +1030,24 @@ impl WorkspaceRegistry {
         Ok(conn)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_db_path_format() {
+        let path = WorkspaceRegistry::db_path().unwrap();
+        let s = path.to_string_lossy();
+        assert!(s.contains("devbase"), "db_path should contain 'devbase': {}", s);
+        assert!(s.ends_with("registry.db"), "db_path should end with 'registry.db': {}", s);
+    }
+
+    #[test]
+    fn test_workspace_dir_format() {
+        let path = WorkspaceRegistry::workspace_dir().unwrap();
+        let s = path.to_string_lossy();
+        assert!(s.contains("devbase"), "workspace_dir should contain 'devbase': {}", s);
+        assert!(s.ends_with("workspace"), "workspace_dir should end with 'workspace': {}", s);
+    }
+}
