@@ -155,8 +155,15 @@ pub fn run_skill(
 /// Check for unresolved hard vetoes before skill execution.
 /// Returns an optional warning string if unresolved hard vetoes exist.
 /// Logs to oplog and gracefully handles registry unavailability.
-pub(crate) fn check_hard_vetoes_for_skill(skill: &SkillRow, conn: &rusqlite::Connection) -> Option<String> {
-    let vetoes = match crate::registry::WorkspaceRegistry::list_known_limits(conn, Some("hard-veto"), Some(false)) {
+pub(crate) fn check_hard_vetoes_for_skill(
+    skill: &SkillRow,
+    conn: &rusqlite::Connection,
+) -> Option<String> {
+    let vetoes = match crate::registry::WorkspaceRegistry::list_known_limits(
+        conn,
+        Some("hard-veto"),
+        Some(false),
+    ) {
         Ok(v) => v,
         Err(_) => return None,
     };
@@ -185,7 +192,8 @@ pub(crate) fn check_hard_vetoes_for_skill(skill: &SkillRow, conn: &rusqlite::Con
         },
     );
 
-    let descriptions: Vec<String> = vetoes.iter().map(|v| format!("- [{}] {}", v.id, v.description)).collect();
+    let descriptions: Vec<String> =
+        vetoes.iter().map(|v| format!("- [{}] {}", v.id, v.description)).collect();
     Some(format!(
         "Skill '{}' executed with {} unresolved hard veto(s):\n{}",
         skill.id,

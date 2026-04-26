@@ -125,7 +125,9 @@ mod tests {
             checked_at: Utc::now(),
         };
         WorkspaceRegistry::save_workspace_snapshot(&conn, &snapshot).unwrap();
-        let fetched = WorkspaceRegistry::get_latest_workspace_snapshot(&conn, "repo-a").unwrap().unwrap();
+        let fetched = WorkspaceRegistry::get_latest_workspace_snapshot(&conn, "repo-a")
+            .unwrap()
+            .unwrap();
         assert_eq!(fetched.repo_id, "repo-a");
         assert_eq!(fetched.file_hash, "abc123");
     }

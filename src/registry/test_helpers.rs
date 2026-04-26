@@ -15,10 +15,7 @@ impl WorkspaceRegistry {
     }
 
     /// Seed a minimal test repo into the registry so that FK-dependent tables can be tested.
-    pub fn seed_test_repo(
-        conn: &mut rusqlite::Connection,
-        id: &str,
-    ) -> anyhow::Result<RepoEntry> {
+    pub fn seed_test_repo(conn: &mut rusqlite::Connection, id: &str) -> anyhow::Result<RepoEntry> {
         let repo = RepoEntry {
             id: id.to_string(),
             local_path: std::path::PathBuf::from(format!("/tmp/{}", id)),

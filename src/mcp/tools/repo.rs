@@ -2222,14 +2222,8 @@ mod tests {
 
     #[test]
     fn test_extract_tag_from_query() {
-        assert_eq!(
-            extract_tag_from_query("show repos tag rust"),
-            Some("rust".to_string())
-        );
-        assert_eq!(
-            extract_tag_from_query("repos with tag python"),
-            Some("python".to_string())
-        );
+        assert_eq!(extract_tag_from_query("show repos tag rust"), Some("rust".to_string()));
+        assert_eq!(extract_tag_from_query("repos with tag python"), Some("python".to_string()));
         assert_eq!(extract_tag_from_query("show all repos"), None);
     }
 

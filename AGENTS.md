@@ -123,7 +123,7 @@ cargo test --test-threads=16
 
 **Fitness Function**：
 ```bash
-# 当前 1518 行（ grandfathered 技术债），禁止继续增长
+# 当前 515 行（Phase 1/2/3 已削减 1003 行），远超目标
 [ $(wc -l < src/main.rs) -le 1000 ] || exit 1
 ```
 
@@ -173,12 +173,12 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 
 | 债项 | 严重 | 当前值 | 目标阈值 | 清理路径 | 引入 Wave |
 |---|---|---|---|---|---|
-| `main.rs` 上帝文件 | 🔴 | 1518 行 | ≤1000 行 | 拆分为 `commands/*.rs`，每个命令独立模块 | ≤15 |
+| `main.rs` 上帝文件 | 🟢 | 515 行 | ≤1000 行 | 拆分为 `commands/simple.rs` + `commands/skill.rs` + `commands/workflow.rs` + `commands/limit.rs`；全部 22 个命令/子命令树已迁移 | ≤15 |
 | `init_db()` 全局路径 | 🔴 | 3 处硬编码 | 0 新增 | 引入 `trait StorageBackend { fn db_path(&self) -> PathBuf; }`， grandfathered 逐步迁移 | ≤15 |
 | Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调 | 补偿机制 | 设计 `sync_index_to_db()` 回滚或两阶段提交；或改为 SQLite FTS5 替代 Tantivy | 7 |
 | tree-sitter 编译成本 | 🟡 | ~15-20s | 可控 | 评估 `ccache` 或 grammar 预编译；或按需 feature-gate | 8 |
 | Feature flags 缺失 | 🟡 | 0 个可选 feature | ≥2 (tui, mcp) | `Cargo.toml` 添加 `[features]`，使 library-only 用户不必编译 ratatui/crossterm | ≤15 |
-| `LOCALAPPDATA` 测试模式残留 | 🟢 | 1 处（mcp/tests.rs 已修复） | 0 | 全面废弃 `LOCALAPPDATA` 环境变量覆盖，统一为 `DEVBASE_DATA_DIR` | 47 |
+| `LOCALAPPDATA` 测试模式残留 | 🟢 | 0 处 | 0 | 全面废弃 `LOCALAPPDATA` 环境变量覆盖，统一为 `DEVBASE_DATA_DIR`；mcp/tests.rs 修复 cleanup 逻辑（remove_var 目标从 LOCALAPPDATA 修正为 DEVBASE_DATA_DIR） | 47 |
 
 **清偿原则**：
 1. 禁止在清偿现有 🔴 债务前新增同类别债务。

@@ -356,15 +356,7 @@ mod tests {
             &["rust".into()],
         )
         .unwrap();
-        add_vault_doc(
-            &mut writer,
-            &schema,
-            "note1",
-            "My Note",
-            "note content",
-            &[],
-        )
-        .unwrap();
+        add_vault_doc(&mut writer, &schema, "note1", "My Note", "note content", &[]).unwrap();
         commit_writer(&mut writer).unwrap();
 
         let results = search_repos("workspace", 10).unwrap();
@@ -399,24 +391,9 @@ mod tests {
         let (index, _reader) = init_index().unwrap();
         let mut writer = get_writer(&index).unwrap();
         let schema = index.schema();
-        add_repo_doc(
-            &mut writer,
-            &schema,
-            "repo1",
-            "devbase",
-            "developer workspace manager",
-            &[],
-        )
-        .unwrap();
-        add_vault_doc(
-            &mut writer,
-            &schema,
-            "note1",
-            "My Note",
-            "vault note content",
-            &[],
-        )
-        .unwrap();
+        add_repo_doc(&mut writer, &schema, "repo1", "devbase", "developer workspace manager", &[])
+            .unwrap();
+        add_vault_doc(&mut writer, &schema, "note1", "My Note", "vault note content", &[]).unwrap();
         commit_writer(&mut writer).unwrap();
 
         let results = search_vault("vault", 10).unwrap();

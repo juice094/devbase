@@ -267,7 +267,10 @@ mod tests {
 
         // Verify oplog entries
         let oplog = WorkspaceRegistry::list_oplog(&conn, 10).unwrap();
-        let limit_logs: Vec<_> = oplog.into_iter().filter(|e| matches!(e.event_type, super::super::OplogEventType::KnownLimit)).collect();
+        let limit_logs: Vec<_> = oplog
+            .into_iter()
+            .filter(|e| matches!(e.event_type, super::super::OplogEventType::KnownLimit))
+            .collect();
         assert_eq!(limit_logs.len(), 3, "expected create + resolve + delete oplog entries");
         assert!(limit_logs.iter().any(|e| e.details.as_ref().unwrap().contains("created")));
         assert!(limit_logs.iter().any(|e| e.details.as_ref().unwrap().contains("resolved")));

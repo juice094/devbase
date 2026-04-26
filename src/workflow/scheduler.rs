@@ -155,10 +155,7 @@ mod tests {
 
     #[test]
     fn test_transitive_deps_leaf() {
-        let wf = dummy_wf(vec![
-            dummy_step("a", vec![]),
-            dummy_step("b", vec!["a"]),
-        ]);
+        let wf = dummy_wf(vec![dummy_step("a", vec![]), dummy_step("b", vec!["a"])]);
         let deps = transitive_deps(&wf, "a");
         assert_eq!(deps, std::collections::HashSet::from(["a".to_string()]));
     }

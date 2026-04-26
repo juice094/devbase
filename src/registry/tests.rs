@@ -340,14 +340,12 @@ fn test_primary_remote_fallback_to_first() {
         data_tier: "private".to_string(),
         last_synced_at: None,
         stars: None,
-        remotes: vec![
-            RemoteEntry {
-                remote_name: "upstream".to_string(),
-                upstream_url: Some("https://example.com/upstream".to_string()),
-                default_branch: Some("main".to_string()),
-                last_sync: None,
-            },
-        ],
+        remotes: vec![RemoteEntry {
+            remote_name: "upstream".to_string(),
+            upstream_url: Some("https://example.com/upstream".to_string()),
+            default_branch: Some("main".to_string()),
+            last_sync: None,
+        }],
     };
     let remote = entry.primary_remote().unwrap();
     assert_eq!(remote.remote_name, "upstream");

@@ -1,7 +1,8 @@
 use clap::{Parser, Subcommand};
-use tracing::{info, warn};
 
 use devbase::*;
+
+mod commands;
 
 #[derive(Parser)]
 #[command(name = "devbase", version)]
@@ -12,7 +13,7 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
-enum Commands {
+pub(crate) enum Commands {
     /// Scan a directory for Git repositories and register them
     Scan {
         /// Directory to scan (defaults to workspace root)
@@ -178,7 +179,7 @@ enum Commands {
 }
 
 #[derive(Subcommand)]
-enum SkillCommands {
+pub(crate) enum SkillCommands {
     /// List installed skills
     List {
         /// Filter by skill type (builtin, custom, system)
@@ -297,7 +298,7 @@ enum SkillCommands {
 }
 
 #[derive(Subcommand)]
-enum WorkflowCommands {
+pub(crate) enum WorkflowCommands {
     /// List registered workflows
     List,
     /// Show workflow definition
@@ -326,7 +327,7 @@ enum WorkflowCommands {
 }
 
 #[derive(Subcommand)]
-enum VaultCommands {
+pub(crate) enum VaultCommands {
     /// Scan a directory for Markdown notes and sync into the vault
     Scan {
         /// Directory to scan (defaults to default vault dir)
@@ -338,7 +339,7 @@ enum VaultCommands {
 }
 
 #[derive(Subcommand)]
-enum LimitCommands {
+pub(crate) enum LimitCommands {
     /// Add or update a known limit
     Add {
         /// Unique identifier (kebab-case recommended)
@@ -386,7 +387,7 @@ enum LimitCommands {
 }
 
 #[derive(Subcommand)]
-enum RegistryCommands {
+pub(crate) enum RegistryCommands {
     /// Export registry to a backup file
     Export {
         /// Output format: sqlite or json
@@ -433,12 +434,10 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Scan { path, register } => {
-            info!("{}: {}", i18n::current().cli.scanning, path);
-            scan::run(&path, register).await?;
+            commands::simple::run_scan(&path, register).await?;
         }
         Commands::Health { detail, limit, page } => {
-            info!("{}", i18n::current().cli.health_check);
-            health::run(detail, limit, page, config.cache.ttl_seconds).await?;
+            commands::simple::run_health(detail, limit, page, config.cache.ttl_seconds).await?;
         }
         Commands::Sync {
             dry_run,
@@ -446,159 +445,37 @@ async fn main() -> anyhow::Result<()> {
             exclude,
             json,
         } => {
-            if dry_run {
-                warn!("Dry-run mode enabled");
-            }
-            info!("{}", i18n::current().cli.syncing);
-            if json {
-                let output =
-                    sync::run_json(dry_run, filter_tags.as_deref(), exclude.as_deref()).await?;
-                println!("{}", serde_json::to_string_pretty(&output)?);
-            } else {
-                sync::run(dry_run, filter_tags.as_deref(), exclude.as_deref()).await?;
-            }
+            commands::simple::run_sync(dry_run, filter_tags, exclude, json).await?;
         }
         Commands::Query { query, limit, page } => {
-            info!("{}: {}", i18n::current().cli.querying, query);
-            query::run(&query, limit, page, &config).await?;
+            commands::simple::run_query(&query, limit, page, &config).await?;
         }
         Commands::Index { path } => {
-            info!("{}: path='{}'", i18n::current().cli.indexing, path);
-            let path = path.clone();
-            let count = tokio::task::spawn_blocking(move || knowledge_engine::run_index(&path))
-                .await
-                .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
-            info!("已索引 {} 个仓库", count);
+            commands::simple::run_index(&path).await?;
         }
         Commands::Clean => {
-            info!("正在清理注册表中的备份条目");
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
-            let deleted = conn.execute(
-                "DELETE FROM repos WHERE id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%'",
-                [],
-            )?;
-            println!("已从 devbase 注册表中删除 {} 个备份条目。", deleted);
-            println!("\n剩余已注册仓库:");
-            let mut stmt = conn.prepare("SELECT id, local_path FROM repos")?;
-            let rows =
-                stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
-            for row in rows {
-                let (id, path) = row?;
-                println!("  [{}] {}", id, path);
-            }
+            commands::simple::run_clean()?;
         }
         Commands::Tag { repo_id, tags } => {
-            info!("为 {} 打标签: {}", repo_id, tags);
-            let mut conn = registry::WorkspaceRegistry::init_db()?;
-            let tag_list: Vec<&str> =
-                tags.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
-            let tx = conn.transaction()?;
-            let exists: bool = tx
-                .query_row("SELECT 1 FROM repos WHERE id = ?1", [&repo_id], |_| Ok(true))
-                .unwrap_or(false);
-            if !exists {
-                println!("注册表中未找到仓库 '{}'。", repo_id);
-            } else {
-                tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1", [&repo_id])?;
-                for tag in &tag_list {
-                    tx.execute(
-                        "INSERT OR REPLACE INTO repo_tags (repo_id, tag) VALUES (?1, ?2)",
-                        rusqlite::params![&repo_id, tag],
-                    )?;
-                }
-                tx.commit()?;
-                println!("已为 '{}' 打上标签 '{}'。", repo_id, tags);
-            }
+            commands::simple::run_tag(&repo_id, &tags)?;
         }
         Commands::Meta { repo_id, tier, workspace_type } => {
-            info!("更新 {} 的元数据", repo_id);
-            let conn = registry::WorkspaceRegistry::init_db()?;
-            let exists: bool = conn
-                .query_row("SELECT 1 FROM repos WHERE id = ?1", [&repo_id], |_| Ok(true))
-                .unwrap_or(false);
-            if !exists {
-                println!("注册表中未找到仓库 '{}'。", repo_id);
-            } else {
-                if let Some(ref t) = tier {
-                    registry::WorkspaceRegistry::update_repo_tier(&conn, &repo_id, t)?;
-                    println!("已将 '{}' 的数据分级设为 '{}'。", repo_id, t);
-                }
-                if let Some(ref wt) = workspace_type {
-                    registry::WorkspaceRegistry::update_repo_workspace_type(&conn, &repo_id, wt)?;
-                    println!("已将 '{}' 的工作区类型设为 '{}'。", repo_id, wt);
-                }
-                if tier.is_none() && workspace_type.is_none() {
-                    println!("未提供任何要更新的字段。使用 --tier 或 --workspace-type 指定。");
-                }
-            }
+            commands::simple::run_meta(&repo_id, tier, workspace_type)?;
         }
         Commands::Tui => {
-            info!("{}", i18n::current().cli.launching_tui);
-            tui::run().await?;
+            commands::simple::run_tui().await?;
         }
         Commands::Mcp { tools } => {
-            if let Some(tiers) = tools {
-                // SAFETY: set_var is called once at program startup before any
-                // threads read the environment. The MCP server runs in a single
-                // subprocess, so concurrent reads are not possible.
-                unsafe {
-                    std::env::set_var("DEVBASE_MCP_TOOL_TIERS", tiers);
-                }
-            }
-            mcp::run_stdio().await?;
+            commands::simple::run_mcp(tools).await?;
         }
         Commands::Daemon { interval } => {
-            let interval = interval.unwrap_or(config.daemon.interval_seconds);
-            let d = daemon::Daemon::new(interval, config.clone());
-            d.run().await?;
+            commands::simple::run_daemon(interval, config.clone()).await?;
         }
         Commands::Watch { path, duration } => {
-            use std::time::Duration;
-            use watch::{FolderScheduler, FsWatcher, WatchAggregator};
-
-            let root = std::path::PathBuf::from(&path);
-            let watcher = FsWatcher::new(&root)?;
-            let aggregator = WatchAggregator {
-                max_files: config.watch.max_files,
-                ..Default::default()
-            };
-            let mut scheduler =
-                FolderScheduler::with_max_files(root.clone(), config.watch.max_files);
-
-            println!("Watching {} for {} seconds...", path, duration);
-            let start = std::time::Instant::now();
-            let total_duration = Duration::from_secs(duration);
-
-            while start.elapsed() < total_duration {
-                let remaining = total_duration.saturating_sub(start.elapsed());
-                if let Some(events) = watcher.poll_event(remaining) {
-                    let aggregated = aggregator.aggregate(events);
-                    let actions = scheduler.check_and_schedule(aggregated)?;
-                    if !actions.is_empty() {
-                        println!("Detected changes, actions: {:?}", actions);
-                    }
-                }
-            }
-
-            println!("Watch completed for {}", path);
+            commands::simple::run_watch(&path, duration, &config).await?;
         }
         Commands::SkillSync { output, filter_tags, dry_run } => {
-            let filter_tags: Vec<String> = filter_tags
-                .map(|s| s.split(',').map(|t| t.trim().to_string()).collect())
-                .unwrap_or_default();
-            match skill_sync::run_sync(&output, &filter_tags, dry_run) {
-                Ok(count) => {
-                    if dry_run {
-                        println!("Would sync {} vault notes to {}", count, output);
-                    } else {
-                        println!("Synced {} vault notes to {}", count, output);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Skill sync failed: {}", e);
-                    std::process::exit(1);
-                }
-            }
+            commands::simple::run_skill_sync(&output, filter_tags, dry_run);
         }
         Commands::SyncthingPush {
             api_url,
@@ -606,911 +483,31 @@ async fn main() -> anyhow::Result<()> {
             filter_tags,
             experiment,
         } => {
-            use registry::WorkspaceRegistry;
-            use syncthing_client::SyncthingClient;
-
-            let client = SyncthingClient::new(&api_url, api_key.as_deref());
-
-            let conn = match WorkspaceRegistry::init_db() {
-                Ok(c) => c,
-                Err(e) => {
-                    println!("无法初始化数据库: {}", e);
-                    return Ok(());
-                }
-            };
-
-            let repos = match WorkspaceRegistry::list_repos(&conn) {
-                Ok(r) => r,
-                Err(e) => {
-                    println!("无法读取仓库列表: {}", e);
-                    return Ok(());
-                }
-            };
-
-            let filter_list: Vec<&str> = filter_tags
-                .as_deref()
-                .map(|f| f.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect())
-                .unwrap_or_default();
-
-            let filtered_repos: Vec<_> = if let Some(ref exp_id) = experiment {
-                let exps = WorkspaceRegistry::list_experiments(&conn).unwrap_or_default();
-                let target_repo =
-                    exps.into_iter().find(|e| e.id == *exp_id).and_then(|e| e.repo_id);
-                match target_repo {
-                    Some(repo_id) => repos.into_iter().filter(|r| r.id == repo_id).collect(),
-                    None => {
-                        println!("未找到实验 '{}' 关联的仓库。", exp_id);
-                        return Ok(());
-                    }
-                }
-            } else {
-                repos
-                    .into_iter()
-                    .filter(|repo| {
-                        filter_list.is_empty()
-                            || filter_list.iter().any(|f| repo.tags.contains(&f.to_string()))
-                    })
-                    .collect()
-            };
-
-            if filtered_repos.is_empty() {
-                println!("没有符合条件的仓库需要推送。");
-                return Ok(());
-            }
-
-            let mut pushed = Vec::new();
-            let mut connection_failed = false;
-            for repo in &filtered_repos {
-                let folder_id = format!("devbase-{}", repo.id);
-                let path = repo.local_path.to_string_lossy().to_string();
-                match client.create_or_update_folder(&folder_id, &path, &[]).await {
-                    Ok(()) => {
-                        println!("  [{}] Pushed {} -> {}", repo.id, folder_id, path);
-                        // Update experiment record if --experiment was provided
-                        if let Some(ref exp_id) = experiment
-                            && let Ok(mut exps) = WorkspaceRegistry::list_experiments(&conn)
-                            && let Some(exp) = exps.iter_mut().find(|e| e.id == *exp_id)
-                        {
-                            exp.syncthing_folder_id = Some(folder_id.clone());
-                            let _ = WorkspaceRegistry::save_experiment(&conn, exp);
-                        }
-                        pushed.push((repo.id.clone(), folder_id));
-                    }
-                    Err(e) => {
-                        let msg = e.to_string().to_lowercase();
-                        if msg.contains("connection")
-                            || msg.contains("connect")
-                            || msg.contains("error sending request")
-                        {
-                            if !connection_failed {
-                                println!(
-                                    "无法连接到 Syncthing API，请确认 Syncthing 正在运行且 API 地址正确。"
-                                );
-                                connection_failed = true;
-                            }
-                        } else {
-                            println!("  [{}] ERROR: {}", repo.id, e);
-                        }
-                    }
-                }
-            }
-
-            // Try to fetch folder status for successfully pushed repos
-            if !pushed.is_empty() && !connection_failed {
-                println!("\nQuerying folder status from Syncthing...");
-                for (repo_id, folder_id) in &pushed {
-                    match client.get_folder_status(folder_id).await {
-                        Ok(status) => {
-                            let state =
-                                status.get("state").and_then(|v| v.as_str()).unwrap_or("unknown");
-                            println!("  [{}] state: {}", repo_id, state);
-                        }
-                        Err(e) => {
-                            let msg = e.to_string().to_lowercase();
-                            if msg.contains("connection")
-                                || msg.contains("connect")
-                                || msg.contains("error sending request")
-                            {
-                                println!(
-                                    "无法连接到 Syncthing API，请确认 Syncthing 正在运行且 API 地址正确。"
-                                );
-                                break;
-                            } else {
-                                println!("  [{}] status query failed: {}", repo_id, e);
-                            }
-                        }
-                    }
-                }
-            }
+            commands::simple::run_syncthing_push(api_url, api_key, filter_tags, experiment).await?;
         }
         Commands::Digest => {
-            let digest_config = config.digest.clone();
-            match tokio::task::spawn_blocking(move || {
-                let conn = registry::WorkspaceRegistry::init_db()?;
-                let cfg = config::Config {
-                    general: config::GeneralConfig::default(),
-                    digest: digest_config,
-                    ..Default::default()
-                };
-                digest::generate_daily_digest(&conn, &cfg)
-            })
-            .await
-            {
-                Ok(Ok(text)) => println!("{}", text),
-                Ok(Err(e)) => println!("{}: {}", i18n::current().log.digest_failed, e),
-                Err(e) => println!("{}: {}", i18n::current().log.digest_panic, e),
-            }
+            commands::simple::run_digest(config.digest.clone()).await?;
         }
         Commands::Oplog { limit, repo } => {
-            let conn = registry::WorkspaceRegistry::init_db()?;
-            let entries = match repo {
-                Some(ref r) => registry::WorkspaceRegistry::list_oplog_by_repo(&conn, r, limit)?,
-                None => registry::WorkspaceRegistry::list_oplog(&conn, limit)?,
-            };
-            if entries.is_empty() {
-                println!("操作日志为空。");
-            } else {
-                println!("最近 {} 条操作日志:", entries.len());
-                for entry in entries {
-                    let ts = entry.timestamp.format("%Y-%m-%d %H:%M:%S").to_string();
-                    let repo = entry.repo_id.as_deref().unwrap_or("-");
-                    let details_display = if entry.event_version >= 1 {
-                        match serde_json::from_str::<serde_json::Value>(
-                            entry.details.as_deref().unwrap_or("{}"),
-                        ) {
-                            Ok(val) => {
-                                if let Some(obj) = val.as_object() {
-                                    obj.iter()
-                                        .map(|(k, v)| format!("{}={}", k, v))
-                                        .collect::<Vec<_>>()
-                                        .join(", ")
-                                } else {
-                                    entry.details.as_deref().unwrap_or("").to_string()
-                                }
-                            }
-                            Err(_) => entry.details.as_deref().unwrap_or("").to_string(),
-                        }
-                    } else {
-                        entry.details.as_deref().unwrap_or("").to_string()
-                    };
-                    let duration_display = entry
-                        .duration_ms
-                        .map(|d| format!(" | duration={}ms", d))
-                        .unwrap_or_default();
-                    println!(
-                        "  [{}] {} | repo={} | status={}{}{}",
-                        ts,
-                        entry.event_type.as_str(),
-                        repo,
-                        entry.status,
-                        duration_display,
-                        if details_display.is_empty() {
-                            "".to_string()
-                        } else {
-                            format!(" | {}", details_display)
-                        }
-                    );
-                }
-            }
+            commands::simple::run_oplog(limit, repo)?;
         }
         Commands::Discover => {
-            use discovery_engine::{Discovery, discover_dependencies, discover_similar_projects};
-            use registry::WorkspaceRegistry;
-            use std::collections::HashMap;
-
-            let conn = WorkspaceRegistry::init_db()?;
-            let repos = WorkspaceRegistry::list_repos(&conn)?;
-
-            let deps = discover_dependencies(&repos);
-            let sims = discover_similar_projects(&conn)?;
-
-            let mut merged: HashMap<(String, String, String), Discovery> = HashMap::new();
-            for d in deps.into_iter().chain(sims.into_iter()) {
-                let key = (d.from.clone(), d.to.clone(), d.relation_type.clone());
-                if let Some(existing) = merged.get(&key) {
-                    if d.confidence > existing.confidence {
-                        merged.insert(key, d);
-                    }
-                } else {
-                    merged.insert(key, d);
-                }
-            }
-
-            for d in merged.values() {
-                WorkspaceRegistry::save_relation(
-                    &conn,
-                    &d.from,
-                    &d.to,
-                    &d.relation_type,
-                    d.confidence,
-                )?;
-            }
-
-            let mut all: Vec<Discovery> = merged.into_values().collect();
-            all.sort_by(|a, b| {
-                b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal)
-            });
-
-            let dep_count = all.iter().filter(|d| d.relation_type == "depends_on").count();
-            let sim_count = all.iter().filter(|d| d.relation_type == "similar_to").count();
-            println!("Found {} dependencies and {} similarities.", dep_count, sim_count);
-
-            println!("Top 10 discoveries:");
-            for d in all.iter().take(10) {
-                println!(
-                    "  [{}] {} -> {} (confidence={:.2}): {}",
-                    d.relation_type, d.from, d.to, d.confidence, d.description
-                );
-            }
+            commands::simple::run_discover()?;
         }
-        Commands::Registry { cmd } => match cmd {
-            RegistryCommands::Export { format, output } => {
-                let out_path = output.as_deref().map(std::path::Path::new);
-                backup::run_export(&format, out_path)?;
-            }
-            RegistryCommands::Import { path, yes } => {
-                let source = std::path::Path::new(&path);
-                backup::run_import(source, yes)?;
-            }
-            RegistryCommands::Backups => {
-                backup::run_list()?;
-            }
-            RegistryCommands::Clean => {
-                backup::run_clean()?;
-            }
-        },
-        Commands::Vault { cmd } => match cmd {
-            VaultCommands::Scan { path } => {
-                let dir = if path.is_empty() {
-                    None
-                } else {
-                    Some(std::path::PathBuf::from(path))
-                };
-                let count =
-                    tokio::task::spawn_blocking(move || vault::scanner::scan_vault(dir.as_deref()))
-                        .await
-                        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
-                println!("Synced {} vault notes.", count);
-            }
-            VaultCommands::Reindex => {
-                tokio::task::spawn_blocking(vault::indexer::reindex_vault)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
-                println!("Vault search index rebuilt.");
-            }
-        },
+        Commands::Registry { cmd } => {
+            commands::simple::run_registry(cmd)?;
+        }
+        Commands::Vault { cmd } => {
+            commands::simple::run_vault(cmd).await?;
+        }
         Commands::Skill { cmd } => {
-            use skill_runtime::{parser, registry};
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
-            match cmd {
-                SkillCommands::List { skill_type, category, json } => {
-                    let st = skill_type.as_deref().and_then(|s| s.parse().ok());
-                    let cat = category.as_deref();
-                    let skills = registry::list_skills(&conn, st, cat)?;
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&skills)?);
-                    } else {
-                        if skills.is_empty() {
-                            println!("No skills found.");
-                        } else {
-                            println!("{:<24} {:<10} {:<12} Description", "ID", "Type", "Version");
-                            for s in &skills {
-                                println!(
-                                    "{:<24} {:<10} {:<12} {}",
-                                    s.id,
-                                    s.skill_type.as_str(),
-                                    s.version,
-                                    s.description
-                                );
-                            }
-                        }
-                    }
-                }
-                SkillCommands::Install { source, git } => {
-                    let is_git = git
-                        || source.starts_with("http://")
-                        || source.starts_with("https://")
-                        || source.starts_with("git@");
-                    let skill = if is_git {
-                        let s = registry::install_skill_from_git(&conn, &source, None)?;
-                        println!("Installed skill '{}' ({}) from {}", s.name, s.id, source);
-                        s
-                    } else {
-                        let p = std::path::PathBuf::from(&source);
-                        let skill_md = if p.is_dir() {
-                            p.join("SKILL.md")
-                        } else {
-                            p.clone()
-                        };
-                        if !skill_md.exists() {
-                            println!("SKILL.md not found at: {}", skill_md.display());
-                            return Ok(());
-                        }
-                        let s = parser::parse_skill_md(&skill_md)?;
-                        registry::install_skill(&conn, &s)?;
-                        println!("Installed skill '{}' ({})", s.name, s.id);
-                        s
-                    };
-                    // Install dependencies
-                    match skill_runtime::dependency::install_missing_dependencies(
-                        &conn,
-                        &skill,
-                        Some(&source),
-                    ) {
-                        Ok(deps) if !deps.is_empty() => {
-                            println!("  Installed dependencies: {}", deps.join(", "));
-                        }
-                        Ok(_) => {}
-                        Err(e) => {
-                            eprintln!("Warning: failed to install dependencies: {}", e);
-                        }
-                    }
-                }
-                SkillCommands::Uninstall { skill_id } => {
-                    let removed = registry::uninstall_skill(&conn, &skill_id)?;
-                    if removed {
-                        println!("Uninstalled skill '{}'.", skill_id);
-                    } else {
-                        println!("Skill '{}' not found.", skill_id);
-                    }
-                }
-                SkillCommands::Info { skill_id, json } => {
-                    match registry::get_skill(&conn, &skill_id)? {
-                        Some(s) => {
-                            if json {
-                                println!("{}", serde_json::to_string_pretty(&s)?);
-                            } else {
-                                println!("ID:          {}", s.id);
-                                println!("Name:        {}", s.name);
-                                println!("Version:     {}", s.version);
-                                println!("Type:        {}", s.skill_type.as_str());
-                                println!("Author:      {}", s.author.as_deref().unwrap_or("-"));
-                                println!("Tags:        {}", s.tags.join(", "));
-                                println!("Path:        {}", s.local_path);
-                                println!(
-                                    "Installed:   {}",
-                                    s.installed_at.format("%Y-%m-%d %H:%M:%S")
-                                );
-                                println!("Description: {}", s.description);
-                            }
-                        }
-                        None => {
-                            if json {
-                                println!("{{\"error\":\"Skill '{}' not found\"}}", skill_id);
-                            } else {
-                                println!("Skill '{}' not found.", skill_id);
-                            }
-                        }
-                    }
-                }
-                SkillCommands::Search {
-                    query,
-                    semantic,
-                    category,
-                    limit,
-                    json,
-                } => {
-                    let cat = category.as_deref();
-                    let results = if semantic {
-                        match crate::embedding::generate_query_embedding(&query) {
-                            Ok(embedding) => {
-                                registry::search_skills_semantic(&conn, &embedding, limit, cat)?
-                            }
-                            Err(e) => {
-                                eprintln!(
-                                    "Warning: semantic search failed ({}), falling back to text.",
-                                    e
-                                );
-                                registry::search_skills_text(&conn, &query, limit, cat)?
-                            }
-                        }
-                    } else {
-                        registry::search_skills_text(&conn, &query, limit, cat)?
-                    };
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&results)?);
-                    } else if results.is_empty() {
-                        println!("No skills matching '{}'.", query);
-                    } else {
-                        println!("Found {} skill(s):", results.len());
-                        for s in &results {
-                            println!("  [{}] {} — {}", s.id, s.name, s.description);
-                        }
-                    }
-                }
-                SkillCommands::Run { skill_id, args, timeout, json } => {
-                    match registry::get_skill(&conn, &skill_id)? {
-                        Some(skill) => {
-                            // Resolve and validate dependencies
-                            match skill_runtime::dependency::resolve_dependencies(&conn, &skill_id)
-                            {
-                                Ok(deps) => {
-                                    if !deps.is_empty() && !json {
-                                        println!(
-                                            "Resolved {} dependency(ies): {}",
-                                            deps.len(),
-                                            deps.iter()
-                                                .map(|d| d.id.as_str())
-                                                .collect::<Vec<_>>()
-                                                .join(", ")
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    if json {
-                                        println!(
-                                            "{{\"error\":\"Dependency resolution failed: {}\"}}",
-                                            e
-                                        );
-                                    } else {
-                                        eprintln!("Dependency resolution failed: {}", e);
-                                    }
-                                    std::process::exit(1);
-                                }
-                            }
-                            let exec_id = registry::record_execution_start(
-                                &conn,
-                                &skill_id,
-                                &serde_json::to_string(&args).unwrap_or_default(),
-                            )?;
-                            let result = skill_runtime::executor::run_skill(
-                                &skill,
-                                &args,
-                                std::time::Duration::from_secs(timeout),
-                            )?;
-                            registry::record_execution_finish(&conn, exec_id, &result)?;
-                            // Auto-update skill scores after execution
-                            if let Ok(scores) =
-                                skill_runtime::scoring::calculate_skill_scores(&conn, &skill_id)
-                            {
-                                let _ = skill_runtime::scoring::update_skill_scores(
-                                    &conn, &skill_id, &scores,
-                                );
-                            }
-                            if json {
-                                println!("{}", serde_json::to_string_pretty(&result)?);
-                            } else {
-                                println!("Exit code: {:?}", result.exit_code);
-                                if !result.stdout.is_empty() {
-                                    println!("--- stdout ---\n{}", result.stdout);
-                                }
-                                if !result.stderr.is_empty() {
-                                    eprintln!("--- stderr ---\n{}", result.stderr);
-                                }
-                            }
-                        }
-                        None => {
-                            if json {
-                                println!("{{\"error\":\"Skill '{}' not found\"}}", skill_id);
-                            } else {
-                                println!("Skill '{}' not found.", skill_id);
-                            }
-                        }
-                    }
-                }
-                SkillCommands::Validate { path } => {
-                    let p = std::path::PathBuf::from(&path);
-                    let skill_md = if p.is_dir() { p.join("SKILL.md") } else { p };
-                    match parser::parse_skill_md(&skill_md) {
-                        Ok(skill) => {
-                            println!("✓ Valid SKILL.md: '{}' ({})", skill.name, skill.id);
-                            if !skill.inputs.is_empty() {
-                                println!("  Inputs:  {}", skill.inputs.len());
-                            }
-                            if !skill.outputs.is_empty() {
-                                println!("  Outputs: {}", skill.outputs.len());
-                            }
-                            let missing =
-                                skill_runtime::dependency::validate_dependencies(&conn, &skill)
-                                    .unwrap_or_default();
-                            if missing.is_empty() {
-                                println!("  Dependencies: satisfied");
-                            } else {
-                                println!("  Dependencies: MISSING — {}", missing.join(", "));
-                            }
-                        }
-                        Err(e) => {
-                            println!("✗ Invalid SKILL.md: {}", e);
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                SkillCommands::Sync { target } => {
-                    if target != "clarity" {
-                        eprintln!(
-                            "Unsupported sync target: '{}'. Only 'clarity' is supported.",
-                            target
-                        );
-                        std::process::exit(1);
-                    }
-                    let clarity_dir = std::path::PathBuf::from("C:\\Users\\22414\\.clarity");
-                    if !clarity_dir.exists() {
-                        eprintln!("Clarity directory not found: {}", clarity_dir.display());
-                        std::process::exit(1);
-                    }
-                    match skill_runtime::clarity_sync::sync_skills_to_clarity(&conn, &clarity_dir) {
-                        Ok(count) => println!("Synced {} skill(s) to Clarity.", count),
-                        Err(e) => {
-                            eprintln!("Skill sync failed: {}", e);
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                SkillCommands::Discover { path, skill_id, dry_run, json } => {
-                    let is_git_url = path.starts_with("http://")
-                        || path.starts_with("https://")
-                        || path.starts_with("git@");
-
-                    let computed_id = skill_id.clone().unwrap_or_else(|| {
-                        path.trim_end_matches('/')
-                            .rsplit('/')
-                            .next()
-                            .unwrap_or("discovered-skill")
-                            .trim_end_matches(".git")
-                            .to_lowercase()
-                            .replace('_', "-")
-                    });
-
-                    let project_path = if is_git_url {
-                        let skill_dir = crate::registry::WorkspaceRegistry::workspace_dir()?
-                            .join("skills")
-                            .join(&computed_id);
-                        if skill_dir.exists() {
-                            std::fs::remove_dir_all(&skill_dir)?;
-                        }
-                        println!("Cloning {} ...", path);
-                        git2::Repository::clone(&path, &skill_dir)
-                            .map_err(|e| anyhow::anyhow!("Git clone failed: {}", e))?;
-                        skill_dir
-                    } else {
-                        std::path::PathBuf::from(&path)
-                    };
-
-                    match skill_runtime::discover::discover_and_install(
-                        &conn,
-                        &project_path,
-                        skill_id.as_deref(),
-                        dry_run,
-                    ) {
-                        Ok(skill) => {
-                            if json {
-                                println!(
-                                    "{{\"id\":\"{}\",\"name\":\"{}\",\"version\":\"{}\",\"description\":\"{}\",\"local_path\":\"{}\"}}",
-                                    skill.id,
-                                    skill.name,
-                                    skill.version,
-                                    skill.description.replace('"', "\\\""),
-                                    skill.local_path.display()
-                                );
-                            } else {
-                                println!("Discovered Skill: {} ({})", skill.name, skill.id);
-                                println!("Version: {}", skill.version);
-                                println!("Description: {}", skill.description);
-                                println!(
-                                    "Entry script: {}",
-                                    skill.entry_script.as_deref().unwrap_or("none")
-                                );
-                                if dry_run {
-                                    println!("\n(Dry-run: no files written or registry updated)");
-                                } else {
-                                    println!("Installed to: {}", skill.local_path.display());
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Skill discovery failed: {}", e);
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                SkillCommands::RecalcScores => {
-                    let updated = skill_runtime::scoring::recalculate_all_skill_scores(&conn)?;
-                    println!("Recalculated scores for {} skill(s).", updated);
-                }
-                SkillCommands::Top { limit } => {
-                    let top = skill_runtime::scoring::get_top_skills(&conn, limit)?;
-                    println!("Top {} skills:", top.len());
-                    for (i, s) in top.iter().enumerate() {
-                        println!(
-                            "  {}. {} — rating: {:.2}, success_rate: {:.1}%, usage: {}",
-                            i + 1,
-                            s.name,
-                            s.rating,
-                            s.success_rate * 100.0,
-                            s.usage_count
-                        );
-                    }
-                }
-                SkillCommands::Recommend { category, limit } => {
-                    let recs = skill_runtime::scoring::recommend_skills(
-                        &conn,
-                        category.as_deref(),
-                        limit,
-                    )?;
-                    println!("Recommended skills ({}):", recs.len());
-                    for s in &recs {
-                        println!(
-                            "  [{}] {} (v{}) — rating: {:.2}",
-                            s.id, s.name, s.version, s.rating
-                        );
-                    }
-                }
-                SkillCommands::Publish { path, dry_run } => {
-                    let p = std::path::PathBuf::from(&path);
-                    match skill_runtime::publish::validate_skill_for_publish(&p) {
-                        Ok(v) => {
-                            println!("Skill: {} ({})", v.name, v.skill_id);
-                            println!("Version: {}", v.version);
-                            println!("Description: {}", v.description);
-                            if v.is_git_repo {
-                                println!(
-                                    "Git repo: yes (branch: {})",
-                                    v.git_branch.as_deref().unwrap_or("unknown")
-                                );
-                                if v.git_clean {
-                                    println!("Git status: clean");
-                                } else {
-                                    println!("Git status: ✗ has uncommitted changes");
-                                }
-                            } else {
-                                println!("Git repo: no (not a git repository)");
-                            }
-                            if dry_run {
-                                println!("\nDry-run complete. No changes made.");
-                            } else if v.git_clean && v.is_git_repo {
-                                let tag = format!("v{}", v.version);
-                                match skill_runtime::publish::create_version_tag(
-                                    &p,
-                                    &tag,
-                                    &format!("Release {} {}", v.name, v.version),
-                                ) {
-                                    Ok(()) => {
-                                        match skill_runtime::publish::push_tag_to_remote(&p, &tag) {
-                                            Ok(()) => {
-                                                println!("\n✓ Created and pushed tag: {}", tag);
-                                                if skill_runtime::publish::has_gh_cli() {
-                                                    println!(
-                                                        "  Tip: run `gh release create {}` to create a GitHub Release.",
-                                                        tag
-                                                    );
-                                                }
-                                            }
-                                            Err(e) => {
-                                                println!("\n✓ Created git tag: {}", tag);
-                                                println!("✗ Failed to push tag to remote: {}", e);
-                                                println!(
-                                                    "  You can push manually with: git push origin {}",
-                                                    tag
-                                                );
-                                                std::process::exit(1);
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        println!("\n✗ Failed to create tag: {}", e);
-                                        std::process::exit(1);
-                                    }
-                                }
-                            } else {
-                                println!(
-                                    "\n✗ Cannot publish: working tree not clean or not a git repo."
-                                );
-                                std::process::exit(1);
-                            }
-                        }
-                        Err(e) => {
-                            println!("✗ Validation failed: {}", e);
-                            std::process::exit(1);
-                        }
-                    }
-                }
-            }
+            commands::skill::run_skill(cmd)?;
         }
         Commands::Workflow { cmd } => {
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
-            match cmd {
-                WorkflowCommands::List => {
-                    let workflows = crate::workflow::list_workflows(&conn)?;
-                    if workflows.is_empty() {
-                        println!("No workflows registered.");
-                    } else {
-                        println!("Registered workflows:");
-                        for (id, name, version) in workflows {
-                            println!("  [{}] {} (v{})", id, name, version);
-                        }
-                    }
-                }
-                WorkflowCommands::Show { workflow_id } => {
-                    match crate::workflow::get_workflow(&conn, &workflow_id)? {
-                        Some(wf) => {
-                            println!("Workflow: {} ({})", wf.name, wf.id);
-                            println!("Version: {}", wf.version);
-                            if let Some(desc) = &wf.description {
-                                println!("Description: {}", desc);
-                            }
-                            println!("\nSteps:");
-                            for step in &wf.steps {
-                                let deps = if step.depends_on.is_empty() {
-                                    "".to_string()
-                                } else {
-                                    format!(" [depends_on: {}]", step.depends_on.join(", "))
-                                };
-                                println!("  - {}{}", step.id, deps);
-                            }
-                        }
-                        None => {
-                            println!("Workflow '{}' not found.", workflow_id);
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                WorkflowCommands::Register { path } => {
-                    let p = std::path::PathBuf::from(&path);
-                    let wf = crate::workflow::parse_workflow_yaml(&p)?;
-                    crate::workflow::validate_workflow(&wf)?;
-                    crate::workflow::save_workflow(&conn, &wf)?;
-                    println!("Registered workflow '{}' ({} steps).", wf.id, wf.steps.len());
-                }
-                WorkflowCommands::Run { workflow_id, inputs } => {
-                    let wf = crate::workflow::get_workflow(&conn, &workflow_id)?
-                        .ok_or_else(|| anyhow::anyhow!("Workflow '{}' not found", workflow_id))?;
-                    let mut input_map = std::collections::HashMap::new();
-                    for inp in inputs {
-                        if let Some((k, v)) = inp.split_once('=') {
-                            input_map.insert(k.to_string(), v.to_string());
-                        } else {
-                            return Err(anyhow::anyhow!(
-                                "Invalid input format: '{}'. Expected key=value",
-                                inp
-                            ));
-                        }
-                    }
-                    let exec_id = crate::workflow::create_execution(
-                        &conn,
-                        &workflow_id,
-                        &serde_json::to_string(&input_map)?,
-                    )?;
-                    crate::workflow::update_execution(
-                        &conn,
-                        exec_id,
-                        &crate::workflow::ExecutionStatus::Running,
-                        None,
-                        None,
-                    )?;
-                    println!("Running workflow '{}' (execution #{})...", workflow_id, exec_id);
-                    match crate::workflow::execute_workflow(&conn, &wf, input_map) {
-                        Ok(results) => {
-                            crate::workflow::update_execution(
-                                &conn,
-                                exec_id,
-                                &crate::workflow::ExecutionStatus::Completed,
-                                None,
-                                None,
-                            )?;
-                            println!("\nWorkflow completed successfully.");
-                            for (step_id, result) in &results {
-                                println!("  [{}] {:?}", step_id, result.status);
-                            }
-                        }
-                        Err(e) => {
-                            crate::workflow::update_execution(
-                                &conn,
-                                exec_id,
-                                &crate::workflow::ExecutionStatus::Failed,
-                                None,
-                                None,
-                            )?;
-                            println!("\nWorkflow failed: {}", e);
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                WorkflowCommands::Delete { workflow_id } => {
-                    if crate::workflow::delete_workflow(&conn, &workflow_id)? {
-                        println!("Deleted workflow '{}'.", workflow_id);
-                    } else {
-                        println!("Workflow '{}' not found.", workflow_id);
-                    }
-                }
-            }
+            commands::workflow::run_workflow(cmd)?;
         }
         Commands::Limit { cmd } => {
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
-            match cmd {
-                LimitCommands::Add {
-                    id,
-                    category,
-                    description,
-                    source,
-                    severity,
-                } => {
-                    let description = description.unwrap_or_else(|| {
-                        println!("Enter description (or leave blank for 'TBD'):");
-                        let mut buf = String::new();
-                        std::io::stdin().read_line(&mut buf).ok();
-                        let s = buf.trim();
-                        if s.is_empty() { "TBD".to_string() } else { s.to_string() }
-                    });
-                    let limit = crate::registry::known_limits::KnownLimit {
-                        id: id.clone(),
-                        category,
-                        description,
-                        source,
-                        severity,
-                        first_seen_at: chrono::Utc::now(),
-                        last_checked_at: None,
-                        mitigated: false,
-                    };
-                    crate::registry::WorkspaceRegistry::save_known_limit(&conn, &limit)?;
-                    println!("Saved known limit '{}'.", id);
-                }
-                LimitCommands::List {
-                    category,
-                    mitigated,
-                    json,
-                } => {
-                    let limits = crate::registry::WorkspaceRegistry::list_known_limits(
-                        &conn,
-                        category.as_deref(),
-                        mitigated,
-                    )?;
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&limits)?);
-                    } else {
-                        if limits.is_empty() {
-                            println!("No known limits found.");
-                        } else {
-                            println!("Known limits ({}):", limits.len());
-                            for l in &limits {
-                                let status = if l.mitigated { "✓" } else { "✗" };
-                                let sev = l.severity.map(|s| format!(" [sev:{}]", s)).unwrap_or_default();
-                                println!(
-                                    "  {} [{}] {}{}{}",
-                                    status,
-                                    l.id,
-                                    l.category,
-                                    sev,
-                                    if l.mitigated { " (mitigated)" } else { "" }
-                                );
-                                println!("    {}", l.description);
-                                if let Some(ref src) = l.source {
-                                    println!("    Source: {}", src);
-                                }
-                            }
-                        }
-                    }
-                }
-                LimitCommands::Resolve { id, reason } => {
-                    if crate::registry::WorkspaceRegistry::resolve_known_limit(&conn, &id)? {
-                        if let Some(ref r) = reason {
-                            let meta = crate::registry::knowledge_meta::KnowledgeMeta {
-                                id: format!("resolve-{}", id),
-                                target_level: 3,
-                                target_id: id.clone(),
-                                correction_type: Some("human-feedback".to_string()),
-                                correction_json: Some(serde_json::json!({"reason": r}).to_string()),
-                                confidence: 1.0,
-                                created_at: chrono::Utc::now(),
-                            };
-                            let _ = crate::registry::WorkspaceRegistry::save_knowledge_meta(&conn, &meta);
-                        }
-                        println!("Resolved known limit '{}'.", id);
-                    } else {
-                        println!("Known limit '{}' not found.", id);
-                    }
-                }
-                LimitCommands::Delete { id } => {
-                    if crate::registry::WorkspaceRegistry::delete_known_limit(&conn, &id)? {
-                        println!("Deleted known limit '{}'.", id);
-                    } else {
-                        println!("Known limit '{}' not found.", id);
-                    }
-                }
-                LimitCommands::Seed => {
-                    let count = crate::registry::WorkspaceRegistry::seed_hard_vetoes(&conn)?;
-                    println!("Seeded {} hard vetoes.", count);
-                }
-            }
+            commands::limit::run_limit(cmd)?;
         }
     }
 

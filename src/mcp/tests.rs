@@ -399,7 +399,7 @@ fn test_nl_filter_repos_tantivy_finds_devbase() {
         }
     } else {
         unsafe {
-            std::env::remove_var("LOCALAPPDATA");
+            std::env::remove_var("DEVBASE_DATA_DIR");
         }
     }
 }

@@ -589,9 +589,7 @@ mod tests {
             .prepare("SELECT symbol_name, embedding FROM code_embeddings WHERE repo_id = ?1 ORDER BY symbol_name")
             .unwrap();
         let rows = stmt
-            .query_map(["repo-a"], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
-            })
+            .query_map(["repo-a"], |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)))
             .unwrap();
         let results: Vec<_> = rows.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 2);
@@ -638,7 +636,8 @@ mod tests {
         .unwrap();
 
         let results =
-            WorkspaceRegistry::semantic_search_symbols(&conn, "repo-a", &[1.0_f32, 0.0, 0.0], 10).unwrap();
+            WorkspaceRegistry::semantic_search_symbols(&conn, "repo-a", &[1.0_f32, 0.0, 0.0], 10)
+                .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].1, "hello");
         assert!((results[0].4 - 1.0).abs() < f32::EPSILON);

@@ -119,10 +119,7 @@ mod tests {
         assert_eq!(fetched.test_lines, 200);
         assert_eq!(fetched.comment_lines, 100);
         assert_eq!(fetched.file_count, 10);
-        assert_eq!(
-            fetched.language_breakdown,
-            serde_json::json!({"rust": 500, "python": 300})
-        );
+        assert_eq!(fetched.language_breakdown, serde_json::json!({"rust": 500, "python": 300}));
     }
 
     #[test]

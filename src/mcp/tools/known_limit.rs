@@ -43,7 +43,8 @@ Returns: success boolean and stored limit id."#,
     async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let category = args.get("category").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let description = args.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let description =
+            args.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let source = args.get("source").and_then(|v| v.as_str()).map(|s| s.to_string());
         let severity = args.get("severity").and_then(|v| v.as_i64()).map(|i| i as i32);
 
@@ -109,7 +110,8 @@ Returns: JSON array of known limits."#,
         let mitigated = args.get("mitigated").and_then(|v| v.as_bool());
 
         let conn = crate::registry::WorkspaceRegistry::init_db()?;
-        let limits = crate::registry::WorkspaceRegistry::list_known_limits(&conn, category, mitigated)?;
+        let limits =
+            crate::registry::WorkspaceRegistry::list_known_limits(&conn, category, mitigated)?;
 
         let results: Vec<serde_json::Value> = limits
             .into_iter()

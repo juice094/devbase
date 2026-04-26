@@ -209,11 +209,7 @@ fn test_perform_merge_fast_forward() {
     let (_dir, repo) = setup_repo_with_remote_commits(0, 1);
 
     let local_oid = repo.head().unwrap().target().unwrap();
-    let remote_oid = repo
-        .find_reference("refs/remotes/origin/main")
-        .unwrap()
-        .target()
-        .unwrap();
+    let remote_oid = repo.find_reference("refs/remotes/origin/main").unwrap().target().unwrap();
 
     let summary = perform_merge(&repo, "main", local_oid, remote_oid).unwrap();
     assert_eq!(summary.action, "MERGED_FF");
@@ -229,11 +225,7 @@ fn test_perform_merge_up_to_date() {
     let (_dir, repo) = setup_repo_with_remote_commits(0, 0);
 
     let local_oid = repo.head().unwrap().target().unwrap();
-    let remote_oid = repo
-        .find_reference("refs/remotes/origin/main")
-        .unwrap()
-        .target()
-        .unwrap();
+    let remote_oid = repo.find_reference("refs/remotes/origin/main").unwrap().target().unwrap();
 
     // Local and remote are at the same commit
     assert_eq!(local_oid, remote_oid);

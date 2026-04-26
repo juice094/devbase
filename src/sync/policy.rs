@@ -206,26 +206,11 @@ mod tests {
 
     #[test]
     fn test_classify_sync_error() {
-        assert_eq!(
-            classify_sync_error(&anyhow::anyhow!("network unreachable")),
-            "network-error"
-        );
-        assert_eq!(
-            classify_sync_error(&anyhow::anyhow!("authentication failed")),
-            "auth-failed"
-        );
-        assert_eq!(
-            classify_sync_error(&anyhow::anyhow!("merge conflict detected")),
-            "conflict"
-        );
-        assert_eq!(
-            classify_sync_error(&anyhow::anyhow!("working tree dirty")),
-            "blocked-dirty"
-        );
-        assert_eq!(
-            classify_sync_error(&anyhow::anyhow!("some other error")),
-            "error"
-        );
+        assert_eq!(classify_sync_error(&anyhow::anyhow!("network unreachable")), "network-error");
+        assert_eq!(classify_sync_error(&anyhow::anyhow!("authentication failed")), "auth-failed");
+        assert_eq!(classify_sync_error(&anyhow::anyhow!("merge conflict detected")), "conflict");
+        assert_eq!(classify_sync_error(&anyhow::anyhow!("working tree dirty")), "blocked-dirty");
+        assert_eq!(classify_sync_error(&anyhow::anyhow!("some other error")), "error");
     }
 
     #[test]
@@ -238,10 +223,7 @@ mod tests {
         assert_eq!(SyncPolicy::from_tags("tool"), SyncPolicy::Rebase);
         assert_eq!(SyncPolicy::from_tags("active"), SyncPolicy::Rebase);
         assert_eq!(SyncPolicy::from_tags("unknown"), SyncPolicy::Conservative);
-        assert_eq!(
-            SyncPolicy::from_tags("mirror, active"),
-            SyncPolicy::Mirror
-        );
+        assert_eq!(SyncPolicy::from_tags("mirror, active"), SyncPolicy::Mirror);
     }
 
     #[test]

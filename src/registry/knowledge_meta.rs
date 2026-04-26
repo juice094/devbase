@@ -5,8 +5,8 @@ use chrono::{DateTime, Utc};
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct KnowledgeMeta {
     pub id: String,
-    pub target_level: i32,       // 1=L1 methods, 2=L2 philosophy, 3=L3 risks
-    pub target_id: String,       // foreign key into skills/known_limits/vault_notes
+    pub target_level: i32, // 1=L1 methods, 2=L2 philosophy, 3=L3 risks
+    pub target_id: String, // foreign key into skills/known_limits/vault_notes
     pub correction_type: Option<String>, // 'human-feedback' | 'cross-session-drift' | 'formal-proof'
     pub correction_json: Option<String>,
     pub confidence: f64,
@@ -14,7 +14,10 @@ pub struct KnowledgeMeta {
 }
 
 impl WorkspaceRegistry {
-    pub fn save_knowledge_meta(conn: &rusqlite::Connection, meta: &KnowledgeMeta) -> anyhow::Result<()> {
+    pub fn save_knowledge_meta(
+        conn: &rusqlite::Connection,
+        meta: &KnowledgeMeta,
+    ) -> anyhow::Result<()> {
         conn.execute(
             "INSERT OR REPLACE INTO knowledge_meta
              (id, target_level, target_id, correction_type, correction_json, confidence, created_at)
@@ -172,7 +175,8 @@ mod tests {
         assert_eq!(fetched.target_id, "test-limit-1");
         assert_eq!(fetched.confidence, 0.95);
 
-        let list = WorkspaceRegistry::list_knowledge_meta(&conn, Some(3), Some("test-limit-1")).unwrap();
+        let list =
+            WorkspaceRegistry::list_knowledge_meta(&conn, Some(3), Some("test-limit-1")).unwrap();
         assert_eq!(list.len(), 1);
 
         let deleted = WorkspaceRegistry::delete_knowledge_meta(&conn, "meta-1").unwrap();

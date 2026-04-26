@@ -1046,9 +1046,7 @@ func (s *MyStruct) Method() string {
             .prepare("SELECT name, symbol_type FROM code_symbols WHERE repo_id = ?1 ORDER BY name")
             .unwrap();
         let rows = stmt
-            .query_map(["repo-a"], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })
+            .query_map(["repo-a"], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
             .unwrap();
         let results: Vec<_> = rows.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 2);
@@ -1075,9 +1073,7 @@ func (s *MyStruct) Method() string {
             .prepare("SELECT caller_symbol, callee_name FROM code_call_graph WHERE repo_id = ?1")
             .unwrap();
         let rows = stmt
-            .query_map(["repo-a"], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })
+            .query_map(["repo-a"], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
             .unwrap();
         let results: Vec<_> = rows.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 1);
