@@ -81,6 +81,8 @@ pub enum McpToolEnum {
     SkillSearch(DevkitSkillSearchTool),
     SkillRun(DevkitSkillRunTool),
     SkillDiscover(DevkitSkillDiscoverTool),
+    KnownLimitStore(DevkitKnownLimitStoreTool),
+    KnownLimitList(DevkitKnownLimitListTool),
 }
 
 /// Stability tier for MCP tools.
@@ -144,6 +146,8 @@ impl McpToolEnum {
             McpToolEnum::SkillSearch(_) => ToolTier::Beta,
             McpToolEnum::SkillRun(_) => ToolTier::Beta,
             McpToolEnum::SkillDiscover(_) => ToolTier::Beta,
+            McpToolEnum::KnownLimitStore(_) => ToolTier::Beta,
+            McpToolEnum::KnownLimitList(_) => ToolTier::Beta,
         }
     }
 }
@@ -186,6 +190,8 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillSearch(t) => t.name(),
             McpToolEnum::SkillRun(t) => t.name(),
             McpToolEnum::SkillDiscover(t) => t.name(),
+            McpToolEnum::KnownLimitStore(t) => t.name(),
+            McpToolEnum::KnownLimitList(t) => t.name(),
         }
     }
 
@@ -226,6 +232,8 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillSearch(t) => t.schema(),
             McpToolEnum::SkillRun(t) => t.schema(),
             McpToolEnum::SkillDiscover(t) => t.schema(),
+            McpToolEnum::KnownLimitStore(t) => t.schema(),
+            McpToolEnum::KnownLimitList(t) => t.schema(),
         }
     }
 
@@ -266,6 +274,8 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillSearch(t) => t.invoke(args).await,
             McpToolEnum::SkillRun(t) => t.invoke(args).await,
             McpToolEnum::SkillDiscover(t) => t.invoke(args).await,
+            McpToolEnum::KnownLimitStore(t) => t.invoke(args).await,
+            McpToolEnum::KnownLimitList(t) => t.invoke(args).await,
         }
     }
 }
@@ -411,7 +421,7 @@ impl McpServer {
 
 /// Build an MCP server with optional tier filtering.
 ///
-/// If `tiers` is `None`, all 28 tools are registered (backward compatible).
+/// If `tiers` is `None`, all 37 tools are registered (backward compatible).
 /// If `tiers` is provided, only tools whose tier is in the set are registered.
 pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
     let mut server = McpServer::new();
@@ -451,6 +461,8 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::SkillSearch(DevkitSkillSearchTool),
         McpToolEnum::SkillRun(DevkitSkillRunTool),
         McpToolEnum::SkillDiscover(DevkitSkillDiscoverTool),
+        McpToolEnum::KnownLimitStore(DevkitKnownLimitStoreTool),
+        McpToolEnum::KnownLimitList(DevkitKnownLimitListTool),
     ];
     for tool in all_tools {
         if let Some(allowed) = tiers

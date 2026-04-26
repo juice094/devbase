@@ -1,10 +1,12 @@
 pub mod context;
+pub mod known_limit;
 pub mod query;
 pub mod repo;
 pub mod skill;
 pub mod vault;
 
 pub use context::*;
+pub use known_limit::*;
 pub use query::*;
 pub use repo::*;
 pub use skill::*;

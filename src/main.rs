@@ -170,6 +170,11 @@ enum Commands {
         #[command(subcommand)]
         cmd: WorkflowCommands,
     },
+    /// Manage known system limits (L3 risk layer)
+    Limit {
+        #[command(subcommand)]
+        cmd: LimitCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -330,6 +335,51 @@ enum VaultCommands {
     },
     /// Rebuild the Tantivy search index for all vault notes
     Reindex,
+}
+
+#[derive(Subcommand)]
+enum LimitCommands {
+    /// Add or update a known limit
+    Add {
+        /// Unique identifier (kebab-case recommended)
+        id: String,
+        /// Category: hard-veto, known-bug, external-dep
+        #[arg(long, default_value = "known-bug")]
+        category: String,
+        /// Description of the limit
+        #[arg(long)]
+        description: Option<String>,
+        /// Source reference (e.g., AGENTS.md, oplog)
+        #[arg(long)]
+        source: Option<String>,
+        /// Severity 1-5
+        #[arg(long)]
+        severity: Option<i32>,
+    },
+    /// List known limits
+    List {
+        /// Filter by category
+        #[arg(long)]
+        category: Option<String>,
+        /// Filter by mitigated status
+        #[arg(long)]
+        mitigated: Option<bool>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Resolve (mitigate) a known limit
+    Resolve {
+        /// Limit ID
+        id: String,
+    },
+    /// Delete a known limit
+    Delete {
+        /// Limit ID
+        id: String,
+    },
+    /// Seed hard vetoes from AGENTS.md into the registry
+    Seed,
 }
 
 #[derive(Subcommand)]
@@ -1358,6 +1408,92 @@ async fn main() -> anyhow::Result<()> {
                     } else {
                         println!("Workflow '{}' not found.", workflow_id);
                     }
+                }
+            }
+        }
+        Commands::Limit { cmd } => {
+            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            match cmd {
+                LimitCommands::Add {
+                    id,
+                    category,
+                    description,
+                    source,
+                    severity,
+                } => {
+                    let description = description.unwrap_or_else(|| {
+                        println!("Enter description (or leave blank for 'TBD'):");
+                        let mut buf = String::new();
+                        std::io::stdin().read_line(&mut buf).ok();
+                        let s = buf.trim();
+                        if s.is_empty() { "TBD".to_string() } else { s.to_string() }
+                    });
+                    let limit = crate::registry::known_limits::KnownLimit {
+                        id: id.clone(),
+                        category,
+                        description,
+                        source,
+                        severity,
+                        first_seen_at: chrono::Utc::now(),
+                        last_checked_at: None,
+                        mitigated: false,
+                    };
+                    crate::registry::WorkspaceRegistry::save_known_limit(&conn, &limit)?;
+                    println!("Saved known limit '{}'.", id);
+                }
+                LimitCommands::List {
+                    category,
+                    mitigated,
+                    json,
+                } => {
+                    let limits = crate::registry::WorkspaceRegistry::list_known_limits(
+                        &conn,
+                        category.as_deref(),
+                        mitigated,
+                    )?;
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&limits)?);
+                    } else {
+                        if limits.is_empty() {
+                            println!("No known limits found.");
+                        } else {
+                            println!("Known limits ({}):", limits.len());
+                            for l in &limits {
+                                let status = if l.mitigated { "✓" } else { "✗" };
+                                let sev = l.severity.map(|s| format!(" [sev:{}]", s)).unwrap_or_default();
+                                println!(
+                                    "  {} [{}] {}{}{}",
+                                    status,
+                                    l.id,
+                                    l.category,
+                                    sev,
+                                    if l.mitigated { " (mitigated)" } else { "" }
+                                );
+                                println!("    {}", l.description);
+                                if let Some(ref src) = l.source {
+                                    println!("    Source: {}", src);
+                                }
+                            }
+                        }
+                    }
+                }
+                LimitCommands::Resolve { id } => {
+                    if crate::registry::WorkspaceRegistry::resolve_known_limit(&conn, &id)? {
+                        println!("Resolved known limit '{}'.", id);
+                    } else {
+                        println!("Known limit '{}' not found.", id);
+                    }
+                }
+                LimitCommands::Delete { id } => {
+                    if crate::registry::WorkspaceRegistry::delete_known_limit(&conn, &id)? {
+                        println!("Deleted known limit '{}'.", id);
+                    } else {
+                        println!("Known limit '{}' not found.", id);
+                    }
+                }
+                LimitCommands::Seed => {
+                    let count = crate::registry::WorkspaceRegistry::seed_hard_vetoes(&conn)?;
+                    println!("Seeded {} hard vetoes.", count);
                 }
             }
         }
