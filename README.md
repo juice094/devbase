@@ -1,7 +1,7 @@
 # devbase
 
-[![Version](https://img.shields.io/badge/version-v0.9.0-blue)](https://github.com/juice094/devbase/releases)
-[![Tests](https://img.shields.io/badge/tests-279%20passed-brightgreen)](./AGENTS.md)
+[![Version](https://img.shields.io/badge/version-v0.10.0-blue)](https://github.com/juice094/devbase/releases)
+[![Tests](https://img.shields.io/badge/tests-288%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
 [![License](https://img.shields.io/badge/license-MIT-orange)](./LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-9cf)](https://www.rust-lang.org)
@@ -86,7 +86,7 @@ cd devbase && cargo install --path .
 
 **面板布局**：左侧 35% 仓库列表（状态图标 ● dirty ◆ diverged ▼ behind ✓ 正常），右侧 65% 三标签页详情（Overview / Health / Insights）。
 
-### AI Layer — 35 个 MCP Tools
+### AI Layer — 37 个 MCP Tools
 
 基于 [Model Context Protocol](https://modelcontextprotocol.io) 标准化接口，stdio 本地进程通信。
 
@@ -182,6 +182,17 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 
 > "show dirty rust repos with more than 100 stars"
 
+### L3-L4 知识模型 (v0.10.0)
+
+系统具备**自我边界意识**和**认知纠错能力**：
+
+- **L3 风险层 (`known_limits`)**: 记录 hard vetoes、已知缺陷、外部依赖风险
+  - `devbase limit list` 查看当前系统约束
+  - `devbase limit seed` 从 AGENTS.md 自动填充 hard vetoes
+- **L4 元认知层 (`knowledge_meta`)**: 记录人类对 L1-L3 的纠正
+  - `devbase limit resolve <id> --reason "..."` 自动创建 L4 纠正记录
+- **运行时守卫**: Skill 执行前自动检查未解决 hard veto，警告注入 stderr
+
 ---
 
 ## MCP Tool 矩阵
@@ -225,6 +236,8 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | `devkit_workflow_list` | 列出工作流 | "有哪些工作流？" |
 | `devkit_workflow_run` | 执行工作流 | "运行 deploy-staging" |
 | `devkit_skill_top` | Top 评分 Skills | "评分最高的 skill？" |
+| `devkit_known_limit_store` | 记录 known limit | "记录系统约束" |
+| `devkit_known_limit_list` | 列出 known limits | "查看当前风险" |
 
 ### AI 助手集成
 
