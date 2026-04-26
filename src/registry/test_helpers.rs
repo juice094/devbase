@@ -314,6 +314,18 @@ CREATE TABLE IF NOT EXISTS known_limits (
 );
 CREATE INDEX IF NOT EXISTS idx_known_limits_category ON known_limits(category);
 CREATE INDEX IF NOT EXISTS idx_known_limits_mitigated ON known_limits(mitigated);
+
+-- v19: Knowledge Meta (L4 metacognition layer)
+CREATE TABLE IF NOT EXISTS knowledge_meta (
+    id              TEXT PRIMARY KEY,
+    target_level    INTEGER NOT NULL,
+    target_id       TEXT NOT NULL,
+    correction_type TEXT,
+    correction_json TEXT,
+    confidence      REAL DEFAULT 0.0,
+    created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_meta_target ON knowledge_meta(target_level, target_id);
 "#;
 
 #[cfg(test)]
@@ -364,5 +376,18 @@ mod tests {
             )
             .unwrap_or(false);
         assert!(exists, "known_limits table must exist in current schema");
+    }
+
+    #[test]
+    fn test_knowledge_meta_table_exists() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='knowledge_meta'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        assert!(exists, "knowledge_meta table must exist in current schema");
     }
 }

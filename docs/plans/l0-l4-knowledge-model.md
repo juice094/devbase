@@ -1,6 +1,6 @@
 # L0-L4 五层知识模型 — 路线图草案
 
-> **状态**：草案（v0.10.0 准备阶段）
+> **状态**：部分实现（v0.10.0 进行中）
 > **最后更新**：2026-04-26
 > **生效范围**：devbase Registry Schema v18+
 
@@ -58,15 +58,16 @@ CREATE TABLE knowledge_philosophy (
     invalidated_at  TEXT                    -- 被推翻时标记
 );
 
--- L3 风险层
-CREATE TABLE knowledge_risks (
+-- L3 风险层（已实现：v0.10.0 Wave 35，表名为 `known_limits`）
+CREATE TABLE known_limits (
     id              TEXT PRIMARY KEY,
-    risk_type       TEXT NOT NULL,          -- 'supply-chain' | 'data-leak' | 'availability'
-    description     TEXT,
+    category        TEXT NOT NULL,          -- 'hard-veto' | 'known-bug' | 'external-dep'
+    description     TEXT NOT NULL,
+    source          TEXT,
     severity        INTEGER,                -- 1-5
-    incident_count  INTEGER DEFAULT 0,
-    last_incident   TEXT,
-    mitigated_by    TEXT                    -- 关联的 vault_note_id 或 method_id
+    first_seen_at   TEXT NOT NULL,
+    last_checked_at TEXT,
+    mitigated       INTEGER DEFAULT 0
 );
 
 -- L4 元认知层
@@ -97,6 +98,8 @@ CREATE TABLE knowledge_meta (
 | `relations` | L0-L1 关联 | 实体间关系，可作为方法调用链 |
 | `vault_notes` | L2 哲学层载体 | PARA 笔记，新增 `ai_context=true` 的笔记自动入 L2 |
 | `oplog` | L3 风险层信号源 | 异常日志频率 → 风险评分 |
+| `known_limits` | L3 风险层实现 | Hard Veto / 已知限制 / 外部依赖风险 |
+| `knowledge_meta` | L4 元认知层实现 | 人类纠正、跨会话一致性记录 |
 | `skills` / `skill_executions` | L1 方法层 | Skill 执行成功率 → 方法有效性评估 |
 
 ---

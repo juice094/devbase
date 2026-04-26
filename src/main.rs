@@ -372,6 +372,9 @@ enum LimitCommands {
     Resolve {
         /// Limit ID
         id: String,
+        /// Reason for resolution (optional, stored in L4 metacognition layer)
+        #[arg(long)]
+        reason: Option<String>,
     },
     /// Delete a known limit
     Delete {
@@ -1477,8 +1480,20 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
-                LimitCommands::Resolve { id } => {
+                LimitCommands::Resolve { id, reason } => {
                     if crate::registry::WorkspaceRegistry::resolve_known_limit(&conn, &id)? {
+                        if let Some(ref r) = reason {
+                            let meta = crate::registry::knowledge_meta::KnowledgeMeta {
+                                id: format!("resolve-{}", id),
+                                target_level: 3,
+                                target_id: id.clone(),
+                                correction_type: Some("human-feedback".to_string()),
+                                correction_json: Some(serde_json::json!({"reason": r}).to_string()),
+                                confidence: 1.0,
+                                created_at: chrono::Utc::now(),
+                            };
+                            let _ = crate::registry::WorkspaceRegistry::save_knowledge_meta(&conn, &meta);
+                        }
                         println!("Resolved known limit '{}'.", id);
                     } else {
                         println!("Known limit '{}' not found.", id);

@@ -1,7 +1,7 @@
 use super::*;
 use std::path::PathBuf;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 18;
+pub const CURRENT_SCHEMA_VERSION: i32 = 19;
 
 impl WorkspaceRegistry {
     pub fn db_path() -> anyhow::Result<PathBuf> {
@@ -875,6 +875,26 @@ impl WorkspaceRegistry {
                 [],
             )?;
             conn.execute("PRAGMA user_version = 18", [])?;
+        }
+        if user_version < 19 {
+            // v19: Knowledge Meta — L4 metacognition layer for human corrections and cross-session consistency
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS knowledge_meta (
+                    id              TEXT PRIMARY KEY,
+                    target_level    INTEGER NOT NULL,
+                    target_id       TEXT NOT NULL,
+                    correction_type TEXT,
+                    correction_json TEXT,
+                    confidence      REAL DEFAULT 0.0,
+                    created_at      TEXT NOT NULL
+                )",
+                [],
+            )?;
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_knowledge_meta_target ON knowledge_meta(target_level, target_id)",
+                [],
+            )?;
+            conn.execute("PRAGMA user_version = 19", [])?;
         }
 
         conn.execute(

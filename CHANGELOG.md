@@ -16,10 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - CLI: `devbase limit {add,list,resolve,delete,seed}`
   - OpLog 集成: create/update/resolve/delete/seed 自动写入 oplog（event_type = `KnownLimit`）
   - Hard Veto 种子: AGENTS.md 中的 5 条硬约束自动填充
+- **L4 元认知层 MVP** — `knowledge_meta` 表 + L3-L4 联动
+  - Schema v19: `knowledge_meta` 表（id, target_level, target_id, correction_type, correction_json, confidence, created_at）
+  - Registry CRUD: `save`/`get`/`list`/`delete`
+  - CLI 联动: `devbase limit resolve <id> --reason "..."` 自动创建 L4 meta 记录
 
 ### Changed
 
-- `cargo test --all-targets`: 279 → 284 passed
+- `cargo test --all-targets`: 279 → 286 passed
 - MCP tool 总数: 35 → 37
 
 ## [0.9.0] - 2026-04-26

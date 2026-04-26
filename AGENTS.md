@@ -19,7 +19,7 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
   - `assets/` —— 二进制资源
 - **MCP Server**：stdio only（SSE 开发中），**35 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：284 passed / 0 failed / 3 ignored
+- **当前测试**：286 passed / 0 failed / 3 ignored
 - **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
 - **Workflow Engine**：YAML 解析 + 拓扑调度 + batch 并行执行 + 5 种 step 类型（skill/subworkflow/parallel/condition/loop）
 - **NLQ 自然语言查询**：TUI `[:]` 触发 embedding 语义搜索，fallback 降级文本搜索
@@ -179,6 +179,7 @@ devbase 承载外部资源调度的抽象接口：
 | Wave 33 | TUI SkillPanel 拆分 | ✅ 已完成 | 7 个 skill 字段提取到 `SkillPanelState`，App 51→44 字段 |
 | Wave 34 | Workflow Loop Step 硬化 | ✅ 已完成 | `StepType::Loop { body }` + `execute_loop_step` + `${loop.item}` / `${loop.index}` |
 | Wave 35 | L3 Risk Layer MVP | ✅ 已完成 | Schema v18 `known_limits` + Registry CRUD + MCP tools + CLI `limit` + OpLog 集成 |
+| Wave 36 | L4 元认知层 MVP | ✅ 已完成 | Schema v19 `knowledge_meta` + Registry CRUD + `--reason` resolve + L3-L4 联动 |
 
 ### 明确不做（已排除）
 
