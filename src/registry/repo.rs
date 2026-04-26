@@ -454,4 +454,49 @@ mod tests {
         let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
         assert_eq!(repos[0].stars, Some(100));
     }
+
+    #[test]
+    fn test_update_repo_language() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let repo = sample_repo("repo1", "/tmp/repo1");
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        WorkspaceRegistry::update_repo_language(&conn, "repo1", Some("go")).unwrap();
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert_eq!(repos[0].language, Some("go".to_string()));
+    }
+
+    #[test]
+    fn test_update_repo_tier() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let repo = sample_repo("repo1", "/tmp/repo1");
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        WorkspaceRegistry::update_repo_tier(&conn, "repo1", "public").unwrap();
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert_eq!(repos[0].data_tier, "public");
+    }
+
+    #[test]
+    fn test_update_repo_workspace_type() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let repo = sample_repo("repo1", "/tmp/repo1");
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        WorkspaceRegistry::update_repo_workspace_type(&conn, "repo1", "openclaw").unwrap();
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert_eq!(repos[0].workspace_type, "openclaw");
+    }
+
+    #[test]
+    fn test_update_repo_last_synced_at() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let repo = sample_repo("repo1", "/tmp/repo1");
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+
+        let now = chrono::Utc::now();
+        WorkspaceRegistry::update_repo_last_synced_at(&conn, "repo1", now).unwrap();
+        let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+        assert!(repos[0].last_synced_at.is_some());
+    }
 }
