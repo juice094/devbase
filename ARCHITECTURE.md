@@ -133,7 +133,7 @@ Peer Device (另一台机器的实体层)
 
 > **三者已通过 MCP 协议完成初步融合。**
 >
-> - `devbase`：Sprint 1 完成 CLI/TUI/Registry/MCP SSE/OpLog，Registry 规模 39 个工作区
+> - `devbase`：Sprint 1 完成 CLI/TUI/Registry/OpLog，Registry 规模 39 个工作区；MCP 仅 stdio，SSE 开发中
 > - `Clarity`：通过 MCP stdio 调用 devbase 工具，SSE transport 待 Daemon 常驻模式
 > - `syncthing-rust-rearch`：BEP 协议栈就绪，`.syncdone` 标记格式已对齐，REST API 集成待 Sprint 2
 >

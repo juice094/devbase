@@ -340,7 +340,74 @@ fn execute_loop_step(
         iter_ctx.set_loop_var("index", index.to_string());
 
         for body_step in body {
-            let body_result = execute_step(conn, body_step, &iter_ctx)?;
+            let mut body_result = execute_step(conn, body_step, &iter_ctx)?;
+
+            if body_result.status == ExecutionStatus::Failed {
+                match &body_step.on_error {
+                    ErrorPolicy::Continue => {
+                        // Record failure but continue to next body step
+                    }
+                    ErrorPolicy::Retry { count, backoff_ms } => {
+                        let mut retry_ok = false;
+                        for i in 0..*count {
+                            std::thread::sleep(Duration::from_millis(*backoff_ms));
+                            body_result = execute_step(conn, body_step, &iter_ctx)?;
+                            if body_result.status != ExecutionStatus::Failed {
+                                retry_ok = true;
+                                break;
+                            }
+                            if i == count - 1 {
+                                // Final retry also failed: record it but do not return yet;
+                                // let the outer loop handle termination based on overall policy
+                            }
+                        }
+                        if !retry_ok {
+                            return Ok(loop_failure_result(
+                                step,
+                                &all_outputs,
+                                &stdout_lines,
+                                &body_result,
+                                index,
+                                body_step,
+                            ));
+                        }
+                    }
+                    ErrorPolicy::Fallback { step_id: fallback_id } => {
+                        if let Some(fb_step) = body.iter().find(|s| s.id == *fallback_id) {
+                            body_result = execute_step(conn, fb_step, &iter_ctx)?;
+                            if body_result.status == ExecutionStatus::Failed {
+                                return Ok(loop_failure_result(
+                                    step,
+                                    &all_outputs,
+                                    &stdout_lines,
+                                    &body_result,
+                                    index,
+                                    fb_step,
+                                ));
+                            }
+                        } else {
+                            return Ok(loop_failure_result(
+                                step,
+                                &all_outputs,
+                                &stdout_lines,
+                                &body_result,
+                                index,
+                                body_step,
+                            ));
+                        }
+                    }
+                    ErrorPolicy::Fail => {
+                        return Ok(loop_failure_result(
+                            step,
+                            &all_outputs,
+                            &stdout_lines,
+                            &body_result,
+                            index,
+                            body_step,
+                        ));
+                    }
+                }
+            }
 
             // Aggregate outputs: later iterations overwrite earlier ones by default
             for (k, v) in &body_result.outputs {
@@ -349,22 +416,6 @@ fn execute_loop_step(
 
             if let Some(out) = body_result.stdout.as_ref() {
                 stdout_lines.push(format!("[{index}] {out}"));
-            }
-
-            if body_result.status == ExecutionStatus::Failed {
-                return Ok(StepResult {
-                    step_id: step.id.clone(),
-                    status: ExecutionStatus::Failed,
-                    outputs: all_outputs,
-                    stdout: Some(stdout_lines.join("\n")),
-                    stderr: body_result.stderr,
-                    started_at: None,
-                    finished_at: None,
-                    error: Some(format!(
-                        "loop iteration {index} failed at body step '{}'",
-                        body_step.id
-                    )),
-                });
             }
 
             // Make body step outputs available to subsequent body steps in the same iteration
@@ -382,6 +433,26 @@ fn execute_loop_step(
         finished_at: None,
         error: None,
     })
+}
+
+fn loop_failure_result(
+    step: &StepDefinition,
+    all_outputs: &HashMap<String, serde_json::Value>,
+    stdout_lines: &[String],
+    body_result: &StepResult,
+    index: usize,
+    failed_step: &StepDefinition,
+) -> StepResult {
+    StepResult {
+        step_id: step.id.clone(),
+        status: ExecutionStatus::Failed,
+        outputs: all_outputs.clone(),
+        stdout: Some(stdout_lines.join("\n")),
+        stderr: body_result.stderr.clone(),
+        started_at: None,
+        finished_at: None,
+        error: Some(format!("loop iteration {index} failed at body step '{}'", failed_step.id)),
+    }
 }
 
 fn parse_collection(s: &str) -> anyhow::Result<Vec<String>> {
@@ -682,5 +753,87 @@ mod tests {
         let err = execute_workflow(&conn, &wf, HashMap::new()).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("workflow failed at step 'loop1'"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn test_loop_body_continue() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let wf = dummy_wf(
+            "loop-continue",
+            vec![StepDefinition {
+                id: "loop1".to_string(),
+                step_type: StepType::Loop {
+                    for_each: "a,b".to_string(),
+                    body: vec![
+                        StepDefinition {
+                            id: "always_fail".to_string(),
+                            step_type: StepType::Skill {
+                                skill: "nonexistent-skill".to_string(),
+                            },
+                            inputs: HashMap::new(),
+                            depends_on: vec![],
+                            on_error: ErrorPolicy::Continue,
+                            timeout_seconds: None,
+                        },
+                        StepDefinition {
+                            id: "after_fail".to_string(),
+                            step_type: StepType::Condition { r#if: "true".to_string() },
+                            inputs: HashMap::new(),
+                            depends_on: vec![],
+                            on_error: ErrorPolicy::Fail,
+                            timeout_seconds: None,
+                        },
+                    ],
+                },
+                inputs: HashMap::new(),
+                depends_on: vec![],
+                on_error: ErrorPolicy::Fail,
+                timeout_seconds: None,
+            }],
+        );
+        let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
+        assert_eq!(results["loop1"].status, ExecutionStatus::Completed);
+    }
+
+    #[test]
+    fn test_loop_body_fallback() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let wf = dummy_wf(
+            "loop-fallback",
+            vec![StepDefinition {
+                id: "loop1".to_string(),
+                step_type: StepType::Loop {
+                    for_each: "x".to_string(),
+                    body: vec![
+                        StepDefinition {
+                            id: "primary".to_string(),
+                            step_type: StepType::Skill {
+                                skill: "nonexistent-skill".to_string(),
+                            },
+                            inputs: HashMap::new(),
+                            depends_on: vec![],
+                            on_error: ErrorPolicy::Fallback {
+                                step_id: "fallback".to_string(),
+                            },
+                            timeout_seconds: None,
+                        },
+                        StepDefinition {
+                            id: "fallback".to_string(),
+                            step_type: StepType::Condition { r#if: "true".to_string() },
+                            inputs: HashMap::new(),
+                            depends_on: vec![],
+                            on_error: ErrorPolicy::Fail,
+                            timeout_seconds: None,
+                        },
+                    ],
+                },
+                inputs: HashMap::new(),
+                depends_on: vec![],
+                on_error: ErrorPolicy::Fail,
+                timeout_seconds: None,
+            }],
+        );
+        let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
+        assert_eq!(results["loop1"].status, ExecutionStatus::Completed);
     }
 }

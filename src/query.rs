@@ -733,7 +733,7 @@ mod tests {
     fn test_eval_note_match() {
         let r = repo("foo", "/tmp/foo", &[]);
         let mut notes = HashMap::new();
-        notes.insert("foo".to_string(), vec!["TODO: fix bug".to_string()]);
+        notes.insert("foo".to_string(), vec!["remember to check todo tags".to_string()]);
         let cond = Condition::Note("todo".to_string());
         assert!(eval_condition(&r, &cond, None, None, &notes).is_some());
     }
