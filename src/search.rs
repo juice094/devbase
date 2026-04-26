@@ -208,6 +208,8 @@ mod tests {
         let _guard = SEARCH_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         let old = std::env::var("LOCALAPPDATA").ok();
+        // SAFETY: Test-only LOCALAPPDATA override. Guarded by SEARCH_TEST_LOCK,
+        // restored before function returns.
         unsafe {
             std::env::set_var("LOCALAPPDATA", tmp.path());
         }
@@ -219,10 +221,12 @@ mod tests {
         let mut writer = idx.writer(15_000_000).unwrap();
         f(&idx, &schema, &mut writer);
         if let Some(v) = old {
+            // SAFETY: Restoring original LOCALAPPDATA after test.
             unsafe {
                 std::env::set_var("LOCALAPPDATA", v);
             }
         } else {
+            // SAFETY: Removing test-only LOCALAPPDATA override.
             unsafe {
                 std::env::remove_var("LOCALAPPDATA");
             }

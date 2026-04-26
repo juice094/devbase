@@ -153,6 +153,8 @@ mod tests {
     impl Drop for EnvGuard {
         fn drop(&mut self) {
             match &self.old {
+                // SAFETY: set_var/remove_var in tests only. Tests run single-threaded,
+                // and the key is scoped to this test via EnvGuard.
                 Some(v) => unsafe { std::env::set_var(self.key, v) },
                 None => unsafe { std::env::remove_var(self.key) },
             }
@@ -164,6 +166,7 @@ mod tests {
         let key = "DEVBASE_TEST_VAR";
         let old = std::env::var(key).ok();
         let _guard = EnvGuard { key, old };
+        // SAFETY: Test-only env mutation. Single-threaded test scope.
         unsafe {
             std::env::set_var(key, "test_value");
         }
