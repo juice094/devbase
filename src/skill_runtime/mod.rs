@@ -198,3 +198,57 @@ pub fn parse_tags(tags_str: Option<&str>) -> Vec<String> {
 pub fn serialize_tags(tags: &[String]) -> String {
     serde_json::to_string(tags).unwrap_or_else(|_| "[]".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_skill_type_roundtrip() {
+        assert_eq!(SkillType::Builtin.as_str(), "builtin");
+        assert_eq!(SkillType::Custom.as_str(), "custom");
+        assert_eq!(SkillType::System.as_str(), "system");
+        assert_eq!("builtin".parse::<SkillType>().unwrap(), SkillType::Builtin);
+        assert_eq!("custom".parse::<SkillType>().unwrap(), SkillType::Custom);
+        assert_eq!("system".parse::<SkillType>().unwrap(), SkillType::System);
+    }
+
+    #[test]
+    fn test_execution_status_roundtrip() {
+        assert_eq!(ExecutionStatus::Pending.as_str(), "pending");
+        assert_eq!(ExecutionStatus::Success.as_str(), "success");
+        assert_eq!(ExecutionStatus::Timeout.as_str(), "timeout");
+        assert_eq!("running".parse::<ExecutionStatus>().unwrap(), ExecutionStatus::Running);
+        assert_eq!("failed".parse::<ExecutionStatus>().unwrap(), ExecutionStatus::Failed);
+    }
+
+    #[test]
+    fn test_skill_meta_id_from_path() {
+        assert_eq!(SkillMeta::id_from_path(std::path::Path::new("/skills/My Skill")), "my-skill");
+        assert_eq!(SkillMeta::id_from_path(std::path::Path::new("/skills/my_skill")), "my-skill");
+        assert_eq!(SkillMeta::id_from_path(std::path::Path::new("/skills/my-skill")), "my-skill");
+    }
+
+    #[test]
+    fn test_parse_tags_csv() {
+        assert_eq!(parse_tags(Some("rust, cli,  ai")), vec!["rust", "cli", "ai"]);
+    }
+
+    #[test]
+    fn test_parse_tags_json() {
+        assert_eq!(parse_tags(Some("[\"rust\", \"cli\", \"ai\"]")), vec!["rust", "cli", "ai"]);
+    }
+
+    #[test]
+    fn test_parse_tags_empty() {
+        assert!(parse_tags(None).is_empty());
+        assert!(parse_tags(Some("")).is_empty());
+    }
+
+    #[test]
+    fn test_serialize_tags_roundtrip() {
+        let tags = vec!["rust".to_string(), "cli".to_string()];
+        let json = serialize_tags(&tags);
+        assert_eq!(parse_tags(Some(&json)), tags);
+    }
+}
