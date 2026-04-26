@@ -16,3 +16,42 @@ pub fn read_note_body(path: &str) -> Option<(String, Option<String>)> {
     let body = full[body_offset..].trim().to_string();
     Some((body, fm_raw))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_read_note_content() {
+        let mut file = NamedTempFile::new().unwrap();
+        write!(file, "# Hello\n\nWorld").unwrap();
+        let content = read_note_content(file.path().to_str().unwrap()).unwrap();
+        assert_eq!(content, "# Hello\n\nWorld");
+    }
+
+    #[test]
+    fn test_read_note_content_missing() {
+        assert!(read_note_content("/nonexistent/path/note.md").is_none());
+    }
+
+    #[test]
+    fn test_read_note_body_with_frontmatter() {
+        let mut file = NamedTempFile::new().unwrap();
+        write!(file, "---\ntitle: Test\n---\n\n# Body\n").unwrap();
+        let (body, fm) = read_note_body(file.path().to_str().unwrap()).unwrap();
+        assert_eq!(body, "# Body");
+        assert!(fm.is_some());
+        assert!(fm.unwrap().contains("title: Test"));
+    }
+
+    #[test]
+    fn test_read_note_body_without_frontmatter() {
+        let mut file = NamedTempFile::new().unwrap();
+        write!(file, "# Body\n\nText").unwrap();
+        let (body, fm) = read_note_body(file.path().to_str().unwrap()).unwrap();
+        assert_eq!(body, "# Body\n\nText");
+        assert!(fm.is_none());
+    }
+}
