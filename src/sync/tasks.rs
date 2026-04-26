@@ -489,7 +489,7 @@ pub(super) fn write_syncdone_marker(
     }
 }
 
-fn perform_rebase(
+pub(super) fn perform_rebase(
     repo: &Repository,
     branch: &str,
     _local: git2::Oid,
@@ -529,7 +529,7 @@ fn perform_rebase(
     })
 }
 
-fn perform_merge(
+pub(super) fn perform_merge(
     repo: &Repository,
     branch: &str,
     local: git2::Oid,

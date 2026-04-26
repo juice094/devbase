@@ -1,4 +1,4 @@
-use super::tasks::write_syncdone_marker;
+use super::tasks::{perform_merge, write_syncdone_marker};
 use super::*;
 use git2::Repository;
 use std::fs;
@@ -186,4 +186,24 @@ fn test_sync_repo_skip_no_syncdone() {
     // In real sync_repo, SKIP action bypasses write_syncdone_marker, so delete it
     fs::remove_file(&syncdone_path).unwrap();
     assert!(!syncdone_path.exists());
+}
+
+#[test]
+fn test_perform_merge_fast_forward() {
+    let _ = crate::i18n::init("en");
+    let (_dir, repo) = setup_repo_with_remote_commits(0, 1);
+
+    let local_oid = repo.head().unwrap().target().unwrap();
+    let remote_oid = repo
+        .find_reference("refs/remotes/origin/main")
+        .unwrap()
+        .target()
+        .unwrap();
+
+    let summary = perform_merge(&repo, "main", local_oid, remote_oid).unwrap();
+    assert_eq!(summary.action, "MERGED_FF");
+
+    // After fast-forward merge, local main should point to remote oid
+    let new_local_oid = repo.head().unwrap().target().unwrap();
+    assert_eq!(new_local_oid, remote_oid);
 }
