@@ -199,3 +199,89 @@ pub fn recommend_sync_action(
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_classify_sync_error() {
+        assert_eq!(
+            classify_sync_error(&anyhow::anyhow!("network unreachable")),
+            "network-error"
+        );
+        assert_eq!(
+            classify_sync_error(&anyhow::anyhow!("authentication failed")),
+            "auth-failed"
+        );
+        assert_eq!(
+            classify_sync_error(&anyhow::anyhow!("merge conflict detected")),
+            "conflict"
+        );
+        assert_eq!(
+            classify_sync_error(&anyhow::anyhow!("working tree dirty")),
+            "blocked-dirty"
+        );
+        assert_eq!(
+            classify_sync_error(&anyhow::anyhow!("some other error")),
+            "error"
+        );
+    }
+
+    #[test]
+    fn test_sync_policy_from_tags() {
+        assert_eq!(SyncPolicy::from_tags("mirror"), SyncPolicy::Mirror);
+        assert_eq!(SyncPolicy::from_tags("reference"), SyncPolicy::Mirror);
+        assert_eq!(SyncPolicy::from_tags("collaborative"), SyncPolicy::Merge);
+        assert_eq!(SyncPolicy::from_tags("team"), SyncPolicy::Merge);
+        assert_eq!(SyncPolicy::from_tags("own-project"), SyncPolicy::Rebase);
+        assert_eq!(SyncPolicy::from_tags("tool"), SyncPolicy::Rebase);
+        assert_eq!(SyncPolicy::from_tags("active"), SyncPolicy::Rebase);
+        assert_eq!(SyncPolicy::from_tags("unknown"), SyncPolicy::Conservative);
+        assert_eq!(
+            SyncPolicy::from_tags("mirror, active"),
+            SyncPolicy::Mirror
+        );
+    }
+
+    #[test]
+    fn test_sync_policy_capabilities() {
+        assert!(!SyncPolicy::Mirror.can_push());
+        assert!(!SyncPolicy::Conservative.can_push());
+        assert!(SyncPolicy::Rebase.can_push());
+        assert!(SyncPolicy::Merge.can_push());
+
+        assert!(!SyncPolicy::Mirror.can_rebase());
+        assert!(!SyncPolicy::Conservative.can_rebase());
+        assert!(SyncPolicy::Rebase.can_rebase());
+        assert!(!SyncPolicy::Merge.can_rebase());
+    }
+
+    #[test]
+    fn test_recommend_sync_action() {
+        assert_eq!(
+            recommend_sync_action(SyncSafety::NoUpstream, 0, 0, SyncPolicy::Conservative, false),
+            Some("No remote — cannot sync".to_string())
+        );
+        assert_eq!(
+            recommend_sync_action(SyncSafety::BlockedDirty, 0, 0, SyncPolicy::Conservative, true),
+            Some("Working tree dirty — commit or stash before sync".to_string())
+        );
+        assert_eq!(
+            recommend_sync_action(SyncSafety::UpToDate, 0, 0, SyncPolicy::Conservative, true),
+            Some("Up to date — nothing to do".to_string())
+        );
+        assert_eq!(
+            recommend_sync_action(SyncSafety::Safe, 0, 3, SyncPolicy::Conservative, true),
+            Some("Safe to fast-forward 3 commit(s)".to_string())
+        );
+        assert_eq!(
+            recommend_sync_action(SyncSafety::Safe, 2, 3, SyncPolicy::Rebase, true),
+            Some("Can rebase/merge 3 commit(s)".to_string())
+        );
+        assert_eq!(
+            recommend_sync_action(SyncSafety::LocalAhead, 2, 0, SyncPolicy::Rebase, true),
+            Some("Local ahead by 2 — ready to push".to_string())
+        );
+    }
+}
