@@ -9,6 +9,10 @@ authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
 name = "semantic_index"
 harness = false
 
+[[bench]]
+name = "registry_bench"
+harness = false
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 git2 = "0.20"
