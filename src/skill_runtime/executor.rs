@@ -12,6 +12,10 @@ pub fn run_skill(
     args: &[String],
     timeout: Duration,
 ) -> anyhow::Result<ExecutionResult> {
+    // L3 Hard Veto runtime awareness: check for unresolved hard vetoes before execution
+    let conn = crate::registry::WorkspaceRegistry::init_db().ok();
+    let veto_warning = conn.as_ref().and_then(|c| check_hard_vetoes_for_skill(skill, c));
+
     let skill_dir = std::path::PathBuf::from(&skill.local_path);
     let skill_dir = std::env::current_dir()
         .ok()
@@ -132,6 +136,12 @@ pub fn run_skill(
         ExecutionStatus::Failed
     };
 
+    let stderr = if let Some(ref warning) = veto_warning {
+        format!("[HARD-VETO-WARNING] {}\n{}", warning, stderr)
+    } else {
+        stderr
+    };
+
     Ok(ExecutionResult {
         skill_id: skill.id.clone(),
         status: exec_status,
@@ -140,6 +150,48 @@ pub fn run_skill(
         exit_code,
         duration_ms: start.elapsed().as_millis() as u64,
     })
+}
+
+/// Check for unresolved hard vetoes before skill execution.
+/// Returns an optional warning string if unresolved hard vetoes exist.
+/// Logs to oplog and gracefully handles registry unavailability.
+pub(crate) fn check_hard_vetoes_for_skill(skill: &SkillRow, conn: &rusqlite::Connection) -> Option<String> {
+    let vetoes = match crate::registry::WorkspaceRegistry::list_known_limits(conn, Some("hard-veto"), Some(false)) {
+        Ok(v) => v,
+        Err(_) => return None,
+    };
+    if vetoes.is_empty() {
+        return None;
+    }
+
+    let ids: Vec<String> = vetoes.iter().map(|v| v.id.clone()).collect();
+    let details = serde_json::json!({
+        "action": "skill_guard",
+        "skill_id": &skill.id,
+        "unresolved_vetoes": ids,
+        "veto_count": vetoes.len(),
+    });
+    let _ = crate::registry::WorkspaceRegistry::save_oplog(
+        conn,
+        &crate::registry::OplogEntry {
+            id: None,
+            event_type: crate::registry::OplogEventType::KnownLimit,
+            repo_id: None,
+            details: Some(details.to_string()),
+            status: "warning".to_string(),
+            timestamp: chrono::Utc::now(),
+            duration_ms: None,
+            event_version: 1,
+        },
+    );
+
+    let descriptions: Vec<String> = vetoes.iter().map(|v| format!("- [{}] {}", v.id, v.description)).collect();
+    Some(format!(
+        "Skill '{}' executed with {} unresolved hard veto(s):\n{}",
+        skill.id,
+        vetoes.len(),
+        descriptions.join("\n")
+    ))
 }
 
 fn resolve_interpreter(path: &std::path::Path) -> (Option<String>, String) {
@@ -328,5 +380,59 @@ sys.exit(0)
         let result = run_skill(&skill, &[], std::time::Duration::from_secs(5)).unwrap();
         assert_eq!(result.status, ExecutionStatus::Failed);
         assert_eq!(result.exit_code, Some(127));
+    }
+
+    #[test]
+    fn test_hard_veto_guard_with_unresolved_vetoes() {
+        let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
+        crate::registry::WorkspaceRegistry::seed_hard_vetoes(&conn).unwrap();
+
+        let skill = SkillRow {
+            id: "test-guard".to_string(),
+            name: "Test Guard".to_string(),
+            version: "1.0.0".to_string(),
+            description: "test".to_string(),
+            author: None,
+            tags: vec![],
+            entry_script: None,
+            category: None,
+            skill_type: crate::skill_runtime::SkillType::Builtin,
+            local_path: std::env::temp_dir().to_string_lossy().to_string(),
+            installed_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            last_used_at: None,
+            dependencies: vec![],
+        };
+
+        let warning = check_hard_vetoes_for_skill(&skill, &conn);
+        assert!(warning.is_some(), "should detect unresolved hard vetoes");
+        let msg = warning.unwrap();
+        assert!(msg.contains("hard veto"), "warning should mention hard veto");
+        assert!(msg.contains("test-guard"), "warning should mention skill id");
+    }
+
+    #[test]
+    fn test_hard_veto_guard_empty_registry() {
+        let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
+
+        let skill = SkillRow {
+            id: "test-no-veto".to_string(),
+            name: "Test No Veto".to_string(),
+            version: "1.0.0".to_string(),
+            description: "test".to_string(),
+            author: None,
+            tags: vec![],
+            entry_script: None,
+            category: None,
+            skill_type: crate::skill_runtime::SkillType::Builtin,
+            local_path: std::env::temp_dir().to_string_lossy().to_string(),
+            installed_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            last_used_at: None,
+            dependencies: vec![],
+        };
+
+        let warning = check_hard_vetoes_for_skill(&skill, &conn);
+        assert!(warning.is_none(), "should return None when no vetoes exist");
     }
 }

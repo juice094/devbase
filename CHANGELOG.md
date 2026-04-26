@@ -20,10 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Schema v19: `knowledge_meta` 表（id, target_level, target_id, correction_type, correction_json, confidence, created_at）
   - Registry CRUD: `save`/`get`/`list`/`delete`
   - CLI 联动: `devbase limit resolve <id> --reason "..."` 自动创建 L4 meta 记录
+- **Hard Veto 运行时守卫** — Skill 执行前自动检查未解决 hard veto
+  - `skill_runtime::executor::run_skill` 执行前查询 `known_limits`
+  - 未解决 hard veto 存在时，警告注入 `stderr`，同时写入 OpLog
+  - 零破坏性：skill 仍执行成功，但输出中包含 `[HARD-VETO-WARNING]`
 
 ### Changed
 
-- `cargo test --all-targets`: 279 → 286 passed
+- `cargo test --all-targets`: 279 → 288 passed
 - MCP tool 总数: 35 → 37
 
 ## [0.9.0] - 2026-04-26
