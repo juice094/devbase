@@ -45,6 +45,16 @@ fn resolve(path: &str, ctx: &InterpolationContext) -> anyhow::Result<String> {
         ["env", name] => {
             std::env::var(*name).map_err(|_| anyhow::anyhow!("missing env var: {name}"))
         }
+        ["loop", "item"] => ctx
+            .loop_vars
+            .get("item")
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("loop item not set")),
+        ["loop", "index"] => ctx
+            .loop_vars
+            .get("index")
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("loop index not set")),
         _ => Err(anyhow::anyhow!("unsupported variable path: {path}")),
     }
 }
@@ -90,6 +100,7 @@ pub fn interpolate_value(
 pub struct InterpolationContext {
     pub inputs: HashMap<String, String>,
     pub step_outputs: HashMap<String, HashMap<String, Value>>,
+    pub loop_vars: HashMap<String, String>,
 }
 
 impl InterpolationContext {
@@ -97,11 +108,20 @@ impl InterpolationContext {
         Self {
             inputs,
             step_outputs: HashMap::new(),
+            loop_vars: HashMap::new(),
         }
     }
 
     pub fn add_step_output(&mut self, step_id: &str, outputs: HashMap<String, Value>) {
         self.step_outputs.insert(step_id.to_string(), outputs);
+    }
+
+    pub fn set_loop_var(&mut self, key: &str, value: String) {
+        self.loop_vars.insert(key.to_string(), value);
+    }
+
+    pub fn clear_loop_vars(&mut self) {
+        self.loop_vars.clear();
     }
 }
 
@@ -149,5 +169,25 @@ mod tests {
         }
         let ctx = InterpolationContext::default();
         assert_eq!(interpolate("${env.DEVBASE_TEST_VAR}", &ctx).unwrap(), "test_value");
+    }
+
+    #[test]
+    fn test_interpolate_loop_item() {
+        let mut ctx = InterpolationContext::default();
+        ctx.set_loop_var("item", "repo-a".to_string());
+        assert_eq!(interpolate("${loop.item}", &ctx).unwrap(), "repo-a");
+    }
+
+    #[test]
+    fn test_interpolate_loop_index() {
+        let mut ctx = InterpolationContext::default();
+        ctx.set_loop_var("index", "2".to_string());
+        assert_eq!(interpolate("${loop.index}", &ctx).unwrap(), "2");
+    }
+
+    #[test]
+    fn test_interpolate_loop_missing() {
+        let ctx = InterpolationContext::default();
+        assert!(interpolate("${loop.item}", &ctx).is_err());
     }
 }

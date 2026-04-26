@@ -467,14 +467,17 @@ impl App {
 
     pub(crate) fn next_skill(&mut self) {
         if !self.skill_panel.items.is_empty() {
-            self.skill_panel.selected = (self.skill_panel.selected + 1) % self.skill_panel.items.len();
+            self.skill_panel.selected =
+                (self.skill_panel.selected + 1) % self.skill_panel.items.len();
             self.skill_panel.list_state.select(Some(self.skill_panel.selected));
         }
     }
 
     pub(crate) fn previous_skill(&mut self) {
         if !self.skill_panel.items.is_empty() {
-            self.skill_panel.selected = (self.skill_panel.selected + self.skill_panel.items.len() - 1) % self.skill_panel.items.len();
+            self.skill_panel.selected = (self.skill_panel.selected + self.skill_panel.items.len()
+                - 1)
+                % self.skill_panel.items.len();
             self.skill_panel.list_state.select(Some(self.skill_panel.selected));
         }
     }
@@ -682,7 +685,11 @@ impl App {
         };
         self.run_skill_item(
             skill_item,
-            self.skill_panel.param_buffer.split_whitespace().map(|s| s.to_string()).collect(),
+            self.skill_panel
+                .param_buffer
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect(),
         );
     }
 

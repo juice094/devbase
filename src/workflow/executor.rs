@@ -117,9 +117,7 @@ fn execute_step(
         StepType::Subworkflow { workflow } => execute_subworkflow_step(conn, step, workflow, ctx),
         StepType::Parallel { parallel } => execute_parallel_step(conn, step, parallel, ctx),
         StepType::Condition { r#if } => execute_condition_step(step, r#if, ctx),
-        StepType::Loop { for_each: _ } => {
-            Err(anyhow::anyhow!("loop step execution not yet implemented"))
-        }
+        StepType::Loop { for_each, body } => execute_loop_step(conn, step, for_each, body, ctx),
     };
 
     let _duration = start.elapsed();
@@ -323,6 +321,90 @@ fn execute_condition_step(
     })
 }
 
+fn execute_loop_step(
+    conn: &rusqlite::Connection,
+    step: &StepDefinition,
+    for_each: &str,
+    body: &[StepDefinition],
+    ctx: &InterpolationContext,
+) -> anyhow::Result<StepResult> {
+    let collection_str = interpolate(for_each, ctx)?;
+    let items = parse_collection(&collection_str)?;
+
+    let mut all_outputs: HashMap<String, serde_json::Value> = HashMap::new();
+    let mut stdout_lines: Vec<String> = Vec::new();
+
+    for (index, item) in items.iter().enumerate() {
+        let mut iter_ctx = ctx.clone();
+        iter_ctx.set_loop_var("item", item.clone());
+        iter_ctx.set_loop_var("index", index.to_string());
+
+        for body_step in body {
+            let body_result = execute_step(conn, body_step, &iter_ctx)?;
+
+            // Aggregate outputs: later iterations overwrite earlier ones by default
+            for (k, v) in &body_result.outputs {
+                all_outputs.insert(k.clone(), v.clone());
+            }
+
+            if let Some(out) = body_result.stdout.as_ref() {
+                stdout_lines.push(format!("[{index}] {out}"));
+            }
+
+            if body_result.status == ExecutionStatus::Failed {
+                return Ok(StepResult {
+                    step_id: step.id.clone(),
+                    status: ExecutionStatus::Failed,
+                    outputs: all_outputs,
+                    stdout: Some(stdout_lines.join("\n")),
+                    stderr: body_result.stderr,
+                    started_at: None,
+                    finished_at: None,
+                    error: Some(format!(
+                        "loop iteration {index} failed at body step '{}'",
+                        body_step.id
+                    )),
+                });
+            }
+
+            // Make body step outputs available to subsequent body steps in the same iteration
+            iter_ctx.add_step_output(&body_step.id, body_result.outputs.clone());
+        }
+    }
+
+    Ok(StepResult {
+        step_id: step.id.clone(),
+        status: ExecutionStatus::Completed,
+        outputs: all_outputs,
+        stdout: Some(stdout_lines.join("\n")),
+        stderr: None,
+        started_at: None,
+        finished_at: None,
+        error: None,
+    })
+}
+
+fn parse_collection(s: &str) -> anyhow::Result<Vec<String>> {
+    let trimmed = s.trim();
+    if trimmed.starts_with('[') {
+        let arr: Vec<serde_json::Value> = serde_json::from_str(trimmed)
+            .map_err(|e| anyhow::anyhow!("invalid JSON array in for_each: {e}"))?;
+        Ok(arr
+            .into_iter()
+            .map(|v| match v {
+                serde_json::Value::String(st) => st,
+                other => other.to_string(),
+            })
+            .collect())
+    } else {
+        Ok(trimmed
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -483,5 +565,122 @@ mod tests {
         let results = execute_workflow(&conn, &parent, HashMap::new()).unwrap();
         // Child skill fails (no entry script), but subworkflow step is valid
         assert!(results.contains_key("run_child"));
+    }
+
+    #[test]
+    fn test_loop_empty_collection() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let wf = dummy_wf(
+            "loop-empty",
+            vec![StepDefinition {
+                id: "loop1".to_string(),
+                step_type: StepType::Loop {
+                    for_each: "".to_string(),
+                    body: vec![],
+                },
+                inputs: HashMap::new(),
+                depends_on: vec![],
+                on_error: ErrorPolicy::Fail,
+                timeout_seconds: None,
+            }],
+        );
+        let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
+        assert_eq!(results["loop1"].status, ExecutionStatus::Completed);
+        assert!(results["loop1"].stdout.as_ref().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_loop_single_iteration() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let wf = dummy_wf(
+            "loop-single",
+            vec![StepDefinition {
+                id: "loop1".to_string(),
+                step_type: StepType::Loop {
+                    for_each: "x".to_string(),
+                    body: vec![StepDefinition {
+                        id: "check".to_string(),
+                        step_type: StepType::Condition { r#if: "true".to_string() },
+                        inputs: HashMap::new(),
+                        depends_on: vec![],
+                        on_error: ErrorPolicy::Fail,
+                        timeout_seconds: None,
+                    }],
+                },
+                inputs: HashMap::new(),
+                depends_on: vec![],
+                on_error: ErrorPolicy::Fail,
+                timeout_seconds: None,
+            }],
+        );
+        let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
+        assert_eq!(results["loop1"].status, ExecutionStatus::Completed);
+        let stdout = results["loop1"].stdout.as_ref().unwrap();
+        assert!(stdout.contains("[0] condition evaluated to: true"));
+    }
+
+    #[test]
+    fn test_loop_multi_iteration() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let wf = dummy_wf(
+            "loop-multi",
+            vec![StepDefinition {
+                id: "loop1".to_string(),
+                step_type: StepType::Loop {
+                    for_each: "a,b,c".to_string(),
+                    body: vec![StepDefinition {
+                        id: "check".to_string(),
+                        step_type: StepType::Condition { r#if: "true".to_string() },
+                        inputs: HashMap::new(),
+                        depends_on: vec![],
+                        on_error: ErrorPolicy::Fail,
+                        timeout_seconds: None,
+                    }],
+                },
+                inputs: HashMap::new(),
+                depends_on: vec![],
+                on_error: ErrorPolicy::Fail,
+                timeout_seconds: None,
+            }],
+        );
+        let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
+        assert_eq!(results["loop1"].status, ExecutionStatus::Completed);
+        let stdout = results["loop1"].stdout.as_ref().unwrap();
+        assert!(stdout.contains("[0] condition evaluated to: true"));
+        assert!(stdout.contains("[1] condition evaluated to: true"));
+        assert!(stdout.contains("[2] condition evaluated to: true"));
+    }
+
+    #[test]
+    fn test_loop_failure() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let wf = dummy_wf(
+            "loop-fail",
+            vec![StepDefinition {
+                id: "loop1".to_string(),
+                step_type: StepType::Loop {
+                    for_each: "x".to_string(),
+                    body: vec![StepDefinition {
+                        id: "bad_skill".to_string(),
+                        step_type: StepType::Skill {
+                            skill: "nonexistent-skill".to_string(),
+                        },
+                        inputs: HashMap::new(),
+                        depends_on: vec![],
+                        on_error: ErrorPolicy::Fail,
+                        timeout_seconds: None,
+                    }],
+                },
+                inputs: HashMap::new(),
+                depends_on: vec![],
+                on_error: ErrorPolicy::Fail,
+                timeout_seconds: None,
+            }],
+        );
+        // When a loop body step fails and the loop step's on_error is Fail,
+        // execute_workflow returns an Err (consistent with all other step types).
+        let err = execute_workflow(&conn, &wf, HashMap::new()).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("workflow failed at step 'loop1'"), "unexpected error: {msg}");
     }
 }

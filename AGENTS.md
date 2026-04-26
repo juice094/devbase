@@ -2,9 +2,9 @@
 
 `devbase` 是本地优先的 AI Skill 编排基础设施。
 
-- **当前阶段**：阶段二 — AI Skill 编排基础设施（v0.8.0-alpha 进行中）
-- **当前版本**：v0.8.0
-- **下一里程碑**：v0.9.0（NLQ 结果可执行 + Loop Step + L0-L4 知识模型）
+- **当前阶段**：阶段三 — v0.9.0 发布闭环 / v0.10.0 准备中
+- **当前版本**：v0.9.0
+- **下一里程碑**：v0.10.0（L0-L4 五层知识模型 Schema 设计）
 - **核心方向**：将 GitHub 项目转换为标准化、可发现、可组合的 Skill，供弱 AI 子代理执行
 - **设计文档**：
   - `docs/architecture/workflow-dsl.md` — Workflow DSL 规范
@@ -177,6 +177,7 @@ devbase 承载外部资源调度的抽象接口：
 | Wave 31 | NLQ 结果可执行 v0.8.1 | ✅ 已完成 | `[:]` 搜索结果按 Enter 直接运行 skill，event+state+render 三文件修改 |
 | Wave 32 | NLQ  smoke test | ✅ 已完成 | `run_nlp_selected_skill` 空列表/无技能/执行管道测试，267 tests passed |
 | Wave 33 | TUI SkillPanel 拆分 | ✅ 已完成 | 7 个 skill 字段提取到 `SkillPanelState`，App 51→44 字段 |
+| Wave 34 | Workflow Loop Step 硬化 | ✅ 已完成 | `StepType::Loop { body }` + `execute_loop_step` + `${loop.item}` / `${loop.index}` |
 
 ### 明确不做（已排除）
 

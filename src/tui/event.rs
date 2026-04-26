@@ -73,7 +73,8 @@ pub(crate) async fn run_app<B: Backend>(
                         KeyCode::Esc => app.skill_panel.popup_mode = SkillPopupMode::List,
                         KeyCode::Enter => {
                             let has_inputs = app
-                                .skill_panel.selected_item
+                                .skill_panel
+                                .selected_item
                                 .as_ref()
                                 .map(|m| !m.inputs.is_empty())
                                 .unwrap_or(false);

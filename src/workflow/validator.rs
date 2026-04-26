@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 /// Validate a workflow definition.
 ///
 /// Checks:
-/// 1. All step IDs are unique.
+/// 1. All step IDs are unique (including inside loop bodies).
 /// 2. All `depends_on` references exist.
 /// 3. No circular dependencies.
 /// 4. Output mappings reference valid steps.
@@ -16,7 +16,30 @@ pub fn validate_workflow(wf: &WorkflowDefinition) -> anyhow::Result<()> {
         return Err(anyhow::anyhow!("duplicate step ids detected"));
     }
 
+    // Collect loop body step IDs and validate they don't clash with global IDs
+    let mut body_step_ids: HashSet<&str> = HashSet::new();
+    for step in &wf.steps {
+        if let super::model::StepType::Loop { body, .. } = &step.step_type {
+            for body_step in body {
+                if step_ids.contains(body_step.id.as_str()) {
+                    return Err(anyhow::anyhow!(
+                        "loop body step '{}' duplicates global step id",
+                        body_step.id
+                    ));
+                }
+                if !body_step_ids.insert(body_step.id.as_str()) {
+                    return Err(anyhow::anyhow!(
+                        "duplicate step id '{}' inside loop body",
+                        body_step.id
+                    ));
+                }
+            }
+        }
+    }
+
     // 2. Valid depends_on references
+    // Loop body steps may depend on other body steps or global steps.
+    let all_valid_ids: HashSet<&str> = step_ids.union(&body_step_ids).copied().collect();
     for step in &wf.steps {
         for dep in &step.depends_on {
             if !step_ids.contains(dep.as_str()) {
@@ -27,9 +50,22 @@ pub fn validate_workflow(wf: &WorkflowDefinition) -> anyhow::Result<()> {
                 ));
             }
         }
+        if let super::model::StepType::Loop { body, .. } = &step.step_type {
+            for body_step in body {
+                for dep in &body_step.depends_on {
+                    if !all_valid_ids.contains(dep.as_str()) {
+                        return Err(anyhow::anyhow!(
+                            "loop body step '{}' depends on non-existent step '{}'",
+                            body_step.id,
+                            dep
+                        ));
+                    }
+                }
+            }
+        }
     }
 
-    // 3. No cycles
+    // 3. No cycles (global DAG only; loop body is executed sequentially by executor)
     detect_cycle(wf)?;
 
     // 4. Output mapping validity
@@ -154,5 +190,94 @@ mod tests {
     fn test_missing_dep() {
         let wf = dummy_wf(vec![dummy_step("a", vec!["missing"])]);
         assert!(validate_workflow(&wf).is_err());
+    }
+
+    #[test]
+    fn test_loop_body_duplicate_global_id() {
+        let wf = dummy_wf(vec![
+            StepDefinition {
+                id: "lint".to_string(),
+                step_type: StepType::Skill { skill: "test".to_string() },
+                inputs: HashMap::new(),
+                depends_on: vec![],
+                on_error: ErrorPolicy::Fail,
+                timeout_seconds: None,
+            },
+            StepDefinition {
+                id: "loop1".to_string(),
+                step_type: StepType::Loop {
+                    for_each: "a,b".to_string(),
+                    body: vec![StepDefinition {
+                        id: "lint".to_string(),
+                        step_type: StepType::Skill { skill: "test".to_string() },
+                        inputs: HashMap::new(),
+                        depends_on: vec![],
+                        on_error: ErrorPolicy::Fail,
+                        timeout_seconds: None,
+                    }],
+                },
+                inputs: HashMap::new(),
+                depends_on: vec![],
+                on_error: ErrorPolicy::Fail,
+                timeout_seconds: None,
+            },
+        ]);
+        assert!(validate_workflow(&wf).is_err());
+    }
+
+    #[test]
+    fn test_loop_body_missing_dep() {
+        let wf = dummy_wf(vec![StepDefinition {
+            id: "loop1".to_string(),
+            step_type: StepType::Loop {
+                for_each: "a,b".to_string(),
+                body: vec![StepDefinition {
+                    id: "inner".to_string(),
+                    step_type: StepType::Skill { skill: "test".to_string() },
+                    inputs: HashMap::new(),
+                    depends_on: vec!["missing".to_string()],
+                    on_error: ErrorPolicy::Fail,
+                    timeout_seconds: None,
+                }],
+            },
+            inputs: HashMap::new(),
+            depends_on: vec![],
+            on_error: ErrorPolicy::Fail,
+            timeout_seconds: None,
+        }]);
+        assert!(validate_workflow(&wf).is_err());
+    }
+
+    #[test]
+    fn test_loop_body_valid() {
+        let wf = dummy_wf(vec![
+            StepDefinition {
+                id: "setup".to_string(),
+                step_type: StepType::Skill { skill: "test".to_string() },
+                inputs: HashMap::new(),
+                depends_on: vec![],
+                on_error: ErrorPolicy::Fail,
+                timeout_seconds: None,
+            },
+            StepDefinition {
+                id: "loop1".to_string(),
+                step_type: StepType::Loop {
+                    for_each: "a,b".to_string(),
+                    body: vec![StepDefinition {
+                        id: "inner".to_string(),
+                        step_type: StepType::Skill { skill: "test".to_string() },
+                        inputs: HashMap::new(),
+                        depends_on: vec!["setup".to_string()],
+                        on_error: ErrorPolicy::Fail,
+                        timeout_seconds: None,
+                    }],
+                },
+                inputs: HashMap::new(),
+                depends_on: vec!["setup".to_string()],
+                on_error: ErrorPolicy::Fail,
+                timeout_seconds: None,
+            },
+        ]);
+        assert!(validate_workflow(&wf).is_ok());
     }
 }

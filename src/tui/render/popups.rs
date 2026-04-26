@@ -143,7 +143,8 @@ fn render_skill_list(frame: &mut Frame, app: &App, styles: &Styles) {
 
     let title = format!("{} ({})", i18n.tui.title_skills, app.skill_panel.items.len());
     let items: Vec<ListItem> = app
-        .skill_panel.items
+        .skill_panel
+        .items
         .iter()
         .enumerate()
         .map(|(i, s)| {

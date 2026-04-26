@@ -56,11 +56,22 @@ pub struct StepDefinition {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StepType {
-    Skill { skill: String },
-    Subworkflow { workflow: String },
-    Parallel { parallel: Vec<StepDefinition> },
-    Condition { r#if: String },
-    Loop { for_each: String },
+    Skill {
+        skill: String,
+    },
+    Subworkflow {
+        workflow: String,
+    },
+    Parallel {
+        parallel: Vec<StepDefinition>,
+    },
+    Condition {
+        r#if: String,
+    },
+    Loop {
+        for_each: String,
+        body: Vec<StepDefinition>,
+    },
 }
 
 impl serde::Serialize for StepType {
@@ -87,9 +98,12 @@ impl serde::Serialize for StepType {
                 map.serialize_entry("type", "condition")?;
                 map.serialize_entry("if", r#if)?;
             }
-            StepType::Loop { for_each } => {
+            StepType::Loop { for_each, body } => {
                 map.serialize_entry("type", "loop")?;
                 map.serialize_entry("for_each", for_each)?;
+                if !body.is_empty() {
+                    map.serialize_entry("body", body)?;
+                }
             }
         }
         map.end()
@@ -146,7 +160,16 @@ impl<'de> serde::Deserialize<'de> for StepType {
                         map.get("for_each").and_then(|v| v.as_str()).ok_or_else(|| {
                             serde::de::Error::custom("loop step requires 'for_each' field")
                         })?;
-                    Ok(StepType::Loop { for_each: for_each.to_string() })
+                    let body = map
+                        .get("body")
+                        .map(|v| serde_yaml::from_value::<Vec<StepDefinition>>(v.clone()))
+                        .transpose()
+                        .map_err(|e| serde::de::Error::custom(format!("invalid loop body: {}", e)))?
+                        .unwrap_or_default();
+                    Ok(StepType::Loop {
+                        for_each: for_each.to_string(),
+                        body,
+                    })
                 }
                 _ => Err(serde::de::Error::custom(format!("unknown step type: '{}'", type_str))),
             };
@@ -186,7 +209,16 @@ impl<'de> serde::Deserialize<'de> for StepType {
                 .get("for_each")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| serde::de::Error::custom("loop step requires 'for_each' string"))?;
-            return Ok(StepType::Loop { for_each: for_each.to_string() });
+            let body = map
+                .get("body")
+                .map(|v| serde_yaml::from_value::<Vec<StepDefinition>>(v.clone()))
+                .transpose()
+                .map_err(|e| serde::de::Error::custom(format!("invalid loop body: {}", e)))?
+                .unwrap_or_default();
+            return Ok(StepType::Loop {
+                for_each: for_each.to_string(),
+                body,
+            });
         }
 
         Err(serde::de::Error::custom(
@@ -247,4 +279,52 @@ pub struct StepResult {
 
 fn default_string_type() -> String {
     "string".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_loop_serde_roundtrip() {
+        let step = StepDefinition {
+            id: "loop1".to_string(),
+            step_type: StepType::Loop {
+                for_each: "${inputs.repos}".to_string(),
+                body: vec![StepDefinition {
+                    id: "lint".to_string(),
+                    step_type: StepType::Skill { skill: "clippy".to_string() },
+                    inputs: HashMap::new(),
+                    depends_on: vec![],
+                    on_error: ErrorPolicy::Fail,
+                    timeout_seconds: None,
+                }],
+            },
+            inputs: HashMap::new(),
+            depends_on: vec![],
+            on_error: ErrorPolicy::Fail,
+            timeout_seconds: None,
+        };
+        let yaml = serde_yaml::to_string(&step).unwrap();
+        let parsed: StepDefinition = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(step, parsed);
+    }
+
+    #[test]
+    fn test_loop_serde_backward_compat() {
+        // Old YAML without 'body' field should parse with empty body
+        let yaml = r#"
+id: loop1
+for_each: "repo-a,repo-b"
+"#;
+        let parsed: StepDefinition = serde_yaml::from_str(yaml).unwrap();
+        match &parsed.step_type {
+            StepType::Loop { for_each, body } => {
+                assert_eq!(for_each, "repo-a,repo-b");
+                assert!(body.is_empty());
+            }
+            _ => panic!("expected Loop step"),
+        }
+    }
 }

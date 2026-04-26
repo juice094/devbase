@@ -79,15 +79,17 @@ output_mapping:
 | `subworkflow` | `workflow: <workflow_id>` | Embed another Workflow |
 | `parallel` | `parallel: [step_list]` | Execute steps concurrently |
 | `condition` | `if: "${expr}"` | Conditional branch |
-| `loop` | `for_each: "${expr}"` | Iterate over collection |
+| `loop` | `for_each: "${expr}"`<br>`body: [step_list]` | Iterate over collection, executing `body` steps for each item |
 
 ## 4. Variable Interpolation
 
 ```
-${inputs.<name>}       → Workflow input
-${steps.<id>.outputs.<name>}  → Step output
-${env.<NAME>}          → Environment variable
-${config.<key>}        → devbase config value
+${inputs.<name>}                → Workflow input
+${steps.<id>.outputs.<name>}    → Step output
+${env.<NAME>}                   → Environment variable
+${config.<key>}                 → devbase config value
+${loop.item}                    → Current item in loop iteration
+${loop.index}                   → Zero-based index of current loop iteration
 ```
 
 ## 5. Error Handling

@@ -1,10 +1,10 @@
 # devbase Roadmap
 
-> **当前阶段**：阶段一 — 产品化闭环（v0.3.0 准备中）
+> **当前阶段**：阶段三 — v0.9.0 发布闭环 / v0.10.0 准备中
 > 
-> **最后更新**：2026-04-25
+> **最后更新**：2026-04-26
 > 
-> **版本状态**：`0.4.2-alpha` → 下一里程碑 `0.5.0`（Workflow Engine）
+> **版本状态**：`0.9.0` → 下一里程碑 `0.10.0`（L0-L4 知识模型 Schema）
 
 ---
 
@@ -133,23 +133,48 @@
 | Condition 执行 | `execute_condition_step` — 字符串插值后 true/false 评估 | ✅ |
 | 并行 batch 执行 | `std::thread::scope` 替换串行 loop（#7 风险点修复） | ✅ |
 
+### Phase 8 已完成 ✅（v0.9.0 — Workflow Loop Step 硬化 + 发布闭环）
+
+| 任务 | 交付物 | 状态 |
+|------|--------|------|
+| Loop Step 结构补全 | `StepType::Loop { for_each, body }` | ✅ |
+| Loop Step 执行 | `execute_loop_step` — 集合解析 + 迭代执行 + 结果聚合 | ✅ |
+| Loop 变量插值 | `${loop.item}` / `${loop.index}` | ✅ |
+| Loop body 验证 | validator 检查 body ID 唯一性 + 依赖有效性 | ✅ |
+| 发布闭环 | 版本号、CHANGELOG、AGENTS、ROADMAP 对齐 | ✅ |
+
 ### 不做（明确排除）
 
 - ❌ SSE transport（stdio 已足够）
 - ❌ `.devbase` 目录规范（无外部采纳者）
 - ❌ MCP 协议扩展提案（Star = 0，不会被采纳）
 - ❌ 商业化 / 付费版
-- ❌ 拆分 crate
+- ❌ 拆分 crate（22.7 KLOC 单 crate 仍最优）
+
+---
+
+## Phase 9（v0.10.0 — L0-L4 知识模型 Schema 设计）— 规划中
+
+**目标**：将 devbase 从"代码索引"升级为**自指知识库**，支持 L0-L4 五层知识索引。
+
+| 方向 | 状态 | 阻塞因素 |
+|:---|:---:|:---|
+| L0 对象层 Schema | 📝 草案 | 需定义 `knowledge_objects` 表 + 版本冻结机制 |
+| L1 方法层 Schema | 📝 草案 | 需定义检索/分块/向量化方法的元数据表 |
+| L2 哲学层 Schema | 📝 草案 | 需与 `vault/` PARA 结构集成 |
+| L3 风险层 Schema | 📝 草案 | 需定义 `known_limits` / `boundary_map` 表 |
+| L4 元认知层 Schema | 📝 草案 | 需人类纠正信号的存储与一致性校验机制 |
+| 生长信号与遗忘机制 | 📝 草案 | 需设计 `frequency` / `confidence` / `expiration` 字段规则 |
 
 ---
 
 ## Future / Icebox
 
-- 自然语言查询（TUI 内 `?` / `:` 模式）
-- 智能同步建议（基于规则的 AI 辅助）
-- 跨设备注册表同步（syncthing-rust 集成）
-- 形式化验证 / TEE 集成
-- L0-L4 五层知识模型 TOML Schema
+- ~~自然语言查询~~ ✅ v0.8.1 已完成
+- ~~智能同步建议~~ ✅ v0.7.0 已完成
+- 跨设备注册表同步（syncthing-rust 集成，REST API 待就绪）
+- 形式化验证 / TEE 集成（长期，无排期）
+- Workflow 引擎细化（Loop body Retry/Fallback、TUI 执行进度条，无排期）
 
 ---
 

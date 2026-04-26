@@ -5,6 +5,84 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-04-26
+
+### Added
+
+- **Workflow Loop Step 完整执行** — 5 种 step 类型全部可执行
+  - `StepType::Loop { for_each, body }`：遍历集合，执行 body 子步骤
+  - 变量插值：`${loop.item}` / `${loop.index}`
+  - 结果聚合：stdout 按迭代索引标记，outputs 合并
+  - 失败处理：单迭代失败按 body step 的 `on_error` 策略处理
+- **12 个新增单元测试** — model/interpolate/validator/executor 全覆盖
+
+### Changed
+
+- `cargo test --all-targets`：267 → 279 passed
+
+## [0.8.0] - 2026-04-25
+
+### Added
+
+- **Workflow 子类型执行** — Subworkflow / Parallel / Condition 全部可执行
+  - `execute_subworkflow_step`：递归调用 `execute_workflow`
+  - `execute_parallel_step`：子步骤串行执行 + 结果聚合
+  - `execute_condition_step`：字符串插值后 true/false 评估
+- **NLQ 自然语言查询结果可执行** — TUI `[:]` 搜索结果按 Enter 直接运行 skill
+- **NLQ smoke test** — `run_nlp_selected_skill` 空列表/无技能/执行管道测试
+- **TUI SkillPanel 拆分** — `SkillPanelState` 提取 7 个字段，App 51→44 字段
+
+### Fixed
+
+- 29 个生产代码 unwrap 全部清零
+- 30 个 clippy 警告清零
+
+## [0.7.0] - 2026-04-20
+
+### Added
+
+- **NLQ 自然语言查询** — TUI `[:]` 触发 embedding 语义搜索，fallback 降级文本搜索
+- **智能同步建议** — `sync/policy.rs::recommend_sync_action` 基于 safety/ahead/behind 生成建议
+
+## [0.6.0] - 2026-04-18
+
+### Added
+
+- **Mind Market 评分系统** — `skill_runtime::scoring`
+  - `success_rate` + `usage_count` + `rating`（0-5 分公式）
+  - CLI：`skill recalc-scores` / `skill top` / `skill recommend`
+- **TUI Workflow 执行** — `[w]` 详情页 `r/Enter` 运行 + 结果弹窗
+
+## [0.5.0] - 2026-04-17
+
+### Added
+
+- **Workflow Engine v0.5.0** — YAML 编排多步骤自动化
+  - 5 种 step 类型：skill / subworkflow / parallel / condition / loop
+  - 拓扑调度（Kahn 算法）+ batch 并行执行
+  - 变量插值：`${inputs.x}` / `${steps.y.outputs.z}`
+  - 错误策略：Fail / Continue / Retry / Fallback
+  - Schema v17：`workflows` + `workflow_executions` 表
+- **CLI/TUI Workflow 集成** — `devbase workflow {list,show,register,run,delete}` + `[w]` 面板
+
+## [0.4.0] - 2026-04-15
+
+### Added
+
+- **Schema v16 统一实体模型** — `entity_types` + `entities` + `relations` 表，渐进双写
+- **Skill 自动封装** — `devbase skill discover <path>` 自动分析项目 CLI/API，生成 SKILL.md
+- **Git URL Discover** — `devbase skill discover https://github.com/...` 克隆+分析+注册
+- **MCP `devkit_skill_discover`** — 35 tools 总数
+
+## [0.3.0] - 2026-04-12
+
+### Added
+
+- **34 MCP tools 全量通过 MCP Inspector**
+- **README Quick Start 三步内跑通**
+- **CI/CD** — `.github/workflows/ci.yml`（check / test / fmt / clippy on Windows）
+- **GitHub Release 预编译二进制**
+
 ## [0.2.4] - 2026-04-20
 
 ### Architecture
