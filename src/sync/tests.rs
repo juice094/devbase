@@ -207,3 +207,22 @@ fn test_perform_merge_fast_forward() {
     let new_local_oid = repo.head().unwrap().target().unwrap();
     assert_eq!(new_local_oid, remote_oid);
 }
+
+#[test]
+fn test_perform_merge_up_to_date() {
+    let _ = crate::i18n::init("en");
+    let (_dir, repo) = setup_repo_with_remote_commits(0, 0);
+
+    let local_oid = repo.head().unwrap().target().unwrap();
+    let remote_oid = repo
+        .find_reference("refs/remotes/origin/main")
+        .unwrap()
+        .target()
+        .unwrap();
+
+    // Local and remote are at the same commit
+    assert_eq!(local_oid, remote_oid);
+
+    let summary = perform_merge(&repo, "main", local_oid, remote_oid).unwrap();
+    assert_eq!(summary.action, "OK");
+}
