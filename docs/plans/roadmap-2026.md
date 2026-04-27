@@ -1,5 +1,7 @@
 # devbase 推进路线图 2026
 
+> ⚠️ **归档声明**：本文档已严重过时（版本 v0.2.3，日期 2026-04-23）。当前项目已演进至 v0.10.0，大量功能（Workflow Engine、NLQ、Mind Market、Skill Runtime、L3/L4 知识模型等）已交付。请勿以此文档指导当前开发。活跃路线图见 `docs/ROADMAP.md`。
+>
 > 基于统一分析（双模态：Human TUI + AI MCP）的阶段性执行计划
 > 更新日期：2026-04-23
 > 当前版本：commit `2fc7872` (v0.2.3)

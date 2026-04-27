@@ -2,7 +2,7 @@
 
 `devbase` 是本地优先的 AI Skill 编排基础设施。
 
-- **当前阶段**：阶段三 — v0.10.0 发布闭环 / v0.11.0 规划
+- **当前阶段**：阶段三 — v0.10.0 已交付 / v0.11.0 规划中
 - **当前版本**：v0.10.0（tagged）
 - **下一里程碑**：v0.11.0（待定）
 - **核心方向**：将 GitHub 项目转换为标准化、可发现、可组合的 Skill，供弱 AI 子代理执行
@@ -17,7 +17,7 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 - **Workspace**：`%LOCALAPPDATA%\devbase\workspace/` —— 文件系统 = source of truth
   - `vault/` —— PARA 结构：00-Inbox, 01-Projects, 02-Areas, 03-Resources, 04-Archives, 99-Meta
   - `assets/` —— 二进制资源
-- **MCP Server**：stdio only（SSE 开发中），**35 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具）；配置见 `mcp.json`
+- **MCP Server**：stdio only（SSE 开发中），**37 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
 - **当前测试**：374 passed / 0 failed / 4 ignored（unit）；9 passed（integration `tests/cli.rs`）
 - **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
@@ -282,7 +282,20 @@ devbase 承载外部资源调度的抽象接口：
 - **短期**：devbase MCP 接口可封装外部 TEE 服务（如 Azure Confidential Computing）
 - **长期**：如需自建，新建 `clarity-tee` 或 `devbase-secure` 子项目
 
-## 当前粗粒度待办
+## 当前阶段待办（v0.11.0 规划中）
+
+v0.10.0 已交付（tagged）。当前无新功能排期，焦点为工程债清偿与 v0.11.0 方向探索。
+
+| 方向 | 状态 | 说明 |
+|------|------|------|
+| `init_db()` → `AppContext` 迁移 | 🟡 | StorageBackend trait 已奠基，70+ 调用点 grandfathered 待逐步迁移 |
+| Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调，需补偿机制或 FTS5 替代评估 |
+| tree-sitter 编译成本 | 🟡 | ~15-20s，评估 ccache 或 grammar 预编译 |
+| Feature flags 扩展 | 🟡 | 2/3（tui, watch），mcp 等模块待评估 |
+
+---
+
+## 历史完成记录（v0.4.0 – v0.10.0）
 
 ### 阶段二任务（v0.4.0 AI Skill 编排基础设施）
 
@@ -330,8 +343,8 @@ devbase 承载外部资源调度的抽象接口：
 | P3 | 竞品定位标语 | ✅ 已完成 — README 顶部标语更新为 "AI 无法识别你的 GUI，devbase 是它的眼镜。" |
 | P4 | 开发者 onboarding 文档 | ✅ 已完成 — `CONTRIBUTING.md` + README Contributing 章节（devbase + clarity） |
 
-- **Tag**: `v0.2.4` 已打标（commit `935dd61`）
-- **Roadmap**: `docs/ROADMAP.md` 已建立两步走框架
+- **Tag**: `v0.10.0` 已打标（最新）；`v0.2.4` 及之前标签见 Git history
+- **Roadmap**: `docs/ROADMAP.md` 为唯一活跃主路线图
 
 ## Embedding 策略长期规划（已决策）
 

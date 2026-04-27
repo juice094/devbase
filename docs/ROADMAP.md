@@ -18,11 +18,11 @@
 
 | # | 标准 | 状态 |
 |---|------|------|
-| 1 | 34 MCP tools 全量通过 MCP Inspector | ✅ `cargo test --lib mcp` 14 passed |
+| 1 | 34 MCP tools 全量通过 MCP Inspector | ✅ 37 tools，`cargo test --lib mcp` 14 passed |
 | 2 | README Quick Start 三步内跑通 | ✅ 已走查，移除虚假声明 |
 | 3 | 无"计划中"残留文档 | ✅ roadmap-2026.md 已归档 |
 | 4 | CONTRIBUTING.md + ARCHITECTURE.md + AGENTS.md 闭环 | ✅ |
-| 5 | Tests 全绿 + Clippy 零警告 | ✅ 239 passed / 0 failed / 3 ignored |
+| 5 | Tests 全绿 + Clippy 零警告 | ✅ 374 passed / 0 failed / 4 ignored（unit）；9 passed（integration） |
 | 6 | GitHub Release 预编译二进制 | ✅ `devbase.exe` 22.6 MB 已上传 |
 
 **Release**: https://github.com/juice094/devbase/releases/tag/v0.3.0
@@ -34,8 +34,8 @@
 | SSE transport | 未实现，无 ETA，阻塞发布 | 阶段二或更晚 |
 | 跨仓库搜索 (`/`) | TUI grep，新功能 | 阶段二 |
 | Stars 趋势可视化 | 新功能，非阻塞 | 阶段二 |
-| 自然语言查询 | 新功能，非阻塞 | 阶段二 |
-| 智能同步建议 | 新功能，非阻塞 | 阶段二 |
+| ~~自然语言查询~~ | ~~新功能，非阻塞~~ | ~~阶段二~~ → ✅ v0.7.0 已完成 |
+| ~~智能同步建议~~ | ~~新功能，非阻塞~~ | ~~阶段二~~ → ✅ v0.7.0 已完成 |
 | Skill 市场 / Registry 服务 | 需社区规模支撑 | 阶段二 |
 | 跨设备注册表同步 | 依赖 syncthing-rust | 阶段二 |
 | 架构拆分为多 crate | 22.7 KLOC 单 crate 仍最优 | 50+ tools 或编译 > 60s 时 |
@@ -142,18 +142,28 @@
 
 ---
 
-## Phase 9（v0.10.0 — L0-L4 知识模型 Schema 设计）— 规划中
+## Phase 9（v0.10.0 — L0-L4 知识模型 + 工程健康维护）— ✅ 已交付
 
 **目标**：将 devbase 从"代码索引"升级为**自指知识库**，支持 L0-L4 五层知识索引。
 
-| 方向 | 状态 | 阻塞因素 |
+| 方向 | 状态 | 交付物 |
 |:---|:---:|:---|
-| L0 对象层 Schema | 📝 草案 | 需定义 `knowledge_objects` 表 + 版本冻结机制 |
-| L1 方法层 Schema | 📝 草案 | 需定义检索/分块/向量化方法的元数据表 |
-| L2 哲学层 Schema | 📝 草案 | 需与 `vault/` PARA 结构集成 |
-| L3 风险层 Schema | 📝 草案 | 需定义 `known_limits` / `boundary_map` 表 |
-| L4 元认知层 Schema | 📝 草案 | 需人类纠正信号的存储与一致性校验机制 |
-| 生长信号与遗忘机制 | 📝 草案 | 需设计 `frequency` / `confidence` / `expiration` 字段规则 |
+| L0 对象层 Schema | ✅ | Schema v16 `entities/entity_types/relations` 统一模型，渐进双写 |
+| L1 方法层 Schema | ✅ | embedding/semantic_search/hybrid_search 已实现，Ollama/OpenAI-compatible 生成 |
+| L2 哲学层 Schema | ✅ | `vault/` PARA 结构已集成（00-Inbox~99-Meta） |
+| L3 风险层 Schema | ✅ | Wave 35 `known_limits` / `boundary_map` + MCP tools + CLI `limit` + OpLog 集成 |
+| L4 元认知层 Schema | ✅ | Wave 36 `knowledge_meta` + `--reason` resolve + L3-L4 联动 |
+| 生长信号与遗忘机制 | 📝 草案 | 未实现；保留为 Future/Icebox |
+
+### Phase 9b：工程健康维护（v0.10.0 并行）— ✅ 已完成
+
+| 任务 | 交付物 | 状态 |
+|------|--------|------|
+| main.rs 拆分 | `commands/` 4 子模块，515 行（-66%） | ✅ |
+| StorageBackend 奠基 | `src/storage.rs` trait + `DefaultStorageBackend` + `AppContext` | ✅ |
+| Feature flags | `tui` + `watch`（ratatui/crossterm/notify 均为 optional） | ✅ |
+| `LOCALAPPDATA` 测试残留清零 | `DEVBASE_DATA_DIR` 统一覆盖 | ✅ |
+| 生产 unwrap 清零 | 0 个生产 unwrap，`clippy -D warnings` 全绿 | ✅ |
 
 ---
 
