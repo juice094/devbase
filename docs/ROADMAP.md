@@ -52,6 +52,8 @@
 
 - [`docs/architecture/workflow-dsl.md`](architecture/workflow-dsl.md) — Workflow DSL 规范（v0.4.0-reserved）
 - [`docs/architecture/workspace-as-schema.md`](architecture/workspace-as-schema.md) — 统一实体模型设计
+- [`docs/guides/mcp-integration-guide.md`](guides/mcp-integration-guide.md) — MCP 集成配置指南
+- [`docs/README.md`](README.md) — 完整文档导航
 
 ### Phase 1 已完成 ✅
 
@@ -164,6 +166,7 @@
 | Feature flags | `tui` + `watch`（ratatui/crossterm/notify 均为 optional） | ✅ |
 | `LOCALAPPDATA` 测试残留清零 | `DEVBASE_DATA_DIR` 统一覆盖 | ✅ |
 | 生产 unwrap 清零 | 0 个生产 unwrap，`clippy -D warnings` 全绿 | ✅ |
+| 计划文件清理 | [`docs/README.md`](README.md) 导航中心 + 过时内容归档 | ✅ |
 
 ---
 

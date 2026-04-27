@@ -7,8 +7,10 @@
 - **下一里程碑**：v0.11.0（待定）
 - **核心方向**：将 GitHub 项目转换为标准化、可发现、可组合的 Skill，供弱 AI 子代理执行
 - **设计文档**：
-  - `docs/architecture/workflow-dsl.md` — Workflow DSL 规范
-  - `docs/architecture/workspace-as-schema.md` — 统一实体模型设计
+  - [`docs/architecture/workflow-dsl.md`](docs/architecture/workflow-dsl.md) — Workflow DSL 规范
+  - [`docs/architecture/workspace-as-schema.md`](docs/architecture/workspace-as-schema.md) — 统一实体模型设计
+  - [`docs/guides/mcp-integration-guide.md`](docs/guides/mcp-integration-guide.md) — MCP 集成指南
+  - [`docs/README.md`](docs/README.md) — 完整文档导航
 
 Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema v16 统一实体模型（entities/relations）已落地，Skill 自动封装（`discover`）已落地。
 
