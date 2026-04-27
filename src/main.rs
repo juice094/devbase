@@ -418,16 +418,16 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let mut config = config::Config::load()?;
-    let lang = if config.general.language == "auto" || config.general.language.is_empty() {
+    let mut ctx = storage::AppContext::with_defaults()?;
+    let lang = if ctx.config.general.language == "auto" || ctx.config.general.language.is_empty() {
         let detected = i18n::detect_system_language();
-        config.general.language = detected.clone();
-        if let Err(e) = config.save() {
+        ctx.config.general.language = detected.clone();
+        if let Err(e) = ctx.config.save() {
             eprintln!("警告: 无法保存语言配置: {}", e);
         }
         detected
     } else {
-        config.general.language.clone()
+        ctx.config.general.language.clone()
     };
     i18n::init(&lang);
 
@@ -435,10 +435,10 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Scan { path, register } => {
-            commands::simple::run_scan(&path, register).await?;
+            commands::simple::run_scan(&ctx, &path, register).await?;
         }
         Commands::Health { detail, limit, page } => {
-            commands::simple::run_health(detail, limit, page, config.cache.ttl_seconds).await?;
+            commands::simple::run_health(&ctx, detail, limit, page).await?;
         }
         Commands::Sync {
             dry_run,
@@ -446,38 +446,38 @@ async fn main() -> anyhow::Result<()> {
             exclude,
             json,
         } => {
-            commands::simple::run_sync(dry_run, filter_tags, exclude, json).await?;
+            commands::simple::run_sync(&ctx, dry_run, filter_tags, exclude, json).await?;
         }
         Commands::Query { query, limit, page } => {
-            commands::simple::run_query(&query, limit, page, &config).await?;
+            commands::simple::run_query(&ctx, &query, limit, page).await?;
         }
         Commands::Index { path } => {
-            commands::simple::run_index(&path).await?;
+            commands::simple::run_index(&ctx, &path).await?;
         }
         Commands::Clean => {
-            commands::simple::run_clean()?;
+            commands::simple::run_clean(&ctx)?;
         }
         Commands::Tag { repo_id, tags } => {
-            commands::simple::run_tag(&repo_id, &tags)?;
+            commands::simple::run_tag(&ctx, &repo_id, &tags)?;
         }
         Commands::Meta { repo_id, tier, workspace_type } => {
-            commands::simple::run_meta(&repo_id, tier, workspace_type)?;
+            commands::simple::run_meta(&ctx, &repo_id, tier, workspace_type)?;
         }
         #[cfg(feature = "tui")]
         Commands::Tui => {
-            commands::simple::run_tui().await?;
+            commands::simple::run_tui(&ctx).await?;
         }
         Commands::Mcp { tools } => {
-            commands::simple::run_mcp(tools).await?;
+            commands::simple::run_mcp(&ctx, tools).await?;
         }
         Commands::Daemon { interval } => {
-            commands::simple::run_daemon(interval, config.clone()).await?;
+            commands::simple::run_daemon(&ctx, interval).await?;
         }
         Commands::Watch { path, duration } => {
-            commands::simple::run_watch(&path, duration, &config).await?;
+            commands::simple::run_watch(&ctx, &path, duration).await?;
         }
         Commands::SkillSync { output, filter_tags, dry_run } => {
-            commands::simple::run_skill_sync(&output, filter_tags, dry_run);
+            commands::simple::run_skill_sync(&ctx, &output, filter_tags, dry_run)?;
         }
         Commands::SyncthingPush {
             api_url,
@@ -485,31 +485,31 @@ async fn main() -> anyhow::Result<()> {
             filter_tags,
             experiment,
         } => {
-            commands::simple::run_syncthing_push(api_url, api_key, filter_tags, experiment).await?;
+            commands::simple::run_syncthing_push(&ctx, api_url, api_key, filter_tags, experiment).await?;
         }
         Commands::Digest => {
-            commands::simple::run_digest(config.digest.clone()).await?;
+            commands::simple::run_digest(&ctx).await?;
         }
         Commands::Oplog { limit, repo } => {
-            commands::simple::run_oplog(limit, repo)?;
+            commands::simple::run_oplog(&ctx, limit, repo)?;
         }
         Commands::Discover => {
-            commands::simple::run_discover()?;
+            commands::simple::run_discover(&ctx)?;
         }
         Commands::Registry { cmd } => {
-            commands::simple::run_registry(cmd)?;
+            commands::simple::run_registry(&ctx, cmd)?;
         }
         Commands::Vault { cmd } => {
-            commands::simple::run_vault(cmd).await?;
+            commands::simple::run_vault(&ctx, cmd).await?;
         }
         Commands::Skill { cmd } => {
-            commands::skill::run_skill(cmd)?;
+            commands::skill::run_skill(&ctx, cmd)?;
         }
         Commands::Workflow { cmd } => {
-            commands::workflow::run_workflow(cmd)?;
+            commands::workflow::run_workflow(&ctx, cmd)?;
         }
         Commands::Limit { cmd } => {
-            commands::limit::run_limit(cmd)?;
+            commands::limit::run_limit(&ctx, cmd)?;
         }
     }
 

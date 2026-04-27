@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// 抽象数据存储后端，解耦具体路径实现。
 ///
@@ -69,8 +70,9 @@ impl StorageBackend for DefaultStorageBackend {
 ///
 /// 命令处理函数应通过此结构体获取所有外部依赖，
 /// 避免直接调用全局函数或读取环境变量。
+#[derive(Clone)]
 pub struct AppContext {
-    pub storage: Box<dyn StorageBackend>,
+    pub storage: Arc<dyn StorageBackend>,
     pub config: crate::config::Config,
 }
 
@@ -78,13 +80,13 @@ impl AppContext {
     /// 使用默认存储后端和已加载配置创建上下文。
     pub fn with_defaults() -> anyhow::Result<Self> {
         Ok(Self {
-            storage: Box::new(DefaultStorageBackend),
+            storage: Arc::new(DefaultStorageBackend),
             config: crate::config::Config::load()?,
         })
     }
 
     /// 使用自定义存储后端创建上下文（主要用于测试）。
-    pub fn with_storage(storage: Box<dyn StorageBackend>) -> anyhow::Result<Self> {
+    pub fn with_storage(storage: Arc<dyn StorageBackend>) -> anyhow::Result<Self> {
         Ok(Self {
             storage,
             config: crate::config::Config::load()?,

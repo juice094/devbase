@@ -174,7 +174,7 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 | 债项 | 严重 | 当前值 | 目标阈值 | 清理路径 | 引入 Wave |
 |---|---|---|---|---|---|
 | `main.rs` 上帝文件 | 🟢 | 515 行 | ≤1000 行 | 拆分为 `commands/simple.rs` + `commands/skill.rs` + `commands/workflow.rs` + `commands/limit.rs`；全部 22 个命令/子命令树已迁移 | ≤15 |
-| `init_db()` 全局路径 | 🟡 | 4 处已委托给 `DefaultStorageBackend` | 0 新增 | `StorageBackend` trait + `AppContext` 已奠基；`db_path`/`workspace_dir`/`index_path`/`backup_dir` 已统一；`init_db()` 调用点 grandfathered 待迁移 | ≤15 |
+| `init_db()` 全局路径 | 🟡 | `AppContext` 已集成到全部 commands/ 模块（22 个函数）；`main()` 通过 `AppContext` 分发配置 | 0 新增 | `StorageBackend` trait + `AppContext` 已奠基；`db_path`/`workspace_dir`/`index_path`/`backup_dir` 已统一；`init_db()` 调用点 grandfathered 待迁移 | ≤15 |
 | Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调 | 补偿机制 | 设计 `sync_index_to_db()` 回滚或两阶段提交；或改为 SQLite FTS5 替代 Tantivy | 7 |
 | tree-sitter 编译成本 | 🟡 | ~15-20s | 可控 | 评估 `ccache` 或 grammar 预编译；或按需 feature-gate | 8 |
 | Feature flags 缺失 | 🟡 | 1 个可选 feature (tui) | ≥2 (tui, mcp) | `Cargo.toml` 已添加 `tui` feature；ratatui/crossterm 可选；`--no-default-features` 编译通过 | ≤15 |
