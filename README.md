@@ -31,7 +31,7 @@ devbase 将 GitHub 项目自动封装为**标准化、可发现、可组合的 S
 │       Human Layer           │         AI Layer              │
 │  ┌─────────────────────┐    │    ┌─────────────────────┐    │
 │  │   TUI Dashboard     │    │    │   MCP Server        │    │
-│  │   终端交互仪表盘     │    │    │   35 Tools          │    │
+│  │   终端交互仪表盘     │    │    │   37 Tools          │    │
 │  │   • 多仓库健康总览   │    │    │   stdio only         │    │
 │  │   • 跨仓库代码搜索   │    │    │                     │    │
 │  │   • 一键启动 gitui   │    │    │   • devkit_scan     │    │
@@ -162,7 +162,7 @@ discover → install → run → score → publish
     ↑_________________________________|
 ```
 
-- **发现**：`devbase skill discover <path>` — 自动分析项目 CLI/API，生成 `SKILL.md` + entry_script（支持 Rust/Node/Python/Go/Docker）
+- **发现**：`devbase skill discover <path>` — 自动分析项目 CLI/API，生成 `SKILL.md` + entry_script（支持 Rust/Node/Python/Go/Docker/Generic）
 - **执行**：Process-based，自动 interpreter 探测，timeout，stdout/stderr 捕获
 - **评分**：Mind Market 算法自动计算 `success_rate` / `usage_count` / `rating`（0-5）
 - **依赖**：Schema v15 `dependencies`，Kahn 拓扑排序 + DFS 环检测
@@ -243,6 +243,22 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 
 - [Claude Code 集成](docs/guides/mcp-integration-guide.md)
 - [5ire 集成](docs/guides/mcp-5ire-integration.md)
+
+---
+
+## 路线图
+
+| 版本 | 状态 | 核心交付 |
+|:---|:---:|:---|
+| v0.3.0 | ✅ 已发布 | 产品化闭环：34 MCP tools + TUI + 安全同步 |
+| v0.4.0 | ✅ 已发布 | Skill 自动封装 + 统一实体模型 Schema v16 |
+| v0.5.0 | ✅ 已发布 | Workflow 引擎：YAML 编排 + 5 step 类型 |
+| v0.6.0 | ✅ 已发布 | Mind Market 评分：success_rate / usage_count / rating |
+| v0.7.0 | ✅ 已发布 | NLQ 自然语言查询 + 智能同步建议 |
+| v0.8.0 | ✅ 已发布 | Workflow 子类型：Subworkflow / Parallel / Condition / Loop |
+| v0.9.0 | ✅ 已发布 | Loop Step 硬化 + 发布闭环 |
+| **v0.10.0** | **✅ 已发布** | **L3-L4 知识模型 + 工程健康维护（main.rs 拆分 / StorageBackend / feature flags）** |
+| v0.11.0 | 📝 规划中 | 无新功能排期；焦点：工程债清偿（`init_db`→`AppContext` 迁移、Tantivy+SQLite 一致性、tree-sitter 编译成本） |
 
 ---
 
