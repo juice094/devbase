@@ -17,10 +17,10 @@ pub mod query;
 pub mod registry;
 pub mod scan;
 pub mod search;
-pub mod storage;
 pub mod semantic_index;
 pub mod skill_runtime;
 pub mod skill_sync;
+pub mod storage;
 pub mod symbol_links;
 pub mod sync;
 pub mod sync_protocol;
@@ -28,6 +28,7 @@ pub mod syncthing_client;
 #[cfg(feature = "tui")]
 pub mod tui;
 pub mod vault;
+#[cfg(feature = "watch")]
 pub mod watch;
 pub mod workflow;
 

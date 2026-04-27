@@ -103,6 +103,7 @@ pub(crate) enum Commands {
         #[arg(long)]
         interval: Option<u64>,
     },
+    #[cfg(feature = "watch")]
     /// Watch a directory for changes and schedule sync actions
     Watch {
         /// Directory to watch
@@ -473,6 +474,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Daemon { interval } => {
             commands::simple::run_daemon(&ctx, interval).await?;
         }
+        #[cfg(feature = "watch")]
         Commands::Watch { path, duration } => {
             commands::simple::run_watch(&ctx, &path, duration).await?;
         }
@@ -485,7 +487,8 @@ async fn main() -> anyhow::Result<()> {
             filter_tags,
             experiment,
         } => {
-            commands::simple::run_syncthing_push(&ctx, api_url, api_key, filter_tags, experiment).await?;
+            commands::simple::run_syncthing_push(&ctx, api_url, api_key, filter_tags, experiment)
+                .await?;
         }
         Commands::Digest => {
             commands::simple::run_digest(&ctx).await?;

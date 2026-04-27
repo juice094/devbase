@@ -1,7 +1,11 @@
 use devbase::*;
 use tracing::{info, warn};
 
-pub async fn run_scan(_ctx: &crate::storage::AppContext, path: &str, register: bool) -> anyhow::Result<()> {
+pub async fn run_scan(
+    _ctx: &crate::storage::AppContext,
+    path: &str,
+    register: bool,
+) -> anyhow::Result<()> {
     info!("{}: {}", i18n::current().cli.scanning, path);
     scan::run(path, register).await
 }
@@ -42,7 +46,10 @@ pub async fn run_tui(_ctx: &crate::storage::AppContext) -> anyhow::Result<()> {
     tui::run().await
 }
 
-pub async fn run_mcp(_ctx: &crate::storage::AppContext, tools: Option<String>) -> anyhow::Result<()> {
+pub async fn run_mcp(
+    _ctx: &crate::storage::AppContext,
+    tools: Option<String>,
+) -> anyhow::Result<()> {
     if let Some(tiers) = tools {
         // SAFETY: set_var is called once at program startup before any
         // threads read the environment. The MCP server runs in a single
@@ -54,14 +61,20 @@ pub async fn run_mcp(_ctx: &crate::storage::AppContext, tools: Option<String>) -
     mcp::run_stdio().await
 }
 
-pub async fn run_daemon(ctx: &crate::storage::AppContext, interval: Option<u64>) -> anyhow::Result<()> {
+pub async fn run_daemon(
+    ctx: &crate::storage::AppContext,
+    interval: Option<u64>,
+) -> anyhow::Result<()> {
     let interval = interval.unwrap_or(ctx.config.daemon.interval_seconds);
     let config = ctx.config.clone();
     let d = daemon::Daemon::new(interval, config);
     d.run().await
 }
 
-pub async fn run_vault(_ctx: &crate::storage::AppContext, cmd: crate::VaultCommands) -> anyhow::Result<()> {
+pub async fn run_vault(
+    _ctx: &crate::storage::AppContext,
+    cmd: crate::VaultCommands,
+) -> anyhow::Result<()> {
     match cmd {
         crate::VaultCommands::Scan { path } => {
             let dir = if path.is_empty() {
@@ -88,10 +101,8 @@ pub async fn run_vault(_ctx: &crate::storage::AppContext, cmd: crate::VaultComma
 pub fn run_clean(_ctx: &crate::storage::AppContext) -> anyhow::Result<()> {
     info!("正在清理注册表中的备份条目");
     let conn = crate::registry::WorkspaceRegistry::init_db()?;
-    let deleted = conn.execute(
-        "DELETE FROM repos WHERE id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%'",
-        [],
-    )?;
+    let deleted = conn
+        .execute("DELETE FROM repos WHERE id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%'", [])?;
     println!("已从 devbase 注册表中删除 {} 个备份条目。", deleted);
     println!("\n剩余已注册仓库:");
     let mut stmt = conn.prepare("SELECT id, local_path FROM repos")?;
@@ -157,7 +168,12 @@ pub fn run_meta(
     Ok(())
 }
 
-pub async fn run_watch(ctx: &crate::storage::AppContext, path: &str, duration: u64) -> anyhow::Result<()> {
+#[cfg(feature = "watch")]
+pub async fn run_watch(
+    ctx: &crate::storage::AppContext,
+    path: &str,
+    duration: u64,
+) -> anyhow::Result<()> {
     use std::time::Duration;
     use watch::{FolderScheduler, FsWatcher, WatchAggregator};
 
@@ -167,8 +183,7 @@ pub async fn run_watch(ctx: &crate::storage::AppContext, path: &str, duration: u
         max_files: ctx.config.watch.max_files,
         ..Default::default()
     };
-    let mut scheduler =
-        FolderScheduler::with_max_files(root.clone(), ctx.config.watch.max_files);
+    let mut scheduler = FolderScheduler::with_max_files(root.clone(), ctx.config.watch.max_files);
 
     println!("Watching {} for {} seconds...", path, duration);
     let start = std::time::Instant::now();
@@ -189,7 +204,12 @@ pub async fn run_watch(ctx: &crate::storage::AppContext, path: &str, duration: u
     Ok(())
 }
 
-pub fn run_skill_sync(_ctx: &crate::storage::AppContext, output: &str, filter_tags: Option<String>, dry_run: bool) -> anyhow::Result<()> {
+pub fn run_skill_sync(
+    _ctx: &crate::storage::AppContext,
+    output: &str,
+    filter_tags: Option<String>,
+    dry_run: bool,
+) -> anyhow::Result<()> {
     let filter_tags: Vec<String> = filter_tags
         .map(|s| s.split(',').map(|t| t.trim().to_string()).collect())
         .unwrap_or_default();
@@ -234,7 +254,11 @@ pub async fn run_digest(ctx: &crate::storage::AppContext) -> anyhow::Result<()> 
     }
 }
 
-pub fn run_oplog(_ctx: &crate::storage::AppContext, limit: i64, repo: Option<String>) -> anyhow::Result<()> {
+pub fn run_oplog(
+    _ctx: &crate::storage::AppContext,
+    limit: i64,
+    repo: Option<String>,
+) -> anyhow::Result<()> {
     let conn = registry::WorkspaceRegistry::init_db()?;
     let entries = match repo {
         Some(ref r) => registry::WorkspaceRegistry::list_oplog_by_repo(&conn, r, limit)?,
@@ -266,10 +290,8 @@ pub fn run_oplog(_ctx: &crate::storage::AppContext, limit: i64, repo: Option<Str
             } else {
                 entry.details.as_deref().unwrap_or("").to_string()
             };
-            let duration_display = entry
-                .duration_ms
-                .map(|d| format!(" | duration={}ms", d))
-                .unwrap_or_default();
+            let duration_display =
+                entry.duration_ms.map(|d| format!(" | duration={}ms", d)).unwrap_or_default();
             println!(
                 "  [{}] {} | repo={} | status={}{}{}",
                 ts,
@@ -312,13 +334,7 @@ pub fn run_discover(_ctx: &crate::storage::AppContext) -> anyhow::Result<()> {
     }
 
     for d in merged.values() {
-        WorkspaceRegistry::save_relation(
-            &conn,
-            &d.from,
-            &d.to,
-            &d.relation_type,
-            d.confidence,
-        )?;
+        WorkspaceRegistry::save_relation(&conn, &d.from, &d.to, &d.relation_type, d.confidence)?;
     }
 
     let mut all: Vec<Discovery> = merged.into_values().collect();
@@ -395,8 +411,7 @@ pub async fn run_syncthing_push(
 
     let filtered_repos: Vec<_> = if let Some(ref exp_id) = experiment {
         let exps = WorkspaceRegistry::list_experiments(&conn).unwrap_or_default();
-        let target_repo =
-            exps.into_iter().find(|e| e.id == *exp_id).and_then(|e| e.repo_id);
+        let target_repo = exps.into_iter().find(|e| e.id == *exp_id).and_then(|e| e.repo_id);
         match target_repo {
             Some(repo_id) => repos.into_iter().filter(|r| r.id == repo_id).collect(),
             None => {
@@ -460,8 +475,7 @@ pub async fn run_syncthing_push(
         for (repo_id, folder_id) in &pushed {
             match client.get_folder_status(folder_id).await {
                 Ok(status) => {
-                    let state =
-                        status.get("state").and_then(|v| v.as_str()).unwrap_or("unknown");
+                    let state = status.get("state").and_then(|v| v.as_str()).unwrap_or("unknown");
                     println!("  [{}] state: {}", repo_id, state);
                 }
                 Err(e) => {
@@ -484,7 +498,10 @@ pub async fn run_syncthing_push(
     Ok(())
 }
 
-pub fn run_registry(_ctx: &crate::storage::AppContext, cmd: crate::RegistryCommands) -> anyhow::Result<()> {
+pub fn run_registry(
+    _ctx: &crate::storage::AppContext,
+    cmd: crate::RegistryCommands,
+) -> anyhow::Result<()> {
     match cmd {
         crate::RegistryCommands::Export { format, output } => {
             let out_path = output.as_deref().map(std::path::Path::new);
