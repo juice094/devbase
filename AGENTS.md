@@ -19,7 +19,7 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
   - `assets/` —— 二进制资源
 - **MCP Server**：stdio only（SSE 开发中），**35 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：374 passed / 0 failed / 4 ignored
+- **当前测试**：374 passed / 0 failed / 4 ignored（unit）；9 passed（integration `tests/cli.rs`）
 - **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
 - **Workflow Engine**：YAML 解析 + 拓扑调度 + batch 并行执行 + 5 种 step 类型（skill/subworkflow/parallel/condition/loop）
 - **NLQ 自然语言查询**：TUI `[:]` 触发 embedding 语义搜索，fallback 降级文本搜索
@@ -177,7 +177,7 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 | `init_db()` 全局路径 | 🟡 | `AppContext` 已集成到全部 commands/ 模块（22 个函数）；`main()` 通过 `AppContext` 分发配置 | 0 新增 | `StorageBackend` trait + `AppContext` 已奠基；`db_path`/`workspace_dir`/`index_path`/`backup_dir` 已统一；`init_db()` 调用点 grandfathered 待迁移 | ≤15 |
 | Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调 | 补偿机制 | 设计 `sync_index_to_db()` 回滚或两阶段提交；或改为 SQLite FTS5 替代 Tantivy | 7 |
 | tree-sitter 编译成本 | 🟡 | ~15-20s | 可控 | 评估 `ccache` 或 grammar 预编译；或按需 feature-gate | 8 |
-| Feature flags 缺失 | 🟡 | 1 个可选 feature (tui) | ≥2 (tui, mcp) | `Cargo.toml` 已添加 `tui` feature；ratatui/crossterm 可选；`--no-default-features` 编译通过 | ≤15 |
+| Feature flags 缺失 | 🟡 | 2 个可选 feature (tui, watch) | ≥3 (tui, watch, mcp) | `Cargo.toml` 已添加 `tui` + `watch` feature；ratatui/crossterm/notify 均为 optional；`--no-default-features` 编译通过 | ≤15 |
 | `LOCALAPPDATA` 测试模式残留 | 🟢 | 0 处 | 0 | 全面废弃 `LOCALAPPDATA` 环境变量覆盖，统一为 `DEVBASE_DATA_DIR`；mcp/tests.rs 修复 cleanup 逻辑（remove_var 目标从 LOCALAPPDATA 修正为 DEVBASE_DATA_DIR） | 47 |
 
 **清偿原则**：

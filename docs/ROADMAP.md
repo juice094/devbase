@@ -3,6 +3,8 @@
 > **当前阶段**：阶段三 — v0.10.0 发布闭环 / v0.11.0 规划
 > 
 > **最后更新**：2026-04-26
+>
+> **本轮维护**：main.rs 拆分 (-66%) + StorageBackend/AppContext 奠基 + `tui`/`watch` feature flags — 见 commit `f15cc95`
 > 
 > **版本状态**：`0.10.0`（L0-L4 知识模型 MVP 已交付）→ 下一里程碑 `0.11.0`（待定）
 
@@ -24,19 +26,6 @@
 | 6 | GitHub Release 预编译二进制 | ✅ `devbase.exe` 22.6 MB 已上传 |
 
 **Release**: https://github.com/juice094/devbase/releases/tag/v0.3.0
-
-### 明确不做（Deferred）
-
-| 功能 | 原因 | 预计阶段 |
-|------|------|---------|
-| SSE transport | 未实现，无 ETA | 阶段二或更晚 |
-| 跨仓库搜索 (`/`) | TUI grep，新功能 | 阶段二 |
-| Stars 趋势可视化 | 新功能，非阻塞 | 阶段二 |
-| 自然语言查询 | 新功能，非阻塞 | 阶段二 |
-| 智能同步建议 | 新功能，非阻塞 | 阶段二 |
-| Skill 市场 / Registry 服务 | 需社区规模支撑 | 阶段二 |
-| 跨设备注册表同步 | 依赖 syncthing-rust | 阶段二 |
-| 架构拆分为多 crate | 22.7 KLOC 单 crate 仍最优 | 50+ tools 或编译 > 60s 时 |
 
 ### 明确不做（Deferred）
 
