@@ -201,7 +201,7 @@ pub struct App {
     pub(crate) sync_running: HashSet<String>,
     pub(crate) sync_timeout: Duration,
     pub(crate) sort_mode: SortMode,
-    pub(crate) config: crate::config::Config,
+    pub(crate) ctx: crate::storage::AppContext,
     pub(crate) dry_run: bool,
     pub(crate) search_popup_mode: SearchPopupMode,
     pub(crate) search_results: Vec<SearchResult>,

@@ -15,8 +15,8 @@ impl App {
         let (async_tx, async_rx) = bounded::<AsyncNotification>(100);
         let repo_status_job = crate::asyncgit::AsyncSingleJob::new(async_tx.clone());
 
-        let config = crate::config::Config::load().unwrap_or_default();
-        let timeout_secs = config.sync.timeout_seconds;
+        let ctx = crate::storage::AppContext::with_defaults()?;
+        let timeout_secs = ctx.config.sync.timeout_seconds;
         let mut app = Self {
             repos: Vec::new(),
             selected: 0,
@@ -29,7 +29,7 @@ impl App {
             repo_status_job,
             loading_repo_status: HashSet::new(),
             loading_sync: HashSet::new(),
-            sync_orchestrator: crate::sync::SyncOrchestrator::new(config.sync.concurrency.max(1)),
+            sync_orchestrator: crate::sync::SyncOrchestrator::new(ctx.config.sync.concurrency.max(1)),
             sync_popup_mode: SyncPopupMode::Hidden,
             sync_preview_items: Vec::new(),
             sync_popup_results: Vec::new(),
@@ -38,7 +38,7 @@ impl App {
             sync_running: HashSet::new(),
             sync_timeout: Duration::from_secs(timeout_secs),
             sort_mode: SortMode::Status,
-            config,
+            ctx,
             dry_run: false,
             search_popup_mode: SearchPopupMode::Hidden,
             search_results: Vec::new(),
@@ -72,7 +72,7 @@ impl App {
     }
 
     pub(crate) fn load_repos(&mut self) -> anyhow::Result<()> {
-        let conn = WorkspaceRegistry::init_db()?;
+        let conn = self.ctx.conn_mut();
         let mut repos = WorkspaceRegistry::list_repos(&conn)?;
 
         // P2-lite: apply static overrides from workspace/repos.toml
@@ -217,10 +217,11 @@ impl App {
             return;
         }
         let tx = self.async_tx.clone();
-        let github = self.config.github.clone();
-        let ttl = self.config.cache.ttl_seconds;
+        let github = self.ctx.config.github.clone();
+        let ttl = self.ctx.config.cache.ttl_seconds;
 
         tokio::spawn(async move {
+            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
             let conn = match crate::registry::WorkspaceRegistry::init_db() {
                 Ok(c) => c,
                 Err(_) => return,
@@ -420,7 +421,7 @@ impl App {
     }
 
     pub(crate) fn load_vaults(&mut self) -> anyhow::Result<()> {
-        let conn = WorkspaceRegistry::init_db()?;
+        let conn = self.ctx.conn();
         let notes = WorkspaceRegistry::list_vault_notes(&conn)?;
         self.vaults.clear();
         for note in notes {
@@ -439,16 +440,7 @@ impl App {
     }
 
     pub(crate) fn load_skills(&mut self) {
-        let conn = match WorkspaceRegistry::init_db() {
-            Ok(c) => c,
-            Err(e) => {
-                self.log_warn(format!("无法加载 Skill 注册表: {}", e));
-                self.skill_panel.items.clear();
-                self.skill_panel.selected = 0;
-                self.skill_panel.list_state.select(Some(0));
-                return;
-            }
-        };
+        let conn = self.ctx.conn();
         let rows = match crate::skill_runtime::registry::list_skills(&conn, None, None) {
             Ok(r) => r,
             Err(e) => {
@@ -501,14 +493,7 @@ impl App {
     }
 
     pub(crate) fn load_workflows(&mut self) {
-        let conn = match WorkspaceRegistry::init_db() {
-            Ok(c) => c,
-            Err(e) => {
-                self.log_warn(format!("无法加载 Workflow 注册表: {}", e));
-                self.workflows.clear();
-                return;
-            }
-        };
+        let conn = self.ctx.conn();
         match crate::workflow::list_workflows(&conn) {
             Ok(rows) => {
                 self.workflows = rows
@@ -573,6 +558,7 @@ impl App {
 
         let tx = self.async_tx.clone();
         std::thread::spawn(move || {
+            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
             let conn = match crate::registry::WorkspaceRegistry::init_db() {
                 Ok(c) => c,
                 Err(e) => {
@@ -609,6 +595,7 @@ impl App {
         self.log_info(format!("NLQ: '{}' ...", query));
         let tx = self.async_tx.clone();
         std::thread::spawn(move || {
+            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
             let conn = match crate::registry::WorkspaceRegistry::init_db() {
                 Ok(c) => c,
                 Err(e) => {
@@ -770,11 +757,10 @@ impl App {
                 if let Some(repo) = self.repos.iter_mut().find(|r| r.id == repo_id) {
                     repo.stars = stars;
                 }
-                if let Ok(conn) = crate::registry::WorkspaceRegistry::init_db()
-                    && let Some(s) = stars
-                {
+                if let Some(s) = stars {
+                    let conn = self.ctx.conn_mut();
                     let _ =
-                        crate::registry::WorkspaceRegistry::save_stars_cache(&conn, &repo_id, s);
+                        crate::registry::WorkspaceRegistry::save_stars_cache(conn, &repo_id, s);
                 }
                 // Re-sort if currently sorting by stars
                 if self.sort_mode == SortMode::Stars {
@@ -843,7 +829,7 @@ impl App {
         };
 
         match (|| -> anyhow::Result<()> {
-            let mut conn = WorkspaceRegistry::init_db()?;
+            let conn = self.ctx.conn_mut();
             let tx = conn.transaction()?;
             tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1", [&repo_id])?;
             for tag in new_tags.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
@@ -1140,9 +1126,9 @@ impl App {
         }
 
         // 4. Stars 检查（如果有历史数据）
-        if let Ok(conn) = crate::registry::WorkspaceRegistry::init_db()
-            && let Ok(history) =
-                crate::registry::WorkspaceRegistry::get_stars_history(&conn, &repo.id, 7)
+        let conn = self.ctx.conn();
+        if let Ok(history) =
+            crate::registry::WorkspaceRegistry::get_stars_history(conn, &repo.id, 7)
             && history.len() >= 2
         {
             let first = history.first().map(|(s, _)| *s).unwrap_or(0);
@@ -1255,7 +1241,7 @@ mod tests {
             sync_running: HashSet::new(),
             sync_timeout: std::time::Duration::from_secs(60),
             sort_mode: SortMode::Status,
-            config: crate::config::Config::default(),
+            ctx: crate::storage::AppContext::with_defaults().unwrap(),
             dry_run: false,
             search_popup_mode: SearchPopupMode::Hidden,
             search_results: vec![],
