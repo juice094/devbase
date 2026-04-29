@@ -2,24 +2,13 @@ use super::model::{ExecutionStatus, WorkflowDefinition, WorkflowExecution};
 use rusqlite::{Connection, params};
 
 pub fn save_workflow(conn: &Connection, wf: &WorkflowDefinition) -> anyhow::Result<()> {
-    let now = chrono::Utc::now().to_rfc3339();
     let yaml = serde_yaml::to_string(wf)?;
-    conn.execute(
-        "INSERT INTO workflows (id, name, version, description, definition_yaml, status, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, ?6)
-         ON CONFLICT(id) DO UPDATE SET
-            name = excluded.name,
-            version = excluded.version,
-            description = excluded.description,
-            definition_yaml = excluded.definition_yaml,
-            updated_at = excluded.updated_at",
-        params![&wf.id, &wf.name, &wf.version, wf.description.as_deref().unwrap_or(""), yaml, now],
-    )?;
-    // Phase 2 Stage C: dual-write to entities table
+    // Phase 2 Stage E: entities is the sole source of truth for workflows
     let metadata = serde_json::json!({
         "version": &wf.version,
         "description": wf.description,
         "status": "active",
+        "definition_yaml": yaml,
     });
     crate::registry::upsert_entity(
         conn,
@@ -33,12 +22,14 @@ pub fn save_workflow(conn: &Connection, wf: &WorkflowDefinition) -> anyhow::Resu
 }
 
 pub fn get_workflow(conn: &Connection, id: &str) -> anyhow::Result<Option<WorkflowDefinition>> {
-    let mut stmt = conn.prepare("SELECT definition_yaml FROM workflows WHERE id = ?1")?;
-    let mut rows = stmt.query_map([id], |row| {
-        let yaml: String = row.get(0)?;
+    let mut stmt = conn.prepare(
+        "SELECT json_extract(metadata, '$.definition_yaml') FROM entities WHERE id = ?1 AND entity_type = ?2"
+    )?;
+    let mut rows = stmt.query_map([id, crate::registry::ENTITY_TYPE_WORKFLOW], |row| {
+        let yaml: Option<String> = row.get(0)?;
         Ok(yaml)
     })?;
-    if let Some(yaml) = rows.next().transpose()? {
+    if let Some(Some(yaml)) = rows.next().transpose()? {
         let wf: WorkflowDefinition = serde_yaml::from_str(&yaml)?;
         Ok(Some(wf))
     } else {
@@ -60,9 +51,7 @@ pub fn list_workflows(conn: &Connection) -> anyhow::Result<Vec<(String, String, 
 }
 
 pub fn delete_workflow(conn: &Connection, id: &str) -> anyhow::Result<bool> {
-    let rows = conn.execute("DELETE FROM workflows WHERE id = ?1", [id])?;
-    // Phase 2 Stage C: keep entities in sync
-    let _ = conn.execute("DELETE FROM entities WHERE id = ?1", [id]);
+    let rows = conn.execute("DELETE FROM entities WHERE id = ?1", [id])?;
     Ok(rows > 0)
 }
 

@@ -7,22 +7,6 @@ impl WorkspaceRegistry {
         note: &crate::registry::VaultNote,
     ) -> anyhow::Result<()> {
         let tx = conn.transaction()?;
-        // P1-1: filesystem-first — content/frontmatter no longer stored in SQLite.
-        // The registry only keeps lightweight metadata (id, path, title, tags, links, updated_at).
-        tx.execute(
-            "INSERT OR REPLACE INTO vault_notes (id, path, title, frontmatter, tags, outgoing_links, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![
-                &note.id,
-                &note.path,
-                note.title.as_ref(),
-                note.frontmatter.as_ref(),
-                note.tags.join(","),
-                serde_json::to_string(&note.outgoing_links)?,
-                note.created_at.to_rfc3339(),
-                note.updated_at.to_rfc3339(),
-            ],
-        )?;
         // Sprint A-1: update vault_repo_links if linked_repo is specified
         if let Some(repo_id) = &note.linked_repo {
             tx.execute(
@@ -100,7 +84,6 @@ impl WorkspaceRegistry {
     }
 
     pub fn delete_vault_note(conn: &rusqlite::Connection, note_id: &str) -> anyhow::Result<()> {
-        conn.execute("DELETE FROM vault_notes WHERE id = ?1", [note_id])?;
         conn.execute("DELETE FROM vault_repo_links WHERE vault_id = ?1", [note_id])?;
         // Phase 2 Stage C: keep entities in sync
         let _ = conn.execute("DELETE FROM entities WHERE id = ?1", [note_id]);

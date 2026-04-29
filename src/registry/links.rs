@@ -30,12 +30,12 @@ impl WorkspaceRegistry {
         repo_id: &str,
     ) -> anyhow::Result<Vec<(String, Option<String>)>> {
         let mut stmt = conn.prepare(
-            "SELECT n.id, n.title FROM vault_notes n
-             JOIN vault_repo_links l ON n.id = l.vault_id
-             WHERE l.repo_id = ?1
-             ORDER BY n.updated_at DESC",
+            "SELECT e.id, e.name FROM entities e
+             JOIN vault_repo_links l ON e.id = l.vault_id
+             WHERE l.repo_id = ?1 AND e.entity_type = ?2
+             ORDER BY json_extract(e.metadata, '$.updated_at') DESC",
         )?;
-        let rows = stmt.query_map([repo_id], |row| {
+        let rows = stmt.query_map([repo_id, crate::registry::ENTITY_TYPE_VAULT_NOTE], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())

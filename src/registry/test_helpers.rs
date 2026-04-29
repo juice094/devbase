@@ -115,20 +115,6 @@ CREATE TABLE IF NOT EXISTS repo_notes (
     timestamp TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS papers (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    authors TEXT,
-    venue TEXT,
-    year INTEGER,
-    pdf_path TEXT,
-    bibtex TEXT,
-    tags TEXT,
-    added_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_papers_venue ON papers(venue);
-CREATE INDEX IF NOT EXISTS idx_papers_year ON papers(year);
-
 CREATE TABLE IF NOT EXISTS experiments (
     id TEXT PRIMARY KEY,
     repo_id TEXT,
@@ -138,8 +124,7 @@ CREATE TABLE IF NOT EXISTS experiments (
     git_commit TEXT,
     syncthing_folder_id TEXT,
     status TEXT,
-    timestamp TEXT NOT NULL,
-    FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE SET NULL
+    timestamp TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_experiments_repo ON experiments(repo_id);
 CREATE INDEX IF NOT EXISTS idx_experiments_paper ON experiments(paper_id);
@@ -176,18 +161,6 @@ CREATE TABLE IF NOT EXISTS repo_code_metrics (
     language_breakdown TEXT,
     updated_at TEXT
 );
-
-CREATE TABLE IF NOT EXISTS vault_notes (
-    id TEXT PRIMARY KEY,
-    path TEXT NOT NULL,
-    title TEXT,
-    frontmatter TEXT,
-    tags TEXT,
-    outgoing_links TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_vault_notes_tags ON vault_notes(tags);
 
 CREATE TABLE IF NOT EXISTS vault_repo_links (
     vault_id TEXT NOT NULL,
@@ -273,18 +246,6 @@ CREATE TABLE IF NOT EXISTS relations (
 CREATE INDEX IF NOT EXISTS idx_relations_from ON relations(from_entity_id);
 CREATE INDEX IF NOT EXISTS idx_relations_to ON relations(to_entity_id);
 CREATE INDEX IF NOT EXISTS idx_relations_type ON relations(relation_type);
-
--- v0.5.0 reserved: Workflow Engine
-CREATE TABLE IF NOT EXISTS workflows (
-    id              TEXT PRIMARY KEY,
-    name            TEXT NOT NULL,
-    version         TEXT NOT NULL,
-    description     TEXT,
-    definition_yaml TEXT NOT NULL,
-    status          TEXT DEFAULT 'draft',
-    created_at      TEXT NOT NULL,
-    updated_at      TEXT NOT NULL
-);
 
 CREATE TABLE IF NOT EXISTS workflow_executions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -379,19 +340,6 @@ mod tests {
         let conn = WorkspaceRegistry::init_in_memory().unwrap();
         let version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap();
         assert_eq!(version, crate::registry::migrate::CURRENT_SCHEMA_VERSION);
-    }
-
-    #[test]
-    fn test_workflows_table_exists() {
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
-        let exists: bool = conn
-            .query_row(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='workflows'",
-                [],
-                |_| Ok(true),
-            )
-            .unwrap_or(false);
-        assert!(exists, "workflows table must exist in current schema");
     }
 
     #[test]

@@ -109,26 +109,7 @@ impl WorkspaceRegistry {
     // Papers
     // ------------------------------------------------------------------
     pub fn save_paper(conn: &rusqlite::Connection, paper: &PaperEntry) -> anyhow::Result<()> {
-        let tags = if paper.tags.is_empty() {
-            None
-        } else {
-            Some(paper.tags.join(","))
-        };
-        conn.execute(
-            "INSERT OR REPLACE INTO papers (id, title, authors, venue, year, pdf_path, bibtex, tags, added_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            rusqlite::params![
-                &paper.id,
-                &paper.title,
-                paper.authors.as_ref(),
-                paper.venue.as_ref(),
-                paper.year,
-                paper.pdf_path.as_ref(),
-                paper.bibtex.as_ref(),
-                tags,
-                paper.added_at.to_rfc3339()
-            ],
-        )?;
-        // Phase 2 Stage C: dual-write to entities table
+        // Phase 2 Stage E: entities is the sole source of truth for papers
         let metadata = serde_json::json!({
             "authors": paper.authors,
             "venue": paper.venue,
@@ -189,9 +170,15 @@ impl WorkspaceRegistry {
         venue: &str,
     ) -> anyhow::Result<Vec<PaperEntry>> {
         let mut stmt = conn.prepare(
-            "SELECT id, title, authors, venue, year, pdf_path, bibtex, tags, added_at FROM papers WHERE venue = ?1 ORDER BY year DESC"
+            "SELECT e.id, e.name, json_extract(e.metadata, '$.authors'),
+                    json_extract(e.metadata, '$.venue'), json_extract(e.metadata, '$.year'),
+                    e.local_path, json_extract(e.metadata, '$.bibtex'),
+                    json_extract(e.metadata, '$.tags'), json_extract(e.metadata, '$.added_at')
+             FROM entities e
+             WHERE e.entity_type = ?1 AND json_extract(e.metadata, '$.venue') = ?2
+             ORDER BY json_extract(e.metadata, '$.year') DESC"
         )?;
-        let rows = stmt.query_map([venue], |row| {
+        let rows = stmt.query_map([crate::registry::ENTITY_TYPE_PAPER, venue], |row| {
             let tags: Option<String> = row.get(7)?;
             Ok(PaperEntry {
                 id: row.get(0)?,
