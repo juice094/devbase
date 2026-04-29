@@ -151,19 +151,31 @@ pub async fn run(
     Ok(())
 }
 
-/// Check if a discovered repository path should be excluded from scanning.
-fn is_excluded_path(repo_path: &Path, exclude_paths: &[String], root: &Path) -> bool {
+/// Check if a repository path should be excluded from scanning or syncing.
+/// When `root` is `Some`, relative exclude paths are resolved against it.
+/// When `root` is `None`, only absolute exclude paths are effective.
+pub(crate) fn is_excluded_path(
+    repo_path: &Path,
+    exclude_paths: &[String],
+    root: Option<&Path>,
+) -> bool {
     let abs_repo = if repo_path.is_absolute() {
         repo_path.to_path_buf()
     } else {
-        root.join(repo_path)
+        match root {
+            Some(r) => r.join(repo_path),
+            None => return false, // cannot evaluate relative path without root
+        }
     };
     for ex in exclude_paths {
         let ex_path = Path::new(ex);
         let abs_ex = if ex_path.is_absolute() {
             ex_path.to_path_buf()
         } else {
-            root.join(ex_path)
+            match root {
+                Some(r) => r.join(ex_path),
+                None => continue, // relative exclude ignored when no root
+            }
         };
         if abs_repo.starts_with(&abs_ex) {
             return true;
@@ -188,7 +200,7 @@ fn discover_repos(
                 continue;
             }
 
-            if is_excluded_path(&repo_path, exclude_paths, root) {
+            if is_excluded_path(&repo_path, exclude_paths, Some(root)) {
                 continue;
             }
             match inspect_repo(&repo_path, github) {
@@ -216,7 +228,7 @@ fn discover_repos(
         if non_git_repos.iter().any(|r: &RepoEntry| r.local_path == ws_path) {
             continue;
         }
-        if is_excluded_path(&ws_path, exclude_paths, root) {
+        if is_excluded_path(&ws_path, exclude_paths, Some(root)) {
             continue;
         }
         match inspect_non_git_workspace(&ws_path) {
@@ -655,6 +667,15 @@ mod tests {
         let repos = discover_repos(dir.path(), None, &["excluded".to_string()]).unwrap();
         assert_eq!(repos.len(), 1);
         assert!(repos[0].local_path.to_string_lossy().contains("included"));
+    }
+
+    #[test]
+    fn test_is_excluded_path_sync_context() {
+        // When root is None, only absolute exclude paths should be effective
+        let repo = std::path::Path::new("C:/dev/clarity");
+        assert!(is_excluded_path(repo, &["C:/dev/clarity".to_string()], None));
+        assert!(!is_excluded_path(repo, &["dev/clarity".to_string()], None));
+        assert!(is_excluded_path(repo, &["C:/dev".to_string()], None));
     }
 
     #[test]

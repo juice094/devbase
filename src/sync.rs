@@ -32,7 +32,7 @@ pub async fn run_json(
 ) -> anyhow::Result<serde_json::Value> {
     let start = std::time::Instant::now();
     let config = crate::config::Config::load().unwrap_or_default();
-    let tasks = collect_tasks(conn, filter_tags, exclude).await?;
+    let tasks = collect_tasks(conn, filter_tags, exclude, &config.scan.exclude_paths).await?;
     let mut path_map = HashMap::new();
     for task in &tasks {
         path_map.insert(task.id.clone(), task.path.clone());
@@ -98,7 +98,7 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let start = std::time::Instant::now();
     let config = crate::config::Config::load().unwrap_or_default();
-    let tasks = collect_tasks(conn, filter_tags, exclude).await?;
+    let tasks = collect_tasks(conn, filter_tags, exclude, &config.scan.exclude_paths).await?;
     let mut path_map = HashMap::new();
     for task in &tasks {
         path_map.insert(task.id.clone(), task.path.clone());

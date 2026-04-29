@@ -186,6 +186,7 @@ pub(super) async fn collect_tasks(
     conn: &rusqlite::Connection,
     filter_tags: Option<&str>,
     exclude: Option<&str>,
+    exclude_paths: &[String],
 ) -> anyhow::Result<Vec<RepoSyncTask>> {
     let repos = WorkspaceRegistry::list_repos(conn)?;
 
@@ -203,7 +204,9 @@ pub(super) async fn collect_tasks(
             let tag_match = filter_list.is_empty()
                 || filter_list.iter().any(|f| repo.tags.contains(&f.to_string()));
             let not_excluded = !exclude_list.iter().any(|id| repo.id == *id);
-            tag_match && not_excluded
+            let not_path_excluded =
+                !crate::scan::is_excluded_path(&repo.local_path, exclude_paths, None);
+            tag_match && not_excluded && not_path_excluded
         })
         .map(|repo| {
             let primary = repo.primary_remote().cloned();
