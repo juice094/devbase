@@ -72,7 +72,7 @@ impl App {
     }
 
     pub(crate) fn load_repos(&mut self) -> anyhow::Result<()> {
-        let conn = self.ctx.conn_mut();
+        let conn = self.ctx.conn_mut()?;
         let mut repos = WorkspaceRegistry::list_repos(&conn)?;
 
         // P2-lite: apply static overrides from workspace/repos.toml
@@ -220,9 +220,9 @@ impl App {
         let github = self.ctx.config.github.clone();
         let ttl = self.ctx.config.cache.ttl_seconds;
 
+        let pool = self.ctx.pool();
         tokio::spawn(async move {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = match crate::registry::WorkspaceRegistry::init_db() {
+            let conn = match pool.get() {
                 Ok(c) => c,
                 Err(_) => return,
             };
@@ -421,7 +421,7 @@ impl App {
     }
 
     pub(crate) fn load_vaults(&mut self) -> anyhow::Result<()> {
-        let conn = self.ctx.conn();
+        let conn = self.ctx.conn()?;
         let notes = WorkspaceRegistry::list_vault_notes(&conn)?;
         self.vaults.clear();
         for note in notes {
@@ -440,7 +440,7 @@ impl App {
     }
 
     pub(crate) fn load_skills(&mut self) {
-        let conn = self.ctx.conn();
+        let Ok(conn) = self.ctx.conn() else { return; };
         let rows = match crate::skill_runtime::registry::list_skills(&conn, None, None) {
             Ok(r) => r,
             Err(e) => {
@@ -493,7 +493,7 @@ impl App {
     }
 
     pub(crate) fn load_workflows(&mut self) {
-        let conn = self.ctx.conn();
+        let Ok(conn) = self.ctx.conn() else { return; };
         match crate::workflow::list_workflows(&conn) {
             Ok(rows) => {
                 self.workflows = rows
@@ -557,9 +557,9 @@ impl App {
         }
 
         let tx = self.async_tx.clone();
+        let pool = self.ctx.pool();
         std::thread::spawn(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = match crate::registry::WorkspaceRegistry::init_db() {
+            let conn = match pool.get() {
                 Ok(c) => c,
                 Err(e) => {
                     let _ = tx.send(crate::asyncgit::AsyncNotification::WorkflowRunFinished {
@@ -570,7 +570,7 @@ impl App {
                     return;
                 }
             };
-            let result = crate::workflow::execute_workflow(&conn, &wf, inputs);
+            let result = crate::workflow::execute_workflow(&conn, &pool, &wf, inputs);
             match result {
                 Ok(results) => {
                     let _ = tx.send(crate::asyncgit::AsyncNotification::WorkflowRunFinished {
@@ -594,9 +594,9 @@ impl App {
         self.nlp_query = query.clone();
         self.log_info(format!("NLQ: '{}' ...", query));
         let tx = self.async_tx.clone();
+        let pool = self.ctx.pool();
         std::thread::spawn(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = match crate::registry::WorkspaceRegistry::init_db() {
+            let conn = match pool.get() {
                 Ok(c) => c,
                 Err(e) => {
                     let _ = tx.send(crate::asyncgit::AsyncNotification::NLPQueryFinished {
@@ -693,8 +693,26 @@ impl App {
 
     fn run_skill_item(&mut self, skill_item: SkillItem, args: Vec<String>) {
         let tx = self.async_tx.clone();
+        let pool = self.ctx.pool();
         std::thread::spawn(move || {
+            let conn = match pool.get() {
+                Ok(c) => c,
+                Err(e) => {
+                    let _ = tx.send(crate::asyncgit::AsyncNotification::SkillRunFinished(
+                        crate::skill_runtime::ExecutionResult {
+                            skill_id: skill_item.row.id.clone(),
+                            status: crate::skill_runtime::ExecutionStatus::Failed,
+                            stdout: String::new(),
+                            stderr: e.to_string(),
+                            exit_code: Some(1),
+                            duration_ms: 0,
+                        }
+                    ));
+                    return;
+                }
+            };
             let result = crate::skill_runtime::executor::run_skill(
+                &conn,
                 &skill_item.row,
                 &args,
                 std::time::Duration::from_secs(30),
@@ -758,9 +776,11 @@ impl App {
                     repo.stars = stars;
                 }
                 if let Some(s) = stars {
-                    let conn = self.ctx.conn_mut();
-                    let _ =
-                        crate::registry::WorkspaceRegistry::save_stars_cache(conn, &repo_id, s);
+                    if let Ok(mut conn) = self.ctx.conn_mut() {
+                        let _ = crate::registry::WorkspaceRegistry::save_stars_cache(
+                            &mut conn, &repo_id, s,
+                        );
+                    }
                 }
                 // Re-sort if currently sorting by stars
                 if self.sort_mode == SortMode::Stars {
@@ -829,7 +849,7 @@ impl App {
         };
 
         match (|| -> anyhow::Result<()> {
-            let conn = self.ctx.conn_mut();
+            let mut conn = self.ctx.conn_mut()?;
             let tx = conn.transaction()?;
             tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1", [&repo_id])?;
             for tag in new_tags.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
@@ -1126,9 +1146,9 @@ impl App {
         }
 
         // 4. Stars 检查（如果有历史数据）
-        let conn = self.ctx.conn();
-        if let Ok(history) =
-            crate::registry::WorkspaceRegistry::get_stars_history(conn, &repo.id, 7)
+        if let Ok(conn) = self.ctx.conn()
+            && let Ok(history) =
+                crate::registry::WorkspaceRegistry::get_stars_history(&conn, &repo.id, 7)
             && history.len() >= 2
         {
             let first = history.first().map(|(s, _)| *s).unwrap_or(0);

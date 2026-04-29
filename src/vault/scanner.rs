@@ -20,7 +20,7 @@ fn default_vault_dir() -> anyhow::Result<PathBuf> {
 ///
 /// * `vault_dir` — root of the vault. If `None`, uses the default location.
 /// * Returns the number of notes synced.
-pub fn scan_vault(vault_dir: Option<&Path>) -> anyhow::Result<usize> {
+pub fn scan_vault(conn: &mut rusqlite::Connection, vault_dir: Option<&Path>) -> anyhow::Result<usize> {
     let root = match vault_dir {
         Some(p) => p.to_path_buf(),
         None => default_vault_dir()?,
@@ -31,7 +31,6 @@ pub fn scan_vault(vault_dir: Option<&Path>) -> anyhow::Result<usize> {
         return Ok(0);
     }
 
-    let mut conn = WorkspaceRegistry::init_db()?;
     let mut synced = 0;
 
     for entry in walkdir::WalkDir::new(&root)
@@ -78,7 +77,7 @@ pub fn scan_vault(vault_dir: Option<&Path>) -> anyhow::Result<usize> {
                     updated_at: Utc::now(),
                 };
 
-                if let Err(e) = WorkspaceRegistry::save_vault_note(&mut conn, &note) {
+                if let Err(e) = WorkspaceRegistry::save_vault_note(conn, &note) {
                     warn!("Failed to save vault note {}: {}", note.id, e);
                 } else {
                     synced += 1;
@@ -108,12 +107,9 @@ mod tests {
         )
         .unwrap();
 
-        let count = scan_vault(Some(&tmp)).unwrap();
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let count = scan_vault(&mut conn, Some(&tmp)).unwrap();
         assert_eq!(count, 1);
-
-        let _conn = WorkspaceRegistry::init_in_memory().unwrap();
-        // Note: scan_vault uses init_db() (file-based), so we can't read back from in-memory.
-        // This test mainly ensures scan_vault() does not panic and counts correctly.
 
         std::fs::remove_dir_all(&tmp).unwrap();
     }
@@ -122,7 +118,8 @@ mod tests {
     fn test_scan_vault_empty_dir() {
         let tmp = std::env::temp_dir().join(format!("devbase_vault_empty_{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
-        let count = scan_vault(Some(&tmp)).unwrap();
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let count = scan_vault(&mut conn, Some(&tmp)).unwrap();
         assert_eq!(count, 0);
         std::fs::remove_dir_all(&tmp).unwrap();
     }
@@ -131,7 +128,8 @@ mod tests {
     fn test_scan_vault_missing_dir() {
         let tmp =
             std::env::temp_dir().join(format!("devbase_vault_missing_{}", std::process::id()));
-        let count = scan_vault(Some(&tmp)).unwrap();
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let count = scan_vault(&mut conn, Some(&tmp)).unwrap();
         assert_eq!(count, 0);
     }
 }

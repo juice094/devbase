@@ -60,7 +60,7 @@ fn render_repo_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &Sty
     let content_area = chunks[1];
 
     match app.detail_tab {
-        DetailTab::Overview => render_overview(frame, &repo, content_area, styles),
+        DetailTab::Overview => render_overview(frame, app, &repo, content_area, styles),
         DetailTab::Health => render_health(frame, &repo, content_area, styles),
         DetailTab::Insights => render_insights(frame, app, &repo, content_area, styles),
     }
@@ -70,7 +70,7 @@ fn render_repo_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &Sty
 // Overview tab
 // ---------------------------------------------------------------------------
 
-fn render_overview(frame: &mut Frame, repo: &crate::tui::RepoItem, area: Rect, styles: &Styles) {
+fn render_overview(frame: &mut Frame, app: &crate::tui::App, repo: &crate::tui::RepoItem, area: Rect, styles: &Styles) {
     let (dirty, ahead, behind) = match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
         (Some(d), Some(a), Some(b)) => (d, a, b),
         _ => (false, 0, 0),
@@ -105,7 +105,10 @@ fn render_overview(frame: &mut Frame, repo: &crate::tui::RepoItem, area: Rect, s
     let head_short = super::read_head_commit(&repo.local_path).unwrap_or_else(|| "—".to_string());
     let (last_sync_human, last_sync_action, last_sync_commit) =
         super::read_syncdone_info(&repo.local_path);
-    let summary_text = super::read_repo_summary(&repo.id).unwrap_or_else(|| "暂无描述".to_string());
+    let summary_text = app.ctx.conn()
+        .ok()
+        .and_then(|conn| super::read_repo_summary(&conn, &repo.id))
+        .unwrap_or_else(|| "暂无描述".to_string());
 
     let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
     let policy_text = format!("{:?}", policy);
@@ -168,7 +171,7 @@ fn render_overview(frame: &mut Frame, repo: &crate::tui::RepoItem, area: Rect, s
     }
 
     // === Layer 3.5: Linked vault notes ===
-    let linked_vaults = crate::registry::WorkspaceRegistry::init_db()
+    let linked_vaults = app.ctx.conn()
         .ok()
         .and_then(|conn| {
             crate::registry::WorkspaceRegistry::get_linked_vault_notes(&conn, &repo.id).ok()
@@ -335,7 +338,7 @@ fn render_insights(
     styles: &Styles,
 ) {
     let insights = app.generate_insights(repo);
-    let history = if let Ok(conn) = crate::registry::WorkspaceRegistry::init_db() {
+    let history = if let Ok(conn) = app.ctx.conn() {
         crate::registry::WorkspaceRegistry::get_stars_history(&conn, &repo.id, 30)
             .unwrap_or_default()
     } else {
@@ -506,7 +509,7 @@ fn render_vault_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &St
     };
 
     // Linked repos section
-    let linked_repos = crate::registry::WorkspaceRegistry::init_db()
+    let linked_repos = app.ctx.conn()
         .ok()
         .and_then(|conn| {
             crate::registry::WorkspaceRegistry::get_linked_repos_full(&conn, &vault.id).ok()

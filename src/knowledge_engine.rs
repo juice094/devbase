@@ -664,10 +664,8 @@ fn index_repo_in_search(
     Ok(())
 }
 
-pub fn index_repo(repo: &crate::registry::RepoEntry) -> anyhow::Result<()> {
+pub fn index_repo(conn: &mut rusqlite::Connection, repo: &crate::registry::RepoEntry) -> anyhow::Result<()> {
     use tracing::{info, warn};
-
-    let mut conn = WorkspaceRegistry::init_db()?;
 
     let config = crate::config::Config::load().ok();
     let (summary, keywords) = config
@@ -681,7 +679,7 @@ pub fn index_repo(repo: &crate::registry::RepoEntry) -> anyhow::Result<()> {
 
     let modules = extract_module_structure(&repo.local_path);
 
-    WorkspaceRegistry::save_summary(&conn, &repo.id, &summary, &keywords)?;
+    WorkspaceRegistry::save_summary(conn, &repo.id, &summary, &keywords)?;
 
     if let Err(e) = index_repo_in_search(repo, &summary, &keywords) {
         warn!("Failed to index repo in search: {}", e);
@@ -689,11 +687,11 @@ pub fn index_repo(repo: &crate::registry::RepoEntry) -> anyhow::Result<()> {
 
     let modules_tuple: Vec<(String, String)> =
         modules.into_iter().map(|m| (m.name, m.kind)).collect();
-    WorkspaceRegistry::save_modules(&mut conn, &repo.id, &modules_tuple)?;
+    WorkspaceRegistry::save_modules(conn, &repo.id, &modules_tuple)?;
 
     let detected_lang = crate::scan::detect_language(&repo.local_path);
     if let Some(ref lang) = detected_lang {
-        WorkspaceRegistry::update_repo_language(&conn, &repo.id, Some(lang))?;
+        WorkspaceRegistry::update_repo_language(conn, &repo.id, Some(lang))?;
     }
 
     info!(
@@ -704,10 +702,8 @@ pub fn index_repo(repo: &crate::registry::RepoEntry) -> anyhow::Result<()> {
 }
 
 /// 兼容旧调用的包装层：执行索引逻辑
-pub fn run_index(path: &str) -> anyhow::Result<usize> {
+pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<usize> {
     use tracing::{info, warn};
-
-    let mut conn = WorkspaceRegistry::init_db()?;
 
     let repos: Vec<RepoEntry> = if path.is_empty() {
         WorkspaceRegistry::list_repos(&conn)?
@@ -722,7 +718,7 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
         } else {
             info!("Registering {} before indexing", path);
             let repo = crate::scan::inspect_repo(&p, None)?;
-            WorkspaceRegistry::save_repo(&mut conn, &repo)?;
+            WorkspaceRegistry::save_repo(conn, &repo)?;
             vec![repo]
         }
     };
@@ -746,7 +742,7 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
 
         let modules = extract_module_structure(&repo.local_path);
 
-        WorkspaceRegistry::save_summary(&conn, &repo.id, &summary, &keywords)?;
+        WorkspaceRegistry::save_summary(conn, &repo.id, &summary, &keywords)?;
 
         // Add/update repo document in Tantivy index
         crate::search::delete_repo_doc(&mut search_writer, &search_schema, &repo.id)?;
@@ -761,30 +757,30 @@ pub fn run_index(path: &str) -> anyhow::Result<usize> {
 
         let modules_tuple: Vec<(String, String)> =
             modules.into_iter().map(|m| (m.name, m.kind)).collect();
-        WorkspaceRegistry::save_modules(&mut conn, &repo.id, &modules_tuple)?;
+        WorkspaceRegistry::save_modules(conn, &repo.id, &modules_tuple)?;
 
         let detected_lang = crate::scan::detect_language(&repo.local_path);
         if let Some(ref lang) = detected_lang {
-            WorkspaceRegistry::update_repo_language(&conn, &repo.id, Some(lang))?;
+            WorkspaceRegistry::update_repo_language(conn, &repo.id, Some(lang))?;
         }
 
         // Semantic code indexing (tree-sitter AST extraction + call graph)
         let (symbols, calls) = crate::semantic_index::index_repo_full(&repo.local_path);
         if !symbols.is_empty() {
-            match crate::semantic_index::save_symbols(&mut conn, &repo.id, &symbols) {
+            match crate::semantic_index::save_symbols(conn, &repo.id, &symbols) {
                 Ok(n) => info!("Saved {} code symbols for {}", n, repo.id),
                 Err(e) => warn!("Failed to save code symbols for {}: {}", repo.id, e),
             }
         }
         if !calls.is_empty() {
-            match crate::semantic_index::save_calls(&mut conn, &repo.id, &calls) {
+            match crate::semantic_index::save_calls(conn, &repo.id, &calls) {
                 Ok(n) => info!("Saved {} call edges for {}", n, repo.id),
                 Err(e) => warn!("Failed to save call graph for {}: {}", repo.id, e),
             }
         }
 
         // Cross-repo dependency graph
-        match crate::dependency_graph::build_dependency_graph(&mut conn, &repo.id, &repo.local_path)
+        match crate::dependency_graph::build_dependency_graph(conn, &repo.id, &repo.local_path)
         {
             Ok(n) => {
                 if n > 0 {

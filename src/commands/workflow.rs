@@ -2,7 +2,7 @@ pub fn run_workflow(
     ctx: &mut crate::storage::AppContext,
     cmd: crate::WorkflowCommands,
 ) -> anyhow::Result<()> {
-    let conn = ctx.conn_mut();
+    let conn = ctx.conn_mut()?;
     match cmd {
         crate::WorkflowCommands::List => {
             let workflows = crate::workflow::list_workflows(&conn)?;
@@ -72,7 +72,7 @@ pub fn run_workflow(
                 None,
             )?;
             println!("Running workflow '{}' (execution #{})...", workflow_id, exec_id);
-            match crate::workflow::execute_workflow(&conn, &wf, input_map) {
+            match crate::workflow::execute_workflow(&conn, &ctx.pool(), &wf, input_map) {
                 Ok(results) => {
                     crate::workflow::update_execution(
                         &conn,

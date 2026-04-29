@@ -75,9 +75,8 @@ pub fn export_sqlite(output: Option<&Path>) -> anyhow::Result<PathBuf> {
 }
 
 /// Export the current registry to a JSON file.
-pub fn export_json(output: Option<&Path>) -> anyhow::Result<PathBuf> {
-    let conn = WorkspaceRegistry::init_db()?;
-    let repos = WorkspaceRegistry::list_repos(&conn)?;
+pub fn export_json(conn: &rusqlite::Connection, output: Option<&Path>) -> anyhow::Result<PathBuf> {
+    let repos = WorkspaceRegistry::list_repos(conn)?;
 
     let registry = crate::registry::WorkspaceRegistry {
         version: "0.2.0".to_string(),
@@ -99,7 +98,7 @@ pub fn export_json(output: Option<&Path>) -> anyhow::Result<PathBuf> {
 }
 
 /// Import from a SQLite backup file. If dry_run is true, only report stats.
-pub fn import_db(source: &Path, dry_run: bool) -> anyhow::Result<()> {
+pub fn import_db(conn: &mut rusqlite::Connection, source: &Path, dry_run: bool) -> anyhow::Result<()> {
     if !source.exists() {
         anyhow::bail!("Source file does not exist: {}", source.display());
     }
@@ -107,8 +106,7 @@ pub fn import_db(source: &Path, dry_run: bool) -> anyhow::Result<()> {
     let src_conn = rusqlite::Connection::open(source)?;
     let src_repos = WorkspaceRegistry::list_repos(&src_conn)?;
 
-    let current_conn = WorkspaceRegistry::init_db()?;
-    let current_repos = WorkspaceRegistry::list_repos(&current_conn)?;
+    let current_repos = WorkspaceRegistry::list_repos(conn)?;
 
     let current_ids: std::collections::HashSet<String> =
         current_repos.iter().map(|r| r.id.clone()).collect();
@@ -136,9 +134,8 @@ pub fn import_db(source: &Path, dry_run: bool) -> anyhow::Result<()> {
     // Backup current db before import
     let _ = export_sqlite(None)?;
 
-    let mut conn = WorkspaceRegistry::init_db()?;
     for repo in &src_repos {
-        WorkspaceRegistry::save_repo(&mut conn, repo)?;
+        WorkspaceRegistry::save_repo(conn, repo)?;
     }
 
     println!("\n已成功导入 {} 个工作区。", src_repos.len());
@@ -149,9 +146,9 @@ pub fn import_db(source: &Path, dry_run: bool) -> anyhow::Result<()> {
 // CLI entry points
 // ------------------------------------------------------------------
 
-pub fn run_export(format: &str, output: Option<&Path>) -> anyhow::Result<()> {
+pub fn run_export(conn: &rusqlite::Connection, format: &str, output: Option<&Path>) -> anyhow::Result<()> {
     let path = match format {
-        "json" => export_json(output)?,
+        "json" => export_json(conn, output)?,
         "sqlite" | "db" => export_sqlite(output)?,
         _ => anyhow::bail!("Unsupported export format: {}. Use 'sqlite' or 'json'.", format),
     };
@@ -159,8 +156,8 @@ pub fn run_export(format: &str, output: Option<&Path>) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn run_import(source: &Path, yes: bool) -> anyhow::Result<()> {
-    import_db(source, !yes)
+pub fn run_import(conn: &mut rusqlite::Connection, source: &Path, yes: bool) -> anyhow::Result<()> {
+    import_db(conn, source, !yes)
 }
 
 pub fn run_list() -> anyhow::Result<()> {

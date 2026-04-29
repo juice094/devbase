@@ -162,7 +162,15 @@ mod tests {
     fn test_end_to_end_workflow_lifecycle() {
         use crate::workflow::model::{ErrorPolicy, StepDefinition, StepType};
         use crate::workflow::{execute_workflow, validate_workflow};
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        unsafe { std::env::set_var("DEVBASE_DATA_DIR", tmp.path()); }
+        let conn = WorkspaceRegistry::init_db().unwrap();
+        let path = WorkspaceRegistry::db_path().unwrap();
+        let manager = r2d2_sqlite::SqliteConnectionManager::file(&path).with_init(|c| {
+            c.execute("PRAGMA foreign_keys = ON", [])?;
+            Ok(())
+        });
+        let pool = r2d2::Pool::builder().max_size(5).build(manager).unwrap();
         let wf = WorkflowDefinition {
             id: "e2e-wf".to_string(),
             name: "E2E Workflow".to_string(),
@@ -190,7 +198,7 @@ mod tests {
 
         // Execution should fail because skill does not exist
         let inputs: HashMap<String, String> = HashMap::new();
-        let result = execute_workflow(&conn, &wf, inputs);
+        let result = execute_workflow(&conn, &pool, &wf, inputs);
         assert!(result.is_err());
 
         update_execution(&conn, exec_id, &ExecutionStatus::Failed, Some("step1"), None).unwrap();

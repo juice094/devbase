@@ -51,6 +51,7 @@ pub fn compute_workspace_hash(root: &Path) -> anyhow::Result<String> {
 }
 
 pub async fn run_json(
+    conn: &rusqlite::Connection,
     detail: bool,
     limit: usize,
     page: usize,
@@ -58,7 +59,6 @@ pub async fn run_json(
 ) -> anyhow::Result<serde_json::Value> {
     let start = std::time::Instant::now();
     let (total_repos, dirty_repos, behind_upstream, no_upstream_count, repo_details) = {
-        let conn = WorkspaceRegistry::init_db()?;
         let repos = WorkspaceRegistry::list_repos(&conn)?;
 
         let mut total_repos: usize = 0;
@@ -203,16 +203,15 @@ pub async fn run_json(
 
     // Log to oplog
     let duration_ms = start.elapsed().as_millis() as i64;
-    if let Ok(conn) = WorkspaceRegistry::init_db() {
-        let details = serde_json::json!({
-            "total_repos": total_repos,
-            "dirty_repos": dirty_repos,
-            "behind_upstream": behind_upstream,
-            "no_upstream": no_upstream_count
-        });
-        let _ = WorkspaceRegistry::save_oplog(
-            &conn,
-            &OplogEntry {
+    let details = serde_json::json!({
+        "total_repos": total_repos,
+        "dirty_repos": dirty_repos,
+        "behind_upstream": behind_upstream,
+        "no_upstream": no_upstream_count
+    });
+    let _ = WorkspaceRegistry::save_oplog(
+        conn,
+        &OplogEntry {
                 id: None,
                 event_type: crate::registry::OplogEventType::HealthCheck,
                 repo_id: None,
@@ -222,8 +221,7 @@ pub async fn run_json(
                 duration_ms: Some(duration_ms),
                 event_version: 1,
             },
-        );
-    }
+    );
 
     let total_repos_detail = repo_details.len();
     let paged_repos = if detail && limit > 0 {
@@ -251,8 +249,14 @@ pub async fn run_json(
     }))
 }
 
-pub async fn run(detail: bool, limit: usize, page: usize, ttl_seconds: i64) -> anyhow::Result<()> {
-    let result = run_json(detail, limit, page, ttl_seconds).await?;
+pub async fn run(
+    conn: &rusqlite::Connection,
+    detail: bool,
+    limit: usize,
+    page: usize,
+    ttl_seconds: i64,
+) -> anyhow::Result<()> {
+    let result = run_json(conn, detail, limit, page, ttl_seconds).await?;
 
     let summary = result["summary"]
         .as_object()

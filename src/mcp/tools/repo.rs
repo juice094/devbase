@@ -51,14 +51,15 @@ Returns: JSON array of discovered repos with id, path, language, source_type, an
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let path = args
             .get("path")
             .and_then(|v| v.as_str())
             .context("Missing required argument: path")?;
         let register = args.get("register").and_then(|v| v.as_bool()).unwrap_or(false);
-        crate::scan::run_json(path, register).await
+        let pool = ctx.pool();
+        crate::scan::run_json(path, register, &pool).await
     }
 }
 
@@ -105,11 +106,12 @@ Returns: JSON object with workspace summary and per-repo health records. Each re
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let detail = args.get("detail").and_then(|v| v.as_bool()).unwrap_or(false);
         let config = crate::config::Config::load()?;
-        crate::health::run_json(detail, 0, 1, config.cache.ttl_seconds).await
+        let conn = ctx.conn()?;
+        crate::health::run_json(&conn, detail, 0, 1, config.cache.ttl_seconds).await
     }
 }
 
@@ -165,11 +167,12 @@ Returns: JSON object with per-repo sync results including: repo_id, action (pull
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(true);
         let filter_tags = args.get("filter_tags").and_then(|v| v.as_str());
-        crate::sync::run_json(dry_run, filter_tags, None).await
+        let conn = ctx.conn()?;
+        crate::sync::run_json(&conn, dry_run, filter_tags, None).await
     }
 }
 
@@ -215,14 +218,17 @@ Returns: JSON with indexed count and error count."#,
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
         let path_owned = path.to_string();
-        let count =
-            tokio::task::spawn_blocking(move || crate::knowledge_engine::run_index(&path_owned))
-                .await
-                .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+        let pool = ctx.pool();
+        let count = tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get()?;
+            crate::knowledge_engine::run_index(&mut conn, &path_owned)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
         Ok(serde_json::json!({ "success": true, "indexed": count, "errors": 0 }))
     }
 }
@@ -270,7 +276,7 @@ Returns: JSON with success status."#,
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let text = args.get("text").and_then(|v| v.as_str()).context("text required")?;
@@ -278,9 +284,10 @@ Returns: JSON with success status."#,
         let repo_id = repo_id.to_string();
         let text = text.to_string();
         let author = author.to_string();
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
             crate::registry::WorkspaceRegistry::save_note(&conn, &repo_id, &text, &author)?;
             Ok::<_, anyhow::Error>(serde_json::json!({ "success": true }))
         })
@@ -319,11 +326,12 @@ Returns: JSON with a plain-text digest string."#,
     async fn invoke(
         &self,
         _args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        tokio::task::spawn_blocking(|| {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+        let pool = ctx.pool();
+        tokio::task::spawn_blocking(move || {
+
+            let conn = pool.get()?;
             let config = crate::config::Config::load()?;
             let text = crate::digest::generate_daily_digest(&conn, &config)?;
             Ok::<_, anyhow::Error>(serde_json::json!({ "success": true, "digest": text }))
@@ -371,7 +379,7 @@ Returns: JSON with discovered paper count and registration status."#,
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("~/papers");
         let tags_str = args.get("tags").and_then(|v| v.as_str()).unwrap_or("");
@@ -388,9 +396,10 @@ Returns: JSON with discovered paper count and registration status."#,
             std::path::PathBuf::from(path)
         };
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
             let mut count = 0;
             if path.is_dir() {
                 for entry in std::fs::read_dir(&path)? {
@@ -477,7 +486,7 @@ Returns: JSON with experiment log ID and success status."#,
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let id = args.get("id").and_then(|v| v.as_str()).context("id required")?.to_string();
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).map(String::from);
@@ -496,9 +505,10 @@ Returns: JSON with experiment log ID and success status."#,
             status: args.get("status").and_then(|v| v.as_str()).unwrap_or("running").to_string(),
             timestamp: chrono::Utc::now(),
         };
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let mut conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let mut conn = pool.get()?;
             crate::registry::WorkspaceRegistry::save_experiment(&conn, &exp)?;
             if tag_repo
                 && let Some(ref rid) = repo_id {
@@ -553,7 +563,7 @@ Returns: JSON with stars, forks, open_issues, description, pushed_at, and update
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args
             .get("repo_id")
@@ -562,11 +572,12 @@ Returns: JSON with stars, forks, open_issues, description, pushed_at, and update
             .to_string();
         let write_summary = args.get("write_summary").and_then(|v| v.as_bool()).unwrap_or(false);
 
+        let pool = ctx.pool();
         let upstream_url = tokio::task::spawn_blocking({
             let repo_id = repo_id.clone();
             move || -> anyhow::Result<Option<String>> {
-                // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
                 let mut stmt = conn.prepare("SELECT upstream_url FROM repo_remotes WHERE repo_id = ?1 AND remote_name = 'origin'")?;
                 let url: Option<String> = stmt.query_row([&repo_id], |row| row.get(0)).optional()?;
                 Ok(url)
@@ -606,9 +617,10 @@ Returns: JSON with stars, forks, open_issues, description, pushed_at, and update
         if write_summary && let Some(ref desc) = description {
             let repo_id2 = repo_id.clone();
             let desc2 = desc.clone();
+            let pool = ctx.pool();
             tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-                // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
                 crate::registry::WorkspaceRegistry::save_summary(&conn, &repo_id2, &desc2, "")?;
                 Ok(())
             })
@@ -670,13 +682,14 @@ Returns: JSON array of metric objects per repo: repo_id, total_lines, code_lines
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
             if repo_id.is_empty() {
                 let metrics = crate::registry::WorkspaceRegistry::list_code_metrics(&conn)?;
                 let repos: Vec<serde_json::Value> = metrics.into_iter().map(|(id, m)| {
@@ -752,13 +765,14 @@ Returns: JSON with workspace_members, packages (name, version, targets), and dep
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
             if repo_id.is_empty() {
                 let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
                 let mut all_modules = vec![];
@@ -861,16 +875,17 @@ Returns: JSON array of repo objects. Each includes: id, local_path, language, ta
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let language = args.get("language").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let tag = args.get("tag").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let status = args.get("status").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(50) as usize;
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
             let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
 
             let mut results = Vec::new();
@@ -1002,7 +1017,7 @@ Returns: JSON array of matching repos with metadata, same format as devkit_query
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let query = args
             .get("query")
@@ -1010,9 +1025,10 @@ Returns: JSON array of matching repos with metadata, same format as devkit_query
             .context("Missing required argument: query")?;
         let query = query.to_string();
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
             let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
             let filtered = nl_filter_repos(&query, &repos, &conn)?;
 
@@ -1279,7 +1295,7 @@ Returns: JSON array of symbols with file_path, name, symbol_type, line_start, li
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let name_filter = args.get("name_filter").and_then(|v| v.as_str()).unwrap_or("");
@@ -1292,9 +1308,10 @@ Returns: JSON array of symbols with file_path, name, symbol_type, line_start, li
         let symbol_type = symbol_type.to_string();
         let file_path = file_path.to_string();
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
             let mut sql = String::from(
                 "SELECT file_path, symbol_type, name, line_start, line_end, signature \
                  FROM code_symbols WHERE repo_id = ?1",
@@ -1392,7 +1409,7 @@ Returns: JSON array of dependency edges with target_repo_id, relation_type, and 
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let direction = args.get("direction").and_then(|v| v.as_str()).unwrap_or("outgoing");
@@ -1402,9 +1419,10 @@ Returns: JSON array of dependency edges with target_repo_id, relation_type, and 
         let direction = direction.to_string();
         let relation_type = relation_type.to_string();
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
 
             let mut results = Vec::new();
             if direction == "incoming" || direction == "reverse" {
@@ -1498,7 +1516,7 @@ Returns: JSON array of call edges with caller_file, caller_symbol, caller_line, 
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let callee_name = args.get("callee_name").and_then(|v| v.as_str()).unwrap_or("");
@@ -1515,9 +1533,10 @@ Returns: JSON array of call edges with caller_file, caller_symbol, caller_line, 
         let caller_name = caller_name.to_string();
         let file_path = file_path.to_string();
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
             let mut sql = String::from(
                 "SELECT caller_file, caller_symbol, caller_line, callee_name \
                  FROM code_call_graph WHERE repo_id = ?1",
@@ -1613,7 +1632,7 @@ Returns: JSON array of potentially dead functions with file_path, name, and line
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50).min(200) as usize;
@@ -1621,9 +1640,10 @@ Returns: JSON array of potentially dead functions with file_path, name, and line
 
         let repo_id = repo_id.to_string();
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
 
             // Find all functions in the repo that have NO incoming call edges
             let mut sql = String::from(
@@ -1735,7 +1755,7 @@ Returns: JSON array of matching symbols with file_path, name, line_start, and si
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let query_emb = parse_f32_array(&args, "query_embedding")?;
@@ -1743,9 +1763,10 @@ Returns: JSON array of matching symbols with file_path, name, line_start, and si
 
         let repo_id = repo_id.to_string();
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
             let results = crate::registry::WorkspaceRegistry::semantic_search_symbols(
                 &conn, &repo_id, &query_emb, limit,
             )?;
@@ -1816,7 +1837,7 @@ Returns: success flag and count of stored embeddings."#,
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let symbol_name = args
@@ -1828,9 +1849,10 @@ Returns: success flag and count of stored embeddings."#,
         let repo_id = repo_id.to_string();
         let symbol_name = symbol_name.to_string();
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let mut conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let mut conn = pool.get()?;
             let pairs = vec![(symbol_name.clone(), embedding)];
             let count =
                 crate::registry::WorkspaceRegistry::save_embeddings(&mut conn, &repo_id, &pairs)?;
@@ -1988,15 +2010,16 @@ Returns: JSON object with repo_count, total_symbols, total_embeddings, total_cal
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).map(String::from);
         let activity_limit =
             args.get("activity_limit").and_then(|v| v.as_u64()).unwrap_or(20).min(100) as usize;
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
             let report =
                 crate::oplog_analytics::generate_report(&conn, repo_id.as_deref(), activity_limit)?;
 
@@ -2060,7 +2083,7 @@ Returns: JSON array of symbols with file_path, name, line_start, and similarity_
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let query_text =
@@ -2073,9 +2096,10 @@ Returns: JSON array of symbols with file_path, name, line_start, and similarity_
         let repo_id = repo_id.to_string();
         let query_text = query_text.to_string();
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
             let results = crate::registry::WorkspaceRegistry::hybrid_search_symbols(
                 &conn,
                 &repo_id,
@@ -2147,7 +2171,7 @@ Returns: JSON array of related symbols with target_symbol, link_type, and streng
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let symbol_name = args
@@ -2159,9 +2183,10 @@ Returns: JSON array of related symbols with target_symbol, link_type, and streng
         let repo_id = repo_id.to_string();
         let symbol_name = symbol_name.to_string();
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
             let results = crate::registry::WorkspaceRegistry::find_related_symbols(
                 &conn,
                 &repo_id,
@@ -2246,7 +2271,7 @@ Returns: JSON array of symbols with repo_id, file_path, name, line_start, and si
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let tags = args
             .get("tags")
@@ -2264,9 +2289,10 @@ Returns: JSON array of symbols with repo_id, file_path, name, line_start, and si
 
         let query_text = query_text.to_string();
 
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+            let conn = pool.get()?;
             let results = crate::registry::WorkspaceRegistry::cross_repo_search_symbols(
                 &conn,
                 &tags,

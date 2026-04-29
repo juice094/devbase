@@ -8,13 +8,13 @@ use std::time::{Duration, Instant};
 /// Environment variables `DEVBASE_REGISTRY_PATH`, `DEVBASE_SKILL_ID`, and `DEVBASE_HOME`
 /// are injected automatically.
 pub fn run_skill(
+    conn: &rusqlite::Connection,
     skill: &SkillRow,
     args: &[String],
     timeout: Duration,
 ) -> anyhow::Result<ExecutionResult> {
     // L3 Hard Veto runtime awareness: check for unresolved hard vetoes before execution
-    let conn = crate::registry::WorkspaceRegistry::init_db().ok();
-    let veto_warning = conn.as_ref().and_then(|c| check_hard_vetoes_for_skill(skill, c));
+    let veto_warning = check_hard_vetoes_for_skill(skill, conn);
 
     let skill_dir = std::path::PathBuf::from(&skill.local_path);
     let skill_dir = std::env::current_dir()
@@ -357,7 +357,8 @@ sys.exit(0)
             dependencies: vec![],
         };
 
-        let result = run_skill(&skill, &[], std::time::Duration::from_secs(5)).unwrap();
+        let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
+        let result = run_skill(&conn, &skill, &[], std::time::Duration::from_secs(5)).unwrap();
         assert_eq!(result.status, ExecutionStatus::Success);
         assert_eq!(result.exit_code, Some(0));
         assert!(result.stdout.contains("hello"));
@@ -385,7 +386,8 @@ sys.exit(0)
             dependencies: vec![],
         };
 
-        let result = run_skill(&skill, &[], std::time::Duration::from_secs(5)).unwrap();
+        let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
+        let result = run_skill(&conn, &skill, &[], std::time::Duration::from_secs(5)).unwrap();
         assert_eq!(result.status, ExecutionStatus::Failed);
         assert_eq!(result.exit_code, Some(127));
     }

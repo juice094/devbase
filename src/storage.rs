@@ -1,3 +1,5 @@
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -73,38 +75,55 @@ impl StorageBackend for DefaultStorageBackend {
 pub struct AppContext {
     pub storage: Arc<dyn StorageBackend>,
     pub config: crate::config::Config,
-    conn: rusqlite::Connection,
+    pool: Pool<SqliteConnectionManager>,
 }
 
 impl AppContext {
     /// 使用默认存储后端和已加载配置创建上下文。
     pub fn with_defaults() -> anyhow::Result<Self> {
         let storage: Arc<dyn StorageBackend> = Arc::new(DefaultStorageBackend);
-        let conn = crate::registry::WorkspaceRegistry::init_db()?;
+        // 先执行 init_db() 确保数据库已初始化并迁移
+        let _ = crate::registry::WorkspaceRegistry::init_db()?;
+        let pool = Self::build_pool(&*storage)?;
         Ok(Self {
             storage,
             config: crate::config::Config::load()?,
-            conn,
+            pool,
         })
     }
 
     /// 使用自定义存储后端创建上下文（主要用于测试）。
     pub fn with_storage(storage: Arc<dyn StorageBackend>) -> anyhow::Result<Self> {
-        let conn = crate::registry::WorkspaceRegistry::init_db()?;
+        let _ = crate::registry::WorkspaceRegistry::init_db()?;
+        let pool = Self::build_pool(&*storage)?;
         Ok(Self {
             storage,
             config: crate::config::Config::load()?,
-            conn,
+            pool,
         })
     }
 
-    /// 获取数据库连接的不可变引用。
-    pub fn conn(&self) -> &rusqlite::Connection {
-        &self.conn
+    fn build_pool(storage: &dyn StorageBackend) -> anyhow::Result<Pool<SqliteConnectionManager>> {
+        let path = storage.db_path()?;
+        let manager = SqliteConnectionManager::file(&path).with_init(|c| {
+            c.execute("PRAGMA foreign_keys = ON", [])?;
+            Ok(())
+        });
+        Ok(Pool::builder().max_size(5).build(manager)?)
     }
 
-    /// 获取数据库连接的可变引用。
-    pub fn conn_mut(&mut self) -> &mut rusqlite::Connection {
-        &mut self.conn
+    /// 获取数据库连接。
+    pub fn conn(&self) -> anyhow::Result<r2d2::PooledConnection<SqliteConnectionManager>> {
+        Ok(self.pool.get()?)
+    }
+
+    /// 获取数据库连接（可变语义，与 conn() 等价）。
+    pub fn conn_mut(&mut self) -> anyhow::Result<r2d2::PooledConnection<SqliteConnectionManager>> {
+        Ok(self.pool.get()?)
+    }
+
+    /// 获取连接池的克隆，用于 spawn_blocking / thread::spawn 闭包。
+    pub fn pool(&self) -> Pool<SqliteConnectionManager> {
+        self.pool.clone()
     }
 }

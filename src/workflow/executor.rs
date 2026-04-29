@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 /// Execute a workflow, returning the final step results.
 pub fn execute_workflow(
     conn: &rusqlite::Connection,
+    pool: &r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>,
     wf: &WorkflowDefinition,
     inputs: HashMap<String, String>,
 ) -> anyhow::Result<HashMap<String, StepResult>> {
@@ -26,10 +27,10 @@ pub fn execute_workflow(
                 let step = step.clone();
                 let ctx_ref = std::sync::Arc::clone(&ctx_arc);
                 handles.push(s.spawn(move || {
-                    let conn = crate::registry::WorkspaceRegistry::init_db().map_err(|e| {
+                    let conn = pool.get().map_err(|e| {
                         anyhow::anyhow!("db open failed for step '{}': {}", step.id, e)
                     })?;
-                    let result = execute_step(&conn, &step, ctx_ref.as_ref())?;
+                    let result = execute_step(&conn, pool, &step, ctx_ref.as_ref())?;
                     Ok::<_, anyhow::Error>((step, result))
                 }));
             }
@@ -68,7 +69,7 @@ pub fn execute_workflow(
                         let mut retry_ok = false;
                         for i in 0..*count {
                             std::thread::sleep(Duration::from_millis(*backoff_ms));
-                            let retry_result = execute_step(conn, &step, &ctx)?;
+                            let retry_result = execute_step(conn, pool, &step, &ctx)?;
                             if retry_result.status != ExecutionStatus::Failed {
                                 ctx.add_step_output(&step_id, retry_result.outputs.clone());
                                 all_results.insert(step_id.clone(), retry_result);
@@ -87,7 +88,7 @@ pub fn execute_workflow(
                     }
                     ErrorPolicy::Fallback { step_id: fallback_id } => {
                         if let Some(fb_step) = wf.steps.iter().find(|s| s.id == *fallback_id) {
-                            let fb_result = execute_step(conn, fb_step, &ctx)?;
+                            let fb_result = execute_step(conn, pool, fb_step, &ctx)?;
                             ctx.add_step_output(&step_id, fb_result.outputs.clone());
                             all_results.insert(step_id.clone(), fb_result);
                         } else {
@@ -106,6 +107,7 @@ pub fn execute_workflow(
 
 fn execute_step(
     conn: &rusqlite::Connection,
+    pool: &r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>,
     step: &StepDefinition,
     ctx: &InterpolationContext,
 ) -> anyhow::Result<StepResult> {
@@ -114,10 +116,10 @@ fn execute_step(
 
     let result = match &step.step_type {
         StepType::Skill { skill } => execute_skill_step(conn, step, skill, ctx),
-        StepType::Subworkflow { workflow } => execute_subworkflow_step(conn, step, workflow, ctx),
-        StepType::Parallel { parallel } => execute_parallel_step(conn, step, parallel, ctx),
+        StepType::Subworkflow { workflow } => execute_subworkflow_step(conn, pool, step, workflow, ctx),
+        StepType::Parallel { parallel } => execute_parallel_step(conn, pool, step, parallel, ctx),
         StepType::Condition { r#if } => execute_condition_step(step, r#if, ctx),
-        StepType::Loop { for_each, body } => execute_loop_step(conn, step, for_each, body, ctx),
+        StepType::Loop { for_each, body } => execute_loop_step(conn, pool, step, for_each, body, ctx),
     };
 
     let _duration = start.elapsed();
@@ -167,7 +169,7 @@ fn execute_skill_step(
         .map(Duration::from_secs)
         .unwrap_or(Duration::from_secs(300));
 
-    let exec_result = crate::skill_runtime::executor::run_skill(&skill, &args, timeout)?;
+    let exec_result = crate::skill_runtime::executor::run_skill(conn, &skill, &args, timeout)?;
 
     // Parse stdout as JSON if possible to extract structured outputs
     let mut outputs: HashMap<String, serde_json::Value> = HashMap::new();
@@ -207,6 +209,7 @@ fn execute_skill_step(
 
 fn execute_subworkflow_step(
     conn: &rusqlite::Connection,
+    pool: &r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>,
     step: &StepDefinition,
     workflow_id: &str,
     ctx: &InterpolationContext,
@@ -225,7 +228,7 @@ fn execute_subworkflow_step(
         inputs.insert(key.clone(), val_str);
     }
 
-    let results = execute_workflow(conn, &wf, inputs)?;
+    let results = execute_workflow(conn, pool, &wf, inputs)?;
 
     let mut outputs = std::collections::HashMap::new();
     let mut stdout_lines = Vec::new();
@@ -257,13 +260,14 @@ fn execute_subworkflow_step(
 
 fn execute_parallel_step(
     conn: &rusqlite::Connection,
+    pool: &r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>,
     step: &StepDefinition,
     sub_steps: &[super::model::StepDefinition],
     ctx: &InterpolationContext,
 ) -> anyhow::Result<StepResult> {
     let mut sub_results = Vec::new();
     for sub_step in sub_steps {
-        let result = execute_step(conn, sub_step, ctx)?;
+        let result = execute_step(conn, pool, sub_step, ctx)?;
         sub_results.push((sub_step.id.clone(), result));
     }
 
@@ -323,6 +327,7 @@ fn execute_condition_step(
 
 fn execute_loop_step(
     conn: &rusqlite::Connection,
+    pool: &r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>,
     step: &StepDefinition,
     for_each: &str,
     body: &[StepDefinition],
@@ -340,7 +345,7 @@ fn execute_loop_step(
         iter_ctx.set_loop_var("index", index.to_string());
 
         for body_step in body {
-            let mut body_result = execute_step(conn, body_step, &iter_ctx)?;
+            let mut body_result = execute_step(conn, pool, body_step, &iter_ctx)?;
 
             if body_result.status == ExecutionStatus::Failed {
                 match &body_step.on_error {
@@ -351,7 +356,7 @@ fn execute_loop_step(
                         let mut retry_ok = false;
                         for i in 0..*count {
                             std::thread::sleep(Duration::from_millis(*backoff_ms));
-                            body_result = execute_step(conn, body_step, &iter_ctx)?;
+                            body_result = execute_step(conn, pool, body_step, &iter_ctx)?;
                             if body_result.status != ExecutionStatus::Failed {
                                 retry_ok = true;
                                 break;
@@ -374,7 +379,7 @@ fn execute_loop_step(
                     }
                     ErrorPolicy::Fallback { step_id: fallback_id } => {
                         if let Some(fb_step) = body.iter().find(|s| s.id == *fallback_id) {
-                            body_result = execute_step(conn, fb_step, &iter_ctx)?;
+                            body_result = execute_step(conn, pool, fb_step, &iter_ctx)?;
                             if body_result.status == ExecutionStatus::Failed {
                                 return Ok(loop_failure_result(
                                     step,
@@ -479,11 +484,23 @@ fn parse_collection(s: &str) -> anyhow::Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::registry::WorkspaceRegistry;
     use crate::skill_runtime::registry::install_skill;
     use crate::skill_runtime::{SkillMeta, SkillType};
     use crate::workflow::model::{ErrorPolicy, StepDefinition, StepType, WorkflowDefinition};
     use std::collections::HashMap;
+
+    fn test_pool() -> (tempfile::TempDir, r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>, rusqlite::Connection) {
+        let tmp = tempfile::tempdir().unwrap();
+        unsafe { std::env::set_var("DEVBASE_DATA_DIR", tmp.path()); }
+        let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
+        let path = crate::registry::WorkspaceRegistry::db_path().unwrap();
+        let manager = r2d2_sqlite::SqliteConnectionManager::file(&path).with_init(|c| {
+            c.execute("PRAGMA foreign_keys = ON", [])?;
+            Ok(())
+        });
+        let pool = r2d2::Pool::builder().max_size(5).build(manager).unwrap();
+        (tmp, pool, conn)
+    }
 
     fn dummy_skill_meta(id: &str) -> SkillMeta {
         SkillMeta {
@@ -523,7 +540,7 @@ mod tests {
 
     #[test]
     fn test_condition_step_true() {
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let (_tmp, pool, conn) = test_pool();
         let wf = dummy_wf(
             "cond-test",
             vec![StepDefinition {
@@ -535,14 +552,14 @@ mod tests {
                 timeout_seconds: None,
             }],
         );
-        let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
+        let results = execute_workflow(&conn, &pool, &wf, HashMap::new()).unwrap();
         assert_eq!(results["check"].status, ExecutionStatus::Completed);
         assert_eq!(results["check"].outputs.get("condition"), Some(&serde_json::Value::Bool(true)));
     }
 
     #[test]
     fn test_condition_step_false() {
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let (_tmp, pool, conn) = test_pool();
         let wf = dummy_wf(
             "cond-test",
             vec![StepDefinition {
@@ -554,7 +571,7 @@ mod tests {
                 timeout_seconds: None,
             }],
         );
-        let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
+        let results = execute_workflow(&conn, &pool, &wf, HashMap::new()).unwrap();
         assert_eq!(results["check"].status, ExecutionStatus::Completed);
         assert_eq!(
             results["check"].outputs.get("condition"),
@@ -564,7 +581,7 @@ mod tests {
 
     #[test]
     fn test_parallel_step() {
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let (_tmp, pool, conn) = test_pool();
         install_skill(&conn, &dummy_skill_meta("echo-a")).unwrap();
         install_skill(&conn, &dummy_skill_meta("echo-b")).unwrap();
         let wf = dummy_wf(
@@ -597,14 +614,14 @@ mod tests {
                 timeout_seconds: None,
             }],
         );
-        let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
+        let results = execute_workflow(&conn, &pool, &wf, HashMap::new()).unwrap();
         // Skill fails because entry script does not exist, but parallel step itself is valid
         assert!(results.contains_key("parallel"));
     }
 
     #[test]
     fn test_subworkflow_step() {
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let (_tmp, pool, conn) = test_pool();
         install_skill(&conn, &dummy_skill_meta("echo-sub")).unwrap();
 
         // Register child workflow
@@ -633,14 +650,14 @@ mod tests {
                 timeout_seconds: None,
             }],
         );
-        let results = execute_workflow(&conn, &parent, HashMap::new()).unwrap();
+        let results = execute_workflow(&conn, &pool, &parent, HashMap::new()).unwrap();
         // Child skill fails (no entry script), but subworkflow step is valid
         assert!(results.contains_key("run_child"));
     }
 
     #[test]
     fn test_loop_empty_collection() {
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let (_tmp, pool, conn) = test_pool();
         let wf = dummy_wf(
             "loop-empty",
             vec![StepDefinition {
@@ -655,14 +672,14 @@ mod tests {
                 timeout_seconds: None,
             }],
         );
-        let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
+        let results = execute_workflow(&conn, &pool, &wf, HashMap::new()).unwrap();
         assert_eq!(results["loop1"].status, ExecutionStatus::Completed);
         assert!(results["loop1"].stdout.as_ref().unwrap().is_empty());
     }
 
     #[test]
     fn test_loop_single_iteration() {
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let (_tmp, pool, conn) = test_pool();
         let wf = dummy_wf(
             "loop-single",
             vec![StepDefinition {
@@ -684,7 +701,7 @@ mod tests {
                 timeout_seconds: None,
             }],
         );
-        let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
+        let results = execute_workflow(&conn, &pool, &wf, HashMap::new()).unwrap();
         assert_eq!(results["loop1"].status, ExecutionStatus::Completed);
         let stdout = results["loop1"].stdout.as_ref().unwrap();
         assert!(stdout.contains("[0] condition evaluated to: true"));
@@ -692,7 +709,7 @@ mod tests {
 
     #[test]
     fn test_loop_multi_iteration() {
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let (_tmp, pool, conn) = test_pool();
         let wf = dummy_wf(
             "loop-multi",
             vec![StepDefinition {
@@ -714,7 +731,7 @@ mod tests {
                 timeout_seconds: None,
             }],
         );
-        let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
+        let results = execute_workflow(&conn, &pool, &wf, HashMap::new()).unwrap();
         assert_eq!(results["loop1"].status, ExecutionStatus::Completed);
         let stdout = results["loop1"].stdout.as_ref().unwrap();
         assert!(stdout.contains("[0] condition evaluated to: true"));
@@ -724,7 +741,7 @@ mod tests {
 
     #[test]
     fn test_loop_failure() {
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let (_tmp, pool, conn) = test_pool();
         let wf = dummy_wf(
             "loop-fail",
             vec![StepDefinition {
@@ -750,14 +767,14 @@ mod tests {
         );
         // When a loop body step fails and the loop step's on_error is Fail,
         // execute_workflow returns an Err (consistent with all other step types).
-        let err = execute_workflow(&conn, &wf, HashMap::new()).unwrap_err();
+        let err = execute_workflow(&conn, &pool, &wf, HashMap::new()).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("workflow failed at step 'loop1'"), "unexpected error: {msg}");
     }
 
     #[test]
     fn test_loop_body_continue() {
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let (_tmp, pool, conn) = test_pool();
         let wf = dummy_wf(
             "loop-continue",
             vec![StepDefinition {
@@ -791,13 +808,13 @@ mod tests {
                 timeout_seconds: None,
             }],
         );
-        let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
+        let results = execute_workflow(&conn, &pool, &wf, HashMap::new()).unwrap();
         assert_eq!(results["loop1"].status, ExecutionStatus::Completed);
     }
 
     #[test]
     fn test_loop_body_fallback() {
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let (_tmp, pool, conn) = test_pool();
         let wf = dummy_wf(
             "loop-fallback",
             vec![StepDefinition {
@@ -833,7 +850,7 @@ mod tests {
                 timeout_seconds: None,
             }],
         );
-        let results = execute_workflow(&conn, &wf, HashMap::new()).unwrap();
+        let results = execute_workflow(&conn, &pool, &wf, HashMap::new()).unwrap();
         assert_eq!(results["loop1"].status, ExecutionStatus::Completed);
     }
 }

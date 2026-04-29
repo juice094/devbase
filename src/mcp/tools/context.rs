@@ -50,18 +50,19 @@ Returns: JSON object with:
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let project = args
             .get("project")
             .and_then(|v| v.as_str())
             .context("Missing required argument: project")?;
 
+        let pool = ctx.pool();
         let result = tokio::task::spawn_blocking({
             let project = project.to_string();
             move || {
-                // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-                let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+                let conn = pool.get()?;
 
                 // 1. Find repo by exact id or path substring
                 let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;

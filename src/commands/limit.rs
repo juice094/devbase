@@ -2,7 +2,7 @@ pub fn run_limit(
     ctx: &mut crate::storage::AppContext,
     cmd: crate::LimitCommands,
 ) -> anyhow::Result<()> {
-    let conn = ctx.conn_mut();
+    let conn = ctx.conn_mut()?;
     match cmd {
         crate::LimitCommands::Add {
             id,

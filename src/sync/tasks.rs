@@ -183,11 +183,11 @@ pub(super) async fn execute_task(task: &RepoSyncTask, dry_run: bool) -> SyncSumm
 }
 
 pub(super) async fn collect_tasks(
+    conn: &rusqlite::Connection,
     filter_tags: Option<&str>,
     exclude: Option<&str>,
 ) -> anyhow::Result<Vec<RepoSyncTask>> {
-    let conn = WorkspaceRegistry::init_db()?;
-    let repos = WorkspaceRegistry::list_repos(&conn)?;
+    let repos = WorkspaceRegistry::list_repos(conn)?;
 
     let filter_list: Vec<&str> = filter_tags
         .map(|f| f.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect())

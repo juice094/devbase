@@ -5,7 +5,7 @@ pub fn run_skill(
     ctx: &mut crate::storage::AppContext,
     cmd: crate::SkillCommands,
 ) -> anyhow::Result<()> {
-    let conn = ctx.conn_mut();
+    let conn = ctx.conn_mut()?;
     match cmd {
         crate::SkillCommands::List { skill_type, category, json } => {
             let st = skill_type.as_deref().and_then(|s| s.parse().ok());
@@ -164,6 +164,7 @@ pub fn run_skill(
                         &serde_json::to_string(&args).unwrap_or_default(),
                     )?;
                     let result = skill_runtime::executor::run_skill(
+                        &conn,
                         &skill,
                         &args,
                         std::time::Duration::from_secs(timeout),

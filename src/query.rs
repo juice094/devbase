@@ -199,12 +199,12 @@ pub(crate) fn eval_condition(
 }
 
 pub async fn run_json(
+    conn: &rusqlite::Connection,
     query_str: &str,
     limit: usize,
     page: usize,
     config: &crate::config::Config,
 ) -> anyhow::Result<serde_json::Value> {
-    let conn = WorkspaceRegistry::init_db()?;
 
     // Handle semantic: prefix queries directly against repo_summaries
     if let Some(rest) = query_str.strip_prefix("semantic:") {
@@ -541,12 +541,13 @@ pub async fn run_json(
 }
 
 pub async fn run(
+    conn: &rusqlite::Connection,
     query_str: &str,
     limit: usize,
     page: usize,
     config: &crate::config::Config,
 ) -> anyhow::Result<()> {
-    let result = run_json(query_str, limit, page, config).await?;
+    let result = run_json(conn, query_str, limit, page, config).await?;
     let count = result["count"].as_u64().unwrap_or(0) as usize;
 
     if count == 0 {

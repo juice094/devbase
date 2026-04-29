@@ -42,18 +42,19 @@ Returns: JSON array of matching notes. Each includes: id, title, path, and tags.
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let query = args
             .get("query")
             .and_then(|v| v.as_str())
             .context("Missing required argument: query")?;
 
+        let pool = ctx.pool();
         let results = tokio::task::spawn_blocking({
             let query = query.to_string();
             move || {
-                // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
-                let conn = crate::registry::WorkspaceRegistry::init_db()?;
+
+                let conn = pool.get()?;
                 let notes = crate::registry::WorkspaceRegistry::list_vault_notes(&conn)?;
                 let keywords: Vec<&str> = query.split_whitespace().collect();
 

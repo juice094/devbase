@@ -171,8 +171,7 @@ pub(crate) fn read_syncdone_info(path: &str) -> (String, String, String) {
     (human, action, commit_short)
 }
 
-pub(crate) fn read_repo_summary(repo_id: &str) -> Option<String> {
-    let conn = crate::registry::WorkspaceRegistry::init_db().ok()?;
+pub(crate) fn read_repo_summary(conn: &rusqlite::Connection, repo_id: &str) -> Option<String> {
     conn.query_row("SELECT summary FROM repo_summaries WHERE repo_id = ?1", [repo_id], |row| {
         row.get::<_, String>(0)
     })

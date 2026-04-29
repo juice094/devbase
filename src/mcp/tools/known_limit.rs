@@ -70,7 +70,7 @@ Returns: success boolean and stored limit id."#,
             mitigated: false,
         };
 
-        let conn = ctx.conn();
+        let conn = ctx.conn()?;
         crate::registry::WorkspaceRegistry::save_known_limit(&conn, &limit)?;
 
         Ok(serde_json::json!({ "success": true, "id": id }))
@@ -117,7 +117,7 @@ Returns: JSON array of known limits."#,
         let category = args.get("category").and_then(|v| v.as_str());
         let mitigated = args.get("mitigated").and_then(|v| v.as_bool());
 
-        let conn = ctx.conn();
+        let conn = ctx.conn()?;
         let limits =
             crate::registry::WorkspaceRegistry::list_known_limits(&conn, category, mitigated)?;
 

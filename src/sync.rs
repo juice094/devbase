@@ -25,13 +25,14 @@ pub struct SyncSummary {
 }
 
 pub async fn run_json(
+    conn: &rusqlite::Connection,
     dry_run: bool,
     filter_tags: Option<&str>,
     exclude: Option<&str>,
 ) -> anyhow::Result<serde_json::Value> {
     let start = std::time::Instant::now();
     let config = crate::config::Config::load().unwrap_or_default();
-    let tasks = collect_tasks(filter_tags, exclude).await?;
+    let tasks = collect_tasks(conn, filter_tags, exclude).await?;
     let mut path_map = HashMap::new();
     for task in &tasks {
         path_map.insert(task.id.clone(), task.path.clone());
@@ -63,26 +64,24 @@ pub async fn run_json(
 
     // Log to oplog
     let duration_ms = start.elapsed().as_millis() as i64;
-    if let Ok(conn) = WorkspaceRegistry::init_db() {
-        let repo_count = results_json.len();
-        let details = serde_json::json!({
-            "dry_run": dry_run,
-            "repo_count": repo_count
-        });
-        let _ = WorkspaceRegistry::save_oplog(
-            &conn,
-            &OplogEntry {
-                id: None,
-                event_type: crate::registry::OplogEventType::Sync,
-                repo_id: None,
-                details: Some(details.to_string()),
-                status: "success".to_string(),
-                timestamp: Utc::now(),
-                duration_ms: Some(duration_ms),
-                event_version: 1,
-            },
-        );
-    }
+    let repo_count = results_json.len();
+    let details = serde_json::json!({
+        "dry_run": dry_run,
+        "repo_count": repo_count
+    });
+    let _ = WorkspaceRegistry::save_oplog(
+        conn,
+        &OplogEntry {
+            id: None,
+            event_type: crate::registry::OplogEventType::Sync,
+            repo_id: None,
+            details: Some(details.to_string()),
+            status: "success".to_string(),
+            timestamp: Utc::now(),
+            duration_ms: Some(duration_ms),
+            event_version: 1,
+        },
+    );
 
     Ok(serde_json::json!({
         "success": true,
@@ -92,13 +91,14 @@ pub async fn run_json(
 }
 
 pub async fn run(
+    conn: &rusqlite::Connection,
     dry_run: bool,
     filter_tags: Option<&str>,
     exclude: Option<&str>,
 ) -> anyhow::Result<()> {
     let start = std::time::Instant::now();
     let config = crate::config::Config::load().unwrap_or_default();
-    let tasks = collect_tasks(filter_tags, exclude).await?;
+    let tasks = collect_tasks(conn, filter_tags, exclude).await?;
     let mut path_map = HashMap::new();
     for task in &tasks {
         path_map.insert(task.id.clone(), task.path.clone());
@@ -174,26 +174,24 @@ pub async fn run(
 
     // Log to oplog
     let duration_ms = start.elapsed().as_millis() as i64;
-    if let Ok(conn) = WorkspaceRegistry::init_db() {
-        let repo_count = results_json.len();
-        let details = serde_json::json!({
-            "dry_run": dry_run,
-            "repo_count": repo_count
-        });
-        let _ = WorkspaceRegistry::save_oplog(
-            &conn,
-            &OplogEntry {
-                id: None,
-                event_type: crate::registry::OplogEventType::Sync,
-                repo_id: None,
-                details: Some(details.to_string()),
-                status: "success".to_string(),
-                timestamp: Utc::now(),
-                duration_ms: Some(duration_ms),
-                event_version: 1,
-            },
-        );
-    }
+    let repo_count = results_json.len();
+    let details = serde_json::json!({
+        "dry_run": dry_run,
+        "repo_count": repo_count
+    });
+    let _ = WorkspaceRegistry::save_oplog(
+        conn,
+        &OplogEntry {
+            id: None,
+            event_type: crate::registry::OplogEventType::Sync,
+            repo_id: None,
+            details: Some(details.to_string()),
+            status: "success".to_string(),
+            timestamp: Utc::now(),
+            duration_ms: Some(duration_ms),
+            event_version: 1,
+        },
+    );
 
     Ok(())
 }

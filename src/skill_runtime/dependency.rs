@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn test_resolve_topological_order() {
-        let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
+        let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
         let skills = vec![
             test_skill("a", vec!["b", "c"]),
             test_skill("b", vec!["c"]),
@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     fn test_resolve_cycle_fails() {
-        let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
+        let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
         let skills = vec![test_skill("x", vec!["y"]), test_skill("y", vec!["x"])];
         for s in &skills {
             crate::skill_runtime::registry::install_skill(&conn, s).unwrap();
@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn test_validate_dependencies_missing() {
-        let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
+        let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
         let skill = test_skill("a", vec!["missing-dep"]);
         let missing = validate_dependencies(&conn, &skill).unwrap();
         assert_eq!(missing, vec!["missing-dep"]);
@@ -288,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_validate_dependencies_all_satisfied() {
-        let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
+        let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
         let dep = test_skill("dep1", vec![]);
         crate::skill_runtime::registry::install_skill(&conn, &dep).unwrap();
         let skill = test_skill("a", vec!["dep1"]);

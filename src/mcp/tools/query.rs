@@ -49,17 +49,19 @@ Returns: JSON array of matching items, each with type (repo or note), id, title,
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let expression = args
             .get("expression")
             .and_then(|v| v.as_str())
             .context("Missing required argument: expression")?;
         let expression = expression.to_string();
+        let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
             let rt = tokio::runtime::Handle::current();
             let config = crate::config::Config::load()?;
-            rt.block_on(crate::query::run_json(&expression, 0, 1, &config))
+            let conn = pool.get()?;
+            rt.block_on(crate::query::run_json(&conn, &expression, 0, 1, &config))
         })
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?

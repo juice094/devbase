@@ -5,13 +5,19 @@ use tracing::{info, warn};
 pub struct Daemon {
     pub interval: Duration,
     pub config: crate::config::Config,
+    pub pool: r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>,
 }
 
 impl Daemon {
-    pub fn new(interval_seconds: u64, config: crate::config::Config) -> Self {
+    pub fn new(
+        interval_seconds: u64,
+        config: crate::config::Config,
+        pool: r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>,
+    ) -> Self {
         Self {
             interval: Duration::from_secs(interval_seconds),
             config,
+            pool,
         }
     }
 
@@ -43,8 +49,9 @@ impl Daemon {
         } else {
             None
         };
+        let pool = self.pool.clone();
         match tokio::task::spawn_blocking(move || {
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let conn = pool.get()?;
             let repos = if let Some(threshold) = stale_threshold {
                 crate::registry::WorkspaceRegistry::list_repos_stale_health(&conn, &threshold)?
             } else {
@@ -86,8 +93,9 @@ impl Daemon {
         } else {
             None
         };
+        let pool = self.pool.clone();
         match tokio::task::spawn_blocking(move || {
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let mut conn = pool.get()?;
             let repos = if let Some(threshold) = index_threshold {
                 crate::registry::WorkspaceRegistry::list_repos_need_index(&conn, &threshold)?
             } else {
@@ -95,7 +103,7 @@ impl Daemon {
             };
             let mut count = 0;
             for repo in repos {
-                if let Err(e) = crate::knowledge_engine::index_repo(&repo) {
+                if let Err(e) = crate::knowledge_engine::index_repo(&mut conn, &repo) {
                     tracing::warn!("Failed to index {}: {}", repo.id, e);
                 } else {
                     count += 1;
@@ -111,8 +119,9 @@ impl Daemon {
         }
 
         // 3. run discovery engine
-        match tokio::task::spawn_blocking(|| {
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+        let pool = self.pool.clone();
+        match tokio::task::spawn_blocking(move || {
+            let conn = pool.get()?;
             let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
             let deps = crate::discovery_engine::discover_dependencies(&repos);
             let sims = crate::discovery_engine::discover_similar_projects(&conn)?;
@@ -148,8 +157,9 @@ impl Daemon {
 
         // 4. generate digest if it's morning (or every N ticks)
         let digest_config = self.config.digest.clone();
+        let pool = self.pool.clone();
         match tokio::task::spawn_blocking(move || {
-            let conn = crate::registry::WorkspaceRegistry::init_db()?;
+            let conn = pool.get()?;
             let cfg = crate::config::Config {
                 digest: digest_config,
                 ..Default::default()

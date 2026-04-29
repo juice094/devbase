@@ -1,11 +1,17 @@
 use crate::registry::{CodeMetrics, OplogEntry, RemoteEntry, RepoEntry, WorkspaceRegistry};
 use chrono::Utc;
 use git2::Repository;
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 use walkdir::WalkDir;
 
-pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::Value> {
+pub async fn run_json(
+    path: &str,
+    register: bool,
+    pool: &Pool<SqliteConnectionManager>,
+) -> anyhow::Result<serde_json::Value> {
     let start = std::time::Instant::now();
     let root = PathBuf::from(path);
     if !root.exists() {
@@ -25,7 +31,7 @@ pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::
     let mut registered = 0usize;
     if register {
         info!("Registering {} repositories into local database", repos.len());
-        let mut conn = WorkspaceRegistry::init_db()?;
+        let mut conn = pool.get()?;
         for repo in &repos {
             WorkspaceRegistry::save_repo(&mut conn, repo)?;
             if let Some(stars) = repo.stars {
@@ -34,15 +40,16 @@ pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::
             let repo_id = repo.id.clone();
             let path_str = repo.local_path.to_string_lossy().to_string();
             let is_rust = repo.language.as_deref() == Some("Rust");
+            let pool = pool.clone();
             let _ = tokio::task::spawn_blocking(move || {
                 if let Some(metrics) = compute_code_metrics(&path_str) {
-                    let conn = crate::registry::WorkspaceRegistry::init_db()?;
+                    let conn = pool.get()?;
                     crate::registry::WorkspaceRegistry::save_code_metrics(
                         &conn, &repo_id, &metrics,
                     )?;
                 }
                 if is_rust && let Ok(modules) = extract_rust_modules(&path_str) {
-                    let conn = crate::registry::WorkspaceRegistry::init_db()?;
+                    let conn = pool.get()?;
                     let _ = crate::registry::WorkspaceRegistry::clear_modules(&conn, &repo_id);
                     for (name, kind, src_path) in modules {
                         let _ = crate::registry::WorkspaceRegistry::save_module(
@@ -74,7 +81,7 @@ pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::
 
     // Log to oplog
     let duration_ms = start.elapsed().as_millis() as i64;
-    if let Ok(conn) = WorkspaceRegistry::init_db() {
+    if let Ok(conn) = pool.get() {
         let details = serde_json::json!({
             "path": path,
             "discovered": count,
@@ -103,8 +110,12 @@ pub async fn run_json(path: &str, register: bool) -> anyhow::Result<serde_json::
     }))
 }
 
-pub async fn run(path: &str, register: bool) -> anyhow::Result<()> {
-    let result = run_json(path, register).await?;
+pub async fn run(
+    path: &str,
+    register: bool,
+    pool: &Pool<SqliteConnectionManager>,
+) -> anyhow::Result<()> {
+    let result = run_json(path, register, pool).await?;
 
     if !result["success"].as_bool().unwrap_or(false) {
         println!("{}", result["error"].as_str().unwrap_or("Unknown error"));

@@ -339,7 +339,7 @@ fn mock_repo(
 #[test]
 fn test_nl_filter_repos_empty_query_returns_empty() {
     let _guard = NL_FILTER_TEST_LOCK.lock().unwrap();
-    let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
+    let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
     let repos: Vec<crate::registry::RepoEntry> = vec![];
     let results = crate::mcp::tools::repo::nl_filter_repos("", &repos, &conn).unwrap();
     assert!(results.is_empty());
@@ -348,7 +348,7 @@ fn test_nl_filter_repos_empty_query_returns_empty() {
 #[test]
 fn test_nl_filter_repos_fallback_finds_by_language() {
     let _guard = NL_FILTER_TEST_LOCK.lock().unwrap();
-    let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
+    let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
     let repos = vec![
         mock_repo("repo1", Some("rust"), vec!["cli"], Some(10)),
         mock_repo("repo2", Some("python"), vec!["web"], Some(5)),
@@ -370,7 +370,7 @@ fn test_nl_filter_repos_tantivy_finds_devbase() {
     }
 
     // Ensure DB schema exists in temp dir
-    let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
+    let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
 
     // Populate Tantivy index with devbase doc
     let (index, _reader) = crate::search::init_index().unwrap();

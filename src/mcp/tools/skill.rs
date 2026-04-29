@@ -43,7 +43,7 @@ Returns: JSON array of skills with id, name, version, type, description, tags, a
     ) -> anyhow::Result<serde_json::Value> {
         let skill_type =
             args.get("skill_type").and_then(|v| v.as_str()).and_then(|s| s.parse().ok());
-        let conn = ctx.conn();
+        let conn = ctx.conn()?;
         let skills = registry::list_skills(&conn, skill_type, None)?;
         let results: Vec<serde_json::Value> = skills
             .into_iter()
@@ -112,7 +112,7 @@ Returns: JSON array of matching skills."#,
             .and_then(|v| v.as_str())
             .context("Missing required argument: query")?;
         let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(10) as usize;
-        let conn = ctx.conn();
+        let conn = ctx.conn()?;
         let skills = registry::search_skills_text(&conn, query, limit, None)?;
         let results: Vec<serde_json::Value> = skills
             .into_iter()
@@ -188,7 +188,7 @@ Returns: JSON with discovered skill id, name, version, description, category, an
         let skill_id = args.get("skill_id").and_then(|v| v.as_str()).map(|s| s.to_string());
         let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
 
-        let conn = ctx.conn();
+        let conn = ctx.conn()?;
         let project_path = std::path::PathBuf::from(path);
         let skill = crate::skill_runtime::discover::discover_and_install(
             &conn,
@@ -278,7 +278,7 @@ Returns: JSON with status, stdout, stderr, exit_code, and duration_ms."#,
             })
             .unwrap_or_default();
 
-        let conn = ctx.conn();
+        let conn = ctx.conn()?;
         let skill = registry::get_skill(&conn, skill_id)?
             .context(format!("Skill '{}' not found", skill_id))?;
 
@@ -288,8 +288,11 @@ Returns: JSON with status, stdout, stderr, exit_code, and duration_ms."#,
             &serde_json::to_string(&skill_args).unwrap_or_default(),
         )?;
 
+        let pool = ctx.pool();
         let result = tokio::task::spawn_blocking(move || {
+            let conn = pool.get()?;
             crate::skill_runtime::executor::run_skill(
+                &conn,
                 &skill,
                 &skill_args,
                 Duration::from_secs(timeout),
