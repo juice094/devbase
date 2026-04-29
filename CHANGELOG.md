@@ -32,6 +32,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-04-26
+
+### Changed
+
+- **Phase 1 主从表切换 — Stage 0 完成**（entities 第一公民前置）
+  - Schema v20: Flat ID 命名空间迁移（`repo:devbase` → `devbase`，`skill:xxx` → `xxx`）
+  - `sync_repo_to_entities_by_id` 重构为 `upsert_entity_for_repo`：直接由 `RepoEntry` 写入 entities，不再读取 repos
+  - `update_repo_*` 改为先写 entities metadata（`json_set`），再写 repos
+  - `save_repo` 写入顺序反转：entities → repos → repo_tags → repo_remotes
+  - `run_tag` 补全 entities 双写：`sync_repo_tags_to_entity`
+  - `run_clean` 改为先删 entities，再删 repos（保留 CASCADE 行为）
+  - Skill entities 同步同理去除 `skill:` 前缀
+
 ## [0.11.0] - 2026-04-26
 
 ### Added

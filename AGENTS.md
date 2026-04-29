@@ -2,8 +2,8 @@
 
 `devbase` 是本地优先的 AI Skill 编排基础设施。
 
-- **当前阶段**：阶段三 — v0.11.0 已交付 / Phase 1 主从表切换待启动
-- **当前版本**：v0.11.0（tagged）
+- **当前阶段**：阶段三 — v0.11.1 已交付 / Phase 1 Stage 0 完成，Stage 1 写入反转已完成
+- **当前版本**：v0.11.1（tagged）
 - **下一里程碑**：Phase 1 主从表切换（`repos` 降级为 `entities` 物化视图）
 - **核心方向**：将 GitHub 项目转换为标准化、可发现、可组合的 Skill，供弱 AI 子代理执行
 - **设计文档**：
@@ -178,7 +178,7 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 | `main.rs` 上帝文件 | 🟢 | 515 行 | ≤1000 行 | 拆分为 `commands/simple.rs` + `commands/skill.rs` + `commands/workflow.rs` + `commands/limit.rs`；全部 22 个命令/子命令树已迁移 | ≤15 |
 | `init_db()` 全局路径 | 🟡 | `AppContext` 已集成到全部 commands/ 模块（22 个函数）；`main()` 通过 `AppContext` 分发配置 | 0 新增 | `StorageBackend` trait + `AppContext` 已奠基；`db_path`/`workspace_dir`/`index_path`/`backup_dir` 已统一；`init_db()` 调用点 grandfathered 待迁移 | ≤15 |
 | Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调 | 补偿机制 | 设计 `sync_index_to_db()` 回滚或两阶段提交；或改为 SQLite FTS5 替代 Tantivy | 7 |
-| 主从表切换 | 🔴 | `repos` 仍为第一公民 | `entities` 为第一公民 | `repos` 降级为 `entities` 物化视图；93 处引用迁移 | v0.12.0 |
+| 主从表切换 | 🟡 | Stage 0 ID 统一 + Stage 1 写入反转完成 | `entities` 为第一公民 | Stage 2 读路径迁移（list_repos 等）→ Stage 3 最终删除 repos 表 | v0.12.0 |
 | tree-sitter 编译成本 | 🟡 | ~15-20s | 可控 | 评估 `ccache` 或 grammar 预编译；或按需 feature-gate | 8 |
 | Feature flags 缺失 | 🟡 | 2 个可选 feature (tui, watch) | ≥3 (tui, watch, mcp) | `Cargo.toml` 已添加 `tui` + `watch` feature；ratatui/crossterm/notify 均为 optional；`--no-default-features` 编译通过 | ≤15 |
 | `LOCALAPPDATA` 测试模式残留 | 🟢 | 0 处 | 0 | 全面废弃 `LOCALAPPDATA` 环境变量覆盖，统一为 `DEVBASE_DATA_DIR`；mcp/tests.rs 修复 cleanup 逻辑（remove_var 目标从 LOCALAPPDATA 修正为 DEVBASE_DATA_DIR） | 47 |

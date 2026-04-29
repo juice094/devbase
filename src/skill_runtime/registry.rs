@@ -164,7 +164,7 @@ fn sync_skill_to_entities(conn: &Connection, skill: &SkillMeta) -> anyhow::Resul
 pub fn uninstall_skill(conn: &Connection, skill_id: &str) -> anyhow::Result<bool> {
     let rows = conn.execute("DELETE FROM skills WHERE id = ?1", [skill_id])?;
     // Dual-write: also remove from entities table
-    let _ = conn.execute("DELETE FROM entities WHERE id = ?1", [format!("skill:{}", skill_id)]);
+    let _ = conn.execute("DELETE FROM entities WHERE id = ?1", [skill_id]);
     Ok(rows > 0)
 }
 

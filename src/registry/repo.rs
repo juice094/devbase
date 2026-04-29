@@ -145,6 +145,8 @@ impl WorkspaceRegistry {
 
     pub fn save_repo(conn: &mut rusqlite::Connection, repo: &RepoEntry) -> anyhow::Result<()> {
         let tx = conn.transaction()?;
+        // Dual-write: entities is first-class; write it first, then repos
+        upsert_entity_for_repo(&tx, repo)?;
         tx.execute(
             "INSERT OR REPLACE INTO repos (id, local_path, language, discovered_at, workspace_type, data_tier, last_synced_at, stars) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
@@ -178,8 +180,6 @@ impl WorkspaceRegistry {
                 ],
             )?;
         }
-        // Dual-write: sync to unified entities table
-        sync_repo_to_entities_by_id(&tx, &repo.id)?;
         tx.commit()?;
         Ok(())
     }
@@ -190,11 +190,16 @@ impl WorkspaceRegistry {
         language: Option<&str>,
     ) -> anyhow::Result<()> {
         let tx = conn.unchecked_transaction()?;
+        update_entity_metadata_field(
+            &tx,
+            repo_id,
+            "language",
+            &serde_json::to_string(&language).unwrap_or_else(|_| "null".to_string()),
+        )?;
         tx.execute(
             "UPDATE repos SET language = ?1 WHERE id = ?2",
             rusqlite::params![language, repo_id],
         )?;
-        sync_repo_to_entities_by_id(&tx, repo_id)?;
         tx.commit()?;
         Ok(())
     }
@@ -205,11 +210,11 @@ impl WorkspaceRegistry {
         tier: &str,
     ) -> anyhow::Result<()> {
         let tx = conn.unchecked_transaction()?;
+        update_entity_metadata_field(&tx, repo_id, "data_tier", &serde_json::to_string(tier)?)?;
         tx.execute(
             "UPDATE repos SET data_tier = ?1 WHERE id = ?2",
             rusqlite::params![tier, repo_id],
         )?;
-        sync_repo_to_entities_by_id(&tx, repo_id)?;
         tx.commit()?;
         Ok(())
     }
@@ -220,11 +225,16 @@ impl WorkspaceRegistry {
         workspace_type: &str,
     ) -> anyhow::Result<()> {
         let tx = conn.unchecked_transaction()?;
+        update_entity_metadata_field(
+            &tx,
+            repo_id,
+            "workspace_type",
+            &serde_json::to_string(workspace_type)?,
+        )?;
         tx.execute(
             "UPDATE repos SET workspace_type = ?1 WHERE id = ?2",
             rusqlite::params![workspace_type, repo_id],
         )?;
-        sync_repo_to_entities_by_id(&tx, repo_id)?;
         tx.commit()?;
         Ok(())
     }
@@ -236,11 +246,16 @@ impl WorkspaceRegistry {
         timestamp: DateTime<Utc>,
     ) -> anyhow::Result<()> {
         let tx = conn.unchecked_transaction()?;
+        update_entity_metadata_field(
+            &tx,
+            repo_id,
+            "last_synced_at",
+            &serde_json::to_string(&timestamp.to_rfc3339())?,
+        )?;
         tx.execute(
             "UPDATE repos SET last_synced_at = ?1 WHERE id = ?2",
             rusqlite::params![timestamp.to_rfc3339(), repo_id],
         )?;
-        sync_repo_to_entities_by_id(&tx, repo_id)?;
         tx.commit()?;
         Ok(())
     }
@@ -261,48 +276,40 @@ impl WorkspaceRegistry {
         )?;
         Self::collect_repos_from_stmt(stmt, &[&tier])
     }
+
+    /// Sync repo_tags sub-table back into entities.metadata.tags.
+    pub fn sync_repo_tags_to_entity(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+    ) -> anyhow::Result<()> {
+        let tags: Option<String> = conn
+            .query_row(
+                "SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = ?1",
+                [repo_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(None);
+        update_entity_metadata_field(
+            conn,
+            repo_id,
+            "tags",
+            &serde_json::to_string(&tags).unwrap_or_else(|_| "null".to_string()),
+        )?;
+        Ok(())
+    }
 }
 
-/// Dual-write helper: mirror a repo row into the unified entities table.
-fn sync_repo_to_entities_by_id(conn: &rusqlite::Connection, repo_id: &str) -> anyhow::Result<()> {
-    let row = conn.query_row(
-        "SELECT id, local_path, language, discovered_at, workspace_type, data_tier, last_synced_at, stars,
-         (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = r.id)
-         FROM repos r WHERE r.id = ?1",
-        [repo_id],
-        |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, Option<String>>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, Option<String>>(6)?,
-                row.get::<_, Option<i64>>(7)?,
-                row.get::<_, Option<String>>(8)?,
-            ))
-        },
-    )?;
-    let (
-        id,
-        local_path,
-        language,
-        discovered_at,
-        workspace_type,
-        data_tier,
-        last_synced_at,
-        stars,
-        tags,
-    ) = row;
+/// Dual-write helper: upsert a repo into the unified entities table.
+/// Entities is first-class; this writes directly from the RepoEntry without reading repos.
+fn upsert_entity_for_repo(conn: &rusqlite::Connection, repo: &RepoEntry) -> anyhow::Result<()> {
     let metadata = serde_json::json!({
-        "language": language,
-        "discovered_at": discovered_at,
-        "workspace_type": workspace_type,
-        "data_tier": data_tier,
-        "stars": stars,
-        "last_synced_at": last_synced_at,
-        "tags": tags,
+        "language": repo.language,
+        "discovered_at": repo.discovered_at.to_rfc3339(),
+        "workspace_type": repo.workspace_type,
+        "data_tier": repo.data_tier,
+        "stars": repo.stars.map(|s| s as i64),
+        "last_synced_at": repo.last_synced_at.map(|dt| dt.to_rfc3339()),
+        "tags": repo.tags.join(","),
     });
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
@@ -314,12 +321,28 @@ fn sync_repo_to_entities_by_id(conn: &rusqlite::Connection, repo_id: &str) -> an
             metadata = excluded.metadata,
             updated_at = excluded.updated_at",
         rusqlite::params![
-            format!("repo:{}", id),
-            &id,
-            local_path,
+            &repo.id,
+            &repo.id,
+            repo.local_path.to_string_lossy().to_string(),
             metadata.to_string(),
             &now,
         ],
+    )?;
+    Ok(())
+}
+
+/// Update a single JSON field in entities.metadata for a repo.
+pub fn update_entity_metadata_field(
+    conn: &rusqlite::Connection,
+    repo_id: &str,
+    field: &str,
+    value: &str,
+) -> anyhow::Result<()> {
+    conn.execute(
+        &format!(
+            "UPDATE entities SET metadata = json_set(metadata, '$.{field}', ?1), updated_at = ?2 WHERE id = ?3"
+        ),
+        rusqlite::params![value, chrono::Utc::now().to_rfc3339(), repo_id],
     )?;
     Ok(())
 }

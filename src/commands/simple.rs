@@ -116,6 +116,11 @@ pub async fn run_vault(
 pub fn run_clean(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     info!("正在清理注册表中的备份条目");
     let conn = ctx.conn_mut()?;
+    // Entities is first-class: delete from entities first, then repos (cascades to child tables)
+    let _ = conn.execute(
+        "DELETE FROM entities WHERE id IN (SELECT id FROM repos WHERE id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%')",
+        [],
+    )?;
     let deleted = conn
         .execute("DELETE FROM repos WHERE id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%'", [])?;
     println!("已从 devbase 注册表中删除 {} 个备份条目。", deleted);
@@ -152,6 +157,7 @@ pub fn run_tag(
                 rusqlite::params![&repo_id, tag],
             )?;
         }
+        crate::registry::WorkspaceRegistry::sync_repo_tags_to_entity(&tx, repo_id)?;
         tx.commit()?;
         println!("已为 '{}' 打上标签 '{}'。", repo_id, tags);
     }

@@ -2,7 +2,7 @@ use super::*;
 use crate::storage::StorageBackend;
 use std::path::PathBuf;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 19;
+pub const CURRENT_SCHEMA_VERSION: i32 = 20;
 
 impl WorkspaceRegistry {
     pub fn db_path() -> anyhow::Result<PathBuf> {
@@ -739,7 +739,7 @@ impl WorkspaceRegistry {
                     });
                     conn.execute(
                         "INSERT OR IGNORE INTO entities (id, entity_type, name, source_url, local_path, metadata, created_at, updated_at) VALUES (?1, 'repo', ?2, NULL, ?3, ?4, ?5, ?5)",
-                        rusqlite::params![format!("repo:{}", id), id.clone(), local_path, metadata.to_string(), &now],
+                        rusqlite::params![&id, id.clone(), local_path, metadata.to_string(), &now],
                     )?;
                 }
             }
@@ -792,7 +792,7 @@ impl WorkspaceRegistry {
                     });
                     conn.execute(
                         "INSERT OR IGNORE INTO entities (id, entity_type, name, source_url, local_path, metadata, created_at, updated_at) VALUES (?1, 'skill', ?2, NULL, ?3, ?4, ?5, ?6)",
-                        rusqlite::params![format!("skill:{}", id), name, local_path, metadata.to_string(), installed_at, updated_at],
+                        rusqlite::params![&id, name, local_path, metadata.to_string(), installed_at, updated_at],
                     )?;
                 }
             }
@@ -894,6 +894,30 @@ impl WorkspaceRegistry {
                 [],
             )?;
             conn.execute("PRAGMA user_version = 19", [])?;
+        }
+        if user_version < 20 {
+            // v20: Flat ID namespace — remove repo:/skill: prefixes from entities
+            // entities becomes the first-class table; repos is maintained by application-layer sync.
+            conn.execute("UPDATE entities SET id = SUBSTR(id, 6) WHERE id LIKE 'repo:%'", [])?;
+            conn.execute("UPDATE entities SET id = SUBSTR(id, 7) WHERE id LIKE 'skill:%'", [])?;
+            // Also flatten any relations that may reference prefixed IDs
+            conn.execute(
+                "UPDATE relations SET from_entity_id = SUBSTR(from_entity_id, 6) WHERE from_entity_id LIKE 'repo:%'",
+                [],
+            )?;
+            conn.execute(
+                "UPDATE relations SET from_entity_id = SUBSTR(from_entity_id, 7) WHERE from_entity_id LIKE 'skill:%'",
+                [],
+            )?;
+            conn.execute(
+                "UPDATE relations SET to_entity_id = SUBSTR(to_entity_id, 6) WHERE to_entity_id LIKE 'repo:%'",
+                [],
+            )?;
+            conn.execute(
+                "UPDATE relations SET to_entity_id = SUBSTR(to_entity_id, 7) WHERE to_entity_id LIKE 'skill:%'",
+                [],
+            )?;
+            conn.execute("PRAGMA user_version = 20", [])?;
         }
 
         conn.execute(
