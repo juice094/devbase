@@ -175,26 +175,33 @@ pub fn list_skills(
     skill_type: Option<SkillType>,
     category: Option<&str>,
 ) -> anyhow::Result<Vec<SkillRow>> {
+    let base_sql = "SELECT s.id, s.name, s.version, s.description, s.author, s.tags, s.entry_script,
+            s.skill_type, s.local_path, s.installed_at, s.updated_at, s.last_used_at, s.dependencies, s.category
+     FROM entities e
+     JOIN skills s ON e.id = s.id
+     WHERE e.entity_type = ?1";
     let sql = match (skill_type, category) {
-        (Some(_), Some(_)) => "SELECT id, name, version, description, author, tags, entry_script,
-                skill_type, local_path, installed_at, updated_at, last_used_at, dependencies, category
-         FROM skills WHERE skill_type = ?1 AND category = ?2 ORDER BY name",
-        (Some(_), None) => "SELECT id, name, version, description, author, tags, entry_script,
-                skill_type, local_path, installed_at, updated_at, last_used_at, dependencies, category
-         FROM skills WHERE skill_type = ?1 ORDER BY name",
-        (None, Some(_)) => "SELECT id, name, version, description, author, tags, entry_script,
-                skill_type, local_path, installed_at, updated_at, last_used_at, dependencies, category
-         FROM skills WHERE category = ?1 ORDER BY name",
-        (None, None) => "SELECT id, name, version, description, author, tags, entry_script,
-                skill_type, local_path, installed_at, updated_at, last_used_at, dependencies, category
-         FROM skills ORDER BY name",
+        (Some(_), Some(_)) => {
+            format!("{} AND s.skill_type = ?2 AND s.category = ?3 ORDER BY s.name", base_sql)
+        }
+        (Some(_), None) => format!("{} AND s.skill_type = ?2 ORDER BY s.name", base_sql),
+        (None, Some(_)) => format!("{} AND s.category = ?2 ORDER BY s.name", base_sql),
+        (None, None) => format!("{} ORDER BY s.name", base_sql),
     };
-    let mut stmt = conn.prepare(sql)?;
+    let mut stmt = conn.prepare(&sql)?;
     let rows = match (skill_type, category) {
-        (Some(st), Some(cat)) => stmt.query_map(params![st.as_str(), cat], skill_row_from_sql)?,
-        (Some(st), None) => stmt.query_map([st.as_str()], skill_row_from_sql)?,
-        (None, Some(cat)) => stmt.query_map([cat], skill_row_from_sql)?,
-        (None, None) => stmt.query_map([], skill_row_from_sql)?,
+        (Some(st), Some(cat)) => stmt.query_map(
+            params![crate::registry::ENTITY_TYPE_SKILL, st.as_str(), cat],
+            skill_row_from_sql,
+        )?,
+        (Some(st), None) => stmt.query_map(
+            params![crate::registry::ENTITY_TYPE_SKILL, st.as_str()],
+            skill_row_from_sql,
+        )?,
+        (None, Some(cat)) => {
+            stmt.query_map(params![crate::registry::ENTITY_TYPE_SKILL, cat], skill_row_from_sql)?
+        }
+        (None, None) => stmt.query_map([crate::registry::ENTITY_TYPE_SKILL], skill_row_from_sql)?,
     };
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }

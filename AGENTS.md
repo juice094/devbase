@@ -179,7 +179,7 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 | `init_db()` 全局路径 | 🟡 | `AppContext` 已集成到全部 commands/ 模块（22 个函数）；`main()` 通过 `AppContext` 分发配置 | 0 新增 | `StorageBackend` trait + `AppContext` 已奠基；`db_path`/`workspace_dir`/`index_path`/`backup_dir` 已统一；`init_db()` 调用点 grandfathered 待迁移 | ≤15 |
 | Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调 | 补偿机制 | 设计 `sync_index_to_db()` 回滚或两阶段提交；或改为 SQLite FTS5 替代 Tantivy | 7 |
 | 主从表切换 | 🟢 | Phase 1 全部完成：`repos` 表已删除，entities 为唯一数据源 | `entities` 为第一公民 | Phase 2 类型系统开放（新增 entity_type 无需改表结构） | v0.12.0 |
-| vault/paper/workflow entities 缺口 | 🟢 | Stage C 完成：`save_vault_note`/`save_paper`/`save_workflow` 均已 dual-write；`delete_*` 同步清理 entities | 全部 dual-write | Stage D/E: 读取路径迁移 + 孤岛表删除 | v0.12.0 |
+| vault/paper/workflow entities 缺口 | 🟢 | Stage C+D 完成：dual-write + 读取路径迁移全部完成 | 全部 dual-write | Stage E: 孤岛表删除（skills 保留 embedding BLOB 列） | v0.12.0 |
 | scan 路径排除 | 🟢 | `discover_repos` + `collect_tasks` 均支持 `scan.exclude_paths`；scan 和 sync 双阶段过滤 | 0 缺口 | 排除路径使用 `Path::starts_with` 组件级匹配，避免字符串前缀误杀；相对路径在 sync 场景（无 root）下被忽略 | v0.12.0 |
 | tree-sitter 编译成本 | 🟡 | ~15-20s | 可控 | 评估 `ccache` 或 grammar 预编译；或按需 feature-gate | 8 |
 | Feature flags 缺失 | 🟡 | 2 个可选 feature (tui, watch) | ≥3 (tui, watch, mcp) | `Cargo.toml` 已添加 `tui` + `watch` feature；ratatui/crossterm/notify 均为 optional；`--no-default-features` 编译通过 | ≤15 |

@@ -47,8 +47,13 @@ pub fn get_workflow(conn: &Connection, id: &str) -> anyhow::Result<Option<Workfl
 }
 
 pub fn list_workflows(conn: &Connection) -> anyhow::Result<Vec<(String, String, String)>> {
-    let mut stmt = conn.prepare("SELECT id, name, version FROM workflows ORDER BY name")?;
-    let rows = stmt.query_map([], |row| {
+    let mut stmt = conn.prepare(
+        "SELECT e.id, e.name, json_extract(e.metadata, '$.version')
+         FROM entities e
+         WHERE e.entity_type = ?1
+         ORDER BY e.name",
+    )?;
+    let rows = stmt.query_map([crate::registry::ENTITY_TYPE_WORKFLOW], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)

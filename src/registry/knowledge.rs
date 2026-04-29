@@ -150,9 +150,15 @@ impl WorkspaceRegistry {
 
     pub fn list_papers(conn: &rusqlite::Connection) -> anyhow::Result<Vec<PaperEntry>> {
         let mut stmt = conn.prepare(
-            "SELECT id, title, authors, venue, year, pdf_path, bibtex, tags, added_at FROM papers ORDER BY added_at DESC"
+            "SELECT e.id, e.name, json_extract(e.metadata, '$.authors'),
+                    json_extract(e.metadata, '$.venue'), json_extract(e.metadata, '$.year'),
+                    e.local_path, json_extract(e.metadata, '$.bibtex'),
+                    json_extract(e.metadata, '$.tags'), json_extract(e.metadata, '$.added_at')
+             FROM entities e
+             WHERE e.entity_type = ?1
+             ORDER BY json_extract(e.metadata, '$.added_at') DESC",
         )?;
-        let rows = stmt.query_map([], |row| {
+        let rows = stmt.query_map([crate::registry::ENTITY_TYPE_PAPER], |row| {
             let tags: Option<String> = row.get(7)?;
             Ok(PaperEntry {
                 id: row.get(0)?,

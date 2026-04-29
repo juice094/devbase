@@ -32,6 +32,7 @@ impl WorkspaceRegistry {
         }
         // Phase 2 Stage C: dual-write to entities table
         let metadata = serde_json::json!({
+            "frontmatter": note.frontmatter,
             "tags": note.tags.join(","),
             "outgoing_links": note.outgoing_links,
             "linked_repo": note.linked_repo,
@@ -54,9 +55,15 @@ impl WorkspaceRegistry {
         conn: &rusqlite::Connection,
     ) -> anyhow::Result<Vec<crate::registry::VaultNote>> {
         let mut stmt = conn.prepare(
-            "SELECT id, path, title, frontmatter, tags, outgoing_links, created_at, updated_at FROM vault_notes ORDER BY updated_at DESC"
+            "SELECT e.id, e.local_path, e.name, json_extract(e.metadata, '$.frontmatter'),
+                    json_extract(e.metadata, '$.tags'), json_extract(e.metadata, '$.outgoing_links'),
+                    json_extract(e.metadata, '$.linked_repo'),
+                    json_extract(e.metadata, '$.created_at'), json_extract(e.metadata, '$.updated_at')
+             FROM entities e
+             WHERE e.entity_type = ?1
+             ORDER BY json_extract(e.metadata, '$.updated_at') DESC"
         )?;
-        let rows = stmt.query_map([], |row| {
+        let rows = stmt.query_map([crate::registry::ENTITY_TYPE_VAULT_NOTE], |row| {
             let tags_raw: Option<String> = row.get(4)?;
             let links_raw: Option<String> = row.get(5)?;
             Ok(crate::registry::VaultNote {
@@ -76,11 +83,11 @@ impl WorkspaceRegistry {
                 outgoing_links: links_raw
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or_default(),
-                linked_repo: None,
-                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(6)?)
+                linked_repo: row.get(6)?,
+                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(7)?)
                     .map(|dt| dt.with_timezone(&Utc))
                     .unwrap_or_else(|_| Utc::now()),
-                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(7)?)
+                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
                     .map(|dt| dt.with_timezone(&Utc))
                     .unwrap_or_else(|_| Utc::now()),
             })
