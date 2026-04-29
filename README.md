@@ -1,7 +1,7 @@
 # devbase
 
 [![Version](https://img.shields.io/badge/version-v0.12.0--alpha-blue)](https://github.com/juice094/devbase/releases)
-[![Tests](https://img.shields.io/badge/tests-374%20passed-brightgreen)](./AGENTS.md)
+[![Tests](https://img.shields.io/badge/tests-379%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
 [![License](https://img.shields.io/badge/license-MIT-orange)](./LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-9cf)](https://www.rust-lang.org)
@@ -262,7 +262,7 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | **v0.11.1** | **✅ 已发布** | **Flat ID 命名空间 + entities-first 写入反转** |
 | **v0.11.2** | **✅ 已发布** | **读路径全量迁移：所有 SELECT 切到 `entities`** |
 | **v0.11.3** | **✅ 已发布** | **`repos` 表删除，`entities` 成为唯一数据源（Phase 1 完成）** |
-| **v0.12.0-alpha** | **🚧 进行中** | **Phase 2 Stage A+B: 提取 ENTITY_TYPE_* 常量 + 通用 `upsert_entity` 抽象** |
+| **v0.12.0-alpha** | **🚧 进行中** | **Phase 2 完成 (Stage A-E): entities 统一重构 + `.devbase-ignore` + managed-gate fail-safe 同步** |
 
 ---
 

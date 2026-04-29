@@ -2,9 +2,9 @@
 
 `devbase` 是本地优先的 AI Skill 编排基础设施。
 
-- **当前阶段**：阶段三 — v0.12.0-alpha 进行中 / Phase 2 Stage A+B 已完成
+- **当前阶段**：阶段三 — v0.12.0-alpha 进行中 / Phase 2 全部完成 (Stage A-E + managed-gate)
 - **当前版本**：v0.12.0-alpha（未打 tag）
-- **下一里程碑**：Phase 2 Stage C — vault/paper/workflow 的 entities dual-write
+- **下一里程碑**：v0.12.0 正式发布 — 需补充 CHANGELOG、版本 tag、integration test 加固
 - **核心方向**：将 GitHub 项目转换为标准化、可发现、可组合的 Skill，供弱 AI 子代理执行
 - **设计文档**：
   - [`docs/architecture/workflow-dsl.md`](docs/architecture/workflow-dsl.md) — Workflow DSL 规范
@@ -21,7 +21,7 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
   - `assets/` —— 二进制资源
 - **MCP Server**：stdio only（SSE 开发中），**37 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：374 passed / 0 failed / 4 ignored（unit，多线程 `--test-threads=4` 稳定）；9 passed（integration `tests/cli.rs`）
+- **当前测试**：379 passed / 0 failed / 4 ignored（unit，单线程稳定；多线程 `--test-threads=4` 下有 2 个 flaky test）；9 passed（integration `tests/cli.rs`）
 - **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
 - **Workflow Engine**：YAML 解析 + 拓扑调度 + batch 并行执行 + 5 种 step 类型（skill/subworkflow/parallel/condition/loop）
 - **NLQ 自然语言查询**：TUI `[:]` 触发 embedding 语义搜索，fallback 降级文本搜索
@@ -63,7 +63,7 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 | 模块拆分 | `sync`→5 / `registry`→7 / `mcp` 测试分离 / `search`→hybrid / `oplog_analytics` / `symbol_links` |
 | 库/二进制 | `src/lib.rs` 导出全部 **30+** 个模块；`src/main.rs` 仅 CLI 入口 |
 | TUI 架构 | `render/` 6 子模块 + `theme.rs` Design Token + `layout.rs` 响应式引擎 |
-| 数据层 | Schema v21: `repos` 表已删除；`entities` 为唯一数据源；`repo_tags/repo_remotes/repo_health/...` 为独立 JOIN 表（无 FK）；`vault_notes`/`papers`/`workflows` 仍为孤岛表（Stage C 待 dual-write） |
+| 数据层 | Schema v22: `repos`/`vault_notes`/`papers`/`workflows` 表已删除；`entities` 为唯一数据源；`repo_tags/repo_remotes/repo_health/...` 为独立 JOIN 表（无 FK）；仅 `skills` 保留独立表（embedding BLOB） |
 | CI/CD | `.github/workflows/ci.yml`：check / test / fmt / clippy on Windows |
 | 依赖安全 | `cargo audit` 0 漏洞（除上游 `tokei` 的 `RUSTSEC-2020-0163`） |
 
