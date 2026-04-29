@@ -32,6 +32,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-04-26
+
+### Changed
+
+- **Phase 1 主从表切换 — Stage 3 完成**（`repos` 表删除）
+  - `save_repo` / `update_repo_*` / `run_clean` 不再写入 `repos`
+  - Schema v21 迁移：重建 11 个子表（去 FK）→ 删除 `repos` 表
+  - `test_helpers.rs` SCHEMA_DDL 同步去 `repos` + 去 FK
+  - `entities` 成为真正的读写唯一数据源
+
 ## [0.11.2] - 2026-04-26
 
 ### Changed

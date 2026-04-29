@@ -116,13 +116,11 @@ pub async fn run_vault(
 pub fn run_clean(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     info!("正在清理注册表中的备份条目");
     let conn = ctx.conn_mut()?;
-    // Entities is first-class: delete from entities first, then repos (cascades to child tables)
-    let _ = conn.execute(
+    // Entities is the single source of truth.
+    let deleted = conn.execute(
         "DELETE FROM entities WHERE entity_type = 'repo' AND (id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%')",
         [],
     )?;
-    let deleted = conn
-        .execute("DELETE FROM repos WHERE id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%'", [])?;
     println!("已从 devbase 注册表中删除 {} 个备份条目。", deleted);
     println!("\n剩余已注册仓库:");
     let mut stmt =

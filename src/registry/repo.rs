@@ -151,21 +151,8 @@ impl WorkspaceRegistry {
 
     pub fn save_repo(conn: &mut rusqlite::Connection, repo: &RepoEntry) -> anyhow::Result<()> {
         let tx = conn.transaction()?;
-        // Dual-write: entities is first-class; write it first, then repos
+        // Entities is the single source of truth for repo metadata.
         upsert_entity_for_repo(&tx, repo)?;
-        tx.execute(
-            "INSERT OR REPLACE INTO repos (id, local_path, language, discovered_at, workspace_type, data_tier, last_synced_at, stars) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![
-                &repo.id,
-                repo.local_path.to_string_lossy().to_string(),
-                repo.language.as_ref(),
-                repo.discovered_at.to_rfc3339(),
-                &repo.workspace_type,
-                &repo.data_tier,
-                repo.last_synced_at.map(|dt| dt.to_rfc3339()),
-                repo.stars.map(|s| s as i64)
-            ],
-        )?;
         tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1", [&repo.id])?;
         for tag in &repo.tags {
             tx.execute(
@@ -197,10 +184,6 @@ impl WorkspaceRegistry {
     ) -> anyhow::Result<()> {
         let tx = conn.unchecked_transaction()?;
         update_entity_metadata_field(&tx, repo_id, "language", language.unwrap_or("null"))?;
-        tx.execute(
-            "UPDATE repos SET language = ?1 WHERE id = ?2",
-            rusqlite::params![language, repo_id],
-        )?;
         tx.commit()?;
         Ok(())
     }
@@ -212,10 +195,6 @@ impl WorkspaceRegistry {
     ) -> anyhow::Result<()> {
         let tx = conn.unchecked_transaction()?;
         update_entity_metadata_field(&tx, repo_id, "data_tier", tier)?;
-        tx.execute(
-            "UPDATE repos SET data_tier = ?1 WHERE id = ?2",
-            rusqlite::params![tier, repo_id],
-        )?;
         tx.commit()?;
         Ok(())
     }
@@ -227,10 +206,6 @@ impl WorkspaceRegistry {
     ) -> anyhow::Result<()> {
         let tx = conn.unchecked_transaction()?;
         update_entity_metadata_field(&tx, repo_id, "workspace_type", workspace_type)?;
-        tx.execute(
-            "UPDATE repos SET workspace_type = ?1 WHERE id = ?2",
-            rusqlite::params![workspace_type, repo_id],
-        )?;
         tx.commit()?;
         Ok(())
     }
@@ -243,10 +218,6 @@ impl WorkspaceRegistry {
     ) -> anyhow::Result<()> {
         let tx = conn.unchecked_transaction()?;
         update_entity_metadata_field(&tx, repo_id, "last_synced_at", &timestamp.to_rfc3339())?;
-        tx.execute(
-            "UPDATE repos SET last_synced_at = ?1 WHERE id = ?2",
-            rusqlite::params![timestamp.to_rfc3339(), repo_id],
-        )?;
         tx.commit()?;
         Ok(())
     }

@@ -37,22 +37,10 @@ impl WorkspaceRegistry {
 const SCHEMA_DDL: &str = r#"
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS repos (
-    id TEXT PRIMARY KEY,
-    local_path TEXT NOT NULL,
-    language TEXT,
-    discovered_at TEXT NOT NULL,
-    workspace_type TEXT DEFAULT 'git',
-    data_tier TEXT DEFAULT 'private',
-    last_synced_at TEXT,
-    stars INTEGER
-);
-
 CREATE TABLE IF NOT EXISTS repo_tags (
     repo_id TEXT NOT NULL,
     tag TEXT NOT NULL,
-    PRIMARY KEY (repo_id, tag),
-    FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+    PRIMARY KEY (repo_id, tag)
 );
 CREATE INDEX IF NOT EXISTS idx_repo_tags_tag ON repo_tags(tag);
 
@@ -62,8 +50,7 @@ CREATE TABLE IF NOT EXISTS repo_remotes (
     upstream_url TEXT,
     default_branch TEXT,
     last_sync TEXT,
-    PRIMARY KEY (repo_id, remote_name),
-    FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+    PRIMARY KEY (repo_id, remote_name)
 );
 
 CREATE TABLE IF NOT EXISTS repo_health (
@@ -71,15 +58,13 @@ CREATE TABLE IF NOT EXISTS repo_health (
     status TEXT,
     ahead INTEGER DEFAULT 0,
     behind INTEGER DEFAULT 0,
-    checked_at TEXT,
-    FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+    checked_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS repo_stars_cache (
     repo_id TEXT PRIMARY KEY,
     stars INTEGER,
-    fetched_at TEXT,
-    FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+    fetched_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS repo_stars_history (
@@ -93,8 +78,7 @@ CREATE TABLE IF NOT EXISTS repo_summaries (
     repo_id TEXT PRIMARY KEY,
     summary TEXT,
     keywords TEXT,
-    generated_at TEXT,
-    FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+    generated_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS repo_modules (
@@ -111,9 +95,7 @@ CREATE TABLE IF NOT EXISTS repo_relations (
     relation_type TEXT NOT NULL,
     confidence REAL DEFAULT 0.0,
     discovered_at TEXT NOT NULL,
-    PRIMARY KEY (from_repo_id, to_repo_id, relation_type),
-    FOREIGN KEY (from_repo_id) REFERENCES repos(id) ON DELETE CASCADE,
-    FOREIGN KEY (to_repo_id) REFERENCES repos(id) ON DELETE CASCADE
+    PRIMARY KEY (from_repo_id, to_repo_id, relation_type)
 );
 
 CREATE TABLE IF NOT EXISTS ai_discoveries (
@@ -122,8 +104,7 @@ CREATE TABLE IF NOT EXISTS ai_discoveries (
     discovery_type TEXT,
     description TEXT,
     confidence REAL DEFAULT 0.0,
-    timestamp TEXT NOT NULL,
-    FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+    timestamp TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS repo_notes (
@@ -131,8 +112,7 @@ CREATE TABLE IF NOT EXISTS repo_notes (
     repo_id TEXT NOT NULL,
     note_text TEXT NOT NULL,
     author TEXT DEFAULT 'ai',
-    timestamp TEXT NOT NULL,
-    FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+    timestamp TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS papers (
@@ -159,7 +139,6 @@ CREATE TABLE IF NOT EXISTS experiments (
     syncthing_folder_id TEXT,
     status TEXT,
     timestamp TEXT NOT NULL,
-    FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE SET NULL,
     FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_experiments_repo ON experiments(repo_id);
@@ -168,8 +147,7 @@ CREATE INDEX IF NOT EXISTS idx_experiments_paper ON experiments(paper_id);
 CREATE TABLE IF NOT EXISTS workspace_snapshots (
     repo_id TEXT PRIMARY KEY,
     file_hash TEXT NOT NULL,
-    checked_at TEXT NOT NULL,
-    FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+    checked_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS oplog (
@@ -375,8 +353,7 @@ CREATE TABLE IF NOT EXISTS code_embeddings (
     symbol_name TEXT NOT NULL,
     embedding BLOB NOT NULL,
     generated_at TEXT NOT NULL,
-    PRIMARY KEY (repo_id, symbol_name),
-    FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+    PRIMARY KEY (repo_id, symbol_name)
 );
 
 CREATE TABLE IF NOT EXISTS code_symbol_links (
