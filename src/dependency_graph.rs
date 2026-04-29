@@ -519,7 +519,8 @@ pub fn build_dependency_graph(
     let mut name_to_repo: HashMap<String, String> = HashMap::new();
 
     {
-        let mut stmt = conn.prepare("SELECT id, local_path FROM repos")?;
+        let mut stmt =
+            conn.prepare("SELECT id, local_path FROM entities WHERE entity_type = 'repo'")?;
         let rows =
             stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
         for row in rows {

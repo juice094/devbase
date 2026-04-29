@@ -32,6 +32,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-04-26
+
+### Changed
+
+- **Phase 1 主从表切换 — Stage 2 完成**（读路径迁移）
+  - `list_repos` / `list_repos_stale_health` / `list_repos_need_index` / `list_workspaces_by_tier` 全部改为从 `entities` 读取（`json_extract`）
+  - `digest.rs` / `health.rs` / `daemon.rs` / `backup.rs` / `knowledge_engine.rs` / `sync/*.rs` / `tui/state.rs` / `mcp/tools/repo.rs` 等所有 `list_repos()` 调用方自动迁移
+  - 直接 SQL 查询迁移：`dependency_graph.rs`, `registry/links.rs`, `registry/knowledge.rs`, `query.rs`, `oplog_analytics.rs`, `commands/simple.rs`
+  - `update_entity_metadata_field` 修复 `json_set` 字符串引号问题：原始字符串直接传递，`"null"` 时自动 `json_remove`
+  - `repo_tags` / `repo_remotes` 子表保留，通过 `repo_id` JOIN 读取（FK 仍指向 `repos`）
+
 ## [0.11.1] - 2026-04-26
 
 ### Changed

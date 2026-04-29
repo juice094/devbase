@@ -68,17 +68,17 @@ pub fn generate_report(
     let has_calls = table_exists(conn, "code_call_graph");
 
     let sym_sub = if has_symbols {
-        "COALESCE((SELECT COUNT(*) FROM code_symbols cs WHERE cs.repo_id = r.id), 0)"
+        "COALESCE((SELECT COUNT(*) FROM code_symbols cs WHERE cs.repo_id = e.id), 0)"
     } else {
         "0"
     };
     let emb_sub = if has_embeddings {
-        "COALESCE((SELECT COUNT(*) FROM code_embeddings ce WHERE ce.repo_id = r.id), 0)"
+        "COALESCE((SELECT COUNT(*) FROM code_embeddings ce WHERE ce.repo_id = e.id), 0)"
     } else {
         "0"
     };
     let call_sub = if has_calls {
-        "COALESCE((SELECT COUNT(*) FROM code_call_graph cc WHERE cc.repo_id = r.id), 0)"
+        "COALESCE((SELECT COUNT(*) FROM code_call_graph cc WHERE cc.repo_id = e.id), 0)"
     } else {
         "0"
     };
@@ -88,21 +88,22 @@ pub fn generate_report(
 
     let sql = if let Some(rid) = repo_id {
         format!(
-            "SELECT r.id,
+            "SELECT e.id,
                     {} as sym_count,
                     {} as emb_count,
                     {} as call_count
-             FROM repos r
-             WHERE r.id = '{}'",
+             FROM entities e
+             WHERE e.entity_type = 'repo' AND e.id = '{}'",
             sym_sub, emb_sub, call_sub, rid
         )
     } else {
         format!(
-            "SELECT r.id,
+            "SELECT e.id,
                     {} as sym_count,
                     {} as emb_count,
                     {} as call_count
-             FROM repos r
+             FROM entities e
+             WHERE e.entity_type = 'repo'
              ORDER BY sym_count DESC",
             sym_sub, emb_sub, call_sub
         )
@@ -252,7 +253,7 @@ mod tests {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         // Create minimal schema
         conn.execute(
-            "CREATE TABLE repos (id TEXT PRIMARY KEY, local_path TEXT NOT NULL, discovered_at TEXT NOT NULL)",
+            "CREATE TABLE entities (id TEXT PRIMARY KEY, entity_type TEXT NOT NULL, name TEXT NOT NULL, source_url TEXT, local_path TEXT, metadata TEXT, content_hash TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
             [],
         )
         .unwrap();
@@ -272,7 +273,7 @@ mod tests {
     fn test_generate_report_with_data() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute(
-            "CREATE TABLE repos (id TEXT PRIMARY KEY, local_path TEXT NOT NULL, discovered_at TEXT NOT NULL)",
+            "CREATE TABLE entities (id TEXT PRIMARY KEY, entity_type TEXT NOT NULL, name TEXT NOT NULL, source_url TEXT, local_path TEXT, metadata TEXT, content_hash TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
             [],
         )
         .unwrap();
@@ -292,7 +293,7 @@ mod tests {
         )
         .unwrap();
 
-        conn.execute("INSERT INTO repos VALUES ('repo1', '/path', '2026-01-01')", [])
+        conn.execute("INSERT INTO entities VALUES ('repo1', 'repo', 'repo1', NULL, '/path', '{}', NULL, '2026-01-01', '2026-01-01')", [])
             .unwrap();
         conn.execute(
             "INSERT INTO code_symbols VALUES ('repo1', 'a.rs', 'function', 'foo', 1, 2, 'fn foo()'),

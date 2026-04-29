@@ -15,7 +15,7 @@ fn devbase_cmd() -> (Command, TempDir) {
 fn test_version() {
     let (mut cmd, _tmp) = devbase_cmd();
     cmd.arg("--version");
-    cmd.assert().success().stdout(predicate::str::contains("0.11.1"));
+    cmd.assert().success().stdout(predicate::str::contains("0.11.2"));
 }
 
 #[test]

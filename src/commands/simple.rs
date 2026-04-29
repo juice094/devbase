@@ -118,14 +118,15 @@ pub fn run_clean(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     let conn = ctx.conn_mut()?;
     // Entities is first-class: delete from entities first, then repos (cascades to child tables)
     let _ = conn.execute(
-        "DELETE FROM entities WHERE id IN (SELECT id FROM repos WHERE id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%')",
+        "DELETE FROM entities WHERE entity_type = 'repo' AND (id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%')",
         [],
     )?;
     let deleted = conn
         .execute("DELETE FROM repos WHERE id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%'", [])?;
     println!("已从 devbase 注册表中删除 {} 个备份条目。", deleted);
     println!("\n剩余已注册仓库:");
-    let mut stmt = conn.prepare("SELECT id, local_path FROM repos")?;
+    let mut stmt =
+        conn.prepare("SELECT id, local_path FROM entities WHERE entity_type = 'repo'")?;
     let rows =
         stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
     for row in rows {
@@ -145,7 +146,11 @@ pub fn run_tag(
     let tag_list: Vec<&str> = tags.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
     let tx = conn.transaction()?;
     let exists: bool = tx
-        .query_row("SELECT 1 FROM repos WHERE id = ?1", [&repo_id], |_| Ok(true))
+        .query_row(
+            "SELECT 1 FROM entities WHERE id = ?1 AND entity_type = 'repo'",
+            [&repo_id],
+            |_| Ok(true),
+        )
         .unwrap_or(false);
     if !exists {
         println!("注册表中未找到仓库 '{}'。", repo_id);
@@ -173,7 +178,11 @@ pub fn run_meta(
     info!("更新 {} 的元数据", repo_id);
     let conn = ctx.conn_mut()?;
     let exists: bool = conn
-        .query_row("SELECT 1 FROM repos WHERE id = ?1", [&repo_id], |_| Ok(true))
+        .query_row(
+            "SELECT 1 FROM entities WHERE id = ?1 AND entity_type = 'repo'",
+            [&repo_id],
+            |_| Ok(true),
+        )
         .unwrap_or(false);
     if !exists {
         println!("注册表中未找到仓库 '{}'。", repo_id);

@@ -16,13 +16,13 @@ pub fn generate_daily_digest(
 
     // 1. 新入库仓库统计
     let new_count: i64 =
-        conn.query_row("SELECT COUNT(*) FROM repos WHERE discovered_at > ?1", [&since], |row| {
+        conn.query_row("SELECT COUNT(*) FROM entities WHERE entity_type = 'repo' AND json_extract(metadata, '$.discovered_at') > ?1", [&since], |row| {
             row.get(0)
         })?;
     if new_count > 0 {
         lines.push(format!("{}: {} repos", crate::i18n::current().log.digest_new_repos, new_count));
         let mut stmt = conn
-            .prepare("SELECT id FROM repos WHERE discovered_at > ?1 ORDER BY discovered_at DESC")?;
+            .prepare("SELECT id FROM entities WHERE entity_type = 'repo' AND json_extract(metadata, '$.discovered_at') > ?1 ORDER BY json_extract(metadata, '$.discovered_at') DESC")?;
         let ids = stmt.query_map([&since], |row| row.get::<_, String>(0))?;
         for id in ids.take(5) {
             lines.push(format!("  - {}", id?));
@@ -99,7 +99,10 @@ pub fn generate_daily_digest(
     }
 
     // 4. 总体统计
-    let total: i64 = conn.query_row("SELECT COUNT(*) FROM repos", [], |row| row.get(0))?;
+    let total: i64 =
+        conn.query_row("SELECT COUNT(*) FROM entities WHERE entity_type = 'repo'", [], |row| {
+            row.get(0)
+        })?;
     let synced: i64 = conn.query_row(
         "SELECT COUNT(*) FROM repo_health WHERE checked_at > ?1",
         [&since],

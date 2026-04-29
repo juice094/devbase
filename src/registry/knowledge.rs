@@ -312,7 +312,7 @@ impl WorkspaceRegistry {
         // 1. Find repos matching all tags (INTERSECT for AND semantics).
         // Tags are matched against both repo_tags.tag AND repos.language.
         let repo_ids: Vec<String> = if tags.is_empty() {
-            let mut stmt = conn.prepare("SELECT id FROM repos")?;
+            let mut stmt = conn.prepare("SELECT id FROM entities WHERE entity_type = 'repo'")?;
             let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
             rows.collect::<Result<Vec<_>, _>>()?
         } else {
@@ -325,7 +325,7 @@ impl WorkspaceRegistry {
                 sql.push_str(
                     "SELECT repo_id FROM repo_tags WHERE LOWER(tag) = LOWER(?) \
                      UNION \
-                     SELECT id AS repo_id FROM repos WHERE LOWER(language) = LOWER(?)",
+                     SELECT id AS repo_id FROM entities WHERE entity_type = 'repo' AND LOWER(json_extract(metadata, '$.language')) = LOWER(?)",
                 );
             }
             let mut stmt = conn.prepare(&sql)?;

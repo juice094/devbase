@@ -222,7 +222,7 @@ pub async fn run_json(
             .map(|_| "(s.summary LIKE ? OR s.keywords LIKE ?)".to_string())
             .collect();
         let sql = format!(
-            "SELECT r.id, r.local_path, s.summary, s.keywords FROM repo_summaries s JOIN repos r ON r.id = s.repo_id WHERE {}",
+            "SELECT e.id, e.local_path, s.summary, s.keywords FROM repo_summaries s JOIN entities e ON e.id = s.repo_id WHERE e.entity_type = 'repo' AND {}",
             clauses.join(" OR ")
         );
 

@@ -47,10 +47,10 @@ impl WorkspaceRegistry {
         vault_id: &str,
     ) -> anyhow::Result<Vec<(String, String)>> {
         let mut stmt = conn.prepare(
-            "SELECT r.id, r.local_path FROM repos r
-             JOIN vault_repo_links l ON r.id = l.repo_id
-             WHERE l.vault_id = ?1
-             ORDER BY r.id",
+            "SELECT e.id, e.local_path FROM entities e
+             JOIN vault_repo_links l ON e.id = l.repo_id
+             WHERE e.entity_type = 'repo' AND l.vault_id = ?1
+             ORDER BY e.id",
         )?;
         let rows = stmt.query_map([vault_id], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
