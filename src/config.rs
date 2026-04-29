@@ -51,6 +51,12 @@ impl Default for SyncConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ScanConfig {
+    #[serde(default)]
+    pub exclude_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
@@ -72,6 +78,8 @@ pub struct Config {
     pub sync: SyncConfig,
     #[serde(default)]
     pub arxiv: ArxivConfig,
+    #[serde(default)]
+    pub scan: ScanConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -353,6 +361,12 @@ timeout_seconds = 30
 timeout_seconds = 60
 concurrency = 8
 
+[scan]
+# Paths to exclude from repository discovery.
+# Use absolute paths or paths relative to the scan root.
+# Example: exclude_paths = ["C:/Users/22414/dev/third_party/clarity", "third_party"]
+exclude_paths = []
+
 [arxiv]
 enabled = true
 timeout_seconds = 30
@@ -390,6 +404,7 @@ mod tests {
         assert_eq!(cfg.llm.timeout_seconds, 30);
         assert_eq!(cfg.sync.timeout_seconds, 60);
         assert_eq!(cfg.sync.concurrency, 8);
+        assert!(cfg.scan.exclude_paths.is_empty());
     }
 
     #[test]

@@ -25,7 +25,7 @@ pub async fn run_json(
     }
 
     let config = crate::config::Config::load().unwrap_or_default();
-    let repos = discover_repos(&root, Some(&config.github))?;
+    let repos = discover_repos(&root, Some(&config.github), &config.scan.exclude_paths)?;
     let count = repos.len();
 
     let mut registered = 0usize;
@@ -151,9 +151,31 @@ pub async fn run(
     Ok(())
 }
 
+/// Check if a discovered repository path should be excluded from scanning.
+fn is_excluded_path(repo_path: &Path, exclude_paths: &[String], root: &Path) -> bool {
+    let abs_repo = if repo_path.is_absolute() {
+        repo_path.to_path_buf()
+    } else {
+        root.join(repo_path)
+    };
+    for ex in exclude_paths {
+        let ex_path = Path::new(ex);
+        let abs_ex = if ex_path.is_absolute() {
+            ex_path.to_path_buf()
+        } else {
+            root.join(ex_path)
+        };
+        if abs_repo.starts_with(&abs_ex) {
+            return true;
+        }
+    }
+    false
+}
+
 fn discover_repos(
     root: &Path,
     github: Option<&crate::config::GithubConfig>,
+    exclude_paths: &[String],
 ) -> anyhow::Result<Vec<RepoEntry>> {
     let mut git_repos = Vec::new();
 
@@ -166,6 +188,9 @@ fn discover_repos(
                 continue;
             }
 
+            if is_excluded_path(&repo_path, exclude_paths, root) {
+                continue;
+            }
             match inspect_repo(&repo_path, github) {
                 Ok(repo) => git_repos.push(repo),
                 Err(e) => warn!("Failed to inspect {}: {}", repo_path.display(), e),
@@ -189,6 +214,9 @@ fn discover_repos(
         }
         // Skip duplicates
         if non_git_repos.iter().any(|r: &RepoEntry| r.local_path == ws_path) {
+            continue;
+        }
+        if is_excluded_path(&ws_path, exclude_paths, root) {
             continue;
         }
         match inspect_non_git_workspace(&ws_path) {
@@ -603,13 +631,30 @@ mod tests {
         fs::create_dir(&generic_path).unwrap();
         fs::write(generic_path.join("MEMORY.md"), "# memory").unwrap();
 
-        let repos = discover_repos(dir.path(), None).unwrap();
+        let repos = discover_repos(dir.path(), None, &[]).unwrap();
         assert_eq!(repos.len(), 2);
 
         let types: std::collections::HashSet<_> =
             repos.iter().map(|r| r.workspace_type.as_str()).collect();
         assert!(types.contains("git"));
         assert!(types.contains("generic"));
+    }
+
+    #[test]
+    fn test_discover_repos_excludes_paths() {
+        let dir = TempDir::new().unwrap();
+        let included = dir.path().join("included").join("repo");
+        fs::create_dir_all(&included).unwrap();
+        git2::Repository::init(&included).unwrap();
+
+        let excluded = dir.path().join("excluded").join("skip");
+        fs::create_dir_all(&excluded).unwrap();
+        git2::Repository::init(&excluded).unwrap();
+
+        // Exclude by relative path
+        let repos = discover_repos(dir.path(), None, &["excluded".to_string()]).unwrap();
+        assert_eq!(repos.len(), 1);
+        assert!(repos[0].local_path.to_string_lossy().contains("included"));
     }
 
     #[test]
