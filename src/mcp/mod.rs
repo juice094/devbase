@@ -28,15 +28,23 @@ pub struct ToolStreamEvent {
 pub trait McpTool: Send + Sync + Clone {
     fn name(&self) -> &'static str;
     fn schema(&self) -> serde_json::Value;
-    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value>;
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value>;
 
     /// Optional streaming interface for long-running operations.
     ///
     /// Default implementation delegates to `invoke` and emits a single `Done` event.
     /// Override this for tools that support progressive output (e.g., indexing,
     /// syncing large batches, or long-running analysis).
-    async fn invoke_stream(&self, args: serde_json::Value) -> anyhow::Result<Vec<ToolStreamEvent>> {
-        let result = self.invoke(args).await?;
+    async fn invoke_stream(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<Vec<ToolStreamEvent>> {
+        let result = self.invoke(args, ctx).await?;
         Ok(vec![ToolStreamEvent {
             phase: StreamPhase::Done,
             payload: result,
@@ -237,45 +245,49 @@ impl McpTool for McpToolEnum {
         }
     }
 
-    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
         match self {
-            McpToolEnum::Scan(t) => t.invoke(args).await,
-            McpToolEnum::Health(t) => t.invoke(args).await,
-            McpToolEnum::Sync(t) => t.invoke(args).await,
-            McpToolEnum::Query(t) => t.invoke(args).await,
-            McpToolEnum::QueryRepos(t) => t.invoke(args).await,
-            McpToolEnum::Index(t) => t.invoke(args).await,
-            McpToolEnum::Note(t) => t.invoke(args).await,
-            McpToolEnum::Digest(t) => t.invoke(args).await,
-            McpToolEnum::Paper(t) => t.invoke(args).await,
-            McpToolEnum::Experiment(t) => t.invoke(args).await,
-            McpToolEnum::GithubInfo(t) => t.invoke(args).await,
-            McpToolEnum::CodeMetrics(t) => t.invoke(args).await,
-            McpToolEnum::ModuleGraph(t) => t.invoke(args).await,
-            McpToolEnum::NaturalLanguageQuery(t) => t.invoke(args).await,
-            McpToolEnum::VaultSearch(t) => t.invoke(args).await,
-            McpToolEnum::VaultRead(t) => t.invoke(args).await,
-            McpToolEnum::VaultWrite(t) => t.invoke(args).await,
-            McpToolEnum::VaultBacklinks(t) => t.invoke(args).await,
-            McpToolEnum::ProjectContext(t) => t.invoke(args).await,
-            McpToolEnum::CodeSymbols(t) => t.invoke(args).await,
-            McpToolEnum::DependencyGraph(t) => t.invoke(args).await,
-            McpToolEnum::CallGraph(t) => t.invoke(args).await,
-            McpToolEnum::DeadCode(t) => t.invoke(args).await,
-            McpToolEnum::SemanticSearch(t) => t.invoke(args).await,
-            McpToolEnum::ArxivFetch(t) => t.invoke(args).await,
-            McpToolEnum::EmbeddingStore(t) => t.invoke(args).await,
-            McpToolEnum::EmbeddingSearch(t) => t.invoke(args).await,
-            McpToolEnum::CrossRepoSearch(t) => t.invoke(args).await,
-            McpToolEnum::KnowledgeReport(t) => t.invoke(args).await,
-            McpToolEnum::RelatedSymbols(t) => t.invoke(args).await,
-            McpToolEnum::HybridSearch(t) => t.invoke(args).await,
-            McpToolEnum::SkillList(t) => t.invoke(args).await,
-            McpToolEnum::SkillSearch(t) => t.invoke(args).await,
-            McpToolEnum::SkillRun(t) => t.invoke(args).await,
-            McpToolEnum::SkillDiscover(t) => t.invoke(args).await,
-            McpToolEnum::KnownLimitStore(t) => t.invoke(args).await,
-            McpToolEnum::KnownLimitList(t) => t.invoke(args).await,
+            McpToolEnum::Scan(t) => t.invoke(args, ctx).await,
+            McpToolEnum::Health(t) => t.invoke(args, ctx).await,
+            McpToolEnum::Sync(t) => t.invoke(args, ctx).await,
+            McpToolEnum::Query(t) => t.invoke(args, ctx).await,
+            McpToolEnum::QueryRepos(t) => t.invoke(args, ctx).await,
+            McpToolEnum::Index(t) => t.invoke(args, ctx).await,
+            McpToolEnum::Note(t) => t.invoke(args, ctx).await,
+            McpToolEnum::Digest(t) => t.invoke(args, ctx).await,
+            McpToolEnum::Paper(t) => t.invoke(args, ctx).await,
+            McpToolEnum::Experiment(t) => t.invoke(args, ctx).await,
+            McpToolEnum::GithubInfo(t) => t.invoke(args, ctx).await,
+            McpToolEnum::CodeMetrics(t) => t.invoke(args, ctx).await,
+            McpToolEnum::ModuleGraph(t) => t.invoke(args, ctx).await,
+            McpToolEnum::NaturalLanguageQuery(t) => t.invoke(args, ctx).await,
+            McpToolEnum::VaultSearch(t) => t.invoke(args, ctx).await,
+            McpToolEnum::VaultRead(t) => t.invoke(args, ctx).await,
+            McpToolEnum::VaultWrite(t) => t.invoke(args, ctx).await,
+            McpToolEnum::VaultBacklinks(t) => t.invoke(args, ctx).await,
+            McpToolEnum::ProjectContext(t) => t.invoke(args, ctx).await,
+            McpToolEnum::CodeSymbols(t) => t.invoke(args, ctx).await,
+            McpToolEnum::DependencyGraph(t) => t.invoke(args, ctx).await,
+            McpToolEnum::CallGraph(t) => t.invoke(args, ctx).await,
+            McpToolEnum::DeadCode(t) => t.invoke(args, ctx).await,
+            McpToolEnum::SemanticSearch(t) => t.invoke(args, ctx).await,
+            McpToolEnum::ArxivFetch(t) => t.invoke(args, ctx).await,
+            McpToolEnum::EmbeddingStore(t) => t.invoke(args, ctx).await,
+            McpToolEnum::EmbeddingSearch(t) => t.invoke(args, ctx).await,
+            McpToolEnum::CrossRepoSearch(t) => t.invoke(args, ctx).await,
+            McpToolEnum::KnowledgeReport(t) => t.invoke(args, ctx).await,
+            McpToolEnum::RelatedSymbols(t) => t.invoke(args, ctx).await,
+            McpToolEnum::HybridSearch(t) => t.invoke(args, ctx).await,
+            McpToolEnum::SkillList(t) => t.invoke(args, ctx).await,
+            McpToolEnum::SkillSearch(t) => t.invoke(args, ctx).await,
+            McpToolEnum::SkillRun(t) => t.invoke(args, ctx).await,
+            McpToolEnum::SkillDiscover(t) => t.invoke(args, ctx).await,
+            McpToolEnum::KnownLimitStore(t) => t.invoke(args, ctx).await,
+            McpToolEnum::KnownLimitList(t) => t.invoke(args, ctx).await,
         }
     }
 }
@@ -302,6 +314,7 @@ impl McpServer {
     pub async fn handle_request(
         &self,
         req: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let id = req.get("id").cloned().unwrap_or(serde_json::Value::Null);
         let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
@@ -346,7 +359,7 @@ impl McpServer {
                 let args = params.get("arguments").cloned().unwrap_or(serde_json::Value::Null);
 
                 match self.tools.get(name) {
-                    Some(tool) => match tool.invoke(args).await {
+                    Some(tool) => match tool.invoke(args, ctx).await {
                         Ok(result) => {
                             let text = result.to_string();
                             let is_error = !result
@@ -411,9 +424,10 @@ impl McpServer {
         &self,
         name: &str,
         args: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<Vec<ToolStreamEvent>> {
         match self.tools.get(name) {
-            Some(tool) => tool.invoke_stream(args).await,
+            Some(tool) => tool.invoke_stream(args, ctx).await,
             None => Err(anyhow::anyhow!("Tool '{}' not found", name)),
         }
     }
@@ -495,6 +509,7 @@ fn parse_tool_tiers(s: &str) -> HashSet<ToolTier> {
 }
 
 pub async fn run_stdio() -> anyhow::Result<()> {
+    let mut ctx = crate::storage::AppContext::with_defaults()?;
     let tiers: Option<HashSet<ToolTier>> = std::env::var("DEVBASE_MCP_TOOL_TIERS")
         .ok()
         .map(|s| parse_tool_tiers(&s))
@@ -538,7 +553,7 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                     continue;
                 }
             };
-            let resp = server.handle_request(req).await.unwrap_or_else(|e| {
+            let resp = server.handle_request(req, &mut ctx).await.unwrap_or_else(|e| {
                 serde_json::json!({
                     "jsonrpc": "2.0",
                     "id": null,
@@ -631,7 +646,7 @@ pub async fn run_stdio() -> anyhow::Result<()> {
             }
         };
 
-        let resp = server.handle_request(req).await.unwrap_or_else(|e| {
+        let resp = server.handle_request(req, &mut ctx).await.unwrap_or_else(|e| {
             serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": null,

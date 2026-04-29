@@ -40,7 +40,11 @@ Returns: success boolean and stored limit id."#,
         })
     }
 
-    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
         let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let category = args.get("category").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let description =
@@ -66,7 +70,7 @@ Returns: success boolean and stored limit id."#,
             mitigated: false,
         };
 
-        let conn = crate::registry::WorkspaceRegistry::init_db()?;
+        let conn = ctx.conn();
         crate::registry::WorkspaceRegistry::save_known_limit(&conn, &limit)?;
 
         Ok(serde_json::json!({ "success": true, "id": id }))
@@ -105,11 +109,15 @@ Returns: JSON array of known limits."#,
         })
     }
 
-    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
         let category = args.get("category").and_then(|v| v.as_str());
         let mitigated = args.get("mitigated").and_then(|v| v.as_bool());
 
-        let conn = crate::registry::WorkspaceRegistry::init_db()?;
+        let conn = ctx.conn();
         let limits =
             crate::registry::WorkspaceRegistry::list_known_limits(&conn, category, mitigated)?;
 

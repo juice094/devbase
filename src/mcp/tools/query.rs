@@ -46,7 +46,11 @@ Returns: JSON array of matching items, each with type (repo or note), id, title,
         })
     }
 
-    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        _ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
         let expression = args
             .get("expression")
             .and_then(|v| v.as_str())

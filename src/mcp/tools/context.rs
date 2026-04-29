@@ -47,7 +47,11 @@ Returns: JSON object with:
         })
     }
 
-    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        _ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
         let project = args
             .get("project")
             .and_then(|v| v.as_str())
@@ -56,6 +60,7 @@ Returns: JSON object with:
         let result = tokio::task::spawn_blocking({
             let project = project.to_string();
             move || {
+                // TODO: 使用连接池替代 init_db()（Connection 非 Send，需 r2d2_sqlite）
                 let conn = crate::registry::WorkspaceRegistry::init_db()?;
 
                 // 1. Find repo by exact id or path substring

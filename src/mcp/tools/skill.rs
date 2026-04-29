@@ -36,10 +36,14 @@ Returns: JSON array of skills with id, name, version, type, description, tags, a
         })
     }
 
-    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
         let skill_type =
             args.get("skill_type").and_then(|v| v.as_str()).and_then(|s| s.parse().ok());
-        let conn = crate::registry::WorkspaceRegistry::init_db()?;
+        let conn = ctx.conn();
         let skills = registry::list_skills(&conn, skill_type, None)?;
         let results: Vec<serde_json::Value> = skills
             .into_iter()
@@ -98,13 +102,17 @@ Returns: JSON array of matching skills."#,
         })
     }
 
-    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
         let query = args
             .get("query")
             .and_then(|v| v.as_str())
             .context("Missing required argument: query")?;
         let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(10) as usize;
-        let conn = crate::registry::WorkspaceRegistry::init_db()?;
+        let conn = ctx.conn();
         let skills = registry::search_skills_text(&conn, query, limit, None)?;
         let results: Vec<serde_json::Value> = skills
             .into_iter()
@@ -168,7 +176,11 @@ Returns: JSON with discovered skill id, name, version, description, category, an
         })
     }
 
-    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
         let path = args
             .get("path")
             .and_then(|v| v.as_str())
@@ -176,7 +188,7 @@ Returns: JSON with discovered skill id, name, version, description, category, an
         let skill_id = args.get("skill_id").and_then(|v| v.as_str()).map(|s| s.to_string());
         let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
 
-        let conn = crate::registry::WorkspaceRegistry::init_db()?;
+        let conn = ctx.conn();
         let project_path = std::path::PathBuf::from(path);
         let skill = crate::skill_runtime::discover::discover_and_install(
             &conn,
@@ -246,7 +258,11 @@ Returns: JSON with status, stdout, stderr, exit_code, and duration_ms."#,
         })
     }
 
-    async fn invoke(&self, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
         let skill_id = args
             .get("skill_id")
             .and_then(|v| v.as_str())
@@ -262,7 +278,7 @@ Returns: JSON with status, stdout, stderr, exit_code, and duration_ms."#,
             })
             .unwrap_or_default();
 
-        let conn = crate::registry::WorkspaceRegistry::init_db()?;
+        let conn = ctx.conn();
         let skill = registry::get_skill(&conn, skill_id)?
             .context(format!("Skill '{}' not found", skill_id))?;
 
