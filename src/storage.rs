@@ -70,26 +70,41 @@ impl StorageBackend for DefaultStorageBackend {
 ///
 /// 命令处理函数应通过此结构体获取所有外部依赖，
 /// 避免直接调用全局函数或读取环境变量。
-#[derive(Clone)]
 pub struct AppContext {
     pub storage: Arc<dyn StorageBackend>,
     pub config: crate::config::Config,
+    conn: rusqlite::Connection,
 }
 
 impl AppContext {
     /// 使用默认存储后端和已加载配置创建上下文。
     pub fn with_defaults() -> anyhow::Result<Self> {
+        let storage: Arc<dyn StorageBackend> = Arc::new(DefaultStorageBackend);
+        let conn = crate::registry::WorkspaceRegistry::init_db()?;
         Ok(Self {
-            storage: Arc::new(DefaultStorageBackend),
+            storage,
             config: crate::config::Config::load()?,
+            conn,
         })
     }
 
     /// 使用自定义存储后端创建上下文（主要用于测试）。
     pub fn with_storage(storage: Arc<dyn StorageBackend>) -> anyhow::Result<Self> {
+        let conn = crate::registry::WorkspaceRegistry::init_db()?;
         Ok(Self {
             storage,
             config: crate::config::Config::load()?,
+            conn,
         })
+    }
+
+    /// 获取数据库连接的不可变引用。
+    pub fn conn(&self) -> &rusqlite::Connection {
+        &self.conn
+    }
+
+    /// 获取数据库连接的可变引用。
+    pub fn conn_mut(&mut self) -> &mut rusqlite::Connection {
+        &mut self.conn
     }
 }
