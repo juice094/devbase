@@ -2,10 +2,10 @@ use devbase::*;
 use skill_runtime::{parser, registry};
 
 pub fn run_skill(
-    _ctx: &crate::storage::AppContext,
+    ctx: &mut crate::storage::AppContext,
     cmd: crate::SkillCommands,
 ) -> anyhow::Result<()> {
-    let conn = crate::registry::WorkspaceRegistry::init_db()?;
+    let conn = ctx.conn_mut();
     match cmd {
         crate::SkillCommands::List { skill_type, category, json } => {
             let st = skill_type.as_deref().and_then(|s| s.parse().ok());

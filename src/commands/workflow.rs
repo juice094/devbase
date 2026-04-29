@@ -1,8 +1,8 @@
 pub fn run_workflow(
-    _ctx: &crate::storage::AppContext,
+    ctx: &mut crate::storage::AppContext,
     cmd: crate::WorkflowCommands,
 ) -> anyhow::Result<()> {
-    let conn = crate::registry::WorkspaceRegistry::init_db()?;
+    let conn = ctx.conn_mut();
     match cmd {
         crate::WorkflowCommands::List => {
             let workflows = crate::workflow::list_workflows(&conn)?;

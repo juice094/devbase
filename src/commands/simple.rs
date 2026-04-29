@@ -2,7 +2,7 @@ use devbase::*;
 use tracing::{info, warn};
 
 pub async fn run_scan(
-    _ctx: &crate::storage::AppContext,
+    _ctx: &mut crate::storage::AppContext,
     path: &str,
     register: bool,
 ) -> anyhow::Result<()> {
@@ -11,7 +11,7 @@ pub async fn run_scan(
 }
 
 pub async fn run_health(
-    ctx: &crate::storage::AppContext,
+    ctx: &mut crate::storage::AppContext,
     detail: bool,
     limit: usize,
     page: usize,
@@ -21,7 +21,7 @@ pub async fn run_health(
 }
 
 pub async fn run_query(
-    ctx: &crate::storage::AppContext,
+    ctx: &mut crate::storage::AppContext,
     query: &str,
     limit: usize,
     page: usize,
@@ -30,7 +30,7 @@ pub async fn run_query(
     query::run(query, limit, page, &ctx.config).await
 }
 
-pub async fn run_index(_ctx: &crate::storage::AppContext, path: &str) -> anyhow::Result<()> {
+pub async fn run_index(_ctx: &mut crate::storage::AppContext, path: &str) -> anyhow::Result<()> {
     info!("{}: path='{}'", i18n::current().cli.indexing, path);
     let path = path.to_string();
     let count = tokio::task::spawn_blocking(move || knowledge_engine::run_index(&path))
@@ -41,13 +41,13 @@ pub async fn run_index(_ctx: &crate::storage::AppContext, path: &str) -> anyhow:
 }
 
 #[cfg(feature = "tui")]
-pub async fn run_tui(_ctx: &crate::storage::AppContext) -> anyhow::Result<()> {
+pub async fn run_tui(_ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     info!("{}", i18n::current().cli.launching_tui);
     tui::run().await
 }
 
 pub async fn run_mcp(
-    _ctx: &crate::storage::AppContext,
+    _ctx: &mut crate::storage::AppContext,
     tools: Option<String>,
 ) -> anyhow::Result<()> {
     if let Some(tiers) = tools {
@@ -62,7 +62,7 @@ pub async fn run_mcp(
 }
 
 pub async fn run_daemon(
-    ctx: &crate::storage::AppContext,
+    ctx: &mut crate::storage::AppContext,
     interval: Option<u64>,
 ) -> anyhow::Result<()> {
     let interval = interval.unwrap_or(ctx.config.daemon.interval_seconds);
@@ -72,7 +72,7 @@ pub async fn run_daemon(
 }
 
 pub async fn run_vault(
-    _ctx: &crate::storage::AppContext,
+    _ctx: &mut crate::storage::AppContext,
     cmd: crate::VaultCommands,
 ) -> anyhow::Result<()> {
     match cmd {
@@ -98,9 +98,9 @@ pub async fn run_vault(
     Ok(())
 }
 
-pub fn run_clean(_ctx: &crate::storage::AppContext) -> anyhow::Result<()> {
+pub fn run_clean(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     info!("正在清理注册表中的备份条目");
-    let conn = crate::registry::WorkspaceRegistry::init_db()?;
+    let conn = ctx.conn_mut();
     let deleted = conn
         .execute("DELETE FROM repos WHERE id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%'", [])?;
     println!("已从 devbase 注册表中删除 {} 个备份条目。", deleted);
@@ -115,9 +115,9 @@ pub fn run_clean(_ctx: &crate::storage::AppContext) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn run_tag(_ctx: &crate::storage::AppContext, repo_id: &str, tags: &str) -> anyhow::Result<()> {
+pub fn run_tag(ctx: &mut crate::storage::AppContext, repo_id: &str, tags: &str) -> anyhow::Result<()> {
     info!("为 {} 打标签: {}", repo_id, tags);
-    let mut conn = registry::WorkspaceRegistry::init_db()?;
+    let conn = ctx.conn_mut();
     let tag_list: Vec<&str> = tags.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
     let tx = conn.transaction()?;
     let exists: bool = tx
@@ -140,13 +140,13 @@ pub fn run_tag(_ctx: &crate::storage::AppContext, repo_id: &str, tags: &str) -> 
 }
 
 pub fn run_meta(
-    _ctx: &crate::storage::AppContext,
+    ctx: &mut crate::storage::AppContext,
     repo_id: &str,
     tier: Option<String>,
     workspace_type: Option<String>,
 ) -> anyhow::Result<()> {
     info!("更新 {} 的元数据", repo_id);
-    let conn = registry::WorkspaceRegistry::init_db()?;
+    let conn = ctx.conn_mut();
     let exists: bool = conn
         .query_row("SELECT 1 FROM repos WHERE id = ?1", [&repo_id], |_| Ok(true))
         .unwrap_or(false);
@@ -170,7 +170,7 @@ pub fn run_meta(
 
 #[cfg(feature = "watch")]
 pub async fn run_watch(
-    ctx: &crate::storage::AppContext,
+    ctx: &mut crate::storage::AppContext,
     path: &str,
     duration: u64,
 ) -> anyhow::Result<()> {
@@ -205,7 +205,7 @@ pub async fn run_watch(
 }
 
 pub fn run_skill_sync(
-    _ctx: &crate::storage::AppContext,
+    _ctx: &mut crate::storage::AppContext,
     output: &str,
     filter_tags: Option<String>,
     dry_run: bool,
@@ -226,7 +226,7 @@ pub fn run_skill_sync(
     }
 }
 
-pub async fn run_digest(ctx: &crate::storage::AppContext) -> anyhow::Result<()> {
+pub async fn run_digest(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     let digest_config = ctx.config.digest.clone();
     match tokio::task::spawn_blocking(move || {
         let conn = registry::WorkspaceRegistry::init_db()?;
@@ -255,11 +255,11 @@ pub async fn run_digest(ctx: &crate::storage::AppContext) -> anyhow::Result<()> 
 }
 
 pub fn run_oplog(
-    _ctx: &crate::storage::AppContext,
+    ctx: &mut crate::storage::AppContext,
     limit: i64,
     repo: Option<String>,
 ) -> anyhow::Result<()> {
-    let conn = registry::WorkspaceRegistry::init_db()?;
+    let conn = ctx.conn_mut();
     let entries = match repo {
         Some(ref r) => registry::WorkspaceRegistry::list_oplog_by_repo(&conn, r, limit)?,
         None => registry::WorkspaceRegistry::list_oplog(&conn, limit)?,
@@ -310,12 +310,12 @@ pub fn run_oplog(
     Ok(())
 }
 
-pub fn run_discover(_ctx: &crate::storage::AppContext) -> anyhow::Result<()> {
+pub fn run_discover(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     use discovery_engine::{Discovery, discover_dependencies, discover_similar_projects};
     use registry::WorkspaceRegistry;
     use std::collections::HashMap;
 
-    let conn = WorkspaceRegistry::init_db()?;
+    let conn = ctx.conn_mut();
     let repos = WorkspaceRegistry::list_repos(&conn)?;
 
     let deps = discover_dependencies(&repos);
@@ -357,7 +357,7 @@ pub fn run_discover(_ctx: &crate::storage::AppContext) -> anyhow::Result<()> {
 }
 
 pub async fn run_sync(
-    _ctx: &crate::storage::AppContext,
+    _ctx: &mut crate::storage::AppContext,
     dry_run: bool,
     filter_tags: Option<String>,
     exclude: Option<String>,
@@ -377,7 +377,7 @@ pub async fn run_sync(
 }
 
 pub async fn run_syncthing_push(
-    _ctx: &crate::storage::AppContext,
+    ctx: &mut crate::storage::AppContext,
     api_url: String,
     api_key: Option<String>,
     filter_tags: Option<String>,
@@ -388,13 +388,7 @@ pub async fn run_syncthing_push(
 
     let client = SyncthingClient::new(&api_url, api_key.as_deref());
 
-    let conn = match WorkspaceRegistry::init_db() {
-        Ok(c) => c,
-        Err(e) => {
-            println!("无法初始化数据库: {}", e);
-            return Ok(());
-        }
-    };
+    let conn = ctx.conn_mut();
 
     let repos = match WorkspaceRegistry::list_repos(&conn) {
         Ok(r) => r,
@@ -499,7 +493,7 @@ pub async fn run_syncthing_push(
 }
 
 pub fn run_registry(
-    _ctx: &crate::storage::AppContext,
+    _ctx: &mut crate::storage::AppContext,
     cmd: crate::RegistryCommands,
 ) -> anyhow::Result<()> {
     match cmd {

@@ -1,8 +1,8 @@
 pub fn run_limit(
-    _ctx: &crate::storage::AppContext,
+    ctx: &mut crate::storage::AppContext,
     cmd: crate::LimitCommands,
 ) -> anyhow::Result<()> {
-    let conn = crate::registry::WorkspaceRegistry::init_db()?;
+    let conn = ctx.conn_mut();
     match cmd {
         crate::LimitCommands::Add {
             id,

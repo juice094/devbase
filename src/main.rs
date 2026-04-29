@@ -436,10 +436,10 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Scan { path, register } => {
-            commands::simple::run_scan(&ctx, &path, register).await?;
+            commands::simple::run_scan(&mut ctx, &path, register).await?;
         }
         Commands::Health { detail, limit, page } => {
-            commands::simple::run_health(&ctx, detail, limit, page).await?;
+            commands::simple::run_health(&mut ctx, detail, limit, page).await?;
         }
         Commands::Sync {
             dry_run,
@@ -447,39 +447,39 @@ async fn main() -> anyhow::Result<()> {
             exclude,
             json,
         } => {
-            commands::simple::run_sync(&ctx, dry_run, filter_tags, exclude, json).await?;
+            commands::simple::run_sync(&mut ctx, dry_run, filter_tags, exclude, json).await?;
         }
         Commands::Query { query, limit, page } => {
-            commands::simple::run_query(&ctx, &query, limit, page).await?;
+            commands::simple::run_query(&mut ctx, &query, limit, page).await?;
         }
         Commands::Index { path } => {
-            commands::simple::run_index(&ctx, &path).await?;
+            commands::simple::run_index(&mut ctx, &path).await?;
         }
         Commands::Clean => {
-            commands::simple::run_clean(&ctx)?;
+            commands::simple::run_clean(&mut ctx)?;
         }
         Commands::Tag { repo_id, tags } => {
-            commands::simple::run_tag(&ctx, &repo_id, &tags)?;
+            commands::simple::run_tag(&mut ctx, &repo_id, &tags)?;
         }
         Commands::Meta { repo_id, tier, workspace_type } => {
-            commands::simple::run_meta(&ctx, &repo_id, tier, workspace_type)?;
+            commands::simple::run_meta(&mut ctx, &repo_id, tier, workspace_type)?;
         }
         #[cfg(feature = "tui")]
         Commands::Tui => {
-            commands::simple::run_tui(&ctx).await?;
+            commands::simple::run_tui(&mut ctx).await?;
         }
         Commands::Mcp { tools } => {
-            commands::simple::run_mcp(&ctx, tools).await?;
+            commands::simple::run_mcp(&mut ctx, tools).await?;
         }
         Commands::Daemon { interval } => {
-            commands::simple::run_daemon(&ctx, interval).await?;
+            commands::simple::run_daemon(&mut ctx, interval).await?;
         }
         #[cfg(feature = "watch")]
         Commands::Watch { path, duration } => {
-            commands::simple::run_watch(&ctx, &path, duration).await?;
+            commands::simple::run_watch(&mut ctx, &path, duration).await?;
         }
         Commands::SkillSync { output, filter_tags, dry_run } => {
-            commands::simple::run_skill_sync(&ctx, &output, filter_tags, dry_run)?;
+            commands::simple::run_skill_sync(&mut ctx, &output, filter_tags, dry_run)?;
         }
         Commands::SyncthingPush {
             api_url,
@@ -487,32 +487,32 @@ async fn main() -> anyhow::Result<()> {
             filter_tags,
             experiment,
         } => {
-            commands::simple::run_syncthing_push(&ctx, api_url, api_key, filter_tags, experiment)
+            commands::simple::run_syncthing_push(&mut ctx, api_url, api_key, filter_tags, experiment)
                 .await?;
         }
         Commands::Digest => {
-            commands::simple::run_digest(&ctx).await?;
+            commands::simple::run_digest(&mut ctx).await?;
         }
         Commands::Oplog { limit, repo } => {
-            commands::simple::run_oplog(&ctx, limit, repo)?;
+            commands::simple::run_oplog(&mut ctx, limit, repo)?;
         }
         Commands::Discover => {
-            commands::simple::run_discover(&ctx)?;
+            commands::simple::run_discover(&mut ctx)?;
         }
         Commands::Registry { cmd } => {
-            commands::simple::run_registry(&ctx, cmd)?;
+            commands::simple::run_registry(&mut ctx, cmd)?;
         }
         Commands::Vault { cmd } => {
-            commands::simple::run_vault(&ctx, cmd).await?;
+            commands::simple::run_vault(&mut ctx, cmd).await?;
         }
         Commands::Skill { cmd } => {
-            commands::skill::run_skill(&ctx, cmd)?;
+            commands::skill::run_skill(&mut ctx, cmd)?;
         }
         Commands::Workflow { cmd } => {
-            commands::workflow::run_workflow(&ctx, cmd)?;
+            commands::workflow::run_workflow(&mut ctx, cmd)?;
         }
         Commands::Limit { cmd } => {
-            commands::limit::run_limit(&ctx, cmd)?;
+            commands::limit::run_limit(&mut ctx, cmd)?;
         }
     }
 
