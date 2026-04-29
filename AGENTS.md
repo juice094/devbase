@@ -4,7 +4,7 @@
 
 - **当前阶段**：阶段三 — v0.12.0-alpha 进行中 / Phase 2 全部完成 (Stage A-E + managed-gate)
 - **当前版本**：v0.12.0-alpha（未打 tag）
-- **下一里程碑**：v0.12.0 正式发布 — 需补充 CHANGELOG、版本 tag、integration test 加固
+- **下一里程碑**：v0.12.0 正式发布 — 版本 tag + 预发布观察期（beta.1）
 - **核心方向**：将 GitHub 项目转换为标准化、可发现、可组合的 Skill，供弱 AI 子代理执行
 - **设计文档**：
   - [`docs/architecture/workflow-dsl.md`](docs/architecture/workflow-dsl.md) — Workflow DSL 规范
@@ -21,7 +21,7 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
   - `assets/` —— 二进制资源
 - **MCP Server**：stdio only（SSE 开发中），**37 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：379 passed / 0 failed / 4 ignored（unit，单线程稳定；多线程 `--test-threads=4` 下有 2 个 flaky test）；9 passed（integration `tests/cli.rs`）
+- **当前测试**：379 passed / 0 failed / 4 ignored（unit，多线程 `--test-threads=4` 稳定）；11 passed（integration `tests/cli.rs`）
 - **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
 - **Workflow Engine**：YAML 解析 + 拓扑调度 + batch 并行执行 + 5 种 step 类型（skill/subworkflow/parallel/condition/loop）
 - **NLQ 自然语言查询**：TUI `[:]` 触发 embedding 语义搜索，fallback 降级文本搜索
@@ -288,9 +288,9 @@ devbase 承载外部资源调度的抽象接口：
 - **短期**：devbase MCP 接口可封装外部 TEE 服务（如 Azure Confidential Computing）
 - **长期**：如需自建，新建 `clarity-tee` 或 `devbase-secure` 子项目
 
-## 当前阶段待办（v0.11.0 规划中）
+## 当前阶段待办（v0.12.0 发布冲刺）
 
-v0.10.0 已交付（tagged）。当前无新功能排期，焦点为工程债清偿与 v0.11.0 方向探索。
+v0.11.3 已交付（tagged）。v0.12.0-alpha 全部功能已完成，进入发布治理阶段。
 
 | 方向 | 状态 | 说明 |
 |------|------|------|
