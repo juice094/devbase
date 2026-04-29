@@ -34,11 +34,15 @@ pub async fn run_json(
     let config = crate::config::Config::load().unwrap_or_default();
     let all_repos = WorkspaceRegistry::list_repos(conn)?;
     let total_registered = all_repos.len();
-    let tasks = collect_tasks(conn, filter_tags, exclude, &config.scan.exclude_paths).await?;
+    let (tasks, skipped_unmanaged) =
+        collect_tasks(conn, filter_tags, exclude, &config.scan.exclude_paths).await?;
     if filter_tags.is_none() && tasks.is_empty() && total_registered > 0 {
         println!(
             "{}",
-            crate::i18n::current().log.hint_unmanaged_repos.replace("{}", &total_registered.to_string())
+            crate::i18n::current()
+                .log
+                .hint_unmanaged_repos
+                .replace("{}", &total_registered.to_string())
         );
     }
     let mut path_map = HashMap::new();
@@ -94,6 +98,7 @@ pub async fn run_json(
     Ok(serde_json::json!({
         "success": true,
         "dry_run": dry_run,
+        "skipped_unmanaged": skipped_unmanaged,
         "results": results_json
     }))
 }
@@ -108,11 +113,15 @@ pub async fn run(
     let config = crate::config::Config::load().unwrap_or_default();
     let all_repos = WorkspaceRegistry::list_repos(conn)?;
     let total_registered = all_repos.len();
-    let tasks = collect_tasks(conn, filter_tags, exclude, &config.scan.exclude_paths).await?;
+    let (tasks, skipped_unmanaged) =
+        collect_tasks(conn, filter_tags, exclude, &config.scan.exclude_paths).await?;
     if filter_tags.is_none() && tasks.is_empty() && total_registered > 0 {
         println!(
             "{}",
-            crate::i18n::current().log.hint_unmanaged_repos.replace("{}", &total_registered.to_string())
+            crate::i18n::current()
+                .log
+                .hint_unmanaged_repos
+                .replace("{}", &total_registered.to_string())
         );
     }
     let mut path_map = HashMap::new();
@@ -181,6 +190,16 @@ pub async fn run(
     }
 
     print_summary_table(&results_json);
+
+    if skipped_unmanaged > 0 {
+        println!(
+            "\n{}",
+            crate::i18n::current()
+                .sync
+                .summary_unmanaged_skipped
+                .replace("{}", &skipped_unmanaged.to_string())
+        );
+    }
 
     if dry_run {
         println!("\n{}", crate::i18n::current().sync.dry_run_complete);

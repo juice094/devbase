@@ -104,6 +104,7 @@ pub fn build() -> I18n {
             already_up_to_date: "Already up to date",
             unhandled_merge_state: "Unhandled merge state",
             no_safe_repos: "No safe repositories to sync.",
+            summary_unmanaged_skipped: "Skipped {} unmanaged repositories. Use 'devbase tag <repo> managed' to enable sync.",
         },
         log: LogStrings {
             tui_started: "devbase TUI started. Press 'h' for help, 'q' to quit.",

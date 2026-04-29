@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Schema v22** — drop `vault_notes`, `papers`, `workflows` orphan tables; `entities` becomes sole source of truth for all entity types
+- **Managed-Gate Fail-Safe Defaults** — `devbase sync` defaults to managed repos only
+  - Management tags: `mirror`, `reference`, `third-party`, `collaborative`, `team`, `own-project`, `tool`, `active`, `managed`
+  - Untagged / non-management repos are registered but skipped by default sync
+  - `--filter-tags` bypasses the gate for explicit selection
+- **`.devbase-ignore`** — directory-level opt-out exclusion during scan
+- `scan --register` no longer auto-tags repos with `"discovered"`
+- i18n hint for unmanaged repos
+
+### Changed
+
+- `inspect_repo`: remove `"discovered"` from default tags; `-main`/`-master` repos keep `zip-snapshot` + `needs-migration`
+- `collect_tasks`: default mode filters by management tags
+- All `list_workflows` / `list_papers` / `list_vault_notes` queries migrated to `entities` table + `json_extract`
+- Generic `upsert_entity` abstraction for entity dual-write
+- `ENTITY_TYPE_*` constants extracted across 10 files (~25 replacements)
+- `cargo test --lib`: 374 → 379 passed
+
+### Breaking Changes
+
+- Existing repos tagged `"discovered"` are **no longer synced by default**.  
+  Use `devbase tag <repo> managed` (or any management tag) to opt a repo into automatic sync.
+
 ## [0.10.0] - 2026-04-26
 
 ### Added
@@ -29,8 +56,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `cargo test --all-targets`: 279 → 288 passed
 - MCP tool 总数: 35 → 37
-
-## [Unreleased]
 
 ## [0.11.3] - 2026-04-26
 

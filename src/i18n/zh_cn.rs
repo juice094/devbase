@@ -104,6 +104,7 @@ pub fn build() -> I18n {
             already_up_to_date: "已经是最新",
             unhandled_merge_state: "未处理的合并状态",
             no_safe_repos: "没有可安全同步的仓库。",
+            summary_unmanaged_skipped: "已跳过 {} 个未管理仓库。使用 'devbase tag <仓库> managed' 启用同步。",
         },
         log: LogStrings {
             tui_started: "devbase TUI 已启动。按 'h' 查看帮助，'q' 退出。",

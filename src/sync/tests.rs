@@ -236,7 +236,7 @@ fn test_perform_merge_up_to_date() {
 
 #[tokio::test]
 async fn test_collect_tasks_default_mode_excludes_untagged() {
-    use crate::registry::{RepoEntry, RemoteEntry, WorkspaceRegistry};
+    use crate::registry::{RemoteEntry, RepoEntry, WorkspaceRegistry};
     use chrono::Utc;
     use std::path::PathBuf;
 
@@ -283,14 +283,15 @@ async fn test_collect_tasks_default_mode_excludes_untagged() {
     WorkspaceRegistry::save_repo(&mut conn, &managed).unwrap();
 
     // Default mode: only managed repo should be collected
-    let tasks = tasks::collect_tasks(&conn, None, None, &[]).await.unwrap();
+    let (tasks, skipped) = tasks::collect_tasks(&conn, None, None, &[]).await.unwrap();
     assert_eq!(tasks.len(), 1);
+    assert_eq!(skipped, 1);
     assert_eq!(tasks[0].id, "managed");
 }
 
 #[tokio::test]
 async fn test_collect_tasks_explicit_filter_includes_untagged() {
-    use crate::registry::{RepoEntry, RemoteEntry, WorkspaceRegistry};
+    use crate::registry::{RemoteEntry, RepoEntry, WorkspaceRegistry};
     use chrono::Utc;
     use std::path::PathBuf;
 
@@ -316,23 +317,33 @@ async fn test_collect_tasks_explicit_filter_includes_untagged() {
     WorkspaceRegistry::save_repo(&mut conn, &untagged).unwrap();
 
     // Explicit filter mode with empty filter list → nothing matches
-    let tasks = tasks::collect_tasks(&conn, Some(""), None, &[]).await.unwrap();
+    let (tasks, _skipped) = tasks::collect_tasks(&conn, Some(""), None, &[]).await.unwrap();
     assert!(tasks.is_empty());
 
     // Explicit filter mode selecting by (nonexistent) tag → nothing matches
-    let tasks = tasks::collect_tasks(&conn, Some("managed"), None, &[]).await.unwrap();
+    let (tasks, _skipped) = tasks::collect_tasks(&conn, Some("managed"), None, &[]).await.unwrap();
     assert!(tasks.is_empty());
 }
 
 #[tokio::test]
 async fn test_collect_tasks_default_mode_includes_known_tags() {
-    use crate::registry::{RepoEntry, RemoteEntry, WorkspaceRegistry};
+    use crate::registry::{RemoteEntry, RepoEntry, WorkspaceRegistry};
     use chrono::Utc;
     use std::path::PathBuf;
 
     let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
 
-    for tag in &["mirror", "reference", "third-party", "collaborative", "team", "own-project", "tool", "active", "managed"] {
+    for tag in &[
+        "mirror",
+        "reference",
+        "third-party",
+        "collaborative",
+        "team",
+        "own-project",
+        "tool",
+        "active",
+        "managed",
+    ] {
         let repo = RepoEntry {
             id: format!("repo-{}", tag),
             local_path: PathBuf::from(format!("/tmp/{}", tag)),
@@ -353,6 +364,6 @@ async fn test_collect_tasks_default_mode_includes_known_tags() {
         WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
     }
 
-    let tasks = tasks::collect_tasks(&conn, None, None, &[]).await.unwrap();
+    let (tasks, _skipped) = tasks::collect_tasks(&conn, None, None, &[]).await.unwrap();
     assert_eq!(tasks.len(), 9);
 }

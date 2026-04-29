@@ -142,6 +142,16 @@ fn search_by_doc_type(
     doc_type_filter: Option<&str>,
 ) -> Result<Vec<(String, f32)>, TantivyError> {
     let (index, reader) = init_index()?;
+    search_with_reader(&index, &reader, query_str, limit, doc_type_filter)
+}
+
+fn search_with_reader(
+    index: &Index,
+    reader: &IndexReader,
+    query_str: &str,
+    limit: usize,
+    doc_type_filter: Option<&str>,
+) -> Result<Vec<(String, f32)>, TantivyError> {
     let schema = index.schema();
     let searcher = reader.searcher();
 
@@ -154,7 +164,7 @@ fn search_by_doc_type(
         .get_field("doc_type")
         .expect("schema field 'doc_type' defined in init_index");
 
-    let query_parser = QueryParser::for_index(&index, vec![title, content, tags]);
+    let query_parser = QueryParser::for_index(index, vec![title, content, tags]);
     let text_query = query_parser.parse_query(query_str)?;
 
     // Build combined query: text_query AND doc_type:filter (if specified)
@@ -319,93 +329,71 @@ mod tests {
 
     #[test]
     fn test_index_is_empty() {
-        with_temp_index(|_idx, _schema, writer| {
-            assert!(index_is_empty().unwrap());
+        with_temp_index(|idx, _schema, writer| {
+            let reader =
+                idx.reader_builder().reload_policy(ReloadPolicy::Manual).try_into().unwrap();
+            let searcher = reader.searcher();
+            assert_eq!(searcher.num_docs(), 0);
 
             add_repo_doc(writer, _schema, "repo1", "title", "content", &[]).unwrap();
             writer.commit().unwrap();
 
-            assert!(!index_is_empty().unwrap());
+            // Re-create reader to pick up committed docs
+            let reader =
+                idx.reader_builder().reload_policy(ReloadPolicy::Manual).try_into().unwrap();
+            let searcher = reader.searcher();
+            assert!(searcher.num_docs() > 0);
         });
     }
 
     #[test]
     fn test_search_repos() {
-        let _guard = SEARCH_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let tmp = tempfile::tempdir().unwrap();
-        let old = std::env::var("DEVBASE_DATA_DIR").ok();
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
+        with_temp_index(|index, schema, writer| {
+            add_repo_doc(
+                writer,
+                schema,
+                "repo1",
+                "devbase",
+                "developer workspace manager",
+                &["rust".into()],
+            )
+            .unwrap();
+            add_vault_doc(writer, schema, "note1", "My Note", "note content", &[]).unwrap();
+            commit_writer(writer).unwrap();
 
-        let (index, _reader) = init_index().unwrap();
-        let mut writer = get_writer(&index).unwrap();
-        let schema = index.schema();
-        add_repo_doc(
-            &mut writer,
-            &schema,
-            "repo1",
-            "devbase",
-            "developer workspace manager",
-            &["rust".into()],
-        )
-        .unwrap();
-        add_vault_doc(&mut writer, &schema, "note1", "My Note", "note content", &[]).unwrap();
-        commit_writer(&mut writer).unwrap();
+            let reader =
+                index.reader_builder().reload_policy(ReloadPolicy::Manual).try_into().unwrap();
 
-        let results = search_repos("workspace", 10).unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].0, "repo1");
+            let results = search_with_reader(index, &reader, "workspace", 10, None).unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].0, "repo1");
 
-        // search_repos does not filter by doc_type, so vault content is also searchable
-        let note_results = search_repos("note", 10).unwrap();
-        assert_eq!(note_results.len(), 1);
-        assert_eq!(note_results[0].0, "note1");
-
-        if let Some(v) = old {
-            unsafe {
-                std::env::set_var("DEVBASE_DATA_DIR", v);
-            }
-        } else {
-            unsafe {
-                std::env::remove_var("DEVBASE_DATA_DIR");
-            }
-        }
+            // search_repos does not filter by doc_type, so vault content is also searchable
+            let note_results = search_with_reader(index, &reader, "note", 10, None).unwrap();
+            assert_eq!(note_results.len(), 1);
+            assert_eq!(note_results[0].0, "note1");
+        });
     }
 
     #[test]
     fn test_search_vault() {
-        let _guard = SEARCH_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let tmp = tempfile::tempdir().unwrap();
-        let old = std::env::var("DEVBASE_DATA_DIR").ok();
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
+        with_temp_index(|index, schema, writer| {
+            add_repo_doc(writer, schema, "repo1", "devbase", "developer workspace manager", &[])
+                .unwrap();
+            add_vault_doc(writer, schema, "note1", "My Note", "vault note content", &[]).unwrap();
+            commit_writer(writer).unwrap();
 
-        let (index, _reader) = init_index().unwrap();
-        let mut writer = get_writer(&index).unwrap();
-        let schema = index.schema();
-        add_repo_doc(&mut writer, &schema, "repo1", "devbase", "developer workspace manager", &[])
-            .unwrap();
-        add_vault_doc(&mut writer, &schema, "note1", "My Note", "vault note content", &[]).unwrap();
-        commit_writer(&mut writer).unwrap();
+            let reader =
+                index.reader_builder().reload_policy(ReloadPolicy::Manual).try_into().unwrap();
 
-        let results = search_vault("vault", 10).unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].0, "note1");
+            let results = search_with_reader(index, &reader, "vault", 10, Some("vault")).unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].0, "note1");
 
-        // repo doc should not appear in vault search
-        let repo_results = search_vault("workspace", 10).unwrap();
-        assert!(repo_results.is_empty());
-
-        if let Some(v) = old {
-            unsafe {
-                std::env::set_var("DEVBASE_DATA_DIR", v);
-            }
-        } else {
-            unsafe {
-                std::env::remove_var("DEVBASE_DATA_DIR");
-            }
-        }
+            // repo doc should not appear in vault search
+            let repo_results =
+                search_with_reader(index, &reader, "workspace", 10, Some("vault")).unwrap();
+            assert!(repo_results.is_empty());
+        });
     }
 }

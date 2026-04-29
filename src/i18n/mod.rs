@@ -115,6 +115,7 @@ pub struct SyncStrings {
     pub already_up_to_date: &'static str,
     pub unhandled_merge_state: &'static str,
     pub no_safe_repos: &'static str,
+    pub summary_unmanaged_skipped: &'static str,
 }
 
 #[allow(dead_code)]

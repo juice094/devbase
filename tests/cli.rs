@@ -15,7 +15,8 @@ fn devbase_cmd() -> (Command, TempDir) {
 fn test_version() {
     let (mut cmd, _tmp) = devbase_cmd();
     cmd.arg("--version");
-    cmd.assert().success().stdout(predicate::str::contains("0.11.3"));
+    let expected = env!("CARGO_PKG_VERSION");
+    cmd.assert().success().stdout(predicate::str::contains(expected));
 }
 
 #[test]
@@ -134,4 +135,61 @@ fn test_backup_export() {
     cmd_export.env("DEVBASE_DATA_DIR", tmp.path());
     cmd_export.args(["registry", "export", "--format", "sqlite"]);
     cmd_export.assert().success();
+}
+
+/// Helper: create a minimal git repo with one commit.
+fn init_git_repo(path: &std::path::Path) {
+    let repo = git2::Repository::init(path).unwrap();
+    let sig = repo.signature().unwrap();
+    let tree_id = repo.index().unwrap().write_tree().unwrap();
+    let tree = repo.find_tree(tree_id).unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
+}
+
+#[test]
+fn test_sync_skips_unmanaged_repo() {
+    let tmp = TempDir::new().unwrap();
+
+    // Create and register a git repo
+    let repo_dir = tmp.path().join("unmanaged-repo");
+    fs::create_dir(&repo_dir).unwrap();
+    init_git_repo(&repo_dir);
+
+    let mut scan = Command::cargo_bin("devbase").unwrap();
+    scan.env("DEVBASE_DATA_DIR", tmp.path());
+    scan.args(["scan", repo_dir.to_str().unwrap(), "--register"]);
+    scan.assert().success();
+
+    // Sync dry-run should skip the unmanaged repo
+    let mut sync = Command::cargo_bin("devbase").unwrap();
+    sync.env("DEVBASE_DATA_DIR", tmp.path());
+    sync.args(["sync", "--dry-run"]);
+    sync.assert().success().stdout(predicate::str::contains("devbase tag"));
+}
+
+#[test]
+fn test_tag_enables_sync() {
+    let tmp = TempDir::new().unwrap();
+
+    // Create and register a git repo
+    let repo_dir = tmp.path().join("managed-repo");
+    fs::create_dir(&repo_dir).unwrap();
+    init_git_repo(&repo_dir);
+
+    let mut scan = Command::cargo_bin("devbase").unwrap();
+    scan.env("DEVBASE_DATA_DIR", tmp.path());
+    scan.args(["scan", repo_dir.to_str().unwrap(), "--register"]);
+    scan.assert().success();
+
+    // Tag as managed
+    let mut tag = Command::cargo_bin("devbase").unwrap();
+    tag.env("DEVBASE_DATA_DIR", tmp.path());
+    tag.args(["tag", "managed-repo", "managed"]);
+    tag.assert().success();
+
+    // Sync dry-run should now evaluate the repo
+    let mut sync = Command::cargo_bin("devbase").unwrap();
+    sync.env("DEVBASE_DATA_DIR", tmp.path());
+    sync.args(["sync", "--dry-run"]);
+    sync.assert().success().stdout(predicate::str::contains("managed-repo"));
 }

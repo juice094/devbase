@@ -383,10 +383,7 @@ pub fn inspect_repo(
     let language = detect_language(path);
 
     let tags = if id.ends_with("-main") || id.ends_with("-master") {
-        vec![
-            "zip-snapshot".to_string(),
-            "needs-migration".to_string(),
-        ]
+        vec!["zip-snapshot".to_string(), "needs-migration".to_string()]
     } else {
         vec![]
     };

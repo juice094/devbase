@@ -183,8 +183,15 @@ pub(super) async fn execute_task(task: &RepoSyncTask, dry_run: bool) -> SyncSumm
 }
 
 const MANAGED_TAGS: &[&str] = &[
-    "mirror", "reference", "third-party", "collaborative", "team",
-    "own-project", "tool", "active", "managed",
+    "mirror",
+    "reference",
+    "third-party",
+    "collaborative",
+    "team",
+    "own-project",
+    "tool",
+    "active",
+    "managed",
 ];
 
 pub(super) async fn collect_tasks(
@@ -192,7 +199,7 @@ pub(super) async fn collect_tasks(
     filter_tags: Option<&str>,
     exclude: Option<&str>,
     exclude_paths: &[String],
-) -> anyhow::Result<Vec<RepoSyncTask>> {
+) -> anyhow::Result<(Vec<RepoSyncTask>, usize)> {
     let repos = WorkspaceRegistry::list_repos(conn)?;
 
     let is_default_mode = filter_tags.is_none();
@@ -204,6 +211,7 @@ pub(super) async fn collect_tasks(
         .map(|e| e.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect())
         .unwrap_or_default();
 
+    let mut skipped_unmanaged = 0usize;
     let tasks: Vec<RepoSyncTask> = repos
         .into_iter()
         .filter(|repo| {
@@ -215,7 +223,11 @@ pub(super) async fn collect_tasks(
             let not_excluded = !exclude_list.iter().any(|id| repo.id == *id);
             let not_path_excluded =
                 !crate::scan::is_excluded_path(&repo.local_path, exclude_paths, None);
-            tag_match && not_excluded && not_path_excluded
+            let included = tag_match && not_excluded && not_path_excluded;
+            if is_default_mode && !included && !tag_match {
+                skipped_unmanaged += 1;
+            }
+            included
         })
         .map(|repo| {
             let primary = repo.primary_remote().cloned();
@@ -231,7 +243,7 @@ pub(super) async fn collect_tasks(
         })
         .collect();
 
-    Ok(tasks)
+    Ok((tasks, skipped_unmanaged))
 }
 
 pub(super) fn map_action(action: &str, _message: &str) -> String {
