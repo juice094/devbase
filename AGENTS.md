@@ -2,9 +2,9 @@
 
 `devbase` 是本地优先的 AI Skill 编排基础设施。
 
-- **当前阶段**：阶段三 — v0.11.3 已交付 / Phase 1 主从表切换全部完成
-- **当前版本**：v0.11.3（tagged）
-- **下一里程碑**：Phase 1 主从表切换（`repos` 降级为 `entities` 物化视图）
+- **当前阶段**：阶段三 — v0.12.0-alpha 进行中 / Phase 2 Stage A+B 已完成
+- **当前版本**：v0.12.0-alpha（未打 tag）
+- **下一里程碑**：Phase 2 Stage C — vault/paper/workflow 的 entities dual-write
 - **核心方向**：将 GitHub 项目转换为标准化、可发现、可组合的 Skill，供弱 AI 子代理执行
 - **设计文档**：
   - [`docs/architecture/workflow-dsl.md`](docs/architecture/workflow-dsl.md) — Workflow DSL 规范
@@ -63,7 +63,7 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 | 模块拆分 | `sync`→5 / `registry`→7 / `mcp` 测试分离 / `search`→hybrid / `oplog_analytics` / `symbol_links` |
 | 库/二进制 | `src/lib.rs` 导出全部 **30+** 个模块；`src/main.rs` 仅 CLI 入口 |
 | TUI 架构 | `render/` 6 子模块 + `theme.rs` Design Token + `layout.rs` 响应式引擎 |
-| 数据层 | Schema v17: repos + repo_tags + code_symbols + code_embeddings + code_call_graph + code_symbol_links + oplog + vault_notes + papers + experiments + **skills + skill_executions** + **entities + entity_types + relations** + **workflows + workflow_executions**（统一实体模型，渐进双写） |
+| 数据层 | Schema v21: `repos` 表已删除；`entities` 为唯一数据源；`repo_tags/repo_remotes/repo_health/...` 为独立 JOIN 表（无 FK）；`vault_notes`/`papers`/`workflows` 仍为孤岛表（Stage C 待 dual-write） |
 | CI/CD | `.github/workflows/ci.yml`：check / test / fmt / clippy on Windows |
 | 依赖安全 | `cargo audit` 0 漏洞（除上游 `tokei` 的 `RUSTSEC-2020-0163`） |
 
@@ -179,6 +179,7 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 | `init_db()` 全局路径 | 🟡 | `AppContext` 已集成到全部 commands/ 模块（22 个函数）；`main()` 通过 `AppContext` 分发配置 | 0 新增 | `StorageBackend` trait + `AppContext` 已奠基；`db_path`/`workspace_dir`/`index_path`/`backup_dir` 已统一；`init_db()` 调用点 grandfathered 待迁移 | ≤15 |
 | Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调 | 补偿机制 | 设计 `sync_index_to_db()` 回滚或两阶段提交；或改为 SQLite FTS5 替代 Tantivy | 7 |
 | 主从表切换 | 🟢 | Phase 1 全部完成：`repos` 表已删除，entities 为唯一数据源 | `entities` 为第一公民 | Phase 2 类型系统开放（新增 entity_type 无需改表结构） | v0.12.0 |
+| vault/paper/workflow entities 缺口 | 🟡 | `vault_notes`/`papers`/`workflows` 均未写入 `entities` | 全部 dual-write | Stage C: `save_*` + `delete_*` 调用 `upsert_entity` | v0.12.0 |
 | tree-sitter 编译成本 | 🟡 | ~15-20s | 可控 | 评估 `ccache` 或 grammar 预编译；或按需 feature-gate | 8 |
 | Feature flags 缺失 | 🟡 | 2 个可选 feature (tui, watch) | ≥3 (tui, watch, mcp) | `Cargo.toml` 已添加 `tui` + `watch` feature；ratatui/crossterm/notify 均为 optional；`--no-default-features` 编译通过 | ≤15 |
 | `LOCALAPPDATA` 测试模式残留 | 🟢 | 0 处 | 0 | 全面废弃 `LOCALAPPDATA` 环境变量覆盖，统一为 `DEVBASE_DATA_DIR`；mcp/tests.rs 修复 cleanup 逻辑（remove_var 目标从 LOCALAPPDATA 修正为 DEVBASE_DATA_DIR） | 47 |

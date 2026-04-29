@@ -30,6 +30,22 @@ impl WorkspaceRegistry {
                 rusqlite::params![&note.id, repo_id],
             )?;
         }
+        // Phase 2 Stage C: dual-write to entities table
+        let metadata = serde_json::json!({
+            "tags": note.tags.join(","),
+            "outgoing_links": note.outgoing_links,
+            "linked_repo": note.linked_repo,
+            "created_at": note.created_at.to_rfc3339(),
+            "updated_at": note.updated_at.to_rfc3339(),
+        });
+        crate::registry::upsert_entity(
+            &tx,
+            &note.id,
+            crate::registry::ENTITY_TYPE_VAULT_NOTE,
+            note.title.as_deref().unwrap_or(&note.id),
+            Some(&note.path),
+            &metadata,
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -79,6 +95,8 @@ impl WorkspaceRegistry {
     pub fn delete_vault_note(conn: &rusqlite::Connection, note_id: &str) -> anyhow::Result<()> {
         conn.execute("DELETE FROM vault_notes WHERE id = ?1", [note_id])?;
         conn.execute("DELETE FROM vault_repo_links WHERE vault_id = ?1", [note_id])?;
+        // Phase 2 Stage C: keep entities in sync
+        let _ = conn.execute("DELETE FROM entities WHERE id = ?1", [note_id]);
         Ok(())
     }
 }

@@ -128,6 +128,23 @@ impl WorkspaceRegistry {
                 paper.added_at.to_rfc3339()
             ],
         )?;
+        // Phase 2 Stage C: dual-write to entities table
+        let metadata = serde_json::json!({
+            "authors": paper.authors,
+            "venue": paper.venue,
+            "year": paper.year,
+            "bibtex": paper.bibtex,
+            "tags": paper.tags,
+            "added_at": paper.added_at.to_rfc3339(),
+        });
+        crate::registry::upsert_entity(
+            conn,
+            &paper.id,
+            crate::registry::ENTITY_TYPE_PAPER,
+            &paper.title,
+            paper.pdf_path.as_deref(),
+            &metadata,
+        )?;
         Ok(())
     }
 

@@ -15,6 +15,20 @@ pub fn save_workflow(conn: &Connection, wf: &WorkflowDefinition) -> anyhow::Resu
             updated_at = excluded.updated_at",
         params![&wf.id, &wf.name, &wf.version, wf.description.as_deref().unwrap_or(""), yaml, now],
     )?;
+    // Phase 2 Stage C: dual-write to entities table
+    let metadata = serde_json::json!({
+        "version": &wf.version,
+        "description": wf.description,
+        "status": "active",
+    });
+    crate::registry::upsert_entity(
+        conn,
+        &wf.id,
+        crate::registry::ENTITY_TYPE_WORKFLOW,
+        &wf.name,
+        None,
+        &metadata,
+    )?;
     Ok(())
 }
 
@@ -42,6 +56,8 @@ pub fn list_workflows(conn: &Connection) -> anyhow::Result<Vec<(String, String, 
 
 pub fn delete_workflow(conn: &Connection, id: &str) -> anyhow::Result<bool> {
     let rows = conn.execute("DELETE FROM workflows WHERE id = ?1", [id])?;
+    // Phase 2 Stage C: keep entities in sync
+    let _ = conn.execute("DELETE FROM entities WHERE id = ?1", [id]);
     Ok(rows > 0)
 }
 
