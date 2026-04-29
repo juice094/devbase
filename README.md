@@ -1,6 +1,6 @@
 # devbase
 
-[![Version](https://img.shields.io/badge/version-v0.10.0-blue)](https://github.com/juice094/devbase/releases)
+[![Version](https://img.shields.io/badge/version-v0.11.3-blue)](https://github.com/juice094/devbase/releases)
 [![Tests](https://img.shields.io/badge/tests-374%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
 [![License](https://img.shields.io/badge/license-MIT-orange)](./LICENSE)
@@ -258,7 +258,11 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | v0.8.0 | ✅ 已发布 | Workflow 子类型：Subworkflow / Parallel / Condition / Loop |
 | v0.9.0 | ✅ 已发布 | Loop Step 硬化 + 发布闭环 |
 | **v0.10.0** | **✅ 已发布** | **L3-L4 知识模型 + 工程健康维护（main.rs 拆分 / StorageBackend / feature flags）** |
-| v0.11.0 | 📝 规划中 | 无新功能排期；焦点：工程债清偿（`init_db`→`AppContext` 迁移、Tantivy+SQLite 一致性、tree-sitter 编译成本） |
+| **v0.11.0** | **✅ 已发布** | **AppContext Pool 化 + MCP 测试隔离 + CI 多线程** |
+| **v0.11.1** | **✅ 已发布** | **Flat ID 命名空间 + entities-first 写入反转** |
+| **v0.11.2** | **✅ 已发布** | **读路径全量迁移：所有 SELECT 切到 `entities`** |
+| **v0.11.3** | **✅ 已发布** | **`repos` 表删除，`entities` 成为唯一数据源（Phase 1 完成）** |
+| v0.12.0 | 📝 规划中 | Phase 2 类型系统开放：新增 entity_type 无需改表结构 |
 
 ---
 
