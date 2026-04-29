@@ -145,6 +145,7 @@ pub struct LogStrings {
     pub digest_failed: &'static str,
     pub digest_panic: &'static str,
     pub external_tui_not_found: &'static str,
+    pub hint_unmanaged_repos: &'static str,
 }
 
 #[allow(dead_code)]

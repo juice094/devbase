@@ -32,7 +32,15 @@ pub async fn run_json(
 ) -> anyhow::Result<serde_json::Value> {
     let start = std::time::Instant::now();
     let config = crate::config::Config::load().unwrap_or_default();
+    let all_repos = WorkspaceRegistry::list_repos(conn)?;
+    let total_registered = all_repos.len();
     let tasks = collect_tasks(conn, filter_tags, exclude, &config.scan.exclude_paths).await?;
+    if filter_tags.is_none() && tasks.is_empty() && total_registered > 0 {
+        println!(
+            "{}",
+            crate::i18n::current().log.hint_unmanaged_repos.replace("{}", &total_registered.to_string())
+        );
+    }
     let mut path_map = HashMap::new();
     for task in &tasks {
         path_map.insert(task.id.clone(), task.path.clone());
@@ -98,7 +106,15 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let start = std::time::Instant::now();
     let config = crate::config::Config::load().unwrap_or_default();
+    let all_repos = WorkspaceRegistry::list_repos(conn)?;
+    let total_registered = all_repos.len();
     let tasks = collect_tasks(conn, filter_tags, exclude, &config.scan.exclude_paths).await?;
+    if filter_tags.is_none() && tasks.is_empty() && total_registered > 0 {
+        println!(
+            "{}",
+            crate::i18n::current().log.hint_unmanaged_repos.replace("{}", &total_registered.to_string())
+        );
+    }
     let mut path_map = HashMap::new();
     for task in &tasks {
         path_map.insert(task.id.clone(), task.path.clone());

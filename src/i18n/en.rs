@@ -132,6 +132,7 @@ pub fn build() -> I18n {
             digest_failed: "Failed to generate digest",
             digest_panic: "Digest task panicked",
             external_tui_not_found: "Neither gitui nor lazygit found in PATH. Install one for deep repo operations.",
+            hint_unmanaged_repos: "ℹ️  {} registered repositories are not managed. Use 'devbase tag <repo> managed' to enable sync.",
         },
     }
 }

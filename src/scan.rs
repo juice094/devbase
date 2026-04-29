@@ -384,12 +384,11 @@ pub fn inspect_repo(
 
     let tags = if id.ends_with("-main") || id.ends_with("-master") {
         vec![
-            "discovered".to_string(),
             "zip-snapshot".to_string(),
             "needs-migration".to_string(),
         ]
     } else {
-        vec!["discovered".to_string()]
+        vec![]
     };
 
     let remote_entry = RemoteEntry {
@@ -597,7 +596,7 @@ mod tests {
         git2::Repository::init(&repo_path).unwrap();
 
         let entry = inspect_repo(&repo_path, None).unwrap();
-        assert_eq!(entry.tags, vec!["discovered", "zip-snapshot", "needs-migration"]);
+        assert_eq!(entry.tags, vec!["zip-snapshot", "needs-migration"]);
     }
 
     #[test]
@@ -608,7 +607,7 @@ mod tests {
         git2::Repository::init(&repo_path).unwrap();
 
         let entry = inspect_repo(&repo_path, None).unwrap();
-        assert_eq!(entry.tags, vec!["discovered", "zip-snapshot", "needs-migration"]);
+        assert_eq!(entry.tags, vec!["zip-snapshot", "needs-migration"]);
     }
 
     #[test]
@@ -619,7 +618,7 @@ mod tests {
         git2::Repository::init(&repo_path).unwrap();
 
         let entry = inspect_repo(&repo_path, None).unwrap();
-        assert_eq!(entry.tags, vec!["discovered"]);
+        assert_eq!(entry.tags, Vec::<String>::new());
     }
 
     #[test]

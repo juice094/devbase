@@ -182,6 +182,11 @@ pub(super) async fn execute_task(task: &RepoSyncTask, dry_run: bool) -> SyncSumm
     }
 }
 
+const MANAGED_TAGS: &[&str] = &[
+    "mirror", "reference", "third-party", "collaborative", "team",
+    "own-project", "tool", "active", "managed",
+];
+
 pub(super) async fn collect_tasks(
     conn: &rusqlite::Connection,
     filter_tags: Option<&str>,
@@ -190,6 +195,7 @@ pub(super) async fn collect_tasks(
 ) -> anyhow::Result<Vec<RepoSyncTask>> {
     let repos = WorkspaceRegistry::list_repos(conn)?;
 
+    let is_default_mode = filter_tags.is_none();
     let filter_list: Vec<&str> = filter_tags
         .map(|f| f.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect())
         .unwrap_or_default();
@@ -201,8 +207,11 @@ pub(super) async fn collect_tasks(
     let tasks: Vec<RepoSyncTask> = repos
         .into_iter()
         .filter(|repo| {
-            let tag_match = filter_list.is_empty()
-                || filter_list.iter().any(|f| repo.tags.contains(&f.to_string()));
+            let tag_match = if is_default_mode {
+                repo.tags.iter().any(|t| MANAGED_TAGS.contains(&t.as_str()))
+            } else {
+                filter_list.iter().any(|f| repo.tags.contains(&f.to_string()))
+            };
             let not_excluded = !exclude_list.iter().any(|id| repo.id == *id);
             let not_path_excluded =
                 !crate::scan::is_excluded_path(&repo.local_path, exclude_paths, None);

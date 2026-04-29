@@ -420,6 +420,25 @@ v0.10.0 已交付（tagged）。当前无新功能排期，焦点为工程债清
 
 **变更规则**：MCP tool schema 的 breaking change 必须通过新增 tool（如 `devkit_hybrid_search_v2`）而非修改现有 tool。
 
+### 5. Sync Fail-Safe Defaults（Managed-Gate）
+
+**原则**：危险操作（修改本地 Git 分支）必须默认拒绝，仅对显式授权仓库生效。
+
+**实现**（v0.12.0-alpha+）：
+- `scan --register` 不再自动分配 `"discovered"` 标签；新注册仓库标签为空。
+- 默认 `devbase sync`（无 `--filter-tags`）仅操作带有**管理标签**的仓库：
+  `mirror`, `reference`, `third-party`, `collaborative`, `team`,
+  `own-project`, `tool`, `active`, `managed`。
+- 未管理仓库仍被追踪（`health`/`index`/`query` 不受影响），但 `sync` 会跳过它们并提示：
+  `ℹ️  N registered repositories are not managed. Use 'devbase tag <repo> managed' to enable sync.`
+- `--filter-tags` 显式过滤时绕过管理门控，允许用户按需选择任意标签组合。
+- 现有 DB 中带有旧 `"discovered"` 标签的仓库自动变为未管理状态（无需迁移，即安全修复）。
+
+**用户操作路径**：
+1. `devbase scan <path> --register` → 仓库入库，标签为空。
+2. `devbase tag <repo> managed`（或 `mirror` / `active` 等）→ 授权该仓库进入自动同步池。
+3. `devbase sync` → 仅对已授权仓库执行同步。
+
 ---
 
 ## 禁止事项

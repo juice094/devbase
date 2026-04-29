@@ -223,6 +223,7 @@ mod tests {
         assert_eq!(SyncPolicy::from_tags("tool"), SyncPolicy::Rebase);
         assert_eq!(SyncPolicy::from_tags("active"), SyncPolicy::Rebase);
         assert_eq!(SyncPolicy::from_tags("unknown"), SyncPolicy::Conservative);
+        assert_eq!(SyncPolicy::from_tags("discovered"), SyncPolicy::Conservative);
         assert_eq!(SyncPolicy::from_tags("mirror, active"), SyncPolicy::Mirror);
     }
 

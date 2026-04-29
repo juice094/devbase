@@ -132,6 +132,7 @@ pub fn build() -> I18n {
             digest_failed: "生成日报失败",
             digest_panic: "日报任务崩溃",
             external_tui_not_found: "未在 PATH 中找到 gitui 或 lazygit。请安装其中之一以进行深度仓库操作。",
+            hint_unmanaged_repos: "ℹ️  {} 个已注册仓库未管理。使用 'devbase tag <仓库> managed' 启用同步。",
         },
     }
 }

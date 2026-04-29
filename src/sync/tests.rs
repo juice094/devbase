@@ -233,3 +233,126 @@ fn test_perform_merge_up_to_date() {
     let summary = perform_merge(&repo, "main", local_oid, remote_oid).unwrap();
     assert_eq!(summary.action, "OK");
 }
+
+#[tokio::test]
+async fn test_collect_tasks_default_mode_excludes_untagged() {
+    use crate::registry::{RepoEntry, RemoteEntry, WorkspaceRegistry};
+    use chrono::Utc;
+    use std::path::PathBuf;
+
+    let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+
+    // Untagged repo
+    let untagged = RepoEntry {
+        id: "untagged".to_string(),
+        local_path: PathBuf::from("/tmp/untagged"),
+        tags: vec![],
+        language: Some("rust".to_string()),
+        discovered_at: Utc::now(),
+        workspace_type: "git".to_string(),
+        data_tier: "private".to_string(),
+        last_synced_at: None,
+        stars: None,
+        remotes: vec![RemoteEntry {
+            remote_name: "origin".to_string(),
+            upstream_url: Some("https://github.com/test/untagged".to_string()),
+            default_branch: Some("main".to_string()),
+            last_sync: None,
+        }],
+    };
+    WorkspaceRegistry::save_repo(&mut conn, &untagged).unwrap();
+
+    // Managed repo
+    let managed = RepoEntry {
+        id: "managed".to_string(),
+        local_path: PathBuf::from("/tmp/managed"),
+        tags: vec!["managed".to_string()],
+        language: Some("rust".to_string()),
+        discovered_at: Utc::now(),
+        workspace_type: "git".to_string(),
+        data_tier: "private".to_string(),
+        last_synced_at: None,
+        stars: None,
+        remotes: vec![RemoteEntry {
+            remote_name: "origin".to_string(),
+            upstream_url: Some("https://github.com/test/managed".to_string()),
+            default_branch: Some("main".to_string()),
+            last_sync: None,
+        }],
+    };
+    WorkspaceRegistry::save_repo(&mut conn, &managed).unwrap();
+
+    // Default mode: only managed repo should be collected
+    let tasks = tasks::collect_tasks(&conn, None, None, &[]).await.unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].id, "managed");
+}
+
+#[tokio::test]
+async fn test_collect_tasks_explicit_filter_includes_untagged() {
+    use crate::registry::{RepoEntry, RemoteEntry, WorkspaceRegistry};
+    use chrono::Utc;
+    use std::path::PathBuf;
+
+    let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+
+    let untagged = RepoEntry {
+        id: "untagged".to_string(),
+        local_path: PathBuf::from("/tmp/untagged"),
+        tags: vec![],
+        language: Some("rust".to_string()),
+        discovered_at: Utc::now(),
+        workspace_type: "git".to_string(),
+        data_tier: "private".to_string(),
+        last_synced_at: None,
+        stars: None,
+        remotes: vec![RemoteEntry {
+            remote_name: "origin".to_string(),
+            upstream_url: Some("https://github.com/test/untagged".to_string()),
+            default_branch: Some("main".to_string()),
+            last_sync: None,
+        }],
+    };
+    WorkspaceRegistry::save_repo(&mut conn, &untagged).unwrap();
+
+    // Explicit filter mode with empty filter list → nothing matches
+    let tasks = tasks::collect_tasks(&conn, Some(""), None, &[]).await.unwrap();
+    assert!(tasks.is_empty());
+
+    // Explicit filter mode selecting by (nonexistent) tag → nothing matches
+    let tasks = tasks::collect_tasks(&conn, Some("managed"), None, &[]).await.unwrap();
+    assert!(tasks.is_empty());
+}
+
+#[tokio::test]
+async fn test_collect_tasks_default_mode_includes_known_tags() {
+    use crate::registry::{RepoEntry, RemoteEntry, WorkspaceRegistry};
+    use chrono::Utc;
+    use std::path::PathBuf;
+
+    let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+
+    for tag in &["mirror", "reference", "third-party", "collaborative", "team", "own-project", "tool", "active", "managed"] {
+        let repo = RepoEntry {
+            id: format!("repo-{}", tag),
+            local_path: PathBuf::from(format!("/tmp/{}", tag)),
+            tags: vec![tag.to_string()],
+            language: Some("rust".to_string()),
+            discovered_at: Utc::now(),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![RemoteEntry {
+                remote_name: "origin".to_string(),
+                upstream_url: Some(format!("https://github.com/test/{}", tag)),
+                default_branch: Some("main".to_string()),
+                last_sync: None,
+            }],
+        };
+        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+    }
+
+    let tasks = tasks::collect_tasks(&conn, None, None, &[]).await.unwrap();
+    assert_eq!(tasks.len(), 9);
+}
