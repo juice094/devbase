@@ -92,7 +92,7 @@ impl WorkspaceRegistry {
     }
 
     pub fn list_repos(conn: &rusqlite::Connection) -> anyhow::Result<Vec<RepoEntry>> {
-        let stmt = conn.prepare(
+        let stmt = conn.prepare(&format!(
             "SELECT e.id, e.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = e.id) as tags,
                     json_extract(e.metadata, '$.language'), json_extract(e.metadata, '$.discovered_at'),
                     json_extract(e.metadata, '$.workspace_type'), json_extract(e.metadata, '$.data_tier'),
@@ -100,9 +100,10 @@ impl WorkspaceRegistry {
                     rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
              FROM entities e
              LEFT JOIN repo_remotes rm ON e.id = rm.repo_id
-             WHERE e.entity_type = 'repo'
-             ORDER BY e.id, rm.remote_name"
-        )?;
+             WHERE e.entity_type = '{}'
+             ORDER BY e.id, rm.remote_name",
+            super::ENTITY_TYPE_REPO
+        ))?;
         Self::collect_repos_from_stmt(stmt, &[])
     }
 
@@ -110,7 +111,7 @@ impl WorkspaceRegistry {
         conn: &rusqlite::Connection,
         threshold: &str,
     ) -> anyhow::Result<Vec<RepoEntry>> {
-        let stmt = conn.prepare(
+        let stmt = conn.prepare(&format!(
             "SELECT e.id, e.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = e.id) as tags,
                     json_extract(e.metadata, '$.language'), json_extract(e.metadata, '$.discovered_at'),
                     json_extract(e.metadata, '$.workspace_type'), json_extract(e.metadata, '$.data_tier'),
@@ -118,12 +119,13 @@ impl WorkspaceRegistry {
                     rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
              FROM entities e
              LEFT JOIN repo_remotes rm ON e.id = rm.repo_id
-             WHERE e.entity_type = 'repo' AND (
+             WHERE e.entity_type = '{}' AND (
                  NOT EXISTS (SELECT 1 FROM repo_health h WHERE h.repo_id = e.id)
                  OR EXISTS (SELECT 1 FROM repo_health h WHERE h.repo_id = e.id AND h.checked_at < ?1)
              )
-             ORDER BY e.id, rm.remote_name"
-        )?;
+             ORDER BY e.id, rm.remote_name",
+            super::ENTITY_TYPE_REPO
+        ))?;
         Self::collect_repos_from_stmt(stmt, &[&threshold])
     }
 
@@ -131,7 +133,7 @@ impl WorkspaceRegistry {
         conn: &rusqlite::Connection,
         threshold: &str,
     ) -> anyhow::Result<Vec<RepoEntry>> {
-        let stmt = conn.prepare(
+        let stmt = conn.prepare(&format!(
             "SELECT e.id, e.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = e.id) as tags,
                     json_extract(e.metadata, '$.language'), json_extract(e.metadata, '$.discovered_at'),
                     json_extract(e.metadata, '$.workspace_type'), json_extract(e.metadata, '$.data_tier'),
@@ -139,13 +141,14 @@ impl WorkspaceRegistry {
                     rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
              FROM entities e
              LEFT JOIN repo_remotes rm ON e.id = rm.repo_id
-             WHERE e.entity_type = 'repo' AND (
+             WHERE e.entity_type = '{}' AND (
                  NOT EXISTS (SELECT 1 FROM repo_summaries s WHERE s.repo_id = e.id)
                  OR EXISTS (SELECT 1 FROM repo_summaries s WHERE s.repo_id = e.id AND s.generated_at < ?1)
                  OR json_extract(e.metadata, '$.language') IS NULL
              )
-             ORDER BY e.id, rm.remote_name"
-        )?;
+             ORDER BY e.id, rm.remote_name",
+            super::ENTITY_TYPE_REPO
+        ))?;
         Self::collect_repos_from_stmt(stmt, &[&threshold])
     }
 
@@ -227,7 +230,7 @@ impl WorkspaceRegistry {
         conn: &rusqlite::Connection,
         tier: &str,
     ) -> anyhow::Result<Vec<RepoEntry>> {
-        let stmt = conn.prepare(
+        let stmt = conn.prepare(&format!(
             "SELECT e.id, e.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = e.id) as tags,
                     json_extract(e.metadata, '$.language'), json_extract(e.metadata, '$.discovered_at'),
                     json_extract(e.metadata, '$.workspace_type'), json_extract(e.metadata, '$.data_tier'),
@@ -235,9 +238,10 @@ impl WorkspaceRegistry {
                     rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
              FROM entities e
              LEFT JOIN repo_remotes rm ON e.id = rm.repo_id
-             WHERE e.entity_type = 'repo' AND json_extract(e.metadata, '$.data_tier') = ?1
-             ORDER BY e.id, rm.remote_name"
-        )?;
+             WHERE e.entity_type = '{}' AND json_extract(e.metadata, '$.data_tier') = ?1
+             ORDER BY e.id, rm.remote_name",
+            super::ENTITY_TYPE_REPO
+        ))?;
         Self::collect_repos_from_stmt(stmt, &[&tier])
     }
 
@@ -275,24 +279,14 @@ fn upsert_entity_for_repo(conn: &rusqlite::Connection, repo: &RepoEntry) -> anyh
         "last_synced_at": repo.last_synced_at.map(|dt| dt.to_rfc3339()),
         "tags": repo.tags.join(","),
     });
-    let now = chrono::Utc::now().to_rfc3339();
-    conn.execute(
-        "INSERT INTO entities (id, entity_type, name, source_url, local_path, metadata, created_at, updated_at)
-         VALUES (?1, 'repo', ?2, NULL, ?3, ?4, ?5, ?5)
-         ON CONFLICT(id) DO UPDATE SET
-            name = excluded.name,
-            local_path = excluded.local_path,
-            metadata = excluded.metadata,
-            updated_at = excluded.updated_at",
-        rusqlite::params![
-            &repo.id,
-            &repo.id,
-            repo.local_path.to_string_lossy().to_string(),
-            metadata.to_string(),
-            &now,
-        ],
-    )?;
-    Ok(())
+    super::upsert_entity(
+        conn,
+        &repo.id,
+        super::ENTITY_TYPE_REPO,
+        &repo.id,
+        Some(&repo.local_path.to_string_lossy()),
+        &metadata,
+    )
 }
 
 /// Update a single JSON field in entities.metadata for a repo.

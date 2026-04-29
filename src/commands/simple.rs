@@ -118,13 +118,15 @@ pub fn run_clean(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     let conn = ctx.conn_mut()?;
     // Entities is the single source of truth.
     let deleted = conn.execute(
-        "DELETE FROM entities WHERE entity_type = 'repo' AND (id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%')",
+        &format!("DELETE FROM entities WHERE entity_type = '{}' AND (id LIKE 'Clarity_%' OR id LIKE 'clarity_backup%')", crate::registry::ENTITY_TYPE_REPO),
         [],
     )?;
     println!("已从 devbase 注册表中删除 {} 个备份条目。", deleted);
     println!("\n剩余已注册仓库:");
-    let mut stmt =
-        conn.prepare("SELECT id, local_path FROM entities WHERE entity_type = 'repo'")?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT id, local_path FROM entities WHERE entity_type = '{}'",
+        crate::registry::ENTITY_TYPE_REPO
+    ))?;
     let rows =
         stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
     for row in rows {
@@ -145,7 +147,10 @@ pub fn run_tag(
     let tx = conn.transaction()?;
     let exists: bool = tx
         .query_row(
-            "SELECT 1 FROM entities WHERE id = ?1 AND entity_type = 'repo'",
+            &format!(
+                "SELECT 1 FROM entities WHERE id = ?1 AND entity_type = '{}'",
+                crate::registry::ENTITY_TYPE_REPO
+            ),
             [&repo_id],
             |_| Ok(true),
         )

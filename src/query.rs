@@ -222,7 +222,8 @@ pub async fn run_json(
             .map(|_| "(s.summary LIKE ? OR s.keywords LIKE ?)".to_string())
             .collect();
         let sql = format!(
-            "SELECT e.id, e.local_path, s.summary, s.keywords FROM repo_summaries s JOIN entities e ON e.id = s.repo_id WHERE e.entity_type = 'repo' AND {}",
+            "SELECT e.id, e.local_path, s.summary, s.keywords FROM repo_summaries s JOIN entities e ON e.id = s.repo_id WHERE e.entity_type = '{}' AND {}",
+            crate::registry::ENTITY_TYPE_REPO,
             clauses.join(" OR ")
         );
 

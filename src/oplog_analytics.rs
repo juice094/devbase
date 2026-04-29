@@ -93,8 +93,12 @@ pub fn generate_report(
                     {} as emb_count,
                     {} as call_count
              FROM entities e
-             WHERE e.entity_type = 'repo' AND e.id = '{}'",
-            sym_sub, emb_sub, call_sub, rid
+             WHERE e.entity_type = '{}' AND e.id = '{}'",
+            sym_sub,
+            emb_sub,
+            call_sub,
+            rid,
+            crate::registry::ENTITY_TYPE_REPO,
         )
     } else {
         format!(
@@ -103,9 +107,12 @@ pub fn generate_report(
                     {} as emb_count,
                     {} as call_count
              FROM entities e
-             WHERE e.entity_type = 'repo'
+             WHERE e.entity_type = '{}'
              ORDER BY sym_count DESC",
-            sym_sub, emb_sub, call_sub
+            sym_sub,
+            emb_sub,
+            call_sub,
+            crate::registry::ENTITY_TYPE_REPO,
         )
     };
 
@@ -293,7 +300,7 @@ mod tests {
         )
         .unwrap();
 
-        conn.execute("INSERT INTO entities VALUES ('repo1', 'repo', 'repo1', NULL, '/path', '{}', NULL, '2026-01-01', '2026-01-01')", [])
+        conn.execute(&format!("INSERT INTO entities VALUES ('repo1', '{}', 'repo1', NULL, '/path', '{{}}', NULL, '2026-01-01', '2026-01-01')", crate::registry::ENTITY_TYPE_REPO), [])
             .unwrap();
         conn.execute(
             "INSERT INTO code_symbols VALUES ('repo1', 'a.rs', 'function', 'foo', 1, 2, 'fn foo()'),

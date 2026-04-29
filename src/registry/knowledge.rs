@@ -312,7 +312,10 @@ impl WorkspaceRegistry {
         // 1. Find repos matching all tags (INTERSECT for AND semantics).
         // Tags are matched against both repo_tags.tag AND repos.language.
         let repo_ids: Vec<String> = if tags.is_empty() {
-            let mut stmt = conn.prepare("SELECT id FROM entities WHERE entity_type = 'repo'")?;
+            let mut stmt = conn.prepare(&format!(
+                "SELECT id FROM entities WHERE entity_type = '{}'",
+                super::ENTITY_TYPE_REPO
+            ))?;
             let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
             rows.collect::<Result<Vec<_>, _>>()?
         } else {
@@ -322,11 +325,12 @@ impl WorkspaceRegistry {
                     sql.push_str(" INTERSECT ");
                 }
                 // Match against repo_tags or repos.language
-                sql.push_str(
+                sql.push_str(&format!(
                     "SELECT repo_id FROM repo_tags WHERE LOWER(tag) = LOWER(?) \
                      UNION \
-                     SELECT id AS repo_id FROM entities WHERE entity_type = 'repo' AND LOWER(json_extract(metadata, '$.language')) = LOWER(?)",
-                );
+                     SELECT id AS repo_id FROM entities WHERE entity_type = '{}' AND LOWER(json_extract(metadata, '$.language')) = LOWER(?)",
+                    super::ENTITY_TYPE_REPO
+                ));
             }
             let mut stmt = conn.prepare(&sql)?;
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();

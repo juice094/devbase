@@ -164,6 +164,40 @@ impl Default for WorkspaceRegistry {
     }
 }
 
+// Entity type constants for the unified entities table.
+pub const ENTITY_TYPE_REPO: &str = "repo";
+pub const ENTITY_TYPE_SKILL: &str = "skill";
+pub const ENTITY_TYPE_PAPER: &str = "paper";
+pub const ENTITY_TYPE_VAULT_NOTE: &str = "vault_note";
+pub const ENTITY_TYPE_WORKFLOW: &str = "workflow";
+
+/// Upsert a generic row into the `entities` table.
+/// `local_path` may be `None` for entities that have no filesystem presence.
+pub fn upsert_entity(
+    conn: &rusqlite::Connection,
+    id: &str,
+    entity_type: &str,
+    name: &str,
+    local_path: Option<&str>,
+    metadata: &serde_json::Value,
+) -> anyhow::Result<()> {
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        &format!(
+            "INSERT INTO entities (id, entity_type, name, source_url, local_path, metadata, created_at, updated_at)
+             VALUES (?1, '{}', ?2, NULL, ?3, ?4, ?5, ?5)
+             ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                local_path = excluded.local_path,
+                metadata = excluded.metadata,
+                updated_at = excluded.updated_at",
+            entity_type
+        ),
+        rusqlite::params![id, name, local_path, metadata.to_string(), &now],
+    )?;
+    Ok(())
+}
+
 mod health;
 mod knowledge;
 pub mod knowledge_meta;

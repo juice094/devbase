@@ -46,12 +46,13 @@ impl WorkspaceRegistry {
         conn: &rusqlite::Connection,
         vault_id: &str,
     ) -> anyhow::Result<Vec<(String, String)>> {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "SELECT e.id, e.local_path FROM entities e
              JOIN vault_repo_links l ON e.id = l.repo_id
-             WHERE e.entity_type = 'repo' AND l.vault_id = ?1
+             WHERE e.entity_type = '{}' AND l.vault_id = ?1
              ORDER BY e.id",
-        )?;
+            super::ENTITY_TYPE_REPO
+        ))?;
         let rows = stmt.query_map([vault_id], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;

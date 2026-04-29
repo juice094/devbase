@@ -140,24 +140,14 @@ fn sync_skill_to_entities(conn: &Connection, skill: &SkillMeta) -> anyhow::Resul
         "outputs_schema": serde_json::to_string(&skill.outputs).unwrap_or_else(|_| "[]".to_string()),
         "dependencies": serde_json::to_string(&skill.dependencies).unwrap_or_else(|_| "[]".to_string()),
     });
-    let now = chrono::Utc::now().to_rfc3339();
-    conn.execute(
-        "INSERT INTO entities (id, entity_type, name, source_url, local_path, metadata, created_at, updated_at)
-         VALUES (?1, 'skill', ?2, NULL, ?3, ?4, ?5, ?5)
-         ON CONFLICT(id) DO UPDATE SET
-            name = excluded.name,
-            local_path = excluded.local_path,
-            metadata = excluded.metadata,
-            updated_at = excluded.updated_at",
-        params![
-            format!("skill:{}", skill.id),
-            &skill.name,
-            skill.local_path.to_string_lossy().to_string(),
-            metadata.to_string(),
-            &now,
-        ],
-    )?;
-    Ok(())
+    crate::registry::upsert_entity(
+        conn,
+        &skill.id,
+        crate::registry::ENTITY_TYPE_SKILL,
+        &skill.name,
+        Some(&skill.local_path.to_string_lossy()),
+        &metadata,
+    )
 }
 
 /// Remove a skill from the registry (cascades to skill_executions via FK).
