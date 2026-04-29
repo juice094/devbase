@@ -2,9 +2,9 @@
 
 `devbase` 是本地优先的 AI Skill 编排基础设施。
 
-- **当前阶段**：阶段三 — v0.10.0 已交付 / v0.11.0 规划中
-- **当前版本**：v0.10.0（tagged）
-- **下一里程碑**：v0.11.0（待定）
+- **当前阶段**：阶段三 — v0.11.0 已交付 / Phase 1 主从表切换待启动
+- **当前版本**：v0.11.0（tagged）
+- **下一里程碑**：Phase 1 主从表切换（`repos` 降级为 `entities` 物化视图）
 - **核心方向**：将 GitHub 项目转换为标准化、可发现、可组合的 Skill，供弱 AI 子代理执行
 - **设计文档**：
   - [`docs/architecture/workflow-dsl.md`](docs/architecture/workflow-dsl.md) — Workflow DSL 规范
@@ -21,7 +21,7 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
   - `assets/` —— 二进制资源
 - **MCP Server**：stdio only（SSE 开发中），**37 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：374 passed / 0 failed / 4 ignored（unit）；9 passed（integration `tests/cli.rs`）
+- **当前测试**：374 passed / 0 failed / 4 ignored（unit，多线程 `--test-threads=4` 稳定）；9 passed（integration `tests/cli.rs`）
 - **编译状态**：0 warnings / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
 - **Workflow Engine**：YAML 解析 + 拓扑调度 + batch 并行执行 + 5 种 step 类型（skill/subworkflow/parallel/condition/loop）
 - **NLQ 自然语言查询**：TUI `[:]` 触发 embedding 语义搜索，fallback 降级文本搜索
@@ -178,6 +178,7 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 | `main.rs` 上帝文件 | 🟢 | 515 行 | ≤1000 行 | 拆分为 `commands/simple.rs` + `commands/skill.rs` + `commands/workflow.rs` + `commands/limit.rs`；全部 22 个命令/子命令树已迁移 | ≤15 |
 | `init_db()` 全局路径 | 🟡 | `AppContext` 已集成到全部 commands/ 模块（22 个函数）；`main()` 通过 `AppContext` 分发配置 | 0 新增 | `StorageBackend` trait + `AppContext` 已奠基；`db_path`/`workspace_dir`/`index_path`/`backup_dir` 已统一；`init_db()` 调用点 grandfathered 待迁移 | ≤15 |
 | Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调 | 补偿机制 | 设计 `sync_index_to_db()` 回滚或两阶段提交；或改为 SQLite FTS5 替代 Tantivy | 7 |
+| 主从表切换 | 🔴 | `repos` 仍为第一公民 | `entities` 为第一公民 | `repos` 降级为 `entities` 物化视图；93 处引用迁移 | v0.12.0 |
 | tree-sitter 编译成本 | 🟡 | ~15-20s | 可控 | 评估 `ccache` 或 grammar 预编译；或按需 feature-gate | 8 |
 | Feature flags 缺失 | 🟡 | 2 个可选 feature (tui, watch) | ≥3 (tui, watch, mcp) | `Cargo.toml` 已添加 `tui` + `watch` feature；ratatui/crossterm/notify 均为 optional；`--no-default-features` 编译通过 | ≤15 |
 | `LOCALAPPDATA` 测试模式残留 | 🟢 | 0 处 | 0 | 全面废弃 `LOCALAPPDATA` 环境变量覆盖，统一为 `DEVBASE_DATA_DIR`；mcp/tests.rs 修复 cleanup 逻辑（remove_var 目标从 LOCALAPPDATA 修正为 DEVBASE_DATA_DIR） | 47 |
@@ -220,6 +221,7 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 | 19b | Skill 生态（同步/TUI） | `sync --target clarity` (导出为 Clarity plan JSON), TUI Skill Panel (`k` keybinding) | `678c70c` |
 | 20 | Skill 依赖管理 | Schema v15 `dependencies` 列，Kahn 拓扑排序，DFS 环检测，自动安装缺失依赖，`install`/`run`/`validate` 集成 | `75fed3c` |
 | 21 | 统一实体模型 + 自动封装 | Schema v16 `entities/entity_types/relations`，渐进双写；`discover` 命令（Rust/Node/Python/Go/Docker/Generic 检测 + SKILL.md 自动生成 + entry_script 包装器）；分类推断（ai/dev/data/infra/communication） | — |
+| 22 | AppContext Pool 化 | `r2d2::Pool<SqliteConnectionManager>` 替代单 Connection；22 个 commands/TUI/MCP 全链路迁移；`init_db()` 89→5 处；MCP 测试临时目录隔离；search 多线程竞态自愈 | — |
 
 ## 敏感文件清单（禁止提交）
 
@@ -290,7 +292,7 @@ v0.10.0 已交付（tagged）。当前无新功能排期，焦点为工程债清
 
 | 方向 | 状态 | 说明 |
 |------|------|------|
-| `init_db()` → `AppContext` 迁移 | 🟡 | StorageBackend trait 已奠基，70+ 调用点 grandfathered 待逐步迁移 |
+| `init_db()` → `AppContext` 迁移 | 🟢 | Pool 化完成，`init_db()` 从 89 处降至 5 处合法保留，全部 commands/TUI/MCP 已接入 |
 | Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调，需补偿机制或 FTS5 替代评估 |
 | tree-sitter 编译成本 | 🟡 | ~15-20s，评估 ccache 或 grammar 预编译 |
 | Feature flags 扩展 | 🟡 | 2/3（tui, watch），mcp 等模块待评估 |

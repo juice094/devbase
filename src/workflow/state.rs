@@ -163,7 +163,9 @@ mod tests {
         use crate::workflow::model::{ErrorPolicy, StepDefinition, StepType};
         use crate::workflow::{execute_workflow, validate_workflow};
         let tmp = tempfile::tempdir().unwrap();
-        unsafe { std::env::set_var("DEVBASE_DATA_DIR", tmp.path()); }
+        unsafe {
+            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+        }
         let conn = WorkspaceRegistry::init_db().unwrap();
         let path = WorkspaceRegistry::db_path().unwrap();
         let manager = r2d2_sqlite::SqliteConnectionManager::file(&path).with_init(|c| {

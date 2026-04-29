@@ -82,9 +82,10 @@ impl AppContext {
     /// 使用默认存储后端和已加载配置创建上下文。
     pub fn with_defaults() -> anyhow::Result<Self> {
         let storage: Arc<dyn StorageBackend> = Arc::new(DefaultStorageBackend);
+        let path = storage.db_path()?;
         // 先执行 init_db() 确保数据库已初始化并迁移
-        let _ = crate::registry::WorkspaceRegistry::init_db()?;
-        let pool = Self::build_pool(&*storage)?;
+        let _ = crate::registry::WorkspaceRegistry::init_db_at(&path)?;
+        let pool = Self::build_pool(&path)?;
         Ok(Self {
             storage,
             config: crate::config::Config::load()?,
@@ -94,8 +95,9 @@ impl AppContext {
 
     /// 使用自定义存储后端创建上下文（主要用于测试）。
     pub fn with_storage(storage: Arc<dyn StorageBackend>) -> anyhow::Result<Self> {
-        let _ = crate::registry::WorkspaceRegistry::init_db()?;
-        let pool = Self::build_pool(&*storage)?;
+        let path = storage.db_path()?;
+        let _ = crate::registry::WorkspaceRegistry::init_db_at(&path)?;
+        let pool = Self::build_pool(&path)?;
         Ok(Self {
             storage,
             config: crate::config::Config::load()?,
@@ -103,9 +105,8 @@ impl AppContext {
         })
     }
 
-    fn build_pool(storage: &dyn StorageBackend) -> anyhow::Result<Pool<SqliteConnectionManager>> {
-        let path = storage.db_path()?;
-        let manager = SqliteConnectionManager::file(&path).with_init(|c| {
+    fn build_pool(path: &std::path::Path) -> anyhow::Result<Pool<SqliteConnectionManager>> {
+        let manager = SqliteConnectionManager::file(path).with_init(|c| {
             c.execute("PRAGMA foreign_keys = ON", [])?;
             Ok(())
         });

@@ -98,7 +98,11 @@ pub fn export_json(conn: &rusqlite::Connection, output: Option<&Path>) -> anyhow
 }
 
 /// Import from a SQLite backup file. If dry_run is true, only report stats.
-pub fn import_db(conn: &mut rusqlite::Connection, source: &Path, dry_run: bool) -> anyhow::Result<()> {
+pub fn import_db(
+    conn: &mut rusqlite::Connection,
+    source: &Path,
+    dry_run: bool,
+) -> anyhow::Result<()> {
     if !source.exists() {
         anyhow::bail!("Source file does not exist: {}", source.display());
     }
@@ -146,7 +150,11 @@ pub fn import_db(conn: &mut rusqlite::Connection, source: &Path, dry_run: bool) 
 // CLI entry points
 // ------------------------------------------------------------------
 
-pub fn run_export(conn: &rusqlite::Connection, format: &str, output: Option<&Path>) -> anyhow::Result<()> {
+pub fn run_export(
+    conn: &rusqlite::Connection,
+    format: &str,
+    output: Option<&Path>,
+) -> anyhow::Result<()> {
     let path = match format {
         "json" => export_json(conn, output)?,
         "sqlite" | "db" => export_sqlite(output)?,

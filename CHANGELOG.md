@@ -32,6 +32,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-04-26
+
+### Added
+
+- **AppContext Pool 化** — 全链路数据库连接池统一
+  - `AppContext` 持 `r2d2::Pool<SqliteConnectionManager>`，替代单 `Connection`
+  - `scan`/`health`/`sync`/`backup`/`daemon`/`query` 等深层模块全部迁移
+  - `init_db()` 调用点从 89 处降至 5 处合法保留（Pool 前 schema 引导 ×2、migrate 定义 ×1、workflow 测试辅助 ×2）
+  - 根治 `spawn_blocking` / `thread::spawn` 闭包无法传递裸 `Connection` 的问题
+- **MCP 测试隔离** — 全部 MCP 集成测试改用临时目录
+  - `DEVBASE_DATA_DIR` 指向 `tempfile::TempDir` + `AppContext::with_defaults()`
+  - 多线程并发测试全部通过，无 flaky
+- **Search 测试竞态自愈** — `SEARCH_TEST_LOCK` + 临时目录隔离，多线程 (`--test-threads=4`) 稳定通过
+
+### Changed
+
+- `cargo test --all-targets`: 288 → 374 passed（+86 个新增/迁移测试）
+- CI 测试并行度: `--test-threads=1` → `--test-threads=4`，回归测试耗时 ~13s → ~4s
+- `rusqlite` 0.34 + `r2d2_sqlite` 0.27.0 版本锁定
+
 ## [0.9.0] - 2026-04-26
 
 ### Added

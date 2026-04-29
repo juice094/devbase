@@ -59,7 +59,7 @@ pub async fn run_json(
 ) -> anyhow::Result<serde_json::Value> {
     let start = std::time::Instant::now();
     let (total_repos, dirty_repos, behind_upstream, no_upstream_count, repo_details) = {
-        let repos = WorkspaceRegistry::list_repos(&conn)?;
+        let repos = WorkspaceRegistry::list_repos(conn)?;
 
         let mut total_repos: usize = 0;
         let mut dirty_repos: usize = 0;
@@ -74,7 +74,7 @@ pub async fn run_json(
             let default_branch = primary.and_then(|r| r.default_branch.clone());
 
             let (status, ahead, behind) = if repo.workspace_type == "git" {
-                match WorkspaceRegistry::get_health(&conn, &repo.id) {
+                match WorkspaceRegistry::get_health(conn, &repo.id) {
                     Ok(Some(health)) => {
                         let elapsed =
                             Utc::now().signed_duration_since(health.checked_at).num_seconds();
@@ -93,7 +93,7 @@ pub async fn run_json(
                                 checked_at: Utc::now(),
                             };
                             if let Err(e) =
-                                WorkspaceRegistry::save_health(&conn, &repo.id, &new_health)
+                                WorkspaceRegistry::save_health(conn, &repo.id, &new_health)
                             {
                                 tracing::warn!("Failed to save health for {}: {}", repo.id, e);
                             }
@@ -112,7 +112,7 @@ pub async fn run_json(
                             behind,
                             checked_at: Utc::now(),
                         };
-                        if let Err(e) = WorkspaceRegistry::save_health(&conn, &repo.id, &new_health)
+                        if let Err(e) = WorkspaceRegistry::save_health(conn, &repo.id, &new_health)
                         {
                             tracing::warn!("Failed to save health for {}: {}", repo.id, e);
                         }
@@ -138,7 +138,7 @@ pub async fn run_json(
                         continue;
                     }
                 };
-                let status = match WorkspaceRegistry::get_latest_workspace_snapshot(&conn, &repo.id)
+                let status = match WorkspaceRegistry::get_latest_workspace_snapshot(conn, &repo.id)
                 {
                     Ok(Some(prev)) if prev.file_hash == current_hash => "ok".to_string(),
                     _ => {
@@ -147,7 +147,7 @@ pub async fn run_json(
                             file_hash: current_hash,
                             checked_at: Utc::now(),
                         };
-                        if let Err(e) = WorkspaceRegistry::save_workspace_snapshot(&conn, &snapshot)
+                        if let Err(e) = WorkspaceRegistry::save_workspace_snapshot(conn, &snapshot)
                         {
                             tracing::warn!(
                                 "Failed to save workspace snapshot for {}: {}",
@@ -212,15 +212,15 @@ pub async fn run_json(
     let _ = WorkspaceRegistry::save_oplog(
         conn,
         &OplogEntry {
-                id: None,
-                event_type: crate::registry::OplogEventType::HealthCheck,
-                repo_id: None,
-                details: Some(details.to_string()),
-                status: "success".to_string(),
-                timestamp: Utc::now(),
-                duration_ms: Some(duration_ms),
-                event_version: 1,
-            },
+            id: None,
+            event_type: crate::registry::OplogEventType::HealthCheck,
+            repo_id: None,
+            details: Some(details.to_string()),
+            status: "success".to_string(),
+            timestamp: Utc::now(),
+            duration_ms: Some(duration_ms),
+            event_version: 1,
+        },
     );
 
     let total_repos_detail = repo_details.len();

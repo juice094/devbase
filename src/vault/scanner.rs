@@ -20,7 +20,10 @@ fn default_vault_dir() -> anyhow::Result<PathBuf> {
 ///
 /// * `vault_dir` — root of the vault. If `None`, uses the default location.
 /// * Returns the number of notes synced.
-pub fn scan_vault(conn: &mut rusqlite::Connection, vault_dir: Option<&Path>) -> anyhow::Result<usize> {
+pub fn scan_vault(
+    conn: &mut rusqlite::Connection,
+    vault_dir: Option<&Path>,
+) -> anyhow::Result<usize> {
     let root = match vault_dir {
         Some(p) => p.to_path_buf(),
         None => default_vault_dir()?,

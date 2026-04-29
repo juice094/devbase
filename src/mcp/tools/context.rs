@@ -61,7 +61,6 @@ Returns: JSON object with:
         let result = tokio::task::spawn_blocking({
             let project = project.to_string();
             move || {
-
                 let conn = pool.get()?;
 
                 // 1. Find repo by exact id or path substring

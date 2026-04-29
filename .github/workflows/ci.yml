@@ -53,7 +53,7 @@ jobs:
           cmd /c mklink /D "$localData" "$tempData" | Out-Null
           Write-Host "rustc: $(rustc --version)"
           Write-Host "cargo: $(cargo --version)"
-      - run: cargo test --all-targets -- --test-threads=1 --nocapture
+      - run: cargo test --all-targets -- --test-threads=4 --nocapture
 
   fmt:
     name: Rustfmt

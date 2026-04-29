@@ -205,7 +205,6 @@ pub async fn run_json(
     page: usize,
     config: &crate::config::Config,
 ) -> anyhow::Result<serde_json::Value> {
-
     // Handle semantic: prefix queries directly against repo_summaries
     if let Some(rest) = query_str.strip_prefix("semantic:") {
         let keywords: Vec<&str> = rest.split_whitespace().collect();
@@ -270,9 +269,9 @@ pub async fn run_json(
     if let Some(rest) = query_str.strip_prefix("paper:") {
         let papers = if let Some((field, value)) = rest.split_once(':') {
             match field {
-                "venue" => WorkspaceRegistry::find_papers_by_venue(&conn, value)?,
+                "venue" => WorkspaceRegistry::find_papers_by_venue(conn, value)?,
                 _ => {
-                    let mut all = WorkspaceRegistry::list_papers(&conn)?;
+                    let mut all = WorkspaceRegistry::list_papers(conn)?;
                     let v = value.to_lowercase();
                     all.retain(|p| {
                         p.venue.as_ref().map(|x| x.to_lowercase() == v).unwrap_or(false)
@@ -285,7 +284,7 @@ pub async fn run_json(
         } else {
             // paper:iclr  -> treat as venue search
             let venue = rest;
-            WorkspaceRegistry::find_papers_by_venue(&conn, venue)?
+            WorkspaceRegistry::find_papers_by_venue(conn, venue)?
         };
         let count = papers.len();
         let results: Vec<serde_json::Value> = papers
@@ -314,9 +313,9 @@ pub async fn run_json(
     if let Some(rest) = query_str.strip_prefix("experiment:") {
         let exps = if let Some((field, value)) = rest.split_once(':') {
             match field {
-                "repo" => WorkspaceRegistry::find_experiments_by_repo(&conn, value)?,
+                "repo" => WorkspaceRegistry::find_experiments_by_repo(conn, value)?,
                 _ => {
-                    let mut all = WorkspaceRegistry::list_experiments(&conn)?;
+                    let mut all = WorkspaceRegistry::list_experiments(conn)?;
                     let v = value.to_lowercase();
                     all.retain(|e| {
                         e.status.to_lowercase() == v
@@ -326,7 +325,7 @@ pub async fn run_json(
                 }
             }
         } else {
-            WorkspaceRegistry::list_experiments(&conn)?
+            WorkspaceRegistry::list_experiments(conn)?
         };
         let count = exps.len();
         let results: Vec<serde_json::Value> = exps
@@ -377,7 +376,7 @@ pub async fn run_json(
     if let Some(rest) = query_str.strip_prefix("vault:") {
         let results = if rest.trim().is_empty() {
             // List all vault notes when no keywords given
-            let all = WorkspaceRegistry::list_vault_notes(&conn)?;
+            let all = WorkspaceRegistry::list_vault_notes(conn)?;
             all.into_iter()
                 .map(|n| {
                     serde_json::json!({
@@ -421,7 +420,7 @@ pub async fn run_json(
 
     let conditions = parse_query(query_str);
 
-    let repos = WorkspaceRegistry::list_repos(&conn)?;
+    let repos = WorkspaceRegistry::list_repos(conn)?;
 
     let needs_notes = conditions.iter().any(|c| matches!(c, Condition::Note(..)));
     let mut notes_map: HashMap<String, Vec<String>> = HashMap::new();
@@ -444,7 +443,7 @@ pub async fn run_json(
         let last_sync = primary.and_then(|r| r.last_sync.map(|dt| dt.to_rfc3339()));
         let needs_behind = conditions.iter().any(|c| matches!(c, Condition::Behind { .. }));
         let behind = if needs_behind {
-            let cached = WorkspaceRegistry::get_health(&conn, &repo.id).ok().flatten();
+            let cached = WorkspaceRegistry::get_health(conn, &repo.id).ok().flatten();
             if let Some(health) = cached {
                 let elapsed = Utc::now().signed_duration_since(health.checked_at).num_seconds();
                 if elapsed < config.cache.ttl_seconds {

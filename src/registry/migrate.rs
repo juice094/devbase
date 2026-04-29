@@ -32,8 +32,11 @@ impl WorkspaceRegistry {
     }
 
     pub fn init_db() -> anyhow::Result<rusqlite::Connection> {
-        let path = Self::db_path()?;
-        let conn = rusqlite::Connection::open(&path)?;
+        Self::init_db_at(&Self::db_path()?)
+    }
+
+    pub fn init_db_at(path: &std::path::Path) -> anyhow::Result<rusqlite::Connection> {
+        let conn = rusqlite::Connection::open(path)?;
         conn.execute("PRAGMA foreign_keys = ON", [])?;
         // Prevent TOCTOU races when multiple threads/processes open the same DB
         // concurrently (e.g. workflow executor's parallel step threads).
@@ -304,7 +307,7 @@ impl WorkspaceRegistry {
         if user_version > 0
             && user_version < CURRENT_SCHEMA_VERSION
             && path.exists()
-            && let Err(e) = crate::backup::auto_backup_before_migration(&path)
+            && let Err(e) = crate::backup::auto_backup_before_migration(path)
         {
             tracing::warn!("Failed to auto-backup registry before migration: {}", e);
         }

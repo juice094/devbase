@@ -70,7 +70,13 @@ fn render_repo_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &Sty
 // Overview tab
 // ---------------------------------------------------------------------------
 
-fn render_overview(frame: &mut Frame, app: &crate::tui::App, repo: &crate::tui::RepoItem, area: Rect, styles: &Styles) {
+fn render_overview(
+    frame: &mut Frame,
+    app: &crate::tui::App,
+    repo: &crate::tui::RepoItem,
+    area: Rect,
+    styles: &Styles,
+) {
     let (dirty, ahead, behind) = match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
         (Some(d), Some(a), Some(b)) => (d, a, b),
         _ => (false, 0, 0),
@@ -105,7 +111,9 @@ fn render_overview(frame: &mut Frame, app: &crate::tui::App, repo: &crate::tui::
     let head_short = super::read_head_commit(&repo.local_path).unwrap_or_else(|| "—".to_string());
     let (last_sync_human, last_sync_action, last_sync_commit) =
         super::read_syncdone_info(&repo.local_path);
-    let summary_text = app.ctx.conn()
+    let summary_text = app
+        .ctx
+        .conn()
         .ok()
         .and_then(|conn| super::read_repo_summary(&conn, &repo.id))
         .unwrap_or_else(|| "暂无描述".to_string());
@@ -171,7 +179,9 @@ fn render_overview(frame: &mut Frame, app: &crate::tui::App, repo: &crate::tui::
     }
 
     // === Layer 3.5: Linked vault notes ===
-    let linked_vaults = app.ctx.conn()
+    let linked_vaults = app
+        .ctx
+        .conn()
         .ok()
         .and_then(|conn| {
             crate::registry::WorkspaceRegistry::get_linked_vault_notes(&conn, &repo.id).ok()
@@ -509,7 +519,9 @@ fn render_vault_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &St
     };
 
     // Linked repos section
-    let linked_repos = app.ctx.conn()
+    let linked_repos = app
+        .ctx
+        .conn()
         .ok()
         .and_then(|conn| {
             crate::registry::WorkspaceRegistry::get_linked_repos_full(&conn, &vault.id).ok()

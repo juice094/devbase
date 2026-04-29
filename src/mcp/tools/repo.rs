@@ -286,7 +286,6 @@ Returns: JSON with success status."#,
         let author = author.to_string();
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-
             let conn = pool.get()?;
             crate::registry::WorkspaceRegistry::save_note(&conn, &repo_id, &text, &author)?;
             Ok::<_, anyhow::Error>(serde_json::json!({ "success": true }))
@@ -330,7 +329,6 @@ Returns: JSON with a plain-text digest string."#,
     ) -> anyhow::Result<serde_json::Value> {
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-
             let conn = pool.get()?;
             let config = crate::config::Config::load()?;
             let text = crate::digest::generate_daily_digest(&conn, &config)?;
@@ -398,7 +396,6 @@ Returns: JSON with discovered paper count and registration status."#,
 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-
             let conn = pool.get()?;
             let mut count = 0;
             if path.is_dir() {
@@ -619,8 +616,7 @@ Returns: JSON with stars, forks, open_issues, description, pushed_at, and update
             let desc2 = desc.clone();
             let pool = ctx.pool();
             tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-
-            let conn = pool.get()?;
+                let conn = pool.get()?;
                 crate::registry::WorkspaceRegistry::save_summary(&conn, &repo_id2, &desc2, "")?;
                 Ok(())
             })
@@ -884,7 +880,6 @@ Returns: JSON array of repo objects. Each includes: id, local_path, language, ta
 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-
             let conn = pool.get()?;
             let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
 
@@ -1027,7 +1022,6 @@ Returns: JSON array of matching repos with metadata, same format as devkit_query
 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-
             let conn = pool.get()?;
             let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
             let filtered = nl_filter_repos(&query, &repos, &conn)?;
@@ -1310,7 +1304,6 @@ Returns: JSON array of symbols with file_path, name, symbol_type, line_start, li
 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-
             let conn = pool.get()?;
             let mut sql = String::from(
                 "SELECT file_path, symbol_type, name, line_start, line_end, signature \
@@ -1421,7 +1414,6 @@ Returns: JSON array of dependency edges with target_repo_id, relation_type, and 
 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-
             let conn = pool.get()?;
 
             let mut results = Vec::new();
@@ -1535,7 +1527,6 @@ Returns: JSON array of call edges with caller_file, caller_symbol, caller_line, 
 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-
             let conn = pool.get()?;
             let mut sql = String::from(
                 "SELECT caller_file, caller_symbol, caller_line, callee_name \
@@ -1765,7 +1756,6 @@ Returns: JSON array of matching symbols with file_path, name, line_start, and si
 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-
             let conn = pool.get()?;
             let results = crate::registry::WorkspaceRegistry::semantic_search_symbols(
                 &conn, &repo_id, &query_emb, limit,
@@ -1851,7 +1841,6 @@ Returns: success flag and count of stored embeddings."#,
 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-
             let mut conn = pool.get()?;
             let pairs = vec![(symbol_name.clone(), embedding)];
             let count =
@@ -2018,7 +2007,6 @@ Returns: JSON object with repo_count, total_symbols, total_embeddings, total_cal
 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-
             let conn = pool.get()?;
             let report =
                 crate::oplog_analytics::generate_report(&conn, repo_id.as_deref(), activity_limit)?;
@@ -2098,7 +2086,6 @@ Returns: JSON array of symbols with file_path, name, line_start, and similarity_
 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-
             let conn = pool.get()?;
             let results = crate::registry::WorkspaceRegistry::hybrid_search_symbols(
                 &conn,
@@ -2185,7 +2172,6 @@ Returns: JSON array of related symbols with target_symbol, link_type, and streng
 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-
             let conn = pool.get()?;
             let results = crate::registry::WorkspaceRegistry::find_related_symbols(
                 &conn,
@@ -2291,7 +2277,6 @@ Returns: JSON array of symbols with repo_id, file_path, name, line_start, and si
 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-
             let conn = pool.get()?;
             let results = crate::registry::WorkspaceRegistry::cross_repo_search_symbols(
                 &conn,

@@ -116,10 +116,14 @@ fn execute_step(
 
     let result = match &step.step_type {
         StepType::Skill { skill } => execute_skill_step(conn, step, skill, ctx),
-        StepType::Subworkflow { workflow } => execute_subworkflow_step(conn, pool, step, workflow, ctx),
+        StepType::Subworkflow { workflow } => {
+            execute_subworkflow_step(conn, pool, step, workflow, ctx)
+        }
         StepType::Parallel { parallel } => execute_parallel_step(conn, pool, step, parallel, ctx),
         StepType::Condition { r#if } => execute_condition_step(step, r#if, ctx),
-        StepType::Loop { for_each, body } => execute_loop_step(conn, pool, step, for_each, body, ctx),
+        StepType::Loop { for_each, body } => {
+            execute_loop_step(conn, pool, step, for_each, body, ctx)
+        }
     };
 
     let _duration = start.elapsed();
@@ -489,9 +493,15 @@ mod tests {
     use crate::workflow::model::{ErrorPolicy, StepDefinition, StepType, WorkflowDefinition};
     use std::collections::HashMap;
 
-    fn test_pool() -> (tempfile::TempDir, r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>, rusqlite::Connection) {
+    fn test_pool() -> (
+        tempfile::TempDir,
+        r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>,
+        rusqlite::Connection,
+    ) {
         let tmp = tempfile::tempdir().unwrap();
-        unsafe { std::env::set_var("DEVBASE_DATA_DIR", tmp.path()); }
+        unsafe {
+            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+        }
         let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
         let path = crate::registry::WorkspaceRegistry::db_path().unwrap();
         let manager = r2d2_sqlite::SqliteConnectionManager::file(&path).with_init(|c| {

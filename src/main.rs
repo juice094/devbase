@@ -487,8 +487,14 @@ async fn main() -> anyhow::Result<()> {
             filter_tags,
             experiment,
         } => {
-            commands::simple::run_syncthing_push(&mut ctx, api_url, api_key, filter_tags, experiment)
-                .await?;
+            commands::simple::run_syncthing_push(
+                &mut ctx,
+                api_url,
+                api_key,
+                filter_tags,
+                experiment,
+            )
+            .await?;
         }
         Commands::Digest => {
             commands::simple::run_digest(&mut ctx).await?;

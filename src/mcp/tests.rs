@@ -1,5 +1,14 @@
 use super::*;
 
+fn test_ctx() -> (crate::storage::AppContext, tempfile::TempDir) {
+    let tmp = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+    }
+    let ctx = crate::storage::AppContext::with_defaults().unwrap();
+    (ctx, tmp)
+}
+
 #[tokio::test]
 async fn test_initialize() {
     let server = build_server();
@@ -8,7 +17,7 @@ async fn test_initialize() {
         "id": 1,
         "method": "initialize"
     });
-    let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+    let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     assert_eq!(resp.get("jsonrpc").unwrap(), "2.0");
     let result = resp.get("result").unwrap();
@@ -25,7 +34,7 @@ async fn test_tools_list() {
         "id": 2,
         "method": "tools/list"
     });
-    let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+    let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     let tools = resp.get("result").unwrap().get("tools").unwrap().as_array().unwrap();
     assert_eq!(tools.len(), 37);
@@ -85,12 +94,18 @@ async fn test_tools_call_devkit_health() {
             "arguments": { "detail": false }
         }
     });
-    let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+    let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     let result = resp.get("result").unwrap();
     let content = result.get("content").unwrap().as_array().unwrap();
     let text = content[0].get("text").unwrap().as_str().unwrap();
     let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    if parsed.get("success").unwrap() != &serde_json::Value::Bool(true) {
+        eprintln!(
+            "devkit_health returned error: {}",
+            serde_json::to_string_pretty(&parsed).unwrap()
+        );
+    }
     assert_eq!(parsed.get("success").unwrap(), true);
     let summary = parsed.get("summary").unwrap();
     assert!(summary.get("total_repos").unwrap().as_i64().unwrap() >= 0);
@@ -108,7 +123,7 @@ async fn test_tools_call_devkit_query() {
             "arguments": { "expression": "lang:rust" }
         }
     });
-    let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+    let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     let result = resp.get("result").unwrap();
     let content = result.get("content").unwrap().as_array().unwrap();
@@ -130,7 +145,7 @@ async fn test_tools_call_unknown_tool() {
             "arguments": {}
         }
     });
-    let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+    let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     assert!(resp.get("error").is_some());
     let error = resp.get("error").unwrap();
@@ -145,7 +160,7 @@ async fn test_unknown_method() {
         "id": 6,
         "method": "unknown/method"
     });
-    let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+    let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     assert!(resp.get("error").is_some());
     let error = resp.get("error").unwrap();
@@ -164,7 +179,7 @@ async fn test_tools_call_devkit_project_context() {
             "arguments": { "project": "nonexistent-project-xyz" }
         }
     });
-    let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+    let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     let result = resp.get("result").unwrap();
     assert_eq!(result.get("content").unwrap().as_array().unwrap().len(), 1);
@@ -188,7 +203,7 @@ async fn test_tools_call_devkit_arxiv_fetch() {
             "arguments": { "arxiv_id": "" }
         }
     });
-    let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+    let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     let result = resp.get("result").unwrap();
     let content = result.get("content").unwrap().as_array().unwrap();
@@ -211,7 +226,7 @@ async fn test_tools_call_devkit_skill_list() {
             "arguments": {}
         }
     });
-    let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+    let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     let result = resp.get("result").unwrap();
     let content = result.get("content").unwrap().as_array().unwrap();
@@ -234,7 +249,7 @@ async fn test_tools_call_devkit_skill_search() {
             "arguments": { "query": "report" }
         }
     });
-    let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+    let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     let result = resp.get("result").unwrap();
     let content = result.get("content").unwrap().as_array().unwrap();
@@ -261,7 +276,7 @@ async fn test_tools_call_devkit_skill_discover() {
             }
         }
     });
-    let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+    let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     let result = resp.get("result").unwrap();
     let content = result.get("content").unwrap().as_array().unwrap();
@@ -290,7 +305,7 @@ async fn test_tools_call_devkit_skill_run() {
             }
         }
     });
-    let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+    let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     let result = resp.get("result").unwrap();
     let content = result.get("content").unwrap().as_array().unwrap();

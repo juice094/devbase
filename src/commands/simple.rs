@@ -130,7 +130,11 @@ pub fn run_clean(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn run_tag(ctx: &mut crate::storage::AppContext, repo_id: &str, tags: &str) -> anyhow::Result<()> {
+pub fn run_tag(
+    ctx: &mut crate::storage::AppContext,
+    repo_id: &str,
+    tags: &str,
+) -> anyhow::Result<()> {
     info!("为 {} 打标签: {}", repo_id, tags);
     let mut conn = ctx.conn_mut()?;
     let tag_list: Vec<&str> = tags.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
@@ -385,7 +389,8 @@ pub async fn run_sync(
     info!("{}", i18n::current().cli.syncing);
     let conn = ctx.conn()?;
     if json {
-        let output = sync::run_json(&conn, dry_run, filter_tags.as_deref(), exclude.as_deref()).await?;
+        let output =
+            sync::run_json(&conn, dry_run, filter_tags.as_deref(), exclude.as_deref()).await?;
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
         sync::run(&conn, dry_run, filter_tags.as_deref(), exclude.as_deref()).await?;

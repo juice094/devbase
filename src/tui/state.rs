@@ -29,7 +29,9 @@ impl App {
             repo_status_job,
             loading_repo_status: HashSet::new(),
             loading_sync: HashSet::new(),
-            sync_orchestrator: crate::sync::SyncOrchestrator::new(ctx.config.sync.concurrency.max(1)),
+            sync_orchestrator: crate::sync::SyncOrchestrator::new(
+                ctx.config.sync.concurrency.max(1),
+            ),
             sync_popup_mode: SyncPopupMode::Hidden,
             sync_preview_items: Vec::new(),
             sync_popup_results: Vec::new(),
@@ -440,7 +442,9 @@ impl App {
     }
 
     pub(crate) fn load_skills(&mut self) {
-        let Ok(conn) = self.ctx.conn() else { return; };
+        let Ok(conn) = self.ctx.conn() else {
+            return;
+        };
         let rows = match crate::skill_runtime::registry::list_skills(&conn, None, None) {
             Ok(r) => r,
             Err(e) => {
@@ -493,7 +497,9 @@ impl App {
     }
 
     pub(crate) fn load_workflows(&mut self) {
-        let Ok(conn) = self.ctx.conn() else { return; };
+        let Ok(conn) = self.ctx.conn() else {
+            return;
+        };
         match crate::workflow::list_workflows(&conn) {
             Ok(rows) => {
                 self.workflows = rows
@@ -706,7 +712,7 @@ impl App {
                             stderr: e.to_string(),
                             exit_code: Some(1),
                             duration_ms: 0,
-                        }
+                        },
                     ));
                     return;
                 }
@@ -775,12 +781,11 @@ impl App {
                 if let Some(repo) = self.repos.iter_mut().find(|r| r.id == repo_id) {
                     repo.stars = stars;
                 }
-                if let Some(s) = stars {
-                    if let Ok(mut conn) = self.ctx.conn_mut() {
-                        let _ = crate::registry::WorkspaceRegistry::save_stars_cache(
-                            &mut conn, &repo_id, s,
-                        );
-                    }
+                if let Some(s) = stars
+                    && let Ok(conn) = self.ctx.conn_mut()
+                {
+                    let _ =
+                        crate::registry::WorkspaceRegistry::save_stars_cache(&conn, &repo_id, s);
                 }
                 // Re-sort if currently sorting by stars
                 if self.sort_mode == SortMode::Stars {

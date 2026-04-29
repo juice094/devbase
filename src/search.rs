@@ -46,10 +46,7 @@ pub fn init_index() -> Result<(Index, IndexReader), TantivyError> {
         }
         Err(_) => Index::create_in_dir(&path, schema)?,
     };
-    let reader = index
-        .reader_builder()
-        .reload_policy(ReloadPolicy::OnCommitWithDelay)
-        .try_into()?;
+    let reader = index.reader_builder().reload_policy(ReloadPolicy::Manual).try_into()?;
     Ok((index, reader))
 }
 

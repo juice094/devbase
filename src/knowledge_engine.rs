@@ -664,7 +664,10 @@ fn index_repo_in_search(
     Ok(())
 }
 
-pub fn index_repo(conn: &mut rusqlite::Connection, repo: &crate::registry::RepoEntry) -> anyhow::Result<()> {
+pub fn index_repo(
+    conn: &mut rusqlite::Connection,
+    repo: &crate::registry::RepoEntry,
+) -> anyhow::Result<()> {
     use tracing::{info, warn};
 
     let config = crate::config::Config::load().ok();
@@ -706,13 +709,13 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
     use tracing::{info, warn};
 
     let repos: Vec<RepoEntry> = if path.is_empty() {
-        WorkspaceRegistry::list_repos(&conn)?
+        WorkspaceRegistry::list_repos(conn)?
     } else {
         let p = PathBuf::from(path);
         if !p.exists() {
             anyhow::bail!("Path does not exist: {}", path);
         }
-        let registered = WorkspaceRegistry::list_repos(&conn)?;
+        let registered = WorkspaceRegistry::list_repos(conn)?;
         if let Some(repo) = registered.into_iter().find(|r| r.local_path == p) {
             vec![repo]
         } else {
@@ -780,8 +783,7 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
         }
 
         // Cross-repo dependency graph
-        match crate::dependency_graph::build_dependency_graph(conn, &repo.id, &repo.local_path)
-        {
+        match crate::dependency_graph::build_dependency_graph(conn, &repo.id, &repo.local_path) {
             Ok(n) => {
                 if n > 0 {
                     info!("Resolved {} local dependencies for {}", n, repo.id);
