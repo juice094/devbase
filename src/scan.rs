@@ -189,6 +189,20 @@ fn discover_repos(
     github: Option<&crate::config::GithubConfig>,
     exclude_paths: &[String],
 ) -> anyhow::Result<Vec<RepoEntry>> {
+    let mut ignored_dirs: Vec<PathBuf> = Vec::new();
+
+    // First pass: collect all directories containing .devbase-ignore
+    for entry in WalkDir::new(root).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+        if entry.file_type().is_dir() && entry.path().join(".devbase-ignore").exists() {
+            ignored_dirs.push(entry.path().to_path_buf());
+        }
+    }
+
+    let is_ignored = |path: &Path| {
+        ignored_dirs.iter().any(|ig| path.starts_with(ig))
+            || is_excluded_path(path, exclude_paths, Some(root))
+    };
+
     let mut git_repos = Vec::new();
 
     for entry in WalkDir::new(root).follow_links(false).into_iter().filter_map(|e| e.ok()) {
@@ -200,7 +214,7 @@ fn discover_repos(
                 continue;
             }
 
-            if is_excluded_path(&repo_path, exclude_paths, Some(root)) {
+            if is_ignored(&repo_path) {
                 continue;
             }
             match inspect_repo(&repo_path, github) {
@@ -228,7 +242,7 @@ fn discover_repos(
         if non_git_repos.iter().any(|r: &RepoEntry| r.local_path == ws_path) {
             continue;
         }
-        if is_excluded_path(&ws_path, exclude_paths, Some(root)) {
+        if is_ignored(&ws_path) {
             continue;
         }
         match inspect_non_git_workspace(&ws_path) {
@@ -665,6 +679,23 @@ mod tests {
 
         // Exclude by relative path
         let repos = discover_repos(dir.path(), None, &["excluded".to_string()]).unwrap();
+        assert_eq!(repos.len(), 1);
+        assert!(repos[0].local_path.to_string_lossy().contains("included"));
+    }
+
+    #[test]
+    fn test_discover_repos_devbase_ignore() {
+        let dir = TempDir::new().unwrap();
+        let included = dir.path().join("included").join("repo");
+        fs::create_dir_all(&included).unwrap();
+        git2::Repository::init(&included).unwrap();
+
+        let ignored = dir.path().join("ignored").join("repo");
+        fs::create_dir_all(&ignored).unwrap();
+        git2::Repository::init(&ignored).unwrap();
+        fs::write(dir.path().join("ignored").join(".devbase-ignore"), "").unwrap();
+
+        let repos = discover_repos(dir.path(), None, &[]).unwrap();
         assert_eq!(repos.len(), 1);
         assert!(repos[0].local_path.to_string_lossy().contains("included"));
     }

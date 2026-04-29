@@ -176,7 +176,7 @@ impl WorkspaceRegistry {
                     json_extract(e.metadata, '$.tags'), json_extract(e.metadata, '$.added_at')
              FROM entities e
              WHERE e.entity_type = ?1 AND json_extract(e.metadata, '$.venue') = ?2
-             ORDER BY json_extract(e.metadata, '$.year') DESC"
+             ORDER BY json_extract(e.metadata, '$.year') DESC",
         )?;
         let rows = stmt.query_map([crate::registry::ENTITY_TYPE_PAPER, venue], |row| {
             let tags: Option<String> = row.get(7)?;
