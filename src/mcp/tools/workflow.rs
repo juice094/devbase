@@ -240,3 +240,57 @@ Returns: execution record with status, current_step, timestamps, and duration."#
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_workflow_list_empty_registry() {
+        let tmp = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+        }
+        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+
+        let tool = DevkitWorkflowListTool;
+        let result = tool.invoke(serde_json::json!({}), &mut ctx).await.unwrap();
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(result.get("count").and_then(|v| v.as_u64()), Some(0));
+    }
+
+    #[tokio::test]
+    async fn test_workflow_run_not_found() {
+        let tmp = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+        }
+        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+
+        let tool = DevkitWorkflowRunTool;
+        let result = tool
+            .invoke(
+                serde_json::json!({"workflow_id": "nonexistent-wf"}),
+                &mut ctx,
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(false));
+    }
+
+    #[tokio::test]
+    async fn test_workflow_status_invalid_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+        }
+        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+
+        let tool = DevkitWorkflowStatusTool;
+        let result = tool
+            .invoke(serde_json::json!({"execution_id": -1}), &mut ctx)
+            .await
+            .unwrap();
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(false));
+    }
+}

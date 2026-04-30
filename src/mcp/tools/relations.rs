@@ -166,3 +166,127 @@ Returns: JSON array of relations with to_entity_id, relation_type, confidence, a
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_relation_store_and_query_roundtrip() {
+        let tmp = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+        }
+        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+
+        // Pre-seed entities to satisfy FK constraint
+        let conn = ctx.conn().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_types (name, schema_json, description, created_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params!["test", "{}", "test type", &now],
+        ).unwrap();
+        crate::registry::upsert_entity(&conn, "entity-a", "test", "Entity A", None, &serde_json::json!({})).unwrap();
+        crate::registry::upsert_entity(&conn, "entity-b", "test", "Entity B", None, &serde_json::json!({})).unwrap();
+        drop(conn);
+
+        let store_tool = DevkitRelationStoreTool;
+        let store_result = store_tool
+            .invoke(
+                serde_json::json!({
+                    "from_entity_id": "entity-a",
+                    "to_entity_id": "entity-b",
+                    "relation_type": "depends_on",
+                    "confidence": 0.95
+                }),
+                &mut ctx,
+            )
+            .await
+            .unwrap();
+        assert_eq!(store_result.get("success").and_then(|v| v.as_bool()), Some(true));
+
+        let query_tool = DevkitRelationQueryTool;
+        let query_result = query_tool
+            .invoke(
+                serde_json::json!({
+                    "entity_id": "entity-a",
+                    "direction": "outgoing"
+                }),
+                &mut ctx,
+            )
+            .await
+            .unwrap();
+        assert_eq!(query_result.get("success").and_then(|v| v.as_bool()), Some(true));
+        let count = query_result.get("count").and_then(|v| v.as_u64()).unwrap();
+        assert_eq!(count, 1);
+        let relations = query_result.get("relations").and_then(|v| v.as_array()).unwrap();
+        assert_eq!(relations[0].get("to_entity_id").and_then(|v| v.as_str()), Some("entity-b"));
+        assert_eq!(relations[0].get("relation_type").and_then(|v| v.as_str()), Some("depends_on"));
+    }
+
+    #[tokio::test]
+    async fn test_relation_store_missing_required_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+        }
+        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+
+        let tool = DevkitRelationStoreTool;
+        let result = tool
+            .invoke(
+                serde_json::json!({"from_entity_id": "", "to_entity_id": "b", "relation_type": ""}),
+                &mut ctx,
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(false));
+    }
+
+    #[tokio::test]
+    async fn test_relation_query_bidirectional() {
+        let tmp = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+        }
+        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+
+        let conn = ctx.conn().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_types (name, schema_json, description, created_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params!["test", "{}", "test type", &now],
+        ).unwrap();
+        crate::registry::upsert_entity(&conn, "src", "test", "Src", None, &serde_json::json!({})).unwrap();
+        crate::registry::upsert_entity(&conn, "dst", "test", "Dst", None, &serde_json::json!({})).unwrap();
+        drop(conn);
+
+        let store_tool = DevkitRelationStoreTool;
+        store_tool
+            .invoke(
+                serde_json::json!({
+                    "from_entity_id": "src",
+                    "to_entity_id": "dst",
+                    "relation_type": "calls"
+                }),
+                &mut ctx,
+            )
+            .await
+            .unwrap();
+
+        let query_tool = DevkitRelationQueryTool;
+        let result = query_tool
+            .invoke(
+                serde_json::json!({
+                    "entity_id": "dst",
+                    "direction": "bidirectional"
+                }),
+                &mut ctx,
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(true));
+        let count = result.get("count").and_then(|v| v.as_u64()).unwrap();
+        assert_eq!(count, 1);
+    }
+}
