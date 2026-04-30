@@ -88,6 +88,7 @@ pub fn rrf_merge(lists: Vec<Vec<SemanticSearchRow>>, k: f32) -> Vec<SemanticSear
         return Vec::new();
     }
     if lists.len() == 1 {
+        // TODO(veto-audit-2026-04-26): RF-6 expect — 前置 len==1 检查已做，风险低。可保留或改为 `unwrap_or_default`。
         return lists.into_iter().next().expect("lists len == 1 checked above");
     }
 
@@ -153,6 +154,7 @@ pub fn hybrid_search_symbols(
         1 => Ok(lists
             .into_iter()
             .next()
+            // TODO(veto-audit-2026-04-26): RF-6 expect — 前置 len==1 检查已做，风险低。
             .expect("lists len == 1 checked above")
             .into_iter()
             .take(limit)

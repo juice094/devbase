@@ -186,6 +186,7 @@ mod tests {
             .args(["init", "--quiet"])
             .current_dir(path)
             .output()
+            // TODO(veto-audit-2026-04-26): RF-6 expect — git init 可能因权限/路径问题失败，应返回 Result 而非 panic。
             .expect("git init failed");
         assert!(output.status.success(), "git init failed: {:?}", output);
 

@@ -2,7 +2,7 @@ use super::*;
 use crate::storage::StorageBackend;
 use std::path::PathBuf;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 23;
+pub const CURRENT_SCHEMA_VERSION: i32 = 25;
 
 impl WorkspaceRegistry {
     pub fn db_path() -> anyhow::Result<PathBuf> {
@@ -1064,6 +1064,51 @@ impl WorkspaceRegistry {
             // save_modules now writes to repo_modules (entity-model aligned, no FK).
             let _ = conn.execute("DROP TABLE IF EXISTS repo_modules_legacy", []);
             conn.execute("PRAGMA user_version = 23", [])?;
+        }
+
+        if user_version < 24 {
+            // v24: Activate the unified relations table.
+            // 1. Enforce uniqueness so ON CONFLICT works for idempotent writes.
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_relations_unique ON relations(from_entity_id, to_entity_id, relation_type)",
+                [],
+            )?;
+            // 2. One-time migration: copy existing repo_relations into relations.
+            //    Only rows whose endpoints exist in entities are migrated.
+            conn.execute(
+                "INSERT INTO relations (id, from_entity_id, to_entity_id, relation_type, confidence, created_at)
+                 SELECT lower(hex(randomblob(16))), from_repo_id, to_repo_id, relation_type, confidence, discovered_at
+                 FROM repo_relations
+                 WHERE from_repo_id IN (SELECT id FROM entities) AND to_repo_id IN (SELECT id FROM entities)
+                 ON CONFLICT(from_entity_id, to_entity_id, relation_type) DO UPDATE SET
+                     confidence = excluded.confidence,
+                     created_at = excluded.created_at",
+                [],
+            )?;
+            conn.execute("PRAGMA user_version = 24", [])?;
+        }
+
+        if user_version < 25 {
+            // v25: Behavioral context — agent symbol read tracking for relevance boosting.
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS agent_symbol_reads (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    repo_id TEXT NOT NULL,
+                    symbol_name TEXT NOT NULL,
+                    read_at TEXT NOT NULL,
+                    context TEXT
+                )",
+                [],
+            )?;
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_agent_reads_symbol ON agent_symbol_reads(repo_id, symbol_name)",
+                [],
+            )?;
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_agent_reads_time ON agent_symbol_reads(read_at DESC)",
+                [],
+            )?;
+            conn.execute("PRAGMA user_version = 25", [])?;
         }
 
         conn.execute(

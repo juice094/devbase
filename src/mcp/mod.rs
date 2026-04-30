@@ -91,6 +91,11 @@ pub enum McpToolEnum {
     SkillDiscover(DevkitSkillDiscoverTool),
     KnownLimitStore(DevkitKnownLimitStoreTool),
     KnownLimitList(DevkitKnownLimitListTool),
+    RelationStore(DevkitRelationStoreTool),
+    RelationQuery(DevkitRelationQueryTool),
+    WorkflowList(DevkitWorkflowListTool),
+    WorkflowRun(DevkitWorkflowRunTool),
+    WorkflowStatus(DevkitWorkflowStatusTool),
     OplogQuery(DevkitOplogQueryTool),
 }
 
@@ -157,6 +162,11 @@ impl McpToolEnum {
             McpToolEnum::SkillDiscover(_) => ToolTier::Beta,
             McpToolEnum::KnownLimitStore(_) => ToolTier::Beta,
             McpToolEnum::KnownLimitList(_) => ToolTier::Beta,
+            McpToolEnum::RelationStore(_) => ToolTier::Beta,
+            McpToolEnum::RelationQuery(_) => ToolTier::Beta,
+            McpToolEnum::WorkflowList(_) => ToolTier::Beta,
+            McpToolEnum::WorkflowRun(_) => ToolTier::Beta,
+            McpToolEnum::WorkflowStatus(_) => ToolTier::Beta,
             McpToolEnum::OplogQuery(_) => ToolTier::Beta,
         }
     }
@@ -202,6 +212,11 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillDiscover(t) => t.name(),
             McpToolEnum::KnownLimitStore(t) => t.name(),
             McpToolEnum::KnownLimitList(t) => t.name(),
+            McpToolEnum::RelationStore(t) => t.name(),
+            McpToolEnum::RelationQuery(t) => t.name(),
+            McpToolEnum::WorkflowList(t) => t.name(),
+            McpToolEnum::WorkflowRun(t) => t.name(),
+            McpToolEnum::WorkflowStatus(t) => t.name(),
             McpToolEnum::OplogQuery(t) => t.name(),
         }
     }
@@ -245,6 +260,11 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillDiscover(t) => t.schema(),
             McpToolEnum::KnownLimitStore(t) => t.schema(),
             McpToolEnum::KnownLimitList(t) => t.schema(),
+            McpToolEnum::RelationStore(t) => t.schema(),
+            McpToolEnum::RelationQuery(t) => t.schema(),
+            McpToolEnum::WorkflowList(t) => t.schema(),
+            McpToolEnum::WorkflowRun(t) => t.schema(),
+            McpToolEnum::WorkflowStatus(t) => t.schema(),
             McpToolEnum::OplogQuery(t) => t.schema(),
         }
     }
@@ -292,6 +312,11 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillDiscover(t) => t.invoke(args, ctx).await,
             McpToolEnum::KnownLimitStore(t) => t.invoke(args, ctx).await,
             McpToolEnum::KnownLimitList(t) => t.invoke(args, ctx).await,
+            McpToolEnum::RelationStore(t) => t.invoke(args, ctx).await,
+            McpToolEnum::RelationQuery(t) => t.invoke(args, ctx).await,
+            McpToolEnum::WorkflowList(t) => t.invoke(args, ctx).await,
+            McpToolEnum::WorkflowRun(t) => t.invoke(args, ctx).await,
+            McpToolEnum::WorkflowStatus(t) => t.invoke(args, ctx).await,
             McpToolEnum::OplogQuery(t) => t.invoke(args, ctx).await,
         }
     }
@@ -482,6 +507,11 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::SkillDiscover(DevkitSkillDiscoverTool),
         McpToolEnum::KnownLimitStore(DevkitKnownLimitStoreTool),
         McpToolEnum::KnownLimitList(DevkitKnownLimitListTool),
+        McpToolEnum::RelationStore(DevkitRelationStoreTool),
+        McpToolEnum::RelationQuery(DevkitRelationQueryTool),
+        McpToolEnum::WorkflowList(DevkitWorkflowListTool),
+        McpToolEnum::WorkflowRun(DevkitWorkflowRunTool),
+        McpToolEnum::WorkflowStatus(DevkitWorkflowStatusTool),
         McpToolEnum::OplogQuery(DevkitOplogQueryTool),
     ];
     for tool in all_tools {

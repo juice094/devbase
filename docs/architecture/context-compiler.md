@@ -113,10 +113,10 @@ LLM 决策需要六维结构化情境：
 |------|---------|-----------------|
 | **Situation** | "我房间里有什么书？" | ✅ `scan` + `query_repos` + `vault_search` 提供全景 |
 | **State** | "哪些书还没读完？" | ✅ `health` + `index` 状态 + Git dirty/behind/ahead |
-| **Relations** | "这本书引用了哪本？" | 🟡 `dependency_graph` / `call_graph` 有数据，`relations` 表待填充 |
+| **Relations** | "这本书引用了哪本？" | 🟡 `relations` 表已激活（v24 迁移），`project_context` 包含 `related_symbols` |
 | **Capability** | "我可以用笔划线、用书签标记" | ✅ 38 个 MCP tools，`project_context` 聚合 |
-| **History** | "上次读这本书到哪一章？" | 🟡 `oplog` 有记录，`devkit_oplog_query` 已暴露 |
-| **Relevance** | "我现在要写论文，哪些书相关？" | 🔴 未实现，计划通过 embedding + 使用频率排序 |
+| **History** | "上次读这本书到哪一章？" | 🟡 `project_context` 包含 `activity`（最近 10 条 oplog）；`agent_symbol_reads` 表已激活（v25），用于行为信号 boosting |
+| **Relevance** | "我现在要写论文，哪些书相关？" | 🟡 `project_context` 支持 `goal` 参数，通过 `hybrid_search_symbols` 关联排序 |
 
 ---
 
@@ -148,10 +148,11 @@ LLM 决策需要六维结构化情境：
    └─ code_symbols 表存储函数/结构体/枚举
    └─ code_call_graph 表存储调用边
 
-3. 编译层：project_context("devbase")
+3. 编译层：project_context("devbase", goal="sync policy")
    └─ 返回 repo 元数据 + vault 笔记 + assets
    └─ 返回 modules（cargo targets）
-   └─ 返回 symbols（Top 50）+ calls（Top 50）
+   └─ 返回 symbols（ relevance-ranked Top 50）+ calls（filtered Top 50）
+   └─ 返回 activity（最近 10 条 oplog）+ related_symbols（概念关联符号）
 
 4. 协议层：MCP 将 JSON 传给 Kimi CLI
 

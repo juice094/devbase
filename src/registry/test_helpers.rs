@@ -246,6 +246,17 @@ CREATE TABLE IF NOT EXISTS relations (
 CREATE INDEX IF NOT EXISTS idx_relations_from ON relations(from_entity_id);
 CREATE INDEX IF NOT EXISTS idx_relations_to ON relations(to_entity_id);
 CREATE INDEX IF NOT EXISTS idx_relations_type ON relations(relation_type);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_relations_unique ON relations(from_entity_id, to_entity_id, relation_type);
+
+CREATE TABLE IF NOT EXISTS agent_symbol_reads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id TEXT NOT NULL,
+    symbol_name TEXT NOT NULL,
+    read_at TEXT NOT NULL,
+    context TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_agent_reads_symbol ON agent_symbol_reads(repo_id, symbol_name);
+CREATE INDEX IF NOT EXISTS idx_agent_reads_time ON agent_symbol_reads(read_at DESC);
 
 CREATE TABLE IF NOT EXISTS workflow_executions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,

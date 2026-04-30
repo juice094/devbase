@@ -73,10 +73,76 @@ impl WorkspaceRegistry {
         confidence: f64,
     ) -> anyhow::Result<()> {
         conn.execute(
-            "INSERT OR REPLACE INTO repo_relations (from_repo_id, to_repo_id, relation_type, confidence, discovered_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO relations (id, from_entity_id, to_entity_id, relation_type, confidence, created_at)
+             VALUES (lower(hex(randomblob(16))), ?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(from_entity_id, to_entity_id, relation_type) DO UPDATE SET
+                 confidence = excluded.confidence,
+                 created_at = excluded.created_at",
             rusqlite::params![from, to, rel_type, confidence, Utc::now().to_rfc3339()],
         )?;
         Ok(())
+    }
+
+    /// Query outgoing relations from a given entity.
+    /// Optionally filter by relation_type (pass None or empty for all types).
+    pub fn list_relations(
+        conn: &rusqlite::Connection,
+        from_entity_id: &str,
+        relation_type: Option<&str>,
+    ) -> anyhow::Result<Vec<(String, String, f64, String)>> {
+        let filter_type = relation_type.filter(|s| !s.is_empty());
+        if let Some(rt) = filter_type {
+            let mut stmt = conn.prepare(
+                "SELECT to_entity_id, relation_type, confidence, created_at FROM relations
+                 WHERE from_entity_id = ?1 AND relation_type = ?2
+                 ORDER BY confidence DESC",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![from_entity_id, rt], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, f64>(2)?, row.get::<_, String>(3)?))
+            })?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        } else {
+            let mut stmt = conn.prepare(
+                "SELECT to_entity_id, relation_type, confidence, created_at FROM relations
+                 WHERE from_entity_id = ?1
+                 ORDER BY confidence DESC",
+            )?;
+            let rows = stmt.query_map([from_entity_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, f64>(2)?, row.get::<_, String>(3)?))
+            })?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        }
+    }
+
+    /// Query bidirectional relations for an entity (both outgoing and incoming).
+    /// Optionally filter by relation_type.
+    pub fn find_related_entities(
+        conn: &rusqlite::Connection,
+        entity_id: &str,
+        relation_type: Option<&str>,
+    ) -> anyhow::Result<Vec<(String, String, String, f64, String)>> {
+        let filter_type = relation_type.filter(|s| !s.is_empty());
+        if let Some(rt) = filter_type {
+            let mut stmt = conn.prepare(
+                "SELECT from_entity_id, to_entity_id, relation_type, confidence, created_at FROM relations
+                 WHERE (from_entity_id = ?1 OR to_entity_id = ?1) AND relation_type = ?2
+                 ORDER BY confidence DESC",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![entity_id, rt], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, f64>(3)?, row.get::<_, String>(4)?))
+            })?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        } else {
+            let mut stmt = conn.prepare(
+                "SELECT from_entity_id, to_entity_id, relation_type, confidence, created_at FROM relations
+                 WHERE from_entity_id = ?1 OR to_entity_id = ?1
+                 ORDER BY confidence DESC",
+            )?;
+            let rows = stmt.query_map([entity_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, f64>(3)?, row.get::<_, String>(4)?))
+            })?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        }
     }
 
     pub fn save_discovery(
@@ -396,6 +462,7 @@ impl WorkspaceRegistry {
 
     /// Hybrid search: vector similarity + keyword matching with RRF merge.
     /// Falls back to pure keyword search when no embeddings are available.
+    /// Results are boosted by agent read frequency (behavioral signal).
     pub fn hybrid_search_symbols(
         conn: &rusqlite::Connection,
         repo_id: &str,
@@ -403,13 +470,80 @@ impl WorkspaceRegistry {
         query_embedding: Option<&[f32]>,
         limit: usize,
     ) -> anyhow::Result<Vec<crate::semantic_index::SemanticSearchRow>> {
-        crate::search::hybrid::hybrid_search_symbols(
+        let mut results = crate::search::hybrid::hybrid_search_symbols(
             conn,
             repo_id,
             query_text,
             query_embedding,
             limit,
-        )
+        )?;
+
+        // Boost by agent read frequency (behavioral signal)
+        if results.len() > 1 {
+            let names: Vec<String> = results.iter().map(|r| r.1.clone()).collect();
+            let counts = Self::get_symbol_read_counts(conn, repo_id, &names)?;
+            for row in &mut results {
+                if let Some(cnt) = counts.get(&row.1) {
+                    let boost = (*cnt as f32 * 0.05).min(0.5);
+                    row.4 += boost;
+                }
+            }
+            results.sort_by(|a, b| {
+                b.4.partial_cmp(&a.4)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| a.1.cmp(&b.1))
+            });
+        }
+
+        Ok(results)
+    }
+
+    /// Record that an agent read a symbol (for behavioral relevance tracking).
+    pub fn record_symbol_read(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        symbol_name: &str,
+        context: Option<&str>,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "INSERT INTO agent_symbol_reads (repo_id, symbol_name, read_at, context)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![repo_id, symbol_name, Utc::now().to_rfc3339(), context],
+        )?;
+        Ok(())
+    }
+
+    /// Get read counts for a set of symbols in a repo.
+    pub fn get_symbol_read_counts(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        symbol_names: &[String],
+    ) -> anyhow::Result<std::collections::HashMap<String, i64>> {
+        if symbol_names.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let placeholders = symbol_names.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT symbol_name, COUNT(*) as cnt
+             FROM agent_symbol_reads
+             WHERE repo_id = ?1 AND symbol_name IN ({})
+             GROUP BY symbol_name",
+            placeholders
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let mut params: Vec<&dyn rusqlite::ToSql> = vec![&repo_id];
+        for name in symbol_names {
+            params.push(name);
+        }
+        let rows = stmt.query_map(params.as_slice(), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        let mut counts = std::collections::HashMap::new();
+        for row in rows {
+            let (name, cnt) = row?;
+            counts.insert(name, cnt);
+        }
+        Ok(counts)
     }
 
     /// Find symbols explicitly linked to the given symbol.
@@ -527,6 +661,16 @@ mod tests {
         WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
         WorkspaceRegistry::seed_test_repo(&mut conn, "repo-b").unwrap();
         WorkspaceRegistry::save_relation(&conn, "repo-a", "repo-b", "depends_on", 0.95).unwrap();
+
+        // Verify the relation was written to the unified relations table
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM relations WHERE from_entity_id = ?1 AND to_entity_id = ?2",
+                ["repo-a", "repo-b"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
     }
 
     #[test]
@@ -717,5 +861,31 @@ mod tests {
         )
         .unwrap();
         assert!(!all.is_empty());
+    }
+
+    #[test]
+    fn test_symbol_read_tracking() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+
+        // Record some reads
+        WorkspaceRegistry::record_symbol_read(&conn, "repo-a", "func_a", Some("test")).unwrap();
+        WorkspaceRegistry::record_symbol_read(&conn, "repo-a", "func_a", Some("test")).unwrap();
+        WorkspaceRegistry::record_symbol_read(&conn, "repo-a", "func_b", Some("test")).unwrap();
+
+        // Query counts
+        let counts = WorkspaceRegistry::get_symbol_read_counts(
+            &conn,
+            "repo-a",
+            &["func_a".to_string(), "func_b".to_string(), "func_c".to_string()],
+        )
+        .unwrap();
+
+        assert_eq!(counts.get("func_a"), Some(&2_i64));
+        assert_eq!(counts.get("func_b"), Some(&1_i64));
+        assert_eq!(counts.get("func_c"), None);
+
+        // Empty names -> empty counts
+        let empty = WorkspaceRegistry::get_symbol_read_counts(&conn, "repo-a", &[]).unwrap();
+        assert!(empty.is_empty());
     }
 }

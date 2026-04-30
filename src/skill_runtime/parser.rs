@@ -140,6 +140,7 @@ fn parse_skill_frontmatter(raw: &str) -> SkillFrontmatter {
                     // Flush previous input if we see a new "- name:" without closing the last one
                     if item.starts_with("name:") && current_input.is_some() {
                         fm.inputs
+                            // TODO(veto-audit-2026-04-26): RF-6 expect — 解析状态机内部不变量，is_some 前置检查存在。
                             .push(current_input.take().expect("current_input checked by is_some"));
                     }
                     if current_input.is_none() && item.starts_with("name:") {

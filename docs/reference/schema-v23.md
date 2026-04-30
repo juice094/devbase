@@ -20,6 +20,8 @@
 | v21 | 2026-04 | **删除 `repos` 表**；`repo_*` 关联表移除 FK |
 | v22 | 2026-04 | 删除 `vault_notes`/`papers`/`workflows` 表；重建 `repo_modules`（新 schema） |
 | **v23** | 2026-04 | **删除 `repo_modules_legacy`**；`init_db_at` 末尾自动 drop `repos` 幽灵表 |
+| **v24** | 2026-04 | **激活 `relations` 表**：添加唯一索引 `idx_relations_unique`；一次性迁移 `repo_relations` → `relations` |
+| **v25** | 2026-04 | **行为信号表** `agent_symbol_reads`：记录 Agent 对符号的读取历史，用于 relevance boosting |
 
 ---
 
@@ -84,6 +86,7 @@ CREATE TABLE relations (
 CREATE INDEX idx_relations_from ON relations(from_entity_id);
 CREATE INDEX idx_relations_to ON relations(to_entity_id);
 CREATE INDEX idx_relations_type ON relations(relation_type);
+CREATE UNIQUE INDEX idx_relations_unique ON relations(from_entity_id, to_entity_id, relation_type);
 ```
 
 ---
@@ -97,7 +100,7 @@ CREATE INDEX idx_relations_type ON relations(relation_type);
 | `repo_health` | Git 健康状态 | `repo_id`, `ahead`, `behind`, `checked_at` |
 | `repo_summaries` | README 摘要 | `repo_id`, `summary`, `keywords`, `generated_at` |
 | `repo_modules` | Cargo target / 模块结构 | `repo_id`, `module_name`, `module_type`, `module_path` |
-| `repo_relations` | 仓库间关系 | `from_repo_id`, `to_repo_id`, `relation_type`, `confidence` |
+| `repo_relations` | 仓库间关系（**legacy，v24 已迁移至 `relations`**） | `from_repo_id`, `to_repo_id`, `relation_type`, `confidence` |
 | `repo_notes` | AI 发现笔记 | `repo_id`, `note_text`, `author`, `timestamp` |
 | `repo_code_metrics` | 代码统计 | `repo_id`, `total_lines`, `source_lines`, `test_lines`, ... |
 | `repo_stars_cache` | GitHub stars 缓存 | `repo_id`, `stars`, `fetched_at` |

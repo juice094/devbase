@@ -13,6 +13,7 @@ pub fn build_schedule(wf: &WorkflowDefinition) -> anyhow::Result<Vec<ExecutionBa
 
     for step in &wf.steps {
         for dep in &step.depends_on {
+            // TODO(veto-audit-2026-04-26): RF-6 expect — topo sort 内部不变量，风险低。
             *in_degree.get_mut(step.id.as_str()).expect("step id initialized in in_degree") += 1;
             adj.entry(dep.as_str()).or_default().push(step.id.as_str());
         }

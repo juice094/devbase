@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 static VAR_RE: OnceLock<Regex> = OnceLock::new();
 
 fn var_regex() -> &'static Regex {
+    // TODO(veto-audit-2026-04-26): RF-6 expect — 静态正则在编译时即可验证，风险极低。可保留或改为 unwrap_or_else。
     VAR_RE.get_or_init(|| Regex::new(r"\$\{([^}]+)\}").expect("static regex is valid"))
 }
 
@@ -20,7 +21,9 @@ pub fn interpolate(template: &str, ctx: &InterpolationContext) -> anyhow::Result
     let re = var_regex();
     let mut result = template.to_string();
     for cap in re.captures_iter(template) {
+        // TODO(veto-audit-2026-04-26): RF-6 expect — Regex capture group 0 在 matched 时必然存在，风险低。
         let full = cap.get(0).expect("capture group 0 always exists").as_str();
+        // TODO(veto-audit-2026-04-26): RF-6 expect — group 1 在匹配此正则时必然存在，风险低。
         let path = cap.get(1).expect("capture group 1 exists for matched pattern").as_str();
         let value = resolve(path, ctx)?;
         result = result.replace(full, &value);

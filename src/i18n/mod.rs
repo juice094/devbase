@@ -192,6 +192,8 @@ impl LogStrings {
 pub mod en;
 pub mod zh_cn;
 
+// TODO(veto-audit-2026-04-26): RF-1 全局状态 — CURRENT 不在 grandfathered 列表（仅 backup_dir/db_path/index_path 3 处可保留）。
+// 修复: 将 I18n 注入 AppContext，通过 ctx.i18n() 访问，消除全局可变状态。
 static CURRENT: OnceLock<I18n> = OnceLock::new();
 
 pub fn init(lang: &str) {
@@ -205,6 +207,7 @@ pub fn init(lang: &str) {
 }
 
 pub fn current() -> &'static I18n {
+    // TODO(veto-audit-2026-04-26): RF-6 expect — 若 init() 未被调用则 panic。与 RF-1 全局状态问题同源，v0.15 注入式重构后自然消除。
     CURRENT.get().expect("i18n not initialized")
 }
 

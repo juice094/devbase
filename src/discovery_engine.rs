@@ -175,6 +175,7 @@ pub fn discover_similar_projects(conn: &rusqlite::Connection) -> anyhow::Result<
         for j in (i + 1)..repo_ids.len() {
             let a = &repo_ids[i];
             let b = &repo_ids[j];
+            // TODO(veto-audit-2026-04-26): RF-6 expect — Map 内部状态可能不一致，应返回 Option 或默认值。
             let set_a = keywords_map.get(a).expect("repo id from keywords_map keys");
             let set_b = keywords_map.get(b).expect("repo id from keywords_map keys");
 

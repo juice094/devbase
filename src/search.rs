@@ -85,14 +85,19 @@ fn add_doc(
     tags: &[String],
     doc_type: &str,
 ) -> Result<(), TantivyError> {
+    // TODO(veto-audit-2026-04-26): RF-6 expect — schema 字段 lookup，不变量由 init_index 保证。可接受，但建议统一封装为辅助函数。
     let id_f = schema.get_field("id").expect("schema field 'id' defined in init_index");
+    // TODO(veto-audit-2026-04-26): RF-6 expect — schema 字段 lookup，init_index 保证。
     let title_f = schema.get_field("title").expect("schema field 'title' defined in init_index");
     let content_f = schema
         .get_field("content")
+        // TODO(veto-audit-2026-04-26): RF-6 expect — 同上。
         .expect("schema field 'content' defined in init_index");
+    // TODO(veto-audit-2026-04-26): RF-6 expect — 同上。
     let tags_f = schema.get_field("tags").expect("schema field 'tags' defined in init_index");
     let doc_type_f = schema
         .get_field("doc_type")
+        // TODO(veto-audit-2026-04-26): RF-6 expect — 同上。
         .expect("schema field 'doc_type' defined in init_index");
 
     let mut doc = TantivyDocument::default();
@@ -111,6 +116,7 @@ pub fn delete_repo_doc(
     schema: &Schema,
     repo_id: &str,
 ) -> Result<(), TantivyError> {
+    // TODO(veto-audit-2026-04-26): RF-6 expect — 同上。
     let id = schema.get_field("id").expect("schema field 'id' defined in init_index");
     let term = tantivy::Term::from_field_text(id, repo_id);
     writer.delete_term(term);
@@ -158,10 +164,12 @@ fn search_with_reader(
     let title = schema.get_field("title").expect("schema field 'title' defined in init_index");
     let content = schema
         .get_field("content")
+        // TODO(veto-audit-2026-04-26): RF-6 expect — 同上。
         .expect("schema field 'content' defined in init_index");
     let tags = schema.get_field("tags").expect("schema field 'tags' defined in init_index");
     let doc_type_f = schema
         .get_field("doc_type")
+        // TODO(veto-audit-2026-04-26): RF-6 expect — 同上。
         .expect("schema field 'doc_type' defined in init_index");
 
     let query_parser = QueryParser::for_index(index, vec![title, content, tags]);
@@ -183,6 +191,7 @@ fn search_with_reader(
 
     let top_docs = searcher.search(&*final_query, &TopDocs::with_limit(limit).order_by_score())?;
 
+    // TODO(veto-audit-2026-04-26): RF-6 expect — 同上。
     let id_field = schema.get_field("id").expect("schema field 'id' defined in init_index");
     let mut results = Vec::new();
     for (score, doc_address) in top_docs {

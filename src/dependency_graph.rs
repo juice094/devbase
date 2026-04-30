@@ -604,7 +604,7 @@ pub fn list_dependencies(
     repo_id: &str,
 ) -> anyhow::Result<Vec<(String, String, f64)>> {
     let mut stmt = conn.prepare(
-        "SELECT to_repo_id, relation_type, confidence FROM repo_relations WHERE from_repo_id = ?1",
+        "SELECT to_entity_id, relation_type, confidence FROM relations WHERE from_entity_id = ?1",
     )?;
     let rows = stmt.query_map([repo_id], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, f64>(2)?))
@@ -618,7 +618,7 @@ pub fn list_reverse_dependencies(
     repo_id: &str,
 ) -> anyhow::Result<Vec<(String, String, f64)>> {
     let mut stmt = conn.prepare(
-        "SELECT from_repo_id, relation_type, confidence FROM repo_relations WHERE to_repo_id = ?1",
+        "SELECT from_entity_id, relation_type, confidence FROM relations WHERE to_entity_id = ?1",
     )?;
     let rows = stmt.query_map([repo_id], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, f64>(2)?))

@@ -19,6 +19,7 @@ pub(crate) fn parse_cmp_expr(value: &str) -> Option<(String, i64)> {
     if value.is_empty() {
         return None;
     }
+    // TODO(veto-audit-2026-04-26): RF-6 expect — 前置检查存在但非类型级保证，建议改为 `value.chars().next().unwrap_or('\0')` 或 `ok_or`。
     let first = value.chars().next().expect("value not empty: checked above");
     if first == '>' || first == '<' || first == '=' {
         let num = value[1..].parse().ok()?;

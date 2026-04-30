@@ -64,6 +64,8 @@ impl SyncOrchestrator {
                             ..Default::default()
                         },
                     );
+                    // TODO(veto-audit-2026-04-26): RF-6 高风险 expect — semaphore 在 shutdown 时会被关闭，此 expect 会导致 panic。
+                    // 修复: 改为 `match` 或 `?` 传播，将 AcquireError 映射为 SyncSummary { action: "ERROR", ... }。
                     let permit = self
                         .semaphore
                         .clone()
@@ -117,6 +119,7 @@ impl SyncOrchestrator {
                     ..Default::default()
                 },
             );
+            // TODO(veto-audit-2026-04-26): RF-6 高风险 expect — 同上，shutdown 场景 panic。
             let permit = self
                 .semaphore
                 .clone()
