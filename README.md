@@ -1,12 +1,10 @@
 # devbase
 
-[![Version](https://img.shields.io/badge/version-v0.12.0--alpha-blue)](https://github.com/juice094/devbase/releases)
+[![Version](https://img.shields.io/badge/version-v0.12.0-blue)](https://github.com/juice094/devbase/releases)
 [![Tests](https://img.shields.io/badge/tests-379%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
 [![License](https://img.shields.io/badge/license-MIT-orange)](./LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-9cf)](https://www.rust-lang.org)
-
-> ⚠️ **v0.12.0 Migration Note**: `devbase sync` now requires a management tag (`managed`, `mirror`, `active`, etc.) to operate on a repo. Repos registered before this release with the `"discovered"` tag will be skipped. See [CHANGELOG](CHANGELOG.md) for details.
 
 **本地优先的 AI Skill 编排基础设施**
 
