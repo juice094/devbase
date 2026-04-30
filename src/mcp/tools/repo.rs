@@ -291,7 +291,7 @@ Returns: JSON with success status."#,
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
-            crate::registry::WorkspaceRegistry::save_note(&conn, &repo_id, &text, &author)?;
+            crate::registry::knowledge::save_note(&conn, &repo_id, &text, &author)?;
             Ok::<_, anyhow::Error>(serde_json::json!({ "success": true }))
         })
         .await
@@ -427,7 +427,7 @@ Returns: JSON with discovered paper count and registration status."#,
                             tags: tags.clone(),
                             added_at: chrono::Utc::now(),
                         };
-                        crate::registry::WorkspaceRegistry::save_paper(&conn, &paper)?;
+                        crate::registry::knowledge::save_paper(&conn, &paper)?;
                         count += 1;
                     }
                 }
@@ -622,7 +622,7 @@ Returns: JSON with stars, forks, open_issues, description, pushed_at, and update
             let pool = ctx.pool();
             tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
                 let conn = pool.get()?;
-                crate::registry::WorkspaceRegistry::save_summary(&conn, &repo_id2, &desc2, "")?;
+                crate::registry::knowledge::save_summary(&conn, &repo_id2, &desc2, "")?;
                 Ok(())
             })
             .await
@@ -692,7 +692,7 @@ Returns: JSON array of metric objects per repo: repo_id, total_lines, code_lines
 
             let conn = pool.get()?;
             if repo_id.is_empty() {
-                let metrics = crate::registry::WorkspaceRegistry::list_code_metrics(&conn)?;
+                let metrics = crate::registry::metrics::list_code_metrics(&conn)?;
                 let repos: Vec<serde_json::Value> = metrics.into_iter().map(|(id, m)| {
                     serde_json::json!({
                         "repo_id": id,
@@ -707,7 +707,7 @@ Returns: JSON array of metric objects per repo: repo_id, total_lines, code_lines
                 }).collect();
                 Ok::<_, anyhow::Error>(serde_json::json!({ "success": true, "count": repos.len(), "repos": repos }))
             } else {
-                match crate::registry::WorkspaceRegistry::get_code_metrics(&conn, &repo_id)? {
+                match crate::registry::metrics::get_code_metrics(&conn, &repo_id)? {
                     Some(m) => Ok(serde_json::json!({
                         "success": true,
                         "repo_id": repo_id,
@@ -775,11 +775,11 @@ Returns: JSON with workspace_members, packages (name, version, targets), and dep
 
             let conn = pool.get()?;
             if repo_id.is_empty() {
-                let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
+                let repos = crate::registry::repo::list_repos(&conn)?;
                 let mut all_modules = vec![];
                 for repo in repos {
                     if repo.language.as_deref() == Some("Rust") {
-                        let modules = crate::registry::WorkspaceRegistry::list_modules(&conn, &repo.id)?;
+                        let modules = crate::registry::knowledge::list_modules(&conn, &repo.id)?;
                         if !modules.is_empty() {
                             all_modules.push(serde_json::json!({
                                 "repo_id": repo.id,
@@ -792,7 +792,7 @@ Returns: JSON with workspace_members, packages (name, version, targets), and dep
                 }
                 Ok::<_, anyhow::Error>(serde_json::json!({ "success": true, "count": all_modules.len(), "repos": all_modules }))
             } else {
-                let modules = crate::registry::WorkspaceRegistry::list_modules(&conn, &repo_id)?;
+                let modules = crate::registry::knowledge::list_modules(&conn, &repo_id)?;
                 Ok(serde_json::json!({
                     "success": true,
                     "repo_id": repo_id,
@@ -886,7 +886,7 @@ Returns: JSON array of repo objects. Each includes: id, local_path, language, ta
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
-            let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
+            let repos = crate::registry::repo::list_repos(&conn)?;
 
             let mut results = Vec::new();
             for repo in repos {
@@ -906,7 +906,7 @@ Returns: JSON array of repo objects. Each includes: id, local_path, language, ta
                 // Gather status
                 let (ahead, behind, dirty) = if repo.workspace_type == "git" {
                     let (st, ah, bh) =
-                        match crate::registry::WorkspaceRegistry::get_health(&conn, &repo.id)? {
+                        match crate::registry::health::get_health(&conn, &repo.id)? {
                             Some(health) => (health.status.clone(), health.ahead, health.behind),
                             None => {
                                 let path = repo.local_path.to_string_lossy();
@@ -922,7 +922,7 @@ Returns: JSON array of repo objects. Each includes: id, local_path, language, ta
                 } else {
                     let dirty = match crate::health::compute_workspace_hash(&repo.local_path) {
                         Ok(current_hash) => {
-                            match crate::registry::WorkspaceRegistry::get_latest_workspace_snapshot(
+                            match crate::registry::workspace::get_latest_workspace_snapshot(
                                 &conn, &repo.id,
                             )? {
                                 Some(prev) => prev.file_hash != current_hash,
@@ -1028,7 +1028,7 @@ Returns: JSON array of matching repos with metadata, same format as devkit_query
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
-            let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
+            let repos = crate::registry::repo::list_repos(&conn)?;
             let filtered = nl_filter_repos(&query, &repos, &conn)?;
 
             let results: Vec<serde_json::Value> = filtered
@@ -1112,7 +1112,7 @@ fn apply_nl_filters(
         || q.contains("up to date")
         || q.contains("uptodate")
     {
-        let (st, ah, bh) = match crate::registry::WorkspaceRegistry::get_health(conn, &repo.id)? {
+        let (st, ah, bh) = match crate::registry::health::get_health(conn, &repo.id)? {
             Some(h) => (h.status.clone(), h.ahead, h.behind),
             None => {
                 let path = repo.local_path.to_string_lossy();
@@ -1849,7 +1849,7 @@ Returns: success flag and count of stored embeddings."#,
             let mut conn = pool.get()?;
             let pairs = vec![(symbol_name.clone(), embedding)];
             let count =
-                crate::registry::WorkspaceRegistry::save_embeddings(&mut conn, &repo_id, &pairs)?;
+                crate::registry::knowledge::save_embeddings(&mut conn, &repo_id, &pairs)?;
 
             Ok::<_, anyhow::Error>(serde_json::json!({
                 "success": true,

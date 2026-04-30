@@ -28,7 +28,7 @@ impl WorkspaceRegistry {
             stars: None,
             remotes: vec![],
         };
-        Self::save_repo(conn, &repo)?;
+        super::repo::save_repo(conn, &repo)?;
         Ok(repo)
     }
 }

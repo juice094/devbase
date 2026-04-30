@@ -32,11 +32,11 @@ pub fn run_limit(
                 last_checked_at: None,
                 mitigated: false,
             };
-            crate::registry::WorkspaceRegistry::save_known_limit(&conn, &limit)?;
+            crate::registry::known_limits::save_known_limit(&conn, &limit)?;
             println!("Saved known limit '{}'.", id);
         }
         crate::LimitCommands::List { category, mitigated, json } => {
-            let limits = crate::registry::WorkspaceRegistry::list_known_limits(
+            let limits = crate::registry::known_limits::list_known_limits(
                 &conn,
                 category.as_deref(),
                 mitigated,
@@ -68,7 +68,7 @@ pub fn run_limit(
             }
         }
         crate::LimitCommands::Resolve { id, reason } => {
-            if crate::registry::WorkspaceRegistry::resolve_known_limit(&conn, &id)? {
+            if crate::registry::known_limits::resolve_known_limit(&conn, &id)? {
                 if let Some(ref r) = reason {
                     let meta = crate::registry::knowledge_meta::KnowledgeMeta {
                         id: format!("resolve-{}", id),
@@ -79,7 +79,7 @@ pub fn run_limit(
                         confidence: 1.0,
                         created_at: chrono::Utc::now(),
                     };
-                    let _ = crate::registry::WorkspaceRegistry::save_knowledge_meta(&conn, &meta);
+                    let _ = crate::registry::knowledge_meta::save_knowledge_meta(&conn, &meta);
                 }
                 println!("Resolved known limit '{}'.", id);
             } else {
@@ -87,14 +87,14 @@ pub fn run_limit(
             }
         }
         crate::LimitCommands::Delete { id } => {
-            if crate::registry::WorkspaceRegistry::delete_known_limit(&conn, &id)? {
+            if crate::registry::known_limits::delete_known_limit(&conn, &id)? {
                 println!("Deleted known limit '{}'.", id);
             } else {
                 println!("Known limit '{}' not found.", id);
             }
         }
         crate::LimitCommands::Seed => {
-            let count = crate::registry::WorkspaceRegistry::seed_hard_vetoes(&conn)?;
+            let count = crate::registry::known_limits::seed_hard_vetoes(&conn)?;
             println!("Seeded {} hard vetoes.", count);
         }
     }

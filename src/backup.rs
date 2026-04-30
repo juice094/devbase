@@ -1,4 +1,5 @@
 use crate::registry::{RepoEntry, WorkspaceRegistry};
+use crate::registry::repo;
 use crate::storage::StorageBackend;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -76,7 +77,7 @@ pub fn export_sqlite(output: Option<&Path>) -> anyhow::Result<PathBuf> {
 
 /// Export the current registry to a JSON file.
 pub fn export_json(conn: &rusqlite::Connection, output: Option<&Path>) -> anyhow::Result<PathBuf> {
-    let repos = WorkspaceRegistry::list_repos(conn)?;
+    let repos = repo::list_repos(conn)?;
 
     let registry = crate::registry::WorkspaceRegistry {
         version: "0.2.0".to_string(),
@@ -108,9 +109,9 @@ pub fn import_db(
     }
 
     let src_conn = rusqlite::Connection::open(source)?;
-    let src_repos = WorkspaceRegistry::list_repos(&src_conn)?;
+    let src_repos = repo::list_repos(&src_conn)?;
 
-    let current_repos = WorkspaceRegistry::list_repos(conn)?;
+    let current_repos = repo::list_repos(conn)?;
 
     let current_ids: std::collections::HashSet<String> =
         current_repos.iter().map(|r| r.id.clone()).collect();
@@ -139,7 +140,7 @@ pub fn import_db(
     let _ = export_sqlite(None)?;
 
     for repo in &src_repos {
-        WorkspaceRegistry::save_repo(conn, repo)?;
+        repo::save_repo(conn, repo)?;
     }
 
     println!("\n已成功导入 {} 个工作区。", src_repos.len());

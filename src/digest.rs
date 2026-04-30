@@ -157,7 +157,7 @@ mod tests {
             stars: None,
             remotes: vec![],
         };
-        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+        crate::registry::repo::save_repo(&mut conn, &repo).unwrap();
 
         let config = default_config();
         let i18n = crate::i18n::from_language("en");
@@ -180,7 +180,7 @@ mod tests {
             stars: None,
             remotes: vec![],
         };
-        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+        crate::registry::repo::save_repo(&mut conn, &repo).unwrap();
         conn.execute(
             "INSERT INTO repo_health (repo_id, status, ahead, behind, checked_at) VALUES (?1, ?2, ?3, ?4, ?5)",
             rusqlite::params!["sick_repo", "dirty", 0, 2, Utc::now().to_rfc3339()],

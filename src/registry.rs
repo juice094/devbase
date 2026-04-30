@@ -173,17 +173,17 @@ pub use entity::{
     ENTITY_TYPE_WORKFLOW, upsert_entity,
 };
 
-mod health;
-mod knowledge;
+pub mod health;
+pub mod knowledge;
 pub mod knowledge_meta;
 pub mod known_limits;
-mod links;
-mod metrics;
+pub mod links;
+pub mod metrics;
 mod migrate;
-mod repo;
+pub mod repo;
 pub mod repos_toml;
-mod vault;
-mod workspace;
+pub mod vault;
+pub mod workspace;
 
 #[cfg(test)]
 mod test_helpers;

@@ -1,5 +1,5 @@
 use crate::asyncgit::AsyncNotification;
-use crate::registry::WorkspaceRegistry;
+use crate::registry::repo;
 use crate::tui::{
     App, InputMode, ListState, MainView, NLPPopupMode, RepoItem, SearchPopupMode, SearchResult,
     SkillItem, SkillPopupMode, SortMode, SyncPopupMode, SyncPreviewItem, VaultItem,
@@ -76,7 +76,7 @@ impl App {
 
     pub(crate) fn load_repos(&mut self) -> anyhow::Result<()> {
         let conn = self.ctx.conn_mut()?;
-        let mut repos = WorkspaceRegistry::list_repos(&conn)?;
+        let mut repos = repo::list_repos(&conn)?;
 
         // P2-lite: apply static overrides from workspace/repos.toml
         if let Some(ot) = crate::registry::repos_toml::load_repos_toml() {
@@ -233,7 +233,7 @@ impl App {
             let mut needs_fetch = Vec::new();
             for (repo_id, upstream_url) in repos {
                 let cache_hit =
-                    match crate::registry::WorkspaceRegistry::get_stars_cache(&conn, &repo_id) {
+                    match crate::registry::health::get_stars_cache(&conn, &repo_id) {
                         Ok(Some((stars, fetched_at))) => {
                             let elapsed =
                                 Utc::now().signed_duration_since(fetched_at).num_seconds();
@@ -278,7 +278,7 @@ impl App {
                 let stars = handle.await.ok().flatten();
                 if let Some(s) = stars {
                     let _ =
-                        crate::registry::WorkspaceRegistry::save_stars_cache(&conn, &repo_id, s);
+                        crate::registry::health::save_stars_cache(&conn, &repo_id, s);
                 }
                 let _ = tx.send(AsyncNotification::StarsUpdated { repo_id, stars });
             }
@@ -425,7 +425,7 @@ impl App {
 
     pub(crate) fn load_vaults(&mut self) -> anyhow::Result<()> {
         let conn = self.ctx.conn()?;
-        let notes = WorkspaceRegistry::list_vault_notes(&conn)?;
+        let notes = crate::registry::vault::list_vault_notes(&conn)?;
         self.vaults.clear();
         for note in notes {
             self.vaults.push(VaultItem {
@@ -786,7 +786,7 @@ impl App {
                     && let Ok(conn) = self.ctx.conn_mut()
                 {
                     let _ =
-                        crate::registry::WorkspaceRegistry::save_stars_cache(&conn, &repo_id, s);
+                        crate::registry::health::save_stars_cache(&conn, &repo_id, s);
                 }
                 // Re-sort if currently sorting by stars
                 if self.sort_mode == SortMode::Stars {
@@ -1154,7 +1154,7 @@ impl App {
         // 4. Stars 检查（如果有历史数据）
         if let Ok(conn) = self.ctx.conn()
             && let Ok(history) =
-                crate::registry::WorkspaceRegistry::get_stars_history(&conn, &repo.id, 7)
+                crate::registry::health::get_stars_history(&conn, &repo.id, 7)
             && history.len() >= 2
         {
             let first = history.first().map(|(s, _)| *s).unwrap_or(0);

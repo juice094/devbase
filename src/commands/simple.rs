@@ -113,7 +113,7 @@ pub async fn run_vault(
             let pool = ctx.pool();
             let notes = tokio::task::spawn_blocking(move || {
                 let conn = pool.get()?;
-                crate::registry::WorkspaceRegistry::list_vault_notes(&conn)
+                crate::registry::vault::list_vault_notes(&conn)
             })
             .await
             .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
@@ -146,7 +146,7 @@ pub async fn run_vault(
                 let path = path.clone();
                 move || {
                     let conn = pool.get()?;
-                    crate::registry::WorkspaceRegistry::get_vault_note(&conn, &path)
+                    crate::registry::vault::get_vault_note(&conn, &path)
                 }
             })
             .await
@@ -254,7 +254,7 @@ pub fn run_tag(
                 rusqlite::params![&repo_id, tag],
             )?;
         }
-        crate::registry::WorkspaceRegistry::sync_repo_tags_to_entity(&tx, repo_id)?;
+        crate::registry::repo::sync_repo_tags_to_entity(&tx, repo_id)?;
         tx.commit()?;
         println!("已为 '{}' 打上标签 '{}'。", repo_id, tags);
     }
@@ -280,11 +280,11 @@ pub fn run_meta(
         println!("注册表中未找到仓库 '{}'。", repo_id);
     } else {
         if let Some(ref t) = tier {
-            registry::WorkspaceRegistry::update_repo_tier(&conn, repo_id, t)?;
+            crate::registry::repo::update_repo_tier(&conn, repo_id, t)?;
             println!("已将 '{}' 的数据分级设为 '{}'。", repo_id, t);
         }
         if let Some(ref wt) = workspace_type {
-            registry::WorkspaceRegistry::update_repo_workspace_type(&conn, repo_id, wt)?;
+            crate::registry::repo::update_repo_workspace_type(&conn, repo_id, wt)?;
             println!("已将 '{}' 的工作区类型设为 '{}'。", repo_id, wt);
         }
         if tier.is_none() && workspace_type.is_none() {
@@ -389,8 +389,8 @@ pub fn run_oplog(
 ) -> anyhow::Result<()> {
     let conn = ctx.conn_mut()?;
     let entries = match repo {
-        Some(ref r) => registry::WorkspaceRegistry::list_oplog_by_repo(&conn, r, limit)?,
-        None => registry::WorkspaceRegistry::list_oplog(&conn, limit)?,
+        Some(ref r) => crate::registry::workspace::list_oplog_by_repo(&conn, r, limit)?,
+        None => crate::registry::workspace::list_oplog(&conn, limit)?,
     };
     if entries.is_empty() {
         println!("操作日志为空。");
@@ -440,11 +440,10 @@ pub fn run_oplog(
 
 pub fn run_discover(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     use discovery_engine::{Discovery, discover_dependencies, discover_similar_projects};
-    use registry::WorkspaceRegistry;
     use std::collections::HashMap;
 
     let conn = ctx.conn_mut()?;
-    let repos = WorkspaceRegistry::list_repos(&conn)?;
+    let repos = crate::registry::repo::list_repos(&conn)?;
 
     let deps = discover_dependencies(&repos);
     let sims = discover_similar_projects(&conn)?;
@@ -520,7 +519,7 @@ pub async fn run_syncthing_push(
 
     let conn = ctx.conn_mut()?;
 
-    let repos = match WorkspaceRegistry::list_repos(&conn) {
+    let repos = match crate::registry::repo::list_repos(&conn) {
         Ok(r) => r,
         Err(e) => {
             println!("无法读取仓库列表: {}", e);

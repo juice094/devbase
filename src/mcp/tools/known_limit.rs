@@ -71,7 +71,7 @@ Returns: success boolean and stored limit id."#,
         };
 
         let conn = ctx.conn()?;
-        crate::registry::WorkspaceRegistry::save_known_limit(&conn, &limit)?;
+        crate::registry::known_limits::save_known_limit(&conn, &limit)?;
 
         Ok(serde_json::json!({ "success": true, "id": id }))
     }
@@ -119,7 +119,7 @@ Returns: JSON array of known limits."#,
 
         let conn = ctx.conn()?;
         let limits =
-            crate::registry::WorkspaceRegistry::list_known_limits(&conn, category, mitigated)?;
+            crate::registry::known_limits::list_known_limits(&conn, category, mitigated)?;
 
         let results: Vec<serde_json::Value> = limits
             .into_iter()

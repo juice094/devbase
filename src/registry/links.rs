@@ -1,62 +1,75 @@
 use super::*;
 
+/// Get repo IDs linked to a vault note.
+pub fn get_linked_repos(
+    conn: &rusqlite::Connection,
+    vault_id: &str,
+) -> anyhow::Result<Vec<String>> {
+    let mut stmt = conn
+        .prepare("SELECT repo_id FROM vault_repo_links WHERE vault_id = ?1 ORDER BY repo_id")?;
+    let rows = stmt.query_map([vault_id], |row| row.get::<_, String>(0))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
+}
+
+/// Get vault note IDs linked to a repo.
+pub fn get_linked_vaults(
+    conn: &rusqlite::Connection,
+    repo_id: &str,
+) -> anyhow::Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT vault_id FROM vault_repo_links WHERE repo_id = ?1 ORDER BY vault_id",
+    )?;
+    let rows = stmt.query_map([repo_id], |row| row.get::<_, String>(0))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
+}
+
+/// Get vault notes (with title) linked to a repo.
+pub fn get_linked_vault_notes(
+    conn: &rusqlite::Connection,
+    repo_id: &str,
+) -> anyhow::Result<Vec<(String, Option<String>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT e.id, e.name FROM entities e
+         JOIN vault_repo_links l ON e.id = l.vault_id
+         WHERE l.repo_id = ?1 AND e.entity_type = ?2
+         ORDER BY json_extract(e.metadata, '$.updated_at') DESC",
+    )?;
+    let rows = stmt.query_map([repo_id, crate::registry::ENTITY_TYPE_VAULT_NOTE], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
+}
+
+/// Get repos (with local_path) linked to a vault note.
+pub fn get_linked_repos_full(
+    conn: &rusqlite::Connection,
+    vault_id: &str,
+) -> anyhow::Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT e.id, e.local_path FROM entities e
+         JOIN vault_repo_links l ON e.id = l.repo_id
+         WHERE e.entity_type = '{}' AND l.vault_id = ?1
+         ORDER BY e.id",
+        super::ENTITY_TYPE_REPO
+    ))?;
+    let rows = stmt.query_map([vault_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
+}
+
 impl WorkspaceRegistry {
-    /// Get repo IDs linked to a vault note.
-    pub fn get_linked_repos(
-        conn: &rusqlite::Connection,
-        vault_id: &str,
-    ) -> anyhow::Result<Vec<String>> {
-        let mut stmt = conn
-            .prepare("SELECT repo_id FROM vault_repo_links WHERE vault_id = ?1 ORDER BY repo_id")?;
-        let rows = stmt.query_map([vault_id], |row| row.get::<_, String>(0))?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
+    pub fn get_linked_repos(conn: &rusqlite::Connection, vault_id: &str) -> anyhow::Result<Vec<String>> {
+        get_linked_repos(conn, vault_id)
     }
-
-    /// Get vault note IDs linked to a repo.
-    pub fn get_linked_vaults(
-        conn: &rusqlite::Connection,
-        repo_id: &str,
-    ) -> anyhow::Result<Vec<String>> {
-        let mut stmt = conn.prepare(
-            "SELECT vault_id FROM vault_repo_links WHERE repo_id = ?1 ORDER BY vault_id",
-        )?;
-        let rows = stmt.query_map([repo_id], |row| row.get::<_, String>(0))?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
+    pub fn get_linked_vaults(conn: &rusqlite::Connection, repo_id: &str) -> anyhow::Result<Vec<String>> {
+        get_linked_vaults(conn, repo_id)
     }
-
-    /// Get vault notes (with title) linked to a repo.
-    pub fn get_linked_vault_notes(
-        conn: &rusqlite::Connection,
-        repo_id: &str,
-    ) -> anyhow::Result<Vec<(String, Option<String>)>> {
-        let mut stmt = conn.prepare(
-            "SELECT e.id, e.name FROM entities e
-             JOIN vault_repo_links l ON e.id = l.vault_id
-             WHERE l.repo_id = ?1 AND e.entity_type = ?2
-             ORDER BY json_extract(e.metadata, '$.updated_at') DESC",
-        )?;
-        let rows = stmt.query_map([repo_id, crate::registry::ENTITY_TYPE_VAULT_NOTE], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
-        })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
+    pub fn get_linked_vault_notes(conn: &rusqlite::Connection, repo_id: &str) -> anyhow::Result<Vec<(String, Option<String>)>> {
+        get_linked_vault_notes(conn, repo_id)
     }
-
-    /// Get repos (with local_path) linked to a vault note.
-    pub fn get_linked_repos_full(
-        conn: &rusqlite::Connection,
-        vault_id: &str,
-    ) -> anyhow::Result<Vec<(String, String)>> {
-        let mut stmt = conn.prepare(&format!(
-            "SELECT e.id, e.local_path FROM entities e
-             JOIN vault_repo_links l ON e.id = l.repo_id
-             WHERE e.entity_type = '{}' AND l.vault_id = ?1
-             ORDER BY e.id",
-            super::ENTITY_TYPE_REPO
-        ))?;
-        let rows = stmt.query_map([vault_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
+    pub fn get_linked_repos_full(conn: &rusqlite::Connection, vault_id: &str) -> anyhow::Result<Vec<(String, String)>> {
+        get_linked_repos_full(conn, vault_id)
     }
 }
 
@@ -84,7 +97,7 @@ mod tests {
         let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
         WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
         let note = sample_note("note1", Some("repo-a"));
-        WorkspaceRegistry::save_vault_note(&mut conn, &note).unwrap();
+        crate::registry::vault::save_vault_note(&mut conn, &note).unwrap();
 
         let repos = WorkspaceRegistry::get_linked_repos(&conn, "note1").unwrap();
         assert_eq!(repos, vec!["repo-a"]);
@@ -95,7 +108,7 @@ mod tests {
         let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
         WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
         let note = sample_note("note1", Some("repo-a"));
-        WorkspaceRegistry::save_vault_note(&mut conn, &note).unwrap();
+        crate::registry::vault::save_vault_note(&mut conn, &note).unwrap();
 
         let vaults = WorkspaceRegistry::get_linked_vaults(&conn, "repo-a").unwrap();
         assert_eq!(vaults, vec!["note1"]);
@@ -106,7 +119,7 @@ mod tests {
         let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
         WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
         let note = sample_note("note1", Some("repo-a"));
-        WorkspaceRegistry::save_vault_note(&mut conn, &note).unwrap();
+        crate::registry::vault::save_vault_note(&mut conn, &note).unwrap();
 
         let notes = WorkspaceRegistry::get_linked_vault_notes(&conn, "repo-a").unwrap();
         assert_eq!(notes.len(), 1);
@@ -119,7 +132,7 @@ mod tests {
         let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
         WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
         let note = sample_note("note1", Some("repo-a"));
-        WorkspaceRegistry::save_vault_note(&mut conn, &note).unwrap();
+        crate::registry::vault::save_vault_note(&mut conn, &note).unwrap();
 
         let repos = WorkspaceRegistry::get_linked_repos_full(&conn, "note1").unwrap();
         assert_eq!(repos.len(), 1);

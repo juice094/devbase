@@ -1,4 +1,5 @@
-use crate::registry::{CodeMetrics, OplogEntry, RemoteEntry, RepoEntry, WorkspaceRegistry};
+use crate::registry::{CodeMetrics, OplogEntry, RemoteEntry, RepoEntry};
+use crate::registry::repo;
 use chrono::Utc;
 use git2::Repository;
 use r2d2::Pool;
@@ -33,9 +34,9 @@ pub async fn run_json(
         info!("Registering {} repositories into local database", repos.len());
         let mut conn = pool.get()?;
         for repo in &repos {
-            WorkspaceRegistry::save_repo(&mut conn, repo)?;
+            repo::save_repo(&mut conn, repo)?;
             if let Some(stars) = repo.stars {
-                let _ = WorkspaceRegistry::save_stars_cache(&conn, &repo.id, stars);
+                let _ = crate::registry::health::save_stars_cache(&conn, &repo.id, stars);
             }
             let repo_id = repo.id.clone();
             let path_str = repo.local_path.to_string_lossy().to_string();
@@ -44,15 +45,15 @@ pub async fn run_json(
             let _ = tokio::task::spawn_blocking(move || {
                 if let Some(metrics) = compute_code_metrics(&path_str) {
                     let conn = pool.get()?;
-                    crate::registry::WorkspaceRegistry::save_code_metrics(
+                    crate::registry::metrics::save_code_metrics(
                         &conn, &repo_id, &metrics,
                     )?;
                 }
                 if is_rust && let Ok(modules) = extract_rust_modules(&path_str) {
                     let conn = pool.get()?;
-                    let _ = crate::registry::WorkspaceRegistry::clear_modules(&conn, &repo_id);
+                    let _ = crate::registry::knowledge::clear_modules(&conn, &repo_id);
                     for (name, kind, src_path) in modules {
-                        let _ = crate::registry::WorkspaceRegistry::save_module(
+                        let _ = crate::registry::knowledge::save_module(
                             &conn, &repo_id, &name, &kind, &src_path,
                         );
                     }
@@ -87,7 +88,7 @@ pub async fn run_json(
             "discovered": count,
             "registered": registered
         });
-        let _ = WorkspaceRegistry::save_oplog(
+        let _ = crate::registry::workspace::save_oplog(
             &conn,
             &OplogEntry {
                 id: None,

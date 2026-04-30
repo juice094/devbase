@@ -273,7 +273,7 @@ pub async fn run_json(
             match field {
                 "venue" => WorkspaceRegistry::find_papers_by_venue(conn, value)?,
                 _ => {
-                    let mut all = WorkspaceRegistry::list_papers(conn)?;
+                    let mut all = crate::registry::knowledge::list_papers(conn)?;
                     let v = value.to_lowercase();
                     all.retain(|p| {
                         p.venue.as_ref().map(|x| x.to_lowercase() == v).unwrap_or(false)
@@ -378,7 +378,7 @@ pub async fn run_json(
     if let Some(rest) = query_str.strip_prefix("vault:") {
         let results = if rest.trim().is_empty() {
             // List all vault notes when no keywords given
-            let all = WorkspaceRegistry::list_vault_notes(conn)?;
+            let all = crate::registry::vault::list_vault_notes(conn)?;
             all.into_iter()
                 .map(|n| {
                     serde_json::json!({
@@ -422,7 +422,7 @@ pub async fn run_json(
 
     let conditions = parse_query(query_str);
 
-    let repos = WorkspaceRegistry::list_repos(conn)?;
+    let repos = crate::registry::repo::list_repos(conn)?;
 
     let needs_notes = conditions.iter().any(|c| matches!(c, Condition::Note(..)));
     let mut notes_map: HashMap<String, Vec<String>> = HashMap::new();
@@ -445,7 +445,7 @@ pub async fn run_json(
         let last_sync = primary.and_then(|r| r.last_sync.map(|dt| dt.to_rfc3339()));
         let needs_behind = conditions.iter().any(|c| matches!(c, Condition::Behind { .. }));
         let behind = if needs_behind {
-            let cached = WorkspaceRegistry::get_health(conn, &repo.id).ok().flatten();
+            let cached = crate::registry::health::get_health(conn, &repo.id).ok().flatten();
             if let Some(health) = cached {
                 let elapsed = Utc::now().signed_duration_since(health.checked_at).num_seconds();
                 if elapsed < config.cache.ttl_seconds {

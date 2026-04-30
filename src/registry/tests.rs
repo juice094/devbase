@@ -24,10 +24,10 @@ fn test_stars_cache_roundtrip() {
     .unwrap();
 
     // Save
-    WorkspaceRegistry::save_stars_cache(&conn, "test-repo", 42).unwrap();
+    crate::registry::health::save_stars_cache(&conn, "test-repo", 42).unwrap();
 
     // Read back
-    let (stars, fetched_at) = WorkspaceRegistry::get_stars_cache(&conn, "test-repo")
+    let (stars, fetched_at) = crate::registry::health::get_stars_cache(&conn, "test-repo")
         .unwrap()
         .expect("cache entry should exist");
     assert_eq!(stars, 42);
@@ -48,7 +48,7 @@ fn test_stars_cache_miss() {
     )
     .unwrap();
 
-    let result = WorkspaceRegistry::get_stars_cache(&conn, "nonexistent").unwrap();
+    let result = crate::registry::health::get_stars_cache(&conn, "nonexistent").unwrap();
     assert!(result.is_none());
 }
 
@@ -74,15 +74,15 @@ fn test_stars_cache_update() {
     )
     .unwrap();
 
-    WorkspaceRegistry::save_stars_cache(&conn, "repo-a", 10).unwrap();
-    let (stars1, at1) = WorkspaceRegistry::get_stars_cache(&conn, "repo-a").unwrap().unwrap();
+    crate::registry::health::save_stars_cache(&conn, "repo-a", 10).unwrap();
+    let (stars1, at1) = crate::registry::health::get_stars_cache(&conn, "repo-a").unwrap().unwrap();
     assert_eq!(stars1, 10);
 
     // Small sleep to ensure timestamp changes
     std::thread::sleep(std::time::Duration::from_millis(50));
 
-    WorkspaceRegistry::save_stars_cache(&conn, "repo-a", 20).unwrap();
-    let (stars2, at2) = WorkspaceRegistry::get_stars_cache(&conn, "repo-a").unwrap().unwrap();
+    crate::registry::health::save_stars_cache(&conn, "repo-a", 20).unwrap();
+    let (stars2, at2) = crate::registry::health::get_stars_cache(&conn, "repo-a").unwrap().unwrap();
     assert_eq!(stars2, 20);
     assert!(at2 > at1, "updated timestamp should be newer");
 }
@@ -100,8 +100,8 @@ fn test_oplog_save_and_list() {
         duration_ms: Some(42),
         event_version: 1,
     };
-    WorkspaceRegistry::save_oplog(&conn, &entry).unwrap();
-    let list = WorkspaceRegistry::list_oplog(&conn, 10).unwrap();
+    crate::registry::workspace::save_oplog(&conn, &entry).unwrap();
+    let list = crate::registry::workspace::list_oplog(&conn, 10).unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].event_type, OplogEventType::Sync);
     assert_eq!(list[0].repo_id, Some("repo-a".to_string()));
@@ -134,7 +134,7 @@ fn test_oplog_migration_compat() {
         [],
     )
     .unwrap();
-    let list = WorkspaceRegistry::list_oplog(&conn, 10).unwrap();
+    let list = crate::registry::workspace::list_oplog(&conn, 10).unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].event_type, OplogEventType::HealthCheck);
     assert_eq!(list[0].details, Some("legacy details".to_string()));

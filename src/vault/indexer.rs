@@ -1,4 +1,3 @@
-use crate::registry::WorkspaceRegistry;
 use crate::search;
 use crate::vault::fs_io;
 use tracing::info;
@@ -11,7 +10,7 @@ use tracing::info;
 /// P1-1: filesystem-first — note content is read from disk on demand,
 /// the SQLite registry only stores lightweight metadata.
 pub fn reindex_vault(conn: &rusqlite::Connection) -> anyhow::Result<()> {
-    let notes = WorkspaceRegistry::list_vault_notes(conn)?;
+    let notes = crate::registry::vault::list_vault_notes(conn)?;
 
     let (index, _reader) = search::init_index()?;
     let mut writer = search::get_writer(&index)?;

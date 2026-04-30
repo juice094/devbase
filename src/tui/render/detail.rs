@@ -184,7 +184,7 @@ fn render_overview(
         .conn()
         .ok()
         .and_then(|conn| {
-            crate::registry::WorkspaceRegistry::get_linked_vault_notes(&conn, &repo.id).ok()
+            crate::registry::links::get_linked_vault_notes(&conn, &repo.id).ok()
         })
         .unwrap_or_default();
 
@@ -349,7 +349,7 @@ fn render_insights(
 ) {
     let insights = app.generate_insights(repo);
     let history = if let Ok(conn) = app.ctx.conn() {
-        crate::registry::WorkspaceRegistry::get_stars_history(&conn, &repo.id, 30)
+        crate::registry::health::get_stars_history(&conn, &repo.id, 30)
             .unwrap_or_default()
     } else {
         vec![]
@@ -524,7 +524,7 @@ fn render_vault_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &St
         .conn()
         .ok()
         .and_then(|conn| {
-            crate::registry::WorkspaceRegistry::get_linked_repos_full(&conn, &vault.id).ok()
+            crate::registry::links::get_linked_repos_full(&conn, &vault.id).ok()
         })
         .unwrap_or_default();
 

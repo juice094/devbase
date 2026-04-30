@@ -54,7 +54,7 @@ Returns: JSON array of matching notes. Each includes: id, title, path, and tags.
             let query = query.to_string();
             move || {
                 let conn = pool.get()?;
-                let notes = crate::registry::WorkspaceRegistry::list_vault_notes(&conn)?;
+                let notes = crate::registry::vault::list_vault_notes(&conn)?;
                 let keywords: Vec<&str> = query.split_whitespace().collect();
 
                 let filtered: Vec<_> = notes

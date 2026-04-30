@@ -1,4 +1,4 @@
-use crate::registry::{VaultNote, WorkspaceRegistry};
+use crate::registry::VaultNote;
 use crate::vault::frontmatter::extract_frontmatter;
 use crate::vault::wikilink::extract_wikilinks;
 
@@ -80,7 +80,7 @@ pub fn scan_vault(
                     updated_at: Utc::now(),
                 };
 
-                if let Err(e) = WorkspaceRegistry::save_vault_note(conn, &note) {
+                if let Err(e) = crate::registry::vault::save_vault_note(conn, &note) {
                     warn!("Failed to save vault note {}: {}", note.id, e);
                 } else {
                     synced += 1;
@@ -99,6 +99,7 @@ pub fn scan_vault(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::registry::WorkspaceRegistry;
 
     #[test]
     fn test_scan_vault_basic() {

@@ -1,4 +1,5 @@
-use crate::registry::{OplogEntry, WorkspaceRegistry};
+use crate::registry::OplogEntry;
+use crate::registry::repo;
 use chrono::Utc;
 use std::collections::HashMap;
 use tokio::time::Duration;
@@ -33,7 +34,7 @@ pub async fn run_json(
 ) -> anyhow::Result<serde_json::Value> {
     let start = std::time::Instant::now();
     let config = crate::config::Config::load().unwrap_or_default();
-    let all_repos = WorkspaceRegistry::list_repos(conn)?;
+    let all_repos = repo::list_repos(conn)?;
     let total_registered = all_repos.len();
     let (tasks, skipped_unmanaged) =
         collect_tasks(conn, filter_tags, exclude, &config.scan.exclude_paths).await?;
@@ -82,7 +83,7 @@ pub async fn run_json(
         "dry_run": dry_run,
         "repo_count": repo_count
     });
-    let _ = WorkspaceRegistry::save_oplog(
+    let _ = crate::registry::workspace::save_oplog(
         conn,
         &OplogEntry {
             id: None,
@@ -113,7 +114,7 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let start = std::time::Instant::now();
     let config = crate::config::Config::load().unwrap_or_default();
-    let all_repos = WorkspaceRegistry::list_repos(conn)?;
+    let all_repos = repo::list_repos(conn)?;
     let total_registered = all_repos.len();
     let (tasks, skipped_unmanaged) =
         collect_tasks(conn, filter_tags, exclude, &config.scan.exclude_paths).await?;
@@ -216,7 +217,7 @@ pub async fn run(
         "dry_run": dry_run,
         "repo_count": repo_count
     });
-    let _ = WorkspaceRegistry::save_oplog(
+    let _ = crate::registry::workspace::save_oplog(
         conn,
         &OplogEntry {
             id: None,

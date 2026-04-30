@@ -53,9 +53,9 @@ impl Daemon {
         match tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
             let repos = if let Some(threshold) = stale_threshold {
-                crate::registry::WorkspaceRegistry::list_repos_stale_health(&conn, &threshold)?
+                crate::registry::repo::list_repos_stale_health(&conn, &threshold)?
             } else {
-                crate::registry::WorkspaceRegistry::list_repos(&conn)?
+                crate::registry::repo::list_repos(&conn)?
             };
             for repo in &repos {
                 let primary = repo.primary_remote();
@@ -73,7 +73,7 @@ impl Daemon {
                     checked_at: chrono::Utc::now(),
                 };
                 if let Err(e) =
-                    crate::registry::WorkspaceRegistry::save_health(&conn, &repo.id, &health)
+                    crate::registry::health::save_health(&conn, &repo.id, &health)
                 {
                     tracing::warn!("Failed to save health for {}: {}", repo.id, e);
                 }
@@ -97,9 +97,9 @@ impl Daemon {
         match tokio::task::spawn_blocking(move || {
             let mut conn = pool.get()?;
             let repos = if let Some(threshold) = index_threshold {
-                crate::registry::WorkspaceRegistry::list_repos_need_index(&conn, &threshold)?
+                crate::registry::repo::list_repos_need_index(&conn, &threshold)?
             } else {
-                crate::registry::WorkspaceRegistry::list_repos(&conn)?
+                crate::registry::repo::list_repos(&conn)?
             };
             let mut count = 0;
             for repo in repos {
@@ -122,7 +122,7 @@ impl Daemon {
         let pool = self.pool.clone();
         match tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
-            let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
+            let repos = crate::registry::repo::list_repos(&conn)?;
             let deps = crate::discovery_engine::discover_dependencies(&repos);
             let sims = crate::discovery_engine::discover_similar_projects(&conn)?;
             for d in deps.into_iter().chain(sims) {
@@ -138,7 +138,7 @@ impl Daemon {
                 } else {
                     Some(d.from.as_str())
                 };
-                let _ = crate::registry::WorkspaceRegistry::save_discovery(
+                let _ = crate::registry::knowledge::save_discovery(
                     &conn,
                     repo_id,
                     &d.relation_type,

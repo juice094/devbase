@@ -71,7 +71,7 @@ Returns: JSON object with:
                 let conn = pool.get()?;
 
                 // 1. Find repo by exact id or path substring
-                let repos = crate::registry::WorkspaceRegistry::list_repos(&conn)?;
+                let repos = crate::registry::repo::list_repos(&conn)?;
                 let matched_repo = repos.into_iter().find(|r| {
                     r.id.eq_ignore_ascii_case(&project)
                         || r.local_path
@@ -96,7 +96,7 @@ Returns: JSON object with:
                 let mut linked_vaults = Vec::new();
                 if let Some(ref rid) = repo_id {
                     let notes =
-                        crate::registry::WorkspaceRegistry::get_linked_vault_notes(&conn, rid)?;
+                        crate::registry::links::get_linked_vault_notes(&conn, rid)?;
                     for (vid, vtitle) in notes {
                         linked_vaults.push(serde_json::json!({
                             "id": vid,
@@ -107,7 +107,7 @@ Returns: JSON object with:
                 }
 
                 // 3. Vault notes whose id/path contains the project name
-                let all_notes = crate::registry::WorkspaceRegistry::list_vault_notes(&conn)?;
+                let all_notes = crate::registry::vault::list_vault_notes(&conn)?;
                 for n in all_notes {
                     let hay = format!("{} {}", n.id, n.path).to_lowercase();
                     if hay.contains(&project.to_lowercase()) {
@@ -128,7 +128,7 @@ Returns: JSON object with:
                 // 4. Code structure: modules
                 let mut modules = Vec::new();
                 if let Some(ref rid) = repo_id {
-                    if let Ok(ms) = crate::registry::WorkspaceRegistry::list_modules(&conn, rid) {
+                    if let Ok(ms) = crate::registry::knowledge::list_modules(&conn, rid) {
                         for (name, kind, path) in ms {
                             modules.push(serde_json::json!({
                                 "name": name,
@@ -251,7 +251,7 @@ Returns: JSON object with:
                 // 7. Recent activity from oplog (last 10 events)
                 let mut activity = Vec::new();
                 if let Some(ref rid) = repo_id {
-                    match crate::registry::WorkspaceRegistry::list_oplog_by_repo(&conn, rid, 10) {
+                    match crate::registry::workspace::list_oplog_by_repo(&conn, rid, 10) {
                         Ok(entries) => {
                             for entry in entries {
                                 activity.push(serde_json::json!({

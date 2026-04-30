@@ -1,4 +1,4 @@
-use crate::registry::WorkspaceRegistry;
+use crate::registry::repo;
 use git2::Repository;
 use tracing::warn;
 
@@ -209,7 +209,7 @@ pub(super) async fn collect_tasks(
     exclude: Option<&str>,
     exclude_paths: &[String],
 ) -> anyhow::Result<(Vec<RepoSyncTask>, usize)> {
-    let repos = WorkspaceRegistry::list_repos(conn)?;
+    let repos = repo::list_repos(conn)?;
 
     let is_default_mode = filter_tags.is_none();
     let filter_list: Vec<&str> = filter_tags

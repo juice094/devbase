@@ -64,8 +64,8 @@ Returns: JSON array of OpLog entries. Each entry includes:
             move || {
                 let conn = pool.get()?;
                 match repo_id {
-                    Some(r) => crate::registry::WorkspaceRegistry::list_oplog_by_repo(&conn, &r, limit),
-                    None => crate::registry::WorkspaceRegistry::list_oplog(&conn, limit),
+                    Some(r) => crate::registry::workspace::list_oplog_by_repo(&conn, &r, limit),
+                    None => crate::registry::workspace::list_oplog(&conn, limit),
                 }
             }
         })

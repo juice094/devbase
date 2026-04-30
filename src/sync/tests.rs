@@ -260,7 +260,7 @@ async fn test_collect_tasks_default_mode_excludes_untagged() {
             last_sync: None,
         }],
     };
-    WorkspaceRegistry::save_repo(&mut conn, &untagged).unwrap();
+    crate::registry::repo::save_repo(&mut conn, &untagged).unwrap();
 
     // Managed repo
     let managed = RepoEntry {
@@ -280,7 +280,7 @@ async fn test_collect_tasks_default_mode_excludes_untagged() {
             last_sync: None,
         }],
     };
-    WorkspaceRegistry::save_repo(&mut conn, &managed).unwrap();
+    crate::registry::repo::save_repo(&mut conn, &managed).unwrap();
 
     // Default mode: only managed repo should be collected
     let (tasks, skipped) = tasks::collect_tasks(&conn, None, None, &[]).await.unwrap();
@@ -314,7 +314,7 @@ async fn test_collect_tasks_explicit_filter_includes_untagged() {
             last_sync: None,
         }],
     };
-    WorkspaceRegistry::save_repo(&mut conn, &untagged).unwrap();
+    crate::registry::repo::save_repo(&mut conn, &untagged).unwrap();
 
     // Explicit filter mode with empty filter list → nothing matches
     let (tasks, _skipped) = tasks::collect_tasks(&conn, Some(""), None, &[]).await.unwrap();
@@ -361,7 +361,7 @@ async fn test_collect_tasks_default_mode_includes_known_tags() {
                 last_sync: None,
             }],
         };
-        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+        crate::registry::repo::save_repo(&mut conn, &repo).unwrap();
     }
 
     let (tasks, _skipped) = tasks::collect_tasks(&conn, None, None, &[]).await.unwrap();

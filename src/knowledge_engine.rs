@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use crate::registry::{RepoEntry, WorkspaceRegistry};
+use crate::registry::RepoEntry;
 
 #[derive(Debug, Clone)]
 pub struct ModuleInfo {
@@ -712,7 +712,7 @@ pub fn index_repo(
 
     let modules = extract_module_structure(&repo.local_path);
 
-    WorkspaceRegistry::save_summary(conn, &repo.id, &summary, &keywords)?;
+    crate::registry::knowledge::save_summary(conn, &repo.id, &summary, &keywords)?;
 
     if let Err(e) = index_repo_in_search(repo, &summary, &keywords) {
         warn!("Failed to index repo in search: {}", e);
@@ -720,11 +720,11 @@ pub fn index_repo(
 
     let modules_tuple: Vec<(String, String)> =
         modules.into_iter().map(|m| (m.name, m.kind)).collect();
-    WorkspaceRegistry::save_modules(conn, &repo.id, &modules_tuple)?;
+    crate::registry::knowledge::save_modules(conn, &repo.id, &modules_tuple)?;
 
     let detected_lang = crate::scan::detect_language(&repo.local_path);
     if let Some(ref lang) = detected_lang {
-        WorkspaceRegistry::update_repo_language(conn, &repo.id, Some(lang))?;
+        crate::registry::repo::update_repo_language(conn, &repo.id, Some(lang))?;
     }
 
     info!(
@@ -739,19 +739,19 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
     use tracing::{info, warn};
 
     let repos: Vec<RepoEntry> = if path.is_empty() {
-        WorkspaceRegistry::list_repos(conn)?
+        crate::registry::repo::list_repos(conn)?
     } else {
         let p = PathBuf::from(path);
         if !p.exists() {
             anyhow::bail!("Path does not exist: {}", path);
         }
-        let registered = WorkspaceRegistry::list_repos(conn)?;
+        let registered = crate::registry::repo::list_repos(conn)?;
         if let Some(repo) = registered.into_iter().find(|r| r.local_path == p) {
             vec![repo]
         } else {
             info!("Registering {} before indexing", path);
             let repo = crate::scan::inspect_repo(&p, None)?;
-            WorkspaceRegistry::save_repo(conn, &repo)?;
+            crate::registry::repo::save_repo(conn, &repo)?;
             vec![repo]
         }
     };
@@ -775,7 +775,7 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
 
         let modules = extract_module_structure(&repo.local_path);
 
-        WorkspaceRegistry::save_summary(conn, &repo.id, &summary, &keywords)?;
+        crate::registry::knowledge::save_summary(conn, &repo.id, &summary, &keywords)?;
 
         // Add/update repo document in Tantivy index
         crate::search::delete_repo_doc(&mut search_writer, &search_schema, &repo.id)?;
@@ -790,11 +790,11 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
 
         let modules_tuple: Vec<(String, String)> =
             modules.into_iter().map(|m| (m.name, m.kind)).collect();
-        WorkspaceRegistry::save_modules(conn, &repo.id, &modules_tuple)?;
+        crate::registry::knowledge::save_modules(conn, &repo.id, &modules_tuple)?;
 
         let detected_lang = crate::scan::detect_language(&repo.local_path);
         if let Some(ref lang) = detected_lang {
-            WorkspaceRegistry::update_repo_language(conn, &repo.id, Some(lang))?;
+            crate::registry::repo::update_repo_language(conn, &repo.id, Some(lang))?;
         }
 
         // Semantic code indexing (tree-sitter AST extraction + call graph)

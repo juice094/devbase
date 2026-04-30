@@ -170,7 +170,7 @@ pub(crate) fn check_hard_vetoes_for_skill(
     skill: &SkillRow,
     conn: &rusqlite::Connection,
 ) -> Option<String> {
-    let vetoes = match crate::registry::WorkspaceRegistry::list_known_limits(
+    let vetoes = match crate::registry::known_limits::list_known_limits(
         conn,
         Some("hard-veto"),
         Some(false),
@@ -189,7 +189,7 @@ pub(crate) fn check_hard_vetoes_for_skill(
         "unresolved_vetoes": ids,
         "veto_count": vetoes.len(),
     });
-    let _ = crate::registry::WorkspaceRegistry::save_oplog(
+    let _ = crate::registry::workspace::save_oplog(
         conn,
         &crate::registry::OplogEntry {
             id: None,
@@ -406,7 +406,7 @@ sys.exit(0)
     #[test]
     fn test_hard_veto_guard_with_unresolved_vetoes() {
         let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
-        crate::registry::WorkspaceRegistry::seed_hard_vetoes(&conn).unwrap();
+        crate::registry::known_limits::seed_hard_vetoes(&conn).unwrap();
 
         let skill = SkillRow {
             id: "test-guard".to_string(),
