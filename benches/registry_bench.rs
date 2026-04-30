@@ -3,6 +3,23 @@ use devbase::registry::{RepoEntry, WorkspaceRegistry};
 use std::cell::Cell;
 use std::path::PathBuf;
 
+fn bench_format_mcp_message(c: &mut Criterion) {
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "content": [{"type": "text", "text": "benchmark payload"}],
+            "isError": false
+        }
+    });
+    c.bench_function("format_mcp_message", |b| {
+        b.iter(|| {
+            let msg = devbase::mcp::format_mcp_message(&body);
+            black_box(msg);
+        });
+    });
+}
+
 fn sample_repo(id: &str) -> RepoEntry {
     RepoEntry {
         id: id.to_string(),
@@ -85,5 +102,11 @@ fn bench_get_health(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_save_repo, bench_list_repos, bench_get_health);
+criterion_group!(
+    benches,
+    bench_save_repo,
+    bench_list_repos,
+    bench_get_health,
+    bench_format_mcp_message
+);
 criterion_main!(benches);

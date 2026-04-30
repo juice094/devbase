@@ -348,3 +348,82 @@ Returns: JSON array of backlinking notes, each with id, title, and path."#,
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    fn vault_root() -> std::path::PathBuf {
+        std::path::PathBuf::from("C:\\Users\\devbase\\workspace\\vault")
+    }
+
+    #[test]
+    fn test_resolve_vault_path_normal() {
+        let root = vault_root();
+        let result = resolve_vault_path("ideas/note.md", &root).unwrap();
+        assert_eq!(result, root.join("ideas/note.md"));
+    }
+
+    #[test]
+    fn test_resolve_vault_path_nested() {
+        let root = vault_root();
+        let result = resolve_vault_path("01-Projects/rust/devbase.md", &root).unwrap();
+        assert_eq!(result, root.join("01-Projects/rust/devbase.md"));
+    }
+
+    #[test]
+    fn test_resolve_vault_path_with_dot() {
+        let root = vault_root();
+        let result = resolve_vault_path("./ideas/note.md", &root).unwrap();
+        assert_eq!(result, root.join("ideas/note.md"));
+    }
+
+    #[test]
+    fn test_resolve_vault_path_traversal_blocked() {
+        let root = vault_root();
+        assert!(resolve_vault_path("../../../etc/passwd", &root).is_err());
+        assert!(resolve_vault_path("ideas/../../../../../.bashrc", &root).is_err());
+    }
+
+    #[test]
+    fn test_resolve_vault_path_absolute_blocked() {
+        let root = vault_root();
+        assert!(resolve_vault_path("/etc/passwd", &root).is_err());
+        assert!(resolve_vault_path("C:\\Windows\\System32\\drivers\\etc\\hosts", &root).is_err());
+        assert!(resolve_vault_path("\\\\server\\share\\file.txt", &root).is_err());
+    }
+
+    #[test]
+    fn test_resolve_vault_path_dotdot_within_bounds() {
+        let root = vault_root();
+        // "ideas/foo/../note.md" should resolve to "ideas/note.md"
+        let result = resolve_vault_path("ideas/foo/../note.md", &root).unwrap();
+        assert_eq!(result, root.join("ideas/note.md"));
+    }
+
+    #[test]
+    fn test_resolve_vault_path_empty() {
+        let root = vault_root();
+        let result = resolve_vault_path("", &root).unwrap();
+        assert_eq!(result, root);
+    }
+
+    #[test]
+    fn test_resolve_vault_path_performance() {
+        let root = vault_root();
+        let iterations = 100_000;
+        let start = Instant::now();
+        for _ in 0..iterations {
+            let _ = resolve_vault_path("01-Projects/rust/devbase.md", &root).unwrap();
+        }
+        let elapsed = start.elapsed();
+        let avg_ns = elapsed.as_nanos() as f64 / iterations as f64;
+        println!(
+            "resolve_vault_path: {} iterations in {:?} (avg {:.0} ns/op)",
+            iterations, elapsed, avg_ns
+        );
+        // Guard: must complete within reasonable time (< 1s for 100k ops)
+        assert!(elapsed.as_secs() < 1, "resolve_vault_path too slow: {:?}", elapsed);
+    }
+}
