@@ -129,6 +129,8 @@ impl McpTool for DevkitSyncTool {
 
 This is a WRITE operation. By default it runs in dry-run mode (no files are modified) for safety.
 
+⚠️ SECURITY: This tool modifies Git state (pull/push/rebase/merge). Managed-gate skips untagged repos automatically. Set DEVBASE_MCP_ENABLE_DESTRUCTIVE=1 if this tool is unavailable.
+
 Use this when the user wants to:
 - Update local repos to match their remotes (git pull)
 - Push local commits to remotes (git push)
@@ -169,6 +171,7 @@ Returns: JSON object with per-repo sync results including: repo_id, action (pull
         args: serde_json::Value,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
+        crate::mcp::check_destructive_enabled()?;
         let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(true);
         let filter_tags = args.get("filter_tags").and_then(|v| v.as_str());
         let conn = ctx.conn()?;

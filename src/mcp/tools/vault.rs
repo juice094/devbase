@@ -213,24 +213,66 @@ Returns: JSON with success status and the written file path."#,
             .context("Missing required argument: content")?;
         let append = args.get("append").and_then(|v| v.as_bool()).unwrap_or(false);
 
-        let path = std::path::Path::new(path);
-        if let Some(parent) = path.parent() {
+        let vault_root = crate::registry::WorkspaceRegistry::workspace_dir()
+            .map(|ws| ws.join("vault"))
+            .unwrap_or_else(|_| std::path::PathBuf::from("vault"));
+        let target = resolve_vault_path(path, &vault_root)?;
+
+        if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
         }
 
-        if append && path.exists() {
-            let existing = std::fs::read_to_string(path).unwrap_or_default();
-            std::fs::write(path, format!("{}\n{}", existing, content))?;
+        if append && target.exists() {
+            let existing = std::fs::read_to_string(&target).unwrap_or_default();
+            std::fs::write(&target, format!("{}\n{}", existing, content))?;
         } else {
-            std::fs::write(path, content)?;
+            std::fs::write(&target, content)?;
         }
 
         Ok(serde_json::json!({
             "success": true,
-            "path": path,
+            "path": target.to_string_lossy().to_string(),
             "append": append,
         }))
     }
+}
+
+/// Resolve a vault-relative path, enforcing that it stays within the vault root.
+fn resolve_vault_path(
+    relative_path: &str,
+    vault_root: &std::path::Path,
+) -> anyhow::Result<std::path::PathBuf> {
+    let path = std::path::Path::new(relative_path);
+
+    // Reject absolute paths and paths that start with a separator
+    if path.is_absolute() || relative_path.starts_with('/') || relative_path.starts_with('\\') {
+        anyhow::bail!("Absolute paths are not allowed in vault: {}", relative_path);
+    }
+
+    // Manual normalization: resolve . and .. components ourselves
+    let mut normalized = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::Normal(name) => normalized.push(name),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !normalized.pop() {
+                    // Too many ".." — would escape vault root
+                    anyhow::bail!("Path escapes vault root: {}", relative_path);
+                }
+            }
+            _ => anyhow::bail!("Invalid path component in: {}", relative_path),
+        }
+    }
+
+    let target = vault_root.join(&normalized);
+
+    // Final guard: starts_with is component-level comparison
+    if !target.starts_with(vault_root) {
+        anyhow::bail!("Path escapes vault root: {}", relative_path);
+    }
+
+    Ok(target)
 }
 
 #[derive(Clone)]

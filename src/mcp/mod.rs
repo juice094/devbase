@@ -496,7 +496,22 @@ pub fn build_server() -> McpServer {
 
 pub fn format_mcp_message(body: &serde_json::Value) -> String {
     let body_str = body.to_string();
-    format!("Content-Length: {}\r\n\r\n{}\n", body_str.len(), body_str)
+    format!("Content-Length: {}\r\n\r\n{}", body_str.len(), body_str)
+}
+
+/// Check whether destructive MCP tools are enabled via environment variable.
+/// Returns Ok(()) if enabled, or an error with a clear message if disabled.
+pub(super) fn check_destructive_enabled() -> anyhow::Result<()> {
+    let enabled = std::env::var("DEVBASE_MCP_ENABLE_DESTRUCTIVE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if !enabled {
+        anyhow::bail!(
+            "Destructive tools are disabled. \
+             Set DEVBASE_MCP_ENABLE_DESTRUCTIVE=1 to enable."
+        );
+    }
+    Ok(())
 }
 
 /// Parse tool tiers from a comma-separated string (e.g. "stable,beta").
@@ -548,8 +563,11 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                         }
                     });
                     let msg = format_mcp_message(&resp);
-                    let _ = stdout.write_all(msg.as_bytes()).await;
-                    let _ = stdout.flush().await;
+                    if stdout.write_all(msg.as_bytes()).await.is_err()
+                        || stdout.flush().await.is_err()
+                    {
+                        break;
+                    }
                     continue;
                 }
             };
@@ -564,8 +582,9 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                 })
             });
             let msg = format_mcp_message(&resp);
-            let _ = stdout.write_all(msg.as_bytes()).await;
-            let _ = stdout.flush().await;
+            if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err() {
+                break;
+            }
             continue;
         };
 
@@ -581,8 +600,10 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                     }
                 });
                 let msg = format_mcp_message(&resp);
-                let _ = stdout.write_all(msg.as_bytes()).await;
-                let _ = stdout.flush().await;
+                if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err()
+                {
+                    break;
+                }
                 continue;
             }
         };
@@ -603,14 +624,11 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                 }
             });
             let msg = format_mcp_message(&resp);
-            let _ = stdout.write_all(msg.as_bytes()).await;
-            let _ = stdout.flush().await;
+            if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err() {
+                break;
+            }
             continue;
         }
-
-        // Some clients include a trailing newline after the body; consume it if present
-        line_buf.clear();
-        let _ = reader.read_line(&mut line_buf).await;
 
         let req: serde_json::Value = match String::from_utf8(body_buf) {
             Ok(body) => match serde_json::from_str(&body) {
@@ -625,8 +643,11 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                         }
                     });
                     let msg = format_mcp_message(&resp);
-                    let _ = stdout.write_all(msg.as_bytes()).await;
-                    let _ = stdout.flush().await;
+                    if stdout.write_all(msg.as_bytes()).await.is_err()
+                        || stdout.flush().await.is_err()
+                    {
+                        break; // broken pipe
+                    }
                     continue;
                 }
             },
@@ -640,11 +661,21 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                     }
                 });
                 let msg = format_mcp_message(&resp);
-                let _ = stdout.write_all(msg.as_bytes()).await;
-                let _ = stdout.flush().await;
+                if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err()
+                {
+                    break; // broken pipe
+                }
                 continue;
             }
         };
+
+        // Notifications have no "id" field and require no response.
+        let is_notification = req.get("id").is_none();
+        let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
+        if is_notification && method.starts_with("notifications/") {
+            // Silently acknowledge the notification.
+            continue;
+        }
 
         let resp = server.handle_request(req, &mut ctx).await.unwrap_or_else(|e| {
             serde_json::json!({
@@ -658,8 +689,9 @@ pub async fn run_stdio() -> anyhow::Result<()> {
         });
 
         let msg = format_mcp_message(&resp);
-        let _ = stdout.write_all(msg.as_bytes()).await;
-        let _ = stdout.flush().await;
+        if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err() {
+            break; // broken pipe
+        }
     }
 
     Ok(())

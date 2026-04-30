@@ -48,9 +48,20 @@ pub fn run_skill(
     cmd.current_dir(&skill_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .env("DEVBASE_REGISTRY_PATH", registry_db_path()?)
-        .env("DEVBASE_SKILL_ID", &skill.id)
-        .env("DEVBASE_HOME", devbase_home()?);
+        .env_clear();
+
+    // Whitelist essential system environment variables for cross-platform execution
+    let allowed_env = ["PATH", "PATHEXT", "TEMP", "TMP", "SystemRoot", "SYSTEMROOT", "windir"];
+    for key in &allowed_env {
+        if let Ok(val) = std::env::var(key) {
+            cmd.env(key, val);
+        }
+    }
+
+    // Inject devbase-specific variables explicitly
+    cmd.env("DEVBASE_REGISTRY_PATH", registry_db_path()?);
+    cmd.env("DEVBASE_SKILL_ID", &skill.id);
+    cmd.env("DEVBASE_HOME", devbase_home()?);
 
     // Build JSON input from key=value args and pass via stdin
     let mut json_args = serde_json::Map::new();

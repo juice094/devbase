@@ -148,10 +148,12 @@ Use this when the user wants to:
 - Analyze a local project's CLI/API surface and generate a SKILL.md draft
 - Package a Rust/Node/Python/Go/Docker project for AI agent consumption
 
+⚠️ SECURITY: This tool can install and execute arbitrary code. By default it runs in dry-run mode (no files are modified). Set DEVBASE_MCP_ENABLE_DESTRUCTIVE=1 if this tool is unavailable.
+
 Parameters:
 - path: Local directory path or Git URL (http/https/git@) to analyze.
 - skill_id: Optional explicit skill ID. Defaults to project name.
-- dry_run: If true, print generated files without installing. Default false.
+- dry_run: If true, print generated files without installing. Default true.
 
 Returns: JSON with discovered skill id, name, version, description, category, and entry_script path."#,
             "inputSchema": {
@@ -168,7 +170,7 @@ Returns: JSON with discovered skill id, name, version, description, category, an
                     "dry_run": {
                         "type": "boolean",
                         "description": "Preview without installing",
-                        "default": false
+                        "default": true
                     }
                 },
                 "required": ["path"]
@@ -181,12 +183,13 @@ Returns: JSON with discovered skill id, name, version, description, category, an
         args: serde_json::Value,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
+        crate::mcp::check_destructive_enabled()?;
         let path = args
             .get("path")
             .and_then(|v| v.as_str())
             .context("Missing required argument: path")?;
         let skill_id = args.get("skill_id").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
+        let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(true);
 
         let conn = ctx.conn()?;
         let project_path = std::path::PathBuf::from(path);
@@ -229,6 +232,8 @@ Use this when the user wants to:
 - Pass arguments to a skill (e.g. repo_id, query, limit)
 - Trigger an AI capability from a conversation
 
+⚠️ SECURITY: This tool runs arbitrary code in a subprocess. The environment is restricted to a whitelist and the working directory is locked to the skill folder. Hard vetoes are checked before execution. Set DEVBASE_MCP_ENABLE_DESTRUCTIVE=1 if this tool is unavailable.
+
 Parameters:
 - skill_id: ID of the skill to run (e.g. "embed-repo", "knowledge-report").
 - args: Object mapping argument names to values. Example: {"repo_id": "devbase", "device": "cuda"}.
@@ -263,6 +268,7 @@ Returns: JSON with status, stdout, stderr, exit_code, and duration_ms."#,
         args: serde_json::Value,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
+        crate::mcp::check_destructive_enabled()?;
         let skill_id = args
             .get("skill_id")
             .and_then(|v| v.as_str())

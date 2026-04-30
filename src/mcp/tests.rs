@@ -276,6 +276,9 @@ async fn test_tools_call_devkit_skill_discover() {
             }
         }
     });
+    unsafe {
+        std::env::set_var("DEVBASE_MCP_ENABLE_DESTRUCTIVE", "1");
+    }
     let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     let result = resp.get("result").unwrap();
@@ -287,6 +290,31 @@ async fn test_tools_call_devkit_skill_discover() {
     assert!(!parsed.get("name").unwrap().as_str().unwrap().is_empty());
     assert!(parsed.get("version").unwrap().as_str().is_some());
     assert!(parsed.get("category").is_some());
+}
+
+#[test]
+fn test_destructive_gate_disabled_by_default() {
+    // Ensure the variable is unset
+    unsafe {
+        std::env::remove_var("DEVBASE_MCP_ENABLE_DESTRUCTIVE");
+    }
+    let result = crate::mcp::check_destructive_enabled();
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("DEVBASE_MCP_ENABLE_DESTRUCTIVE"));
+}
+
+#[test]
+fn test_destructive_gate_enabled() {
+    unsafe {
+        std::env::set_var("DEVBASE_MCP_ENABLE_DESTRUCTIVE", "1");
+    }
+    let result = crate::mcp::check_destructive_enabled();
+    assert!(result.is_ok());
+    // Cleanup
+    unsafe {
+        std::env::remove_var("DEVBASE_MCP_ENABLE_DESTRUCTIVE");
+    }
 }
 
 #[tokio::test]
@@ -324,9 +352,15 @@ async fn test_stdio_content_length_format() {
     let parts: Vec<&str> = msg.split("\r\n\r\n").collect();
     assert_eq!(parts.len(), 2);
     let body_part = parts[1];
-    assert!(body_part.ends_with("\n"));
-    let parsed: serde_json::Value = serde_json::from_str(body_part.trim_end()).unwrap();
+    // No trailing newline — Content-Length must match exact body bytes
+    assert!(!body_part.ends_with("\n"));
+    let parsed: serde_json::Value = serde_json::from_str(body_part).unwrap();
     assert_eq!(parsed, body);
+    // Verify Content-Length header matches actual body byte count
+    let header = parts[0];
+    let cl_str = header.strip_prefix("Content-Length: ").unwrap();
+    let cl: usize = cl_str.parse().unwrap();
+    assert_eq!(cl, body_part.len());
 }
 
 static NL_FILTER_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -437,7 +471,8 @@ fn test_format_mcp_message() {
     let msg = format_mcp_message(&body);
     assert!(msg.starts_with("Content-Length:"));
     assert!(msg.contains("\r\n\r\n"));
-    assert!(msg.ends_with("\n"));
+    // No trailing newline — spec-compliant MCP message ends after JSON body
+    assert!(!msg.ends_with("\n"));
 }
 
 #[test]
