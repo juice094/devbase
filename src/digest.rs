@@ -3,13 +3,14 @@ use chrono::{Duration, Utc};
 pub fn generate_daily_digest(
     conn: &rusqlite::Connection,
     config: &crate::config::Config,
+    i18n: &crate::i18n::I18n,
 ) -> anyhow::Result<String> {
     let since = (Utc::now() - Duration::hours(config.digest.window_hours)).to_rfc3339();
     let mut lines = Vec::new();
-    lines.push(crate::i18n::current().log.digest_title.to_string());
+    lines.push(i18n.log.digest_title.to_string());
     lines.push(format!(
         "{}: {}",
-        crate::i18n::current().log.digest_generated_at,
+        i18n.log.digest_generated_at,
         Utc::now().format("%Y-%m-%d %H:%M UTC")
     ));
     lines.push("".to_string());
@@ -20,7 +21,7 @@ pub fn generate_daily_digest(
             row.get(0)
         })?;
     if new_count > 0 {
-        lines.push(format!("{}: {} repos", crate::i18n::current().log.digest_new_repos, new_count));
+        lines.push(format!("{}: {} repos", i18n.log.digest_new_repos, new_count));
         let mut stmt = conn
             .prepare(&format!("SELECT id FROM entities WHERE entity_type = '{}' AND json_extract(metadata, '$.discovered_at') > ?1 ORDER BY json_extract(metadata, '$.discovered_at') DESC", crate::registry::ENTITY_TYPE_REPO))?;
         let ids = stmt.query_map([&since], |row| row.get::<_, String>(0))?;
@@ -55,12 +56,12 @@ pub fn generate_daily_digest(
     if !unhealthy.is_empty() {
         lines.push(format!(
             "{}: ({})",
-            crate::i18n::current().log.digest_unhealthy_repos,
+            i18n.log.digest_unhealthy_repos,
             unhealthy.len()
         ));
         for (id, status, ahead, behind, summary_opt) in unhealthy.iter().take(10) {
             let summary =
-                summary_opt.as_deref().unwrap_or(crate::i18n::current().log.digest_no_summary);
+                summary_opt.as_deref().unwrap_or(i18n.log.digest_no_summary);
             lines.push(format!(
                 "  [{}] status={} ahead={} behind={} | {}",
                 id, status, ahead, behind, summary
@@ -78,7 +79,7 @@ pub fn generate_daily_digest(
     if disc_count > 0 {
         lines.push(format!(
             "{}: ({})",
-            crate::i18n::current().log.digest_new_discoveries,
+            i18n.log.digest_new_discoveries,
             disc_count
         ));
         let mut stmt = conn.prepare("SELECT repo_id, discovery_type, description FROM ai_discoveries WHERE timestamp > ?1 ORDER BY timestamp DESC LIMIT 5")?;
@@ -92,7 +93,7 @@ pub fn generate_daily_digest(
         for row in rows {
             let (repo_id_opt, dtype, desc) = row?;
             let repo =
-                repo_id_opt.unwrap_or_else(|| crate::i18n::current().log.digest_global.to_string());
+                repo_id_opt.unwrap_or_else(|| i18n.log.digest_global.to_string());
             lines.push(format!("  [{}] {}: {}", repo, dtype, desc));
         }
         lines.push("".to_string());
@@ -114,7 +115,7 @@ pub fn generate_daily_digest(
     )?;
     lines.push(format!(
         "{}: {} repos in db, {} checked in past 24h",
-        crate::i18n::current().log.digest_overall,
+        i18n.log.digest_overall,
         total,
         synced
     ));
@@ -127,27 +128,22 @@ mod tests {
     use super::*;
     use crate::registry::WorkspaceRegistry;
 
-    fn setup_i18n() {
-        crate::i18n::init("en");
-    }
-
     fn default_config() -> crate::config::Config {
         crate::config::Config::default()
     }
 
     #[test]
     fn test_generate_daily_digest_empty() {
-        setup_i18n();
         let conn = WorkspaceRegistry::init_in_memory().unwrap();
         let config = default_config();
-        let digest = generate_daily_digest(&conn, &config).unwrap();
+        let i18n = crate::i18n::from_language("en");
+        let digest = generate_daily_digest(&conn, &config, &i18n).unwrap();
         assert!(digest.contains("Daily Digest"));
         assert!(digest.contains("0 repos in db"));
     }
 
     #[test]
     fn test_generate_daily_digest_with_repos() {
-        setup_i18n();
         let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
         let repo = crate::registry::RepoEntry {
             id: "repo1".to_string(),
@@ -164,13 +160,13 @@ mod tests {
         WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
 
         let config = default_config();
-        let digest = generate_daily_digest(&conn, &config).unwrap();
+        let i18n = crate::i18n::from_language("en");
+        let digest = generate_daily_digest(&conn, &config, &i18n).unwrap();
         assert!(digest.contains("1 repos in db"));
     }
 
     #[test]
     fn test_generate_daily_digest_with_unhealthy_repo() {
-        setup_i18n();
         let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
         let repo = crate::registry::RepoEntry {
             id: "sick_repo".to_string(),
@@ -191,7 +187,8 @@ mod tests {
         ).unwrap();
 
         let config = default_config();
-        let digest = generate_daily_digest(&conn, &config).unwrap();
+        let i18n = crate::i18n::from_language("en");
+        let digest = generate_daily_digest(&conn, &config, &i18n).unwrap();
         assert!(digest.contains("Repositories needing attention"));
         assert!(digest.contains("sick_repo"));
         assert!(digest.contains("status=dirty"));

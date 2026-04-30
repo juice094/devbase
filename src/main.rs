@@ -442,7 +442,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let mut ctx = storage::AppContext::with_defaults()?;
-    let lang = if ctx.config.general.language == "auto" || ctx.config.general.language.is_empty() {
+    let _lang = if ctx.config.general.language == "auto" || ctx.config.general.language.is_empty() {
         let detected = i18n::detect_system_language();
         ctx.config.general.language = detected.clone();
         if let Err(e) = ctx.config.save() {
@@ -452,7 +452,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         ctx.config.general.language.clone()
     };
-    i18n::init(&lang);
+    // i18n is now initialized via AppContext, no global state needed
 
     let cli = Cli::parse();
 

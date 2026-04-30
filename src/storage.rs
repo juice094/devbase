@@ -75,6 +75,7 @@ impl StorageBackend for DefaultStorageBackend {
 pub struct AppContext {
     pub storage: Arc<dyn StorageBackend>,
     pub config: crate::config::Config,
+    pub i18n: crate::i18n::I18n,
     pool: Pool<SqliteConnectionManager>,
 }
 
@@ -86,9 +87,12 @@ impl AppContext {
         // 先执行 init_db() 确保数据库已初始化并迁移
         let _ = crate::registry::WorkspaceRegistry::init_db_at(&path)?;
         let pool = Self::build_pool(&path)?;
+        let config = crate::config::Config::load()?;
+        let i18n = crate::i18n::from_language(&config.general.language);
         Ok(Self {
             storage,
-            config: crate::config::Config::load()?,
+            config,
+            i18n,
             pool,
         })
     }
@@ -98,9 +102,12 @@ impl AppContext {
         let path = storage.db_path()?;
         let _ = crate::registry::WorkspaceRegistry::init_db_at(&path)?;
         let pool = Self::build_pool(&path)?;
+        let config = crate::config::Config::load()?;
+        let i18n = crate::i18n::from_language(&config.general.language);
         Ok(Self {
             storage,
-            config: crate::config::Config::load()?,
+            config,
+            i18n,
             pool,
         })
     }

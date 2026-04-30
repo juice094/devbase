@@ -5,7 +5,11 @@ use tracing::warn;
 use super::SyncSummary;
 use super::policy::{RepoSyncTask, SyncPolicy, SyncSafety, assess_safety, classify_sync_error};
 
-pub(super) fn fetch_single_repo(path: &str, upstream_url: Option<&str>) -> anyhow::Result<()> {
+pub(super) fn fetch_single_repo(
+    path: &str,
+    upstream_url: Option<&str>,
+    i18n: crate::i18n::I18n,
+) -> anyhow::Result<()> {
     let repo = Repository::open(path)?;
 
     let mut remote = match repo.find_remote("origin") {
@@ -47,7 +51,7 @@ pub(super) fn fetch_single_repo(path: &str, upstream_url: Option<&str>) -> anyho
             anyhow::anyhow!(
                 "{}",
                 crate::i18n::format_template(
-                    crate::i18n::current().sync.fetch_failed,
+                    i18n.sync.fetch_failed,
                     &[&e.to_string()]
                 )
             )
@@ -57,7 +61,7 @@ pub(super) fn fetch_single_repo(path: &str, upstream_url: Option<&str>) -> anyho
             anyhow::anyhow!(
                 "{}",
                 crate::i18n::format_template(
-                    crate::i18n::current().sync.fetch_failed,
+                    i18n.sync.fetch_failed,
                     &[&e.to_string()]
                 )
             )
@@ -75,13 +79,17 @@ pub(super) fn fetch_single_repo(path: &str, upstream_url: Option<&str>) -> anyho
     Ok(())
 }
 
-pub(super) async fn execute_task(task: &RepoSyncTask, dry_run: bool) -> SyncSummary {
+pub(super) async fn execute_task(
+    task: &RepoSyncTask,
+    dry_run: bool,
+    i18n: crate::i18n::I18n,
+) -> SyncSummary {
     if dry_run {
         let url = task.upstream_url.as_deref().unwrap_or("?");
         return SyncSummary {
             action: "DRY_RUN".to_string(),
             message: crate::i18n::format_template(
-                crate::i18n::current().sync.would_fetch,
+                i18n.sync.would_fetch,
                 &[url, &task.path],
             ),
             ..Default::default()
@@ -100,7 +108,7 @@ pub(super) async fn execute_task(task: &RepoSyncTask, dry_run: bool) -> SyncSumm
         SyncSafety::BlockedDirty => {
             return SyncSummary {
                 action: "BLOCKED".to_string(),
-                message: crate::i18n::current().sync.blocked_dirty.to_string(),
+                message: i18n.sync.blocked_dirty.to_string(),
                 ..Default::default()
             };
         }
@@ -114,7 +122,7 @@ pub(super) async fn execute_task(task: &RepoSyncTask, dry_run: bool) -> SyncSumm
         SyncSafety::UpToDate => {
             return SyncSummary {
                 action: "SKIP".to_string(),
-                message: crate::i18n::current().sync.already_up_to_date.to_string(),
+                message: i18n.sync.already_up_to_date.to_string(),
                 ..Default::default()
             };
         }
@@ -137,7 +145,7 @@ pub(super) async fn execute_task(task: &RepoSyncTask, dry_run: bool) -> SyncSumm
             } else {
                 return SyncSummary {
                     action: "SKIP".to_string(),
-                    message: crate::i18n::current().sync.already_up_to_date.to_string(),
+                    message: i18n.sync.already_up_to_date.to_string(),
                     ..Default::default()
                 };
             }
@@ -145,7 +153,7 @@ pub(super) async fn execute_task(task: &RepoSyncTask, dry_run: bool) -> SyncSumm
         SyncSafety::NoUpstream => {
             return SyncSummary {
                 action: "SKIP".to_string(),
-                message: crate::i18n::current().sync.skip_no_upstream.to_string(),
+                message: i18n.sync.skip_no_upstream.to_string(),
                 ..Default::default()
             };
         }
@@ -165,6 +173,7 @@ pub(super) async fn execute_task(task: &RepoSyncTask, dry_run: bool) -> SyncSumm
         task.upstream_url.as_deref(),
         task.default_branch.as_deref(),
         policy,
+        i18n,
     )
     .await
     {
@@ -261,20 +270,20 @@ pub(super) fn map_action(action: &str, _message: &str) -> String {
     }
 }
 
-pub(super) fn print_summary_table(results: &[serde_json::Value]) {
+pub(super) fn print_summary_table(results: &[serde_json::Value], i18n: &crate::i18n::I18n) {
     if results.is_empty() {
-        println!("{}", crate::i18n::current().sync.no_repos_processed);
+        println!("{}", i18n.sync.no_repos_processed);
         return;
     }
 
     println!("{:-<90}", "");
     println!(
         "{:<24} {:<10} {:>6} {:>7} {}",
-        crate::i18n::current().sync.header_repo,
-        crate::i18n::current().sync.header_action,
-        crate::i18n::current().sync.header_ahead,
-        crate::i18n::current().sync.header_behind,
-        crate::i18n::current().sync.header_message
+        i18n.sync.header_repo,
+        i18n.sync.header_action,
+        i18n.sync.header_ahead,
+        i18n.sync.header_behind,
+        i18n.sync.header_message
     );
     println!("{:-<90}", "");
     for item in results {
@@ -350,6 +359,7 @@ async fn sync_repo(
     upstream_url: Option<&str>,
     default_branch: Option<&str>,
     policy: SyncPolicy,
+    i18n: crate::i18n::I18n,
 ) -> anyhow::Result<SyncSummary> {
     let path = path.to_string();
     let upstream_url = upstream_url.map(|s| s.to_string());
@@ -359,7 +369,7 @@ async fn sync_repo(
         let repo = Repository::open(&path)?;
 
         // Fetch latest remote state
-        if let Err(e) = fetch_single_repo(&path, upstream_url.as_deref()) {
+        if let Err(e) = fetch_single_repo(&path, upstream_url.as_deref(), i18n) {
             return Ok(SyncSummary {
                 action: "ERROR".to_string(),
                 message: e.to_string(),
@@ -391,7 +401,7 @@ async fn sync_repo(
                     SyncSummary {
                         action: "OK".to_string(),
                         message: crate::i18n::format_template(
-                            crate::i18n::current().sync.up_to_date,
+                            i18n.sync.up_to_date,
                             &[&branch],
                         ),
                         ..Default::default()
@@ -414,10 +424,10 @@ async fn sync_repo(
                             if policy.can_rebase() {
                                 perform_rebase(&repo, &branch, local, remote)?
                             } else {
-                                perform_merge(&repo, &branch, local, remote)?
+                                perform_merge(&repo, &branch, local, remote, i18n)?
                             }
                         } else {
-                            perform_merge(&repo, &branch, local, remote)?
+                            perform_merge(&repo, &branch, local, remote, i18n)?
                         }
                     }
                 }
@@ -425,7 +435,7 @@ async fn sync_repo(
             (None, Some(_)) => SyncSummary {
                 action: "WARN".to_string(),
                 message: crate::i18n::format_template(
-                    crate::i18n::current().sync.local_branch_missing,
+                    i18n.sync.local_branch_missing,
                     &[&branch],
                 ),
                 ..Default::default()
@@ -433,7 +443,7 @@ async fn sync_repo(
             (Some(_), None) => SyncSummary {
                 action: "WARN".to_string(),
                 message: crate::i18n::format_template(
-                    crate::i18n::current().sync.remote_branch_missing,
+                    i18n.sync.remote_branch_missing,
                     &[&branch],
                 ),
                 ..Default::default()
@@ -441,7 +451,7 @@ async fn sync_repo(
             (None, None) => SyncSummary {
                 action: "WARN".to_string(),
                 message: crate::i18n::format_template(
-                    crate::i18n::current().sync.neither_branch_exists,
+                    i18n.sync.neither_branch_exists,
                     &[&branch],
                 ),
                 ..Default::default()
@@ -558,6 +568,7 @@ pub(super) fn perform_merge(
     branch: &str,
     local: git2::Oid,
     remote: git2::Oid,
+    i18n: crate::i18n::I18n,
 ) -> anyhow::Result<SyncSummary> {
     let local_ref = format!("refs/heads/{}", branch);
     let remote_ref = format!("refs/remotes/origin/{}", branch);
@@ -572,7 +583,7 @@ pub(super) fn perform_merge(
         repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))?;
         Ok(SyncSummary {
             action: "MERGED_FF".to_string(),
-            message: crate::i18n::current().sync.merged_ff.to_string(),
+            message: i18n.sync.merged_ff.to_string(),
             ..Default::default()
         })
     } else if analysis.is_normal() {
@@ -582,7 +593,7 @@ pub(super) fn perform_merge(
             let _ = repo.cleanup_state();
             Ok(SyncSummary {
                 action: "CONFLICT".to_string(),
-                message: crate::i18n::current().sync.conflict.to_string(),
+                message: i18n.sync.conflict.to_string(),
                 ..Default::default()
             })
         } else {
@@ -602,20 +613,20 @@ pub(super) fn perform_merge(
             repo.cleanup_state()?;
             Ok(SyncSummary {
                 action: "MERGED_COMMIT".to_string(),
-                message: crate::i18n::current().sync.merged_commit.to_string(),
+                message: i18n.sync.merged_commit.to_string(),
                 ..Default::default()
             })
         }
     } else if analysis.is_up_to_date() {
         Ok(SyncSummary {
             action: "OK".to_string(),
-            message: crate::i18n::current().sync.already_up_to_date.to_string(),
+            message: i18n.sync.already_up_to_date.to_string(),
             ..Default::default()
         })
     } else {
         Ok(SyncSummary {
             action: "SKIP".to_string(),
-            message: crate::i18n::current().sync.unhandled_merge_state.to_string(),
+            message: i18n.sync.unhandled_merge_state.to_string(),
             ..Default::default()
         })
     }

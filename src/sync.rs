@@ -29,6 +29,7 @@ pub async fn run_json(
     dry_run: bool,
     filter_tags: Option<&str>,
     exclude: Option<&str>,
+    i18n: &crate::i18n::I18n,
 ) -> anyhow::Result<serde_json::Value> {
     let start = std::time::Instant::now();
     let config = crate::config::Config::load().unwrap_or_default();
@@ -39,7 +40,7 @@ pub async fn run_json(
     if filter_tags.is_none() && tasks.is_empty() && total_registered > 0 {
         println!(
             "{}",
-            crate::i18n::current()
+            i18n
                 .log
                 .hint_unmanaged_repos
                 .replace("{}", &total_registered.to_string())
@@ -50,7 +51,7 @@ pub async fn run_json(
         path_map.insert(task.id.clone(), task.path.clone());
     }
 
-    let orchestrator = SyncOrchestrator::new(config.sync.concurrency.max(1));
+    let orchestrator = SyncOrchestrator::new(config.sync.concurrency.max(1), *i18n);
     let timeout = Duration::from_secs(config.sync.timeout_seconds);
     let summaries = orchestrator
         .run_sync(tasks, SyncMode::Sync, dry_run, timeout, |_id, _summary| {})
@@ -72,7 +73,7 @@ pub async fn run_json(
         })
         .collect();
 
-    info!("{}", crate::i18n::current().log.sync_finished);
+    info!("{}", i18n.log.sync_finished);
 
     // Log to oplog
     let duration_ms = start.elapsed().as_millis() as i64;
@@ -108,6 +109,7 @@ pub async fn run(
     dry_run: bool,
     filter_tags: Option<&str>,
     exclude: Option<&str>,
+    i18n: &crate::i18n::I18n,
 ) -> anyhow::Result<()> {
     let start = std::time::Instant::now();
     let config = crate::config::Config::load().unwrap_or_default();
@@ -118,7 +120,7 @@ pub async fn run(
     if filter_tags.is_none() && tasks.is_empty() && total_registered > 0 {
         println!(
             "{}",
-            crate::i18n::current()
+            i18n
                 .log
                 .hint_unmanaged_repos
                 .replace("{}", &total_registered.to_string())
@@ -129,20 +131,20 @@ pub async fn run(
         path_map.insert(task.id.clone(), task.path.clone());
     }
 
-    let orchestrator = SyncOrchestrator::new(config.sync.concurrency.max(1));
+    let orchestrator = SyncOrchestrator::new(config.sync.concurrency.max(1), *i18n);
     let timeout = Duration::from_secs(config.sync.timeout_seconds);
     let results = orchestrator
         .run_sync(tasks, SyncMode::Async, dry_run, timeout, |id, summary| {
-            println!("  [{}] {}: {}", id, crate::i18n::current().log.progress, summary.message);
+            println!("  [{}] {}: {}", id, i18n.log.progress, summary.message);
         })
         .await;
 
     let filter_suffix = filter_tags
-        .map(|f| format!("{}{}）", crate::i18n::current().sync.filter_prefix, f))
+        .map(|f| format!("{}{}）", i18n.sync.filter_prefix, f))
         .unwrap_or_default();
     println!(
         "{}: policy-per-repo{}\n",
-        crate::i18n::current().sync.strategy_prefix,
+        i18n.sync.strategy_prefix,
         filter_suffix
     );
 
@@ -167,34 +169,34 @@ pub async fn run(
         let action = item["action"].as_str().unwrap_or("");
         let message = item["message"].as_str().unwrap_or("");
 
-        if action == "skipped" && message == crate::i18n::current().sync.skip_no_upstream {
-            println!("  [{}] {}", id, crate::i18n::current().sync.skip_no_upstream);
+        if action == "skipped" && message == i18n.sync.skip_no_upstream {
+            println!("  [{}] {}", id, i18n.sync.skip_no_upstream);
         } else if action == "skipped" && dry_run {
             println!("  [{}] {}", id, message);
         } else {
-            println!("  [{}] {} {}...", id, crate::i18n::current().sync.checking, path);
+            println!("  [{}] {} {}...", id, i18n.sync.checking, path);
             if action == "error" || action == "timeout" {
-                println!("    [{}] {}", crate::i18n::current().sync.error_prefix, message);
+                println!("    [{}] {}", i18n.sync.error_prefix, message);
             } else if action == "fetch_only" {
-                println!("    -> {}", crate::i18n::current().sync.fetched_only);
+                println!("    -> {}", i18n.sync.fetched_only);
             } else if action == "blocked_dirty" {
-                println!("    {}", crate::i18n::current().sync.blocked_dirty);
+                println!("    {}", i18n.sync.blocked_dirty);
             } else if action == "merged_ff" {
-                println!("    {}", crate::i18n::current().sync.merged_ff);
+                println!("    {}", i18n.sync.merged_ff);
             } else if action == "merged_commit" {
-                println!("    {}", crate::i18n::current().sync.merged_commit);
+                println!("    {}", i18n.sync.merged_commit);
             } else if action == "conflict" {
-                println!("    {}", crate::i18n::current().sync.conflict);
+                println!("    {}", i18n.sync.conflict);
             }
         }
     }
 
-    print_summary_table(&results_json);
+    print_summary_table(&results_json, i18n);
 
     if skipped_unmanaged > 0 {
         println!(
             "\n{}",
-            crate::i18n::current()
+            i18n
                 .sync
                 .summary_unmanaged_skipped
                 .replace("{}", &skipped_unmanaged.to_string())
@@ -202,9 +204,9 @@ pub async fn run(
     }
 
     if dry_run {
-        println!("\n{}", crate::i18n::current().sync.dry_run_complete);
+        println!("\n{}", i18n.sync.dry_run_complete);
     } else {
-        println!("\n{}", crate::i18n::current().sync.sync_complete);
+        println!("\n{}", i18n.sync.sync_complete);
     }
 
     // Log to oplog

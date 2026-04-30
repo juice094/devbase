@@ -8,8 +8,8 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-pub(crate) fn render_help(frame: &mut Frame, _app: &App, area: Rect, styles: &Styles) {
-    let i18n = crate::i18n::current();
+pub(crate) fn render_help(frame: &mut Frame, app: &App, area: Rect, styles: &Styles) {
+    let i18n = &app.ctx.i18n;
     let block = Block::default()
         .borders(Borders::ALL)
         .title(i18n.tui.help_title)

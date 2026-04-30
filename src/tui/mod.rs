@@ -36,8 +36,7 @@ pub(crate) enum DetailTab {
 }
 
 impl DetailTab {
-    pub fn label(self) -> &'static str {
-        let i18n = crate::i18n::current();
+    pub fn label(self, i18n: &crate::i18n::I18n) -> &'static str {
         match self {
             Self::Overview => i18n.tui.tab_overview,
             Self::Health => i18n.tui.tab_health,
@@ -304,9 +303,9 @@ mod tests {
 
     #[test]
     fn test_detail_tab_label() {
-        crate::i18n::init("en");
-        assert_eq!(DetailTab::Overview.label(), "Overview");
-        assert_eq!(DetailTab::Health.label(), "Health");
-        assert_eq!(DetailTab::Insights.label(), "Insights");
+        let i18n = crate::i18n::from_language("en");
+        assert_eq!(DetailTab::Overview.label(&i18n), "Overview");
+        assert_eq!(DetailTab::Health.label(&i18n), "Health");
+        assert_eq!(DetailTab::Insights.label(&i18n), "Insights");
     }
 }

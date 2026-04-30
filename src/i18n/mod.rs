@@ -1,5 +1,4 @@
-use std::sync::OnceLock;
-
+#[derive(Clone, Copy)]
 #[allow(dead_code)]
 pub struct I18n {
     pub tui: TuiStrings,
@@ -8,6 +7,7 @@ pub struct I18n {
     pub log: LogStrings,
 }
 
+#[derive(Clone, Copy)]
 #[allow(dead_code)]
 pub struct TuiStrings {
     pub title_repos: &'static str,
@@ -64,6 +64,7 @@ pub struct TuiStrings {
     pub skill_result_title: &'static str,
 }
 
+#[derive(Clone, Copy)]
 #[allow(dead_code)]
 pub struct CliStrings {
     pub scanning: &'static str,
@@ -75,6 +76,7 @@ pub struct CliStrings {
     pub generating_digest: &'static str,
 }
 
+#[derive(Clone, Copy)]
 #[allow(dead_code)]
 pub struct SyncStrings {
     pub strategy_prefix: &'static str,
@@ -118,6 +120,7 @@ pub struct SyncStrings {
     pub summary_unmanaged_skipped: &'static str,
 }
 
+#[derive(Clone, Copy)]
 #[allow(dead_code)]
 pub struct LogStrings {
     pub tui_started: &'static str,
@@ -192,23 +195,14 @@ impl LogStrings {
 pub mod en;
 pub mod zh_cn;
 
-// TODO(veto-audit-2026-04-26): RF-1 全局状态 — CURRENT 不在 grandfathered 列表（仅 backup_dir/db_path/index_path 3 处可保留）。
-// 修复: 将 I18n 注入 AppContext，通过 ctx.i18n() 访问，消除全局可变状态。
-static CURRENT: OnceLock<I18n> = OnceLock::new();
-
-pub fn init(lang: &str) {
+/// Build an I18n instance for the given language.
+pub fn from_language(lang: &str) -> I18n {
     let lang_lower = lang.to_lowercase();
-    let i18n = if lang_lower.starts_with("en") {
+    if lang_lower.starts_with("en") {
         crate::i18n::en::build()
     } else {
         crate::i18n::zh_cn::build()
-    };
-    let _ = CURRENT.set(i18n);
-}
-
-pub fn current() -> &'static I18n {
-    // TODO(veto-audit-2026-04-26): RF-6 expect — 若 init() 未被调用则 panic。与 RF-1 全局状态问题同源，v0.15 注入式重构后自然消除。
-    CURRENT.get().expect("i18n not initialized")
+    }
 }
 
 pub fn format_template(template: &str, args: &[&str]) -> String {
@@ -304,10 +298,9 @@ mod tests {
     }
 
     #[test]
-    fn test_init_and_current() {
-        init("en");
-        let cur = current();
-        assert_eq!(cur.tui.title_repos, "Repositories");
+    fn test_from_language_en() {
+        let i18n = from_language("en");
+        assert_eq!(i18n.tui.title_repos, "Repositories");
     }
 
     #[test]

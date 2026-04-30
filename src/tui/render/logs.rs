@@ -13,7 +13,7 @@ pub(crate) fn render_logs(frame: &mut Frame, app: &App, area: Rect, styles: &Sty
     let log_lines: Vec<Line> =
         app.logs[log_start..].iter().map(|l| format_log_line(l, styles)).collect();
 
-    let i18n = crate::i18n::current();
+    let i18n = &app.ctx.i18n;
     let logs = Paragraph::new(ratatui::text::Text::from(log_lines))
         .block(
             Block::default()

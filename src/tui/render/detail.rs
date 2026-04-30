@@ -20,10 +20,10 @@ fn render_repo_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &Sty
     let repo = match app.current_repo() {
         Some(r) => r.clone(),
         None => {
-            let msg = Paragraph::new(crate::i18n::current().log.no_repos_registered).block(
+            let msg = Paragraph::new(app.ctx.i18n.log.no_repos_registered).block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(crate::i18n::current().tui.title_details)
+                    .title(app.ctx.i18n.tui.title_details)
                     .border_style(styles.border),
             );
             frame.render_widget(msg, area);
@@ -31,7 +31,7 @@ fn render_repo_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &Sty
         }
     };
 
-    let i18n = crate::i18n::current();
+    let i18n = &app.ctx.i18n;
 
     // Split area into tabs header + content
     let chunks = Layout::default()
@@ -41,9 +41,9 @@ fn render_repo_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &Sty
 
     // Tab bar
     let titles = vec![
-        Line::from(DetailTab::Overview.label()),
-        Line::from(DetailTab::Health.label()),
-        Line::from(DetailTab::Insights.label()),
+        Line::from(DetailTab::Overview.label(i18n)),
+        Line::from(DetailTab::Health.label(i18n)),
+        Line::from(DetailTab::Insights.label(i18n)),
     ];
     let tabs = Tabs::new(titles)
         .block(
@@ -169,7 +169,7 @@ fn render_overview(
         lines.push(Line::from(vec![
             Span::styled("  ▐ ", Style::default().fg(styles.theme.danger)),
             Span::styled(
-                crate::i18n::current().sync.mirror_policy_warning,
+                app.ctx.i18n.sync.mirror_policy_warning,
                 Style::default().fg(styles.theme.danger),
             ),
         ]));

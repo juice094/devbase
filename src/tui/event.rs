@@ -266,18 +266,18 @@ pub(crate) async fn run_app<B: Backend>(
                         app.toggle_search_mode();
                         let mode_label = match app.search_mode {
                             crate::tui::SearchMode::Repo => {
-                                crate::i18n::current().tui.search_mode_repo
+                                app.ctx.i18n.tui.search_mode_repo
                             }
                             crate::tui::SearchMode::Code => {
-                                crate::i18n::current().tui.search_mode_code
+                                app.ctx.i18n.tui.search_mode_code
                             }
                         };
                         app.log_info(format!("搜索模式已切换为: {}", mode_label));
                     }
                     KeyCode::Char('r') => {
-                        app.log_info(crate::i18n::current().log.refreshing.to_string());
+                        app.log_info(app.ctx.i18n.log.refreshing.to_string());
                         if let Err(e) = app.load_repos() {
-                            app.log_error(crate::i18n::current().log.refresh_failed(e));
+                            app.log_error(app.ctx.i18n.log.refresh_failed(e));
                         }
                         if let Err(e) = app.load_vaults() {
                             app.log_error(format!("刷新 Vault 失败: {}", e));
@@ -300,7 +300,7 @@ pub(crate) async fn run_app<B: Backend>(
                             SortMode::Stars => SortMode::Status,
                         };
                         if let Err(e) = app.load_repos() {
-                            app.log_error(crate::i18n::current().log.refresh_failed(e));
+                            app.log_error(app.ctx.i18n.log.refresh_failed(e));
                         }
                     }
                     KeyCode::Char('k') => {
@@ -333,7 +333,7 @@ pub(crate) async fn run_app<B: Backend>(
                                     Some("lazygit")
                                 } else {
                                     app.log_warn(
-                                        crate::i18n::current()
+                                        app.ctx.i18n
                                             .log
                                             .external_tui_not_found
                                             .to_string(),
@@ -363,7 +363,7 @@ pub(crate) async fn run_app<B: Backend>(
                         if !tags.is_empty() {
                             app.update_tags(&tags);
                         } else {
-                            app.log_warn(crate::i18n::current().log.empty_tag_ignored.to_string());
+                            app.log_warn(app.ctx.i18n.log.empty_tag_ignored.to_string());
                         }
                         app.input_mode = InputMode::Normal;
                         app.input_buffer.clear();
@@ -371,7 +371,7 @@ pub(crate) async fn run_app<B: Backend>(
                     KeyCode::Esc => {
                         app.input_mode = InputMode::Normal;
                         app.input_buffer.clear();
-                        app.log_info(crate::i18n::current().log.tag_input_cancelled.to_string());
+                        app.log_info(app.ctx.i18n.log.tag_input_cancelled.to_string());
                     }
                     KeyCode::Char(c) => app.input_buffer.push(c),
                     KeyCode::Backspace => {

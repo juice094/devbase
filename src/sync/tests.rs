@@ -205,13 +205,13 @@ fn test_sync_repo_skip_no_syncdone() {
 
 #[test]
 fn test_perform_merge_fast_forward() {
-    crate::i18n::init("en");
+    let i18n = crate::i18n::from_language("en");
     let (_dir, repo) = setup_repo_with_remote_commits(0, 1);
 
     let local_oid = repo.head().unwrap().target().unwrap();
     let remote_oid = repo.find_reference("refs/remotes/origin/main").unwrap().target().unwrap();
 
-    let summary = perform_merge(&repo, "main", local_oid, remote_oid).unwrap();
+    let summary = perform_merge(&repo, "main", local_oid, remote_oid, i18n).unwrap();
     assert_eq!(summary.action, "MERGED_FF");
 
     // After fast-forward merge, local main should point to remote oid
@@ -221,7 +221,7 @@ fn test_perform_merge_fast_forward() {
 
 #[test]
 fn test_perform_merge_up_to_date() {
-    crate::i18n::init("en");
+    let i18n = crate::i18n::from_language("en");
     let (_dir, repo) = setup_repo_with_remote_commits(0, 0);
 
     let local_oid = repo.head().unwrap().target().unwrap();
@@ -230,7 +230,7 @@ fn test_perform_merge_up_to_date() {
     // Local and remote are at the same commit
     assert_eq!(local_oid, remote_oid);
 
-    let summary = perform_merge(&repo, "main", local_oid, remote_oid).unwrap();
+    let summary = perform_merge(&repo, "main", local_oid, remote_oid, i18n).unwrap();
     assert_eq!(summary.action, "OK");
 }
 

@@ -9,12 +9,14 @@ use super::tasks::{execute_task, fetch_single_repo};
 #[derive(Clone)]
 pub struct SyncOrchestrator {
     semaphore: Arc<Semaphore>,
+    i18n: crate::i18n::I18n,
 }
 
 impl SyncOrchestrator {
-    pub fn new(max_concurrent: usize) -> Self {
+    pub fn new(max_concurrent: usize, i18n: crate::i18n::I18n) -> Self {
         Self {
             semaphore: Arc::new(Semaphore::new(max_concurrent.max(1))),
+            i18n,
         }
     }
 
@@ -34,16 +36,17 @@ impl SyncOrchestrator {
                         task.id.clone(),
                         SyncSummary {
                             action: "RUNNING".to_string(),
-                            message: crate::i18n::current().sync.status_running.to_string(),
+                            message: self.i18n.sync.status_running.to_string(),
                             ..Default::default()
                         },
                     );
+                    let i18n = self.i18n;
                     let summary =
-                        match timeout(timeout_duration, execute_task(&task, dry_run)).await {
+                        match timeout(timeout_duration, execute_task(&task, dry_run, i18n)).await {
                             Ok(s) => s,
                             Err(_) => SyncSummary {
                                 action: "TIMEOUT".to_string(),
-                                message: crate::i18n::current().sync.network_timeout.to_string(),
+                                message: i18n.sync.network_timeout.to_string(),
                                 ..Default::default()
                             },
                         };
@@ -60,7 +63,7 @@ impl SyncOrchestrator {
                         task.id.clone(),
                         SyncSummary {
                             action: "RUNNING".to_string(),
-                            message: crate::i18n::current().sync.status_running.to_string(),
+                            message: self.i18n.sync.status_running.to_string(),
                             ..Default::default()
                         },
                     );
@@ -73,14 +76,15 @@ impl SyncOrchestrator {
                         .await
                         .expect("semaphore should not be closed");
                     let tx = tx.clone();
+                    let i18n = self.i18n;
                     tokio::spawn(async move {
-                        let summary = match timeout(timeout_duration, execute_task(&task, dry_run))
+                        let summary = match timeout(timeout_duration, execute_task(&task, dry_run, i18n))
                             .await
                         {
                             Ok(s) => s,
                             Err(_) => SyncSummary {
                                 action: "TIMEOUT".to_string(),
-                                message: crate::i18n::current().sync.network_timeout.to_string(),
+                                message: i18n.sync.network_timeout.to_string(),
                                 ..Default::default()
                             },
                         };
@@ -131,9 +135,10 @@ impl SyncOrchestrator {
             let id = task.id.clone();
             let tx = tx.clone();
 
+            let i18n = self.i18n;
             tokio::task::spawn_blocking(move || {
                 let _permit = permit;
-                let summary = match fetch_single_repo(&path, upstream.as_deref()) {
+                let summary = match fetch_single_repo(&path, upstream.as_deref(), i18n) {
                     Ok(()) => SyncSummary {
                         action: "FETCHED".to_string(),
                         message: format!("Fetched {}", id),

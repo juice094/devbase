@@ -57,7 +57,7 @@ fn render_search_input(frame: &mut Frame, app: &App, styles: &Styles) {
         width: frame.area().width,
         height: 1,
     };
-    let i18n = crate::i18n::current();
+    let i18n = &app.ctx.i18n;
     let mode_label = match app.search_mode {
         crate::tui::SearchMode::Repo => i18n.tui.search_mode_repo,
         crate::tui::SearchMode::Code => i18n.tui.search_mode_code,
@@ -75,7 +75,7 @@ fn render_search_input(frame: &mut Frame, app: &App, styles: &Styles) {
 fn render_search_results(frame: &mut Frame, app: &App, styles: &Styles) {
     let popup_area = AppLayout::centered(frame.area(), 80, 70);
     let popup_inner = popup_area.inner(Margin::new(1, 1));
-    let i18n = crate::i18n::current();
+    let i18n = &app.ctx.i18n;
 
     let title = if app.search_results.is_empty() {
         format!(
@@ -139,7 +139,7 @@ fn render_search_results(frame: &mut Frame, app: &App, styles: &Styles) {
 fn render_skill_list(frame: &mut Frame, app: &App, styles: &Styles) {
     let popup_area = AppLayout::centered(frame.area(), 70, 60);
     let popup_inner = popup_area.inner(Margin::new(1, 1));
-    let i18n = crate::i18n::current();
+    let i18n = &app.ctx.i18n;
 
     let title = format!("{} ({})", i18n.tui.title_skills, app.skill_panel.items.len());
     let items: Vec<ListItem> = app
@@ -184,7 +184,7 @@ fn render_skill_list(frame: &mut Frame, app: &App, styles: &Styles) {
 fn render_skill_detail(frame: &mut Frame, app: &App, styles: &Styles) {
     let popup_area = AppLayout::centered(frame.area(), 60, 50);
     let popup_inner = popup_area.inner(Margin::new(1, 1));
-    let i18n = crate::i18n::current();
+    let i18n = &app.ctx.i18n;
 
     let mut lines: Vec<Line> = Vec::new();
     if let Some(skill) = &app.skill_panel.selected_item {
@@ -266,7 +266,7 @@ fn render_skill_param_input(frame: &mut Frame, app: &App, styles: &Styles) {
         width: frame.area().width,
         height: 1,
     };
-    let i18n = crate::i18n::current();
+    let i18n = &app.ctx.i18n;
     let input_text = Line::from(vec![
         Span::styled(
             format!("[{}] ", i18n.tui.skill_result_title),
@@ -281,7 +281,7 @@ fn render_skill_param_input(frame: &mut Frame, app: &App, styles: &Styles) {
 fn render_skill_result(frame: &mut Frame, app: &App, styles: &Styles) {
     let popup_area = AppLayout::centered(frame.area(), 80, 70);
     let popup_inner = popup_area.inner(Margin::new(1, 1));
-    let i18n = crate::i18n::current();
+    let i18n = &app.ctx.i18n;
 
     let mut lines: Vec<Line> = Vec::new();
     if let Some(result) = &app.skill_panel.execution_result {
@@ -355,7 +355,7 @@ fn render_skill_result(frame: &mut Frame, app: &App, styles: &Styles) {
 fn render_sync_preview(frame: &mut Frame, app: &App, styles: &Styles) {
     let popup_area = AppLayout::centered(frame.area(), 60, 50);
     let popup_inner = popup_area.inner(Margin::new(1, 1));
-    let i18n = crate::i18n::current();
+    let i18n = &app.ctx.i18n;
 
     let mut lines: Vec<Line> = Vec::new();
 
@@ -522,7 +522,7 @@ fn append_group<'a>(
 fn render_sync_progress(frame: &mut Frame, app: &App, styles: &Styles) {
     let popup_area = AppLayout::centered(frame.area(), 60, 40);
     let popup_inner = popup_area.inner(Margin::new(1, 1));
-    let i18n = crate::i18n::current();
+    let i18n = &app.ctx.i18n;
 
     let queued = app.loading_sync.len();
     let running = app.sync_running.len();

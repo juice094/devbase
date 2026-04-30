@@ -54,7 +54,7 @@ fn render_bottom_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect, 
         return;
     }
 
-    let i18n = crate::i18n::current();
+    let i18n = &app.ctx.i18n;
     let text = match app.input_mode {
         crate::tui::InputMode::TagInput => Line::from(vec![
             Span::styled("标签: ", styles.selected),

@@ -6,7 +6,7 @@ pub async fn run_scan(
     path: &str,
     register: bool,
 ) -> anyhow::Result<()> {
-    info!("{}: {}", i18n::current().cli.scanning, path);
+    info!("{}: {}", ctx.i18n.cli.scanning, path);
     let pool = ctx.pool();
     scan::run(path, register, &pool).await
 }
@@ -17,9 +17,9 @@ pub async fn run_health(
     limit: usize,
     page: usize,
 ) -> anyhow::Result<()> {
-    info!("{}", i18n::current().cli.health_check);
+    info!("{}", ctx.i18n.cli.health_check);
     let conn = ctx.conn()?;
-    health::run(&conn, detail, limit, page, ctx.config.cache.ttl_seconds).await
+    health::run(&conn, detail, limit, page, ctx.config.cache.ttl_seconds, &ctx.i18n).await
 }
 
 pub async fn run_query(
@@ -28,13 +28,13 @@ pub async fn run_query(
     limit: usize,
     page: usize,
 ) -> anyhow::Result<()> {
-    info!("{}: {}", i18n::current().cli.querying, query);
+    info!("{}: {}", ctx.i18n.cli.querying, query);
     let conn = ctx.conn()?;
     query::run(&conn, query, limit, page, &ctx.config).await
 }
 
 pub async fn run_index(ctx: &mut crate::storage::AppContext, path: &str) -> anyhow::Result<()> {
-    info!("{}: path='{}'", i18n::current().cli.indexing, path);
+    info!("{}: path='{}'", ctx.i18n.cli.indexing, path);
     let path = path.to_string();
     let pool = ctx.pool();
     let count = tokio::task::spawn_blocking(move || {
@@ -48,8 +48,8 @@ pub async fn run_index(ctx: &mut crate::storage::AppContext, path: &str) -> anyh
 }
 
 #[cfg(feature = "tui")]
-pub async fn run_tui(_ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
-    info!("{}", i18n::current().cli.launching_tui);
+pub async fn run_tui(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
+    info!("{}", ctx.i18n.cli.launching_tui);
     tui::run().await
 }
 
@@ -355,6 +355,7 @@ pub fn run_skill_sync(
 pub async fn run_digest(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     let digest_config = ctx.config.digest.clone();
     let pool = ctx.pool();
+    let i18n = ctx.i18n;
     match tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
         let cfg = config::Config {
@@ -362,7 +363,7 @@ pub async fn run_digest(ctx: &mut crate::storage::AppContext) -> anyhow::Result<
             digest: digest_config,
             ..Default::default()
         };
-        digest::generate_daily_digest(&conn, &cfg)
+        digest::generate_daily_digest(&conn, &cfg, &i18n)
     })
     .await
     {
@@ -371,11 +372,11 @@ pub async fn run_digest(ctx: &mut crate::storage::AppContext) -> anyhow::Result<
             Ok(())
         }
         Ok(Err(e)) => {
-            println!("{}: {}", i18n::current().log.digest_failed, e);
+            println!("{}: {}", ctx.i18n.log.digest_failed, e);
             Ok(())
         }
         Err(e) => {
-            println!("{}: {}", i18n::current().log.digest_panic, e);
+            println!("{}: {}", ctx.i18n.log.digest_panic, e);
             Ok(())
         }
     }
@@ -493,14 +494,14 @@ pub async fn run_sync(
     if dry_run {
         warn!("Dry-run mode enabled");
     }
-    info!("{}", i18n::current().cli.syncing);
+    info!("{}", ctx.i18n.cli.syncing);
     let conn = ctx.conn()?;
     if json {
         let output =
-            sync::run_json(&conn, dry_run, filter_tags.as_deref(), exclude.as_deref()).await?;
+            sync::run_json(&conn, dry_run, filter_tags.as_deref(), exclude.as_deref(), &ctx.i18n).await?;
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
-        sync::run(&conn, dry_run, filter_tags.as_deref(), exclude.as_deref()).await?;
+        sync::run(&conn, dry_run, filter_tags.as_deref(), exclude.as_deref(), &ctx.i18n).await?;
     }
     Ok(())
 }

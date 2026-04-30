@@ -111,7 +111,8 @@ Returns: JSON object with workspace summary and per-repo health records. Each re
         let detail = args.get("detail").and_then(|v| v.as_bool()).unwrap_or(false);
         let config = crate::config::Config::load()?;
         let conn = ctx.conn()?;
-        crate::health::run_json(&conn, detail, 0, 1, config.cache.ttl_seconds).await
+        let i18n = crate::i18n::from_language(&config.general.language);
+        crate::health::run_json(&conn, detail, 0, 1, config.cache.ttl_seconds, &i18n).await
     }
 }
 
@@ -175,7 +176,7 @@ Returns: JSON object with per-repo sync results including: repo_id, action (pull
         let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(true);
         let filter_tags = args.get("filter_tags").and_then(|v| v.as_str());
         let conn = ctx.conn()?;
-        crate::sync::run_json(&conn, dry_run, filter_tags, None).await
+        crate::sync::run_json(&conn, dry_run, filter_tags, None, &ctx.i18n).await
     }
 }
 
@@ -334,7 +335,8 @@ Returns: JSON with a plain-text digest string."#,
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
             let config = crate::config::Config::load()?;
-            let text = crate::digest::generate_daily_digest(&conn, &config)?;
+            let i18n = crate::i18n::from_language(&config.general.language);
+            let text = crate::digest::generate_daily_digest(&conn, &config, &i18n)?;
             Ok::<_, anyhow::Error>(serde_json::json!({ "success": true, "digest": text }))
         })
         .await

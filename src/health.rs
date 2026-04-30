@@ -56,6 +56,7 @@ pub async fn run_json(
     limit: usize,
     page: usize,
     ttl_seconds: i64,
+    i18n: &crate::i18n::I18n,
 ) -> anyhow::Result<serde_json::Value> {
     let start = std::time::Instant::now();
     let (total_repos, dirty_repos, behind_upstream, no_upstream_count, repo_details) = {
@@ -185,11 +186,11 @@ pub async fn run_json(
     };
 
     let environment = serde_json::json!({
-        "rustc": get_tool_version("rustc", &["--version"]).await.map(|s| fmt_version(Some(s))),
-        "cargo": get_tool_version("cargo", &["--version"]).await.map(|s| fmt_version(Some(s))),
-        "node": get_tool_version("node", &["--version"]).await.map(|s| fmt_version(Some(s))),
-        "go": get_tool_version("go", &["version"]).await.map(|s| fmt_version(Some(s))),
-        "cmake": get_tool_version("cmake", &["--version"]).await.map(|s| fmt_version(Some(s))),
+        "rustc": get_tool_version("rustc", &["--version"]).await.map(|s| fmt_version(Some(s), i18n)),
+        "cargo": get_tool_version("cargo", &["--version"]).await.map(|s| fmt_version(Some(s), i18n)),
+        "node": get_tool_version("node", &["--version"]).await.map(|s| fmt_version(Some(s), i18n)),
+        "go": get_tool_version("go", &["version"]).await.map(|s| fmt_version(Some(s), i18n)),
+        "cmake": get_tool_version("cmake", &["--version"]).await.map(|s| fmt_version(Some(s), i18n)),
     });
 
     let summary = serde_json::json!({
@@ -255,13 +256,14 @@ pub async fn run(
     limit: usize,
     page: usize,
     ttl_seconds: i64,
+    i18n: &crate::i18n::I18n,
 ) -> anyhow::Result<()> {
-    let result = run_json(conn, detail, limit, page, ttl_seconds).await?;
+    let result = run_json(conn, detail, limit, page, ttl_seconds, i18n).await?;
 
     let summary = result["summary"]
         .as_object()
         .ok_or_else(|| anyhow::anyhow!("summary is not an object"))?;
-    println!("{}:", crate::i18n::current().log.health_summary);
+    println!("{}:", i18n.log.health_summary);
     println!("  total_repos: {}", summary["total_repos"].as_u64().unwrap_or(0));
     println!("  dirty_repos: {}", summary["dirty_repos"].as_u64().unwrap_or(0));
     println!("  behind_upstream: {}", summary["behind_upstream"].as_u64().unwrap_or(0));
@@ -270,26 +272,26 @@ pub async fn run(
     let env = result["environment"]
         .as_object()
         .ok_or_else(|| anyhow::anyhow!("environment is not an object"))?;
-    println!("\n{}:", crate::i18n::current().log.health_environment);
+    println!("\n{}:", i18n.log.health_environment);
     println!(
         "  rustc: {}",
-        env["rustc"].as_str().unwrap_or(crate::i18n::current().log.not_installed)
+        env["rustc"].as_str().unwrap_or(i18n.log.not_installed)
     );
     println!(
         "  cargo: {}",
-        env["cargo"].as_str().unwrap_or(crate::i18n::current().log.not_installed)
+        env["cargo"].as_str().unwrap_or(i18n.log.not_installed)
     );
     println!(
         "  node: {}",
-        env["node"].as_str().unwrap_or(crate::i18n::current().log.not_installed)
+        env["node"].as_str().unwrap_or(i18n.log.not_installed)
     );
     println!(
         "  go: {}",
-        env["go"].as_str().unwrap_or(crate::i18n::current().log.not_installed)
+        env["go"].as_str().unwrap_or(i18n.log.not_installed)
     );
     println!(
         "  cmake: {}",
-        env["cmake"].as_str().unwrap_or(crate::i18n::current().log.not_installed)
+        env["cmake"].as_str().unwrap_or(i18n.log.not_installed)
     );
 
     if detail {
@@ -305,7 +307,7 @@ pub async fn run(
                     let has_more = pagination["has_more"].as_bool().unwrap_or(false);
                     println!(
                         "\n{} (page {} of ~{}, limit={}):",
-                        crate::i18n::current().log.health_repos,
+                        i18n.log.health_repos,
                         page_num,
                         (total as f64 / limit_val as f64).ceil() as u64,
                         limit_val
@@ -314,10 +316,10 @@ pub async fn run(
                         println!("  (more results available, use --page {})", page_num + 1);
                     }
                 } else {
-                    println!("\n{}:", crate::i18n::current().log.health_repos);
+                    println!("\n{}:", i18n.log.health_repos);
                 }
             } else {
-                println!("\n{}:", crate::i18n::current().log.health_repos);
+                println!("\n{}:", i18n.log.health_repos);
             }
             for repo in repos {
                 let id = repo["id"].as_str().unwrap_or("");
@@ -447,7 +449,7 @@ async fn get_tool_version(cmd: &str, args: &[&str]) -> Option<String> {
     Some(line.to_string())
 }
 
-fn fmt_version(raw: Option<String>) -> String {
+fn fmt_version(raw: Option<String>, i18n: &crate::i18n::I18n) -> String {
     match raw {
         Some(s) => {
             let parts: Vec<&str> = s.split_whitespace().collect();
@@ -467,7 +469,7 @@ fn fmt_version(raw: Option<String>) -> String {
                 s
             }
         }
-        None => crate::i18n::current().log.not_installed.to_string(),
+        None => i18n.log.not_installed.to_string(),
     }
 }
 
@@ -524,31 +526,37 @@ mod tests {
 
     #[test]
     fn test_fmt_version_rustc() {
-        assert_eq!(fmt_version(Some("rustc 1.70.0".to_string())), "1.70.0");
+        let i18n = crate::i18n::from_language("en");
+        assert_eq!(fmt_version(Some("rustc 1.70.0".to_string()), &i18n), "1.70.0");
     }
 
     #[test]
     fn test_fmt_version_cargo() {
-        assert_eq!(fmt_version(Some("cargo 1.70.0".to_string())), "1.70.0");
+        let i18n = crate::i18n::from_language("en");
+        assert_eq!(fmt_version(Some("cargo 1.70.0".to_string()), &i18n), "1.70.0");
     }
 
     #[test]
     fn test_fmt_version_cmake() {
-        assert_eq!(fmt_version(Some("cmake version 3.26".to_string())), "3.26");
+        let i18n = crate::i18n::from_language("en");
+        assert_eq!(fmt_version(Some("cmake version 3.26".to_string()), &i18n), "3.26");
     }
 
     #[test]
     fn test_fmt_version_go() {
-        assert_eq!(fmt_version(Some("go version go1.20".to_string())), "go1.20");
+        let i18n = crate::i18n::from_language("en");
+        assert_eq!(fmt_version(Some("go version go1.20".to_string()), &i18n), "go1.20");
     }
 
     #[test]
     fn test_fmt_version_unknown() {
-        assert_eq!(fmt_version(Some("foo bar".to_string())), "foo bar");
+        let i18n = crate::i18n::from_language("en");
+        assert_eq!(fmt_version(Some("foo bar".to_string()), &i18n), "foo bar");
     }
 
     #[test]
     fn test_fmt_version_single_word() {
-        assert_eq!(fmt_version(Some("v1.0".to_string())), "v1.0");
+        let i18n = crate::i18n::from_language("en");
+        assert_eq!(fmt_version(Some("v1.0".to_string()), &i18n), "v1.0");
     }
 }

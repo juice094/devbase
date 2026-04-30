@@ -164,7 +164,8 @@ impl Daemon {
                 digest: digest_config,
                 ..Default::default()
             };
-            crate::digest::generate_daily_digest(&conn, &cfg)
+            let i18n = crate::i18n::from_language(&cfg.general.language);
+            crate::digest::generate_daily_digest(&conn, &cfg, &i18n)
         })
         .await
         {

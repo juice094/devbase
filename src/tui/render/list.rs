@@ -80,7 +80,7 @@ fn render_repo_list(frame: &mut Frame, app: &mut App, area: Rect, styles: &Style
         })
         .collect();
 
-    let i18n = crate::i18n::current();
+    let i18n = &app.ctx.i18n;
     let list_title = format!(
         "{} [{}]",
         i18n.tui.title_repos,

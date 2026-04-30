@@ -31,6 +31,7 @@ impl App {
             loading_sync: HashSet::new(),
             sync_orchestrator: crate::sync::SyncOrchestrator::new(
                 ctx.config.sync.concurrency.max(1),
+                ctx.i18n,
             ),
             sync_popup_mode: SyncPopupMode::Hidden,
             sync_preview_items: Vec::new(),
@@ -66,7 +67,7 @@ impl App {
             nlp_results: Vec::new(),
             nlp_selected: 0,
         };
-        app.log_info(crate::i18n::current().log.tui_started.to_string());
+        app.log_info(app.ctx.i18n.log.tui_started.to_string());
         app.load_repos()?;
         app.spawn_stars_refresh();
         app.spawn_vault_watcher();
@@ -133,7 +134,7 @@ impl App {
 
         // Initial sort by registry data only (tags alphabetical)
         self.sort_repos_by_registry();
-        self.log_info(crate::i18n::current().log.loaded_repos(self.repos.len()));
+        self.log_info(self.ctx.i18n.log.loaded_repos(self.repos.len()));
         Ok(())
     }
 
@@ -437,7 +438,7 @@ impl App {
         }
         self.vault_selected = 0;
         self.vault_list_state.select(Some(0));
-        self.log_info(crate::i18n::current().log.loaded_vaults(self.vaults.len()));
+        self.log_info(self.ctx.i18n.log.loaded_vaults(self.vaults.len()));
         Ok(())
     }
 
@@ -458,7 +459,7 @@ impl App {
         self.skill_panel.items = rows.into_iter().map(SkillItem::from).collect();
         self.skill_panel.selected = 0;
         self.skill_panel.list_state.select(Some(0));
-        self.log_info(crate::i18n::current().log.loaded_skills(self.skill_panel.items.len()));
+        self.log_info(self.ctx.i18n.log.loaded_skills(self.skill_panel.items.len()));
     }
 
     pub(crate) fn next_skill(&mut self) {
@@ -748,7 +749,7 @@ impl App {
                     repo.status_behind = Some(n.behind);
                 }
                 self.log_info(
-                    crate::i18n::current().log.status_fmt(&n.repo_id, n.dirty, n.ahead, n.behind),
+                    self.ctx.i18n.log.status_fmt(&n.repo_id, n.dirty, n.ahead, n.behind),
                 );
                 // Trigger re-sort when all statuses are loaded
                 if self.loading_repo_status.is_empty() && self.sort_mode == SortMode::Status {
@@ -774,7 +775,7 @@ impl App {
                     self.sync_popup_results.push((n.repo_id.clone(), n.message.clone()));
                 }
                 self.log_info(
-                    crate::i18n::current().log.sync_progress_fmt(&n.repo_id, &n.action, &n.message),
+                    self.ctx.i18n.log.sync_progress_fmt(&n.repo_id, &n.action, &n.message),
                 );
             }
             AsyncNotification::StarsUpdated { repo_id, stars } => {
@@ -848,7 +849,7 @@ impl App {
         let repo_id = match self.current_repo() {
             Some(r) => r.id.clone(),
             None => {
-                self.log_warn(crate::i18n::current().log.no_repo_selected.to_string());
+                self.log_warn(self.ctx.i18n.log.no_repo_selected.to_string());
                 return;
             }
         };
@@ -867,12 +868,12 @@ impl App {
             Ok(())
         })() {
             Ok(()) => {
-                self.log_info(crate::i18n::current().log.updated_tags(&repo_id, new_tags));
+                self.log_info(self.ctx.i18n.log.updated_tags(&repo_id, new_tags));
                 if let Err(e) = self.load_repos() {
-                    self.log_error(crate::i18n::current().log.reload_repos_failed(e));
+                    self.log_error(self.ctx.i18n.log.reload_repos_failed(e));
                 }
             }
-            Err(e) => self.log_error(crate::i18n::current().log.update_tags_failed(e)),
+            Err(e) => self.log_error(self.ctx.i18n.log.update_tags_failed(e)),
         }
     }
 
@@ -950,7 +951,7 @@ impl App {
 
         for t in &tasks {
             self.sync_popup_results
-                .push((t.id.clone(), crate::i18n::current().log.status_queued.to_string()));
+                .push((t.id.clone(), self.ctx.i18n.log.status_queued.to_string()));
         }
 
         let sender = self.async_tx.clone();
@@ -1089,16 +1090,16 @@ impl App {
         if safe_items.is_empty() {
             self.sync_popup_results.push((
                 "system".to_string(),
-                crate::i18n::current().sync.no_safe_repos.to_string(),
+                self.ctx.i18n.sync.no_safe_repos.to_string(),
             ));
             return;
         }
 
-        self.log_info(crate::i18n::current().log.batch_syncing(safe_items.len()));
+        self.log_info(self.ctx.i18n.log.batch_syncing(safe_items.len()));
         for r in &safe_items {
             self.loading_sync.insert(r.id.clone());
             self.sync_popup_results
-                .push((r.id.clone(), crate::i18n::current().log.status_queued.to_string()));
+                .push((r.id.clone(), self.ctx.i18n.log.status_queued.to_string()));
         }
 
         let sender = self.async_tx.clone();
@@ -1257,7 +1258,7 @@ mod tests {
             repo_status_job: crate::asyncgit::AsyncSingleJob::new(tx),
             loading_repo_status: HashSet::new(),
             loading_sync: HashSet::new(),
-            sync_orchestrator: crate::sync::SyncOrchestrator::new(1),
+            sync_orchestrator: crate::sync::SyncOrchestrator::new(1, crate::i18n::from_language("en")),
             sync_popup_mode: SyncPopupMode::Hidden,
             sync_preview_items: vec![],
             sync_popup_results: vec![],
