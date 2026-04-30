@@ -462,7 +462,7 @@ pub fn run_discover(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> 
     }
 
     for d in merged.values() {
-        WorkspaceRegistry::save_relation(&conn, &d.from, &d.to, &d.relation_type, d.confidence)?;
+        crate::registry::relation::save_relation(&conn, &d.from, &d.to, &d.relation_type, d.confidence)?;
     }
 
     let mut all: Vec<Discovery> = merged.into_values().collect();

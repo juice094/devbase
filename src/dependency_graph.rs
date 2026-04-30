@@ -552,7 +552,7 @@ pub fn build_dependency_graph(
                 // Try without canonicalization
                 path_to_repo.get(&abs_path)
             }) {
-                crate::registry::WorkspaceRegistry::save_relation(
+                crate::registry::relation::save_relation(
                     conn,
                     repo_id,
                     target_id,
@@ -568,7 +568,7 @@ pub fn build_dependency_graph(
             if let Some(dir_name) = canonical.file_name().and_then(|n| n.to_str())
                 && let Some(target_id) = name_to_repo.get(dir_name)
             {
-                crate::registry::WorkspaceRegistry::save_relation(
+                crate::registry::relation::save_relation(
                     conn,
                     repo_id,
                     target_id,
@@ -583,7 +583,7 @@ pub fn build_dependency_graph(
 
         // Strategy 2: match dependency name against registered repo directory name
         if let Some(target_id) = name_to_repo.get(&dep.name) {
-            crate::registry::WorkspaceRegistry::save_relation(
+            crate::registry::relation::save_relation(
                 conn,
                 repo_id,
                 target_id,

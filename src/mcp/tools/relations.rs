@@ -55,7 +55,7 @@ Returns: success boolean and relation details."#,
         }
 
         let conn = ctx.conn()?;
-        crate::registry::WorkspaceRegistry::save_relation(&conn, &from, &to, &rel_type, confidence)?;
+        crate::registry::relation::save_relation(&conn, &from, &to, &rel_type, confidence)?;
 
         Ok(serde_json::json!({
             "success": true,
@@ -121,7 +121,7 @@ Returns: JSON array of relations with to_entity_id, relation_type, confidence, a
         let conn = ctx.conn()?;
         let results = match direction {
             "bidirectional" => {
-                let rows = crate::registry::WorkspaceRegistry::find_related_entities(
+                let rows = crate::registry::relation::find_related_entities(
                     &conn,
                     &entity_id,
                     relation_type,
@@ -139,7 +139,7 @@ Returns: JSON array of relations with to_entity_id, relation_type, confidence, a
                     .collect::<Vec<_>>()
             }
             _ => {
-                let rows = crate::registry::WorkspaceRegistry::list_relations(
+                let rows = crate::registry::relation::list_relations(
                     &conn,
                     &entity_id,
                     relation_type,

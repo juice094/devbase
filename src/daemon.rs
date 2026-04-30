@@ -126,7 +126,7 @@ impl Daemon {
             let deps = crate::discovery_engine::discover_dependencies(&repos);
             let sims = crate::discovery_engine::discover_similar_projects(&conn)?;
             for d in deps.into_iter().chain(sims) {
-                let _ = crate::registry::WorkspaceRegistry::save_relation(
+                let _ = crate::registry::relation::save_relation(
                     &conn,
                     &d.from,
                     &d.to,

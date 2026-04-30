@@ -308,7 +308,7 @@ Returns: JSON object with:
                 // 9. Knowledge-graph relations (from relations table)
                 let mut relations = Vec::new();
                 if let Some(ref rid) = repo_id {
-                    match crate::registry::WorkspaceRegistry::find_related_entities(&conn, rid, None) {
+                    match crate::registry::relation::find_related_entities(&conn, rid, None) {
                         Ok(rows) => {
                             for (from, to, rt, conf, created) in rows {
                                 relations.push(serde_json::json!({

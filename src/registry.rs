@@ -165,6 +165,7 @@ impl Default for WorkspaceRegistry {
 }
 
 pub mod entity;
+pub mod relation;
 
 // Backward-compatible re-exports (migrated to entity.rs in v0.15).
 pub use entity::{
