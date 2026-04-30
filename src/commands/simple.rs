@@ -109,6 +109,95 @@ pub async fn run_vault(
             .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
             println!("Vault search index rebuilt.");
         }
+        crate::VaultCommands::List { tag } => {
+            let pool = ctx.pool();
+            let notes = tokio::task::spawn_blocking(move || {
+                let conn = pool.get()?;
+                crate::registry::WorkspaceRegistry::list_vault_notes(&conn)
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+            let filtered: Vec<_> = notes
+                .into_iter()
+                .filter(|n| {
+                    tag.as_ref()
+                        .map(|t| n.tags.iter().any(|nt| nt.eq_ignore_ascii_case(t)))
+                        .unwrap_or(true)
+                })
+                .collect();
+            if filtered.is_empty() {
+                println!("No vault notes found.");
+            } else {
+                println!("{:<40} {:<20} {}", "PATH", "TITLE", "TAGS");
+                for note in filtered {
+                    let title = note.title.as_deref().unwrap_or("(no title)");
+                    let tags = if note.tags.is_empty() {
+                        "-".to_string()
+                    } else {
+                        note.tags.join(", ")
+                    };
+                    println!("{:<40} {:<20} {}", note.id, title, tags);
+                }
+            }
+        }
+        crate::VaultCommands::Read { path } => {
+            let pool = ctx.pool();
+            let note = tokio::task::spawn_blocking({
+                let path = path.clone();
+                move || {
+                    let conn = pool.get()?;
+                    crate::registry::WorkspaceRegistry::get_vault_note(&conn, &path)
+                }
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+            match note {
+                Some(n) => {
+                    if let Some(content) = crate::vault::fs_io::read_note_content(&n.path) {
+                        println!("{}", content);
+                    } else {
+                        anyhow::bail!("Failed to read note file: {}", n.path);
+                    }
+                }
+                None => anyhow::bail!("Vault note not found: {}", path),
+            }
+        }
+        crate::VaultCommands::Write { path, content, title } => {
+            let vault_root = crate::registry::WorkspaceRegistry::workspace_dir()?.join("vault");
+            let target = vault_root.join(&path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let body = match content {
+                Some(c) if c == "-" => {
+                    let mut stdin = String::new();
+                    std::io::Read::read_to_string(&mut std::io::stdin(), &mut stdin)?;
+                    stdin
+                }
+                Some(c) => c,
+                None => String::new(),
+            };
+            let frontmatter_title = title.unwrap_or_else(|| {
+                target
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "Untitled".to_string())
+            });
+            let full = if body.starts_with("---") {
+                body
+            } else {
+                format!("---\ntitle: {}\n---\n\n{}", frontmatter_title, body)
+            };
+            std::fs::write(&target, full)?;
+            let pool = ctx.pool();
+            tokio::task::spawn_blocking(move || {
+                let mut conn = pool.get()?;
+                vault::scanner::scan_vault(&mut conn, Some(&vault_root))
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+            println!("Wrote vault note: {}", path);
+        }
     }
     Ok(())
 }

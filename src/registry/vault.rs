@@ -83,6 +83,57 @@ impl WorkspaceRegistry {
         Ok(notes)
     }
 
+    pub fn get_vault_note(
+        conn: &rusqlite::Connection,
+        note_id: &str,
+    ) -> anyhow::Result<Option<crate::registry::VaultNote>> {
+        let mut stmt = conn.prepare(
+            "SELECT e.id, e.local_path, e.name, json_extract(e.metadata, '$.frontmatter'),
+                    json_extract(e.metadata, '$.tags'), json_extract(e.metadata, '$.outgoing_links'),
+                    json_extract(e.metadata, '$.linked_repo'),
+                    json_extract(e.metadata, '$.created_at'), json_extract(e.metadata, '$.updated_at')
+             FROM entities e
+             WHERE e.entity_type = ?1 AND e.id = ?2"
+        )?;
+        let mut rows = stmt.query_map(
+            rusqlite::params![crate::registry::ENTITY_TYPE_VAULT_NOTE, note_id],
+            |row| {
+                let tags_raw: Option<String> = row.get(4)?;
+                let links_raw: Option<String> = row.get(5)?;
+                Ok(crate::registry::VaultNote {
+                    id: row.get(0)?,
+                    path: row.get(1)?,
+                    title: row.get(2)?,
+                    content: String::new(),
+                    frontmatter: row.get(3)?,
+                    tags: tags_raw
+                        .map(|s| {
+                            s.split(',')
+                                .map(|t| t.trim().to_string())
+                                .filter(|t| !t.is_empty())
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    outgoing_links: links_raw
+                        .and_then(|s| serde_json::from_str(&s).ok())
+                        .unwrap_or_default(),
+                    linked_repo: row.get(6)?,
+                    created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(7)?)
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(|_| Utc::now()),
+                    updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(|_| Utc::now()),
+                })
+            },
+        )?;
+        if let Some(row) = rows.next() {
+            Ok(Some(row?))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn delete_vault_note(conn: &rusqlite::Connection, note_id: &str) -> anyhow::Result<()> {
         conn.execute("DELETE FROM vault_repo_links WHERE vault_id = ?1", [note_id])?;
         // Phase 2 Stage C: keep entities in sync

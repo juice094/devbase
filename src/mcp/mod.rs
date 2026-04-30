@@ -91,6 +91,7 @@ pub enum McpToolEnum {
     SkillDiscover(DevkitSkillDiscoverTool),
     KnownLimitStore(DevkitKnownLimitStoreTool),
     KnownLimitList(DevkitKnownLimitListTool),
+    OplogQuery(DevkitOplogQueryTool),
 }
 
 /// Stability tier for MCP tools.
@@ -156,6 +157,7 @@ impl McpToolEnum {
             McpToolEnum::SkillDiscover(_) => ToolTier::Beta,
             McpToolEnum::KnownLimitStore(_) => ToolTier::Beta,
             McpToolEnum::KnownLimitList(_) => ToolTier::Beta,
+            McpToolEnum::OplogQuery(_) => ToolTier::Beta,
         }
     }
 }
@@ -200,6 +202,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillDiscover(t) => t.name(),
             McpToolEnum::KnownLimitStore(t) => t.name(),
             McpToolEnum::KnownLimitList(t) => t.name(),
+            McpToolEnum::OplogQuery(t) => t.name(),
         }
     }
 
@@ -242,6 +245,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillDiscover(t) => t.schema(),
             McpToolEnum::KnownLimitStore(t) => t.schema(),
             McpToolEnum::KnownLimitList(t) => t.schema(),
+            McpToolEnum::OplogQuery(t) => t.schema(),
         }
     }
 
@@ -288,6 +292,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillDiscover(t) => t.invoke(args, ctx).await,
             McpToolEnum::KnownLimitStore(t) => t.invoke(args, ctx).await,
             McpToolEnum::KnownLimitList(t) => t.invoke(args, ctx).await,
+            McpToolEnum::OplogQuery(t) => t.invoke(args, ctx).await,
         }
     }
 }
@@ -477,6 +482,7 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::SkillDiscover(DevkitSkillDiscoverTool),
         McpToolEnum::KnownLimitStore(DevkitKnownLimitStoreTool),
         McpToolEnum::KnownLimitList(DevkitKnownLimitListTool),
+        McpToolEnum::OplogQuery(DevkitOplogQueryTool),
     ];
     for tool in all_tools {
         if let Some(allowed) = tiers

@@ -338,6 +338,28 @@ pub(crate) enum VaultCommands {
     },
     /// Rebuild the Tantivy search index for all vault notes
     Reindex,
+    /// List all vault notes
+    List {
+        /// Filter by tag
+        #[arg(short, long)]
+        tag: Option<String>,
+    },
+    /// Read a vault note by its relative path (e.g. "99-Meta/devbase-essence.md")
+    Read {
+        /// Relative path of the note within the vault
+        path: String,
+    },
+    /// Write or overwrite a vault note
+    Write {
+        /// Relative path of the note within the vault
+        path: String,
+        /// Note content (use "-" to read from stdin)
+        #[arg(short, long)]
+        content: Option<String>,
+        /// Title (optional, defaults to filename)
+        #[arg(short, long)]
+        title: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

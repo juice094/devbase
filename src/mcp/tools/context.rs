@@ -118,7 +118,61 @@ Returns: JSON object with:
                     }
                 }
 
-                // 4. Scan assets directory for project-related files
+                // 4. Code structure: modules
+                let mut modules = Vec::new();
+                if let Some(ref rid) = repo_id {
+                    if let Ok(ms) = crate::registry::WorkspaceRegistry::list_modules(&conn, rid) {
+                        for (name, kind, path) in ms {
+                            modules.push(serde_json::json!({
+                                "name": name,
+                                "kind": kind,
+                                "path": path,
+                            }));
+                        }
+                    }
+                }
+
+                // 5. Code symbols (top 50)
+                let mut symbols = Vec::new();
+                if let Some(ref rid) = repo_id {
+                    let mut stmt = conn.prepare(
+                        "SELECT name, file_path, symbol_type, line_start, signature
+                         FROM code_symbols WHERE repo_id = ?1 LIMIT 50"
+                    )?;
+                    let rows = stmt.query_map([rid], |row| {
+                        Ok(serde_json::json!({
+                            "name": row.get::<_, String>(0)?,
+                            "file": row.get::<_, String>(1)?,
+                            "type": row.get::<_, String>(2)?,
+                            "line": row.get::<_, Option<i64>>(3)?,
+                            "signature": row.get::<_, Option<String>>(4)?,
+                        }))
+                    })?;
+                    for r in rows {
+                        if let Ok(v) = r { symbols.push(v); }
+                    }
+                }
+
+                // 6. Call graph edges (top 50)
+                let mut calls = Vec::new();
+                if let Some(ref rid) = repo_id {
+                    let mut stmt = conn.prepare(
+                        "SELECT caller_file, caller_symbol, callee_name
+                         FROM code_call_graph WHERE repo_id = ?1 LIMIT 50"
+                    )?;
+                    let rows = stmt.query_map([rid], |row| {
+                        Ok(serde_json::json!({
+                            "caller_file": row.get::<_, String>(0)?,
+                            "caller": row.get::<_, String>(1)?,
+                            "callee": row.get::<_, String>(2)?,
+                        }))
+                    })?;
+                    for r in rows {
+                        if let Ok(v) = r { calls.push(v); }
+                    }
+                }
+
+                // 7. Scan assets directory for project-related files
                 let mut assets = Vec::new();
                 if let Ok(ws) = crate::registry::WorkspaceRegistry::workspace_dir() {
                     let assets_dir = ws.join("assets");
@@ -154,19 +208,22 @@ Returns: JSON object with:
                     }
                 }
 
-                anyhow::Ok((repo_json, linked_vaults, assets))
+                anyhow::Ok((repo_json, linked_vaults, modules, symbols, calls, assets))
             }
         })
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
 
-        let (repo_json, linked_vaults, assets) = result;
+        let (repo_json, linked_vaults, modules, symbols, calls, assets) = result;
 
         Ok(serde_json::json!({
             "success": true,
             "project": project,
             "repo": repo_json,
             "vault_notes": linked_vaults,
+            "modules": modules,
+            "symbols": symbols,
+            "calls": calls,
             "assets": assets,
         }))
     }

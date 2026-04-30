@@ -1,5 +1,6 @@
 pub mod context;
 pub mod known_limit;
+pub mod oplog;
 pub mod query;
 pub mod repo;
 pub mod skill;
@@ -7,6 +8,7 @@ pub mod vault;
 
 pub use context::*;
 pub use known_limit::*;
+pub use oplog::*;
 pub use query::*;
 pub use repo::*;
 pub use skill::*;

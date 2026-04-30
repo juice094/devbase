@@ -1,7 +1,7 @@
 # devbase
 
-[![Version](https://img.shields.io/badge/version-v0.12.0-blue)](https://github.com/juice094/devbase/releases)
-[![Tests](https://img.shields.io/badge/tests-379%20passed-brightgreen)](./AGENTS.md)
+[![Version](https://img.shields.io/badge/version-v0.13.0-blue)](https://github.com/juice094/devbase/releases)
+[![Tests](https://img.shields.io/badge/tests-389%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
 [![License](https://img.shields.io/badge/license-MIT-orange)](./LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-9cf)](https://www.rust-lang.org)
@@ -86,7 +86,7 @@ cd devbase && cargo install --path .
 
 **面板布局**：左侧 35% 仓库列表（状态图标 ● dirty ◆ diverged ▼ behind ✓ 正常），右侧 65% 三标签页详情（Overview / Health / Insights）。
 
-### AI Layer — 37 个 MCP Tools
+### AI Layer — 38 个 MCP Tools
 
 基于 [Model Context Protocol](https://modelcontextprotocol.io) 标准化接口，stdio 本地进程通信。
 

@@ -21,10 +21,11 @@ impl WorkspaceRegistry {
         modules: &[(String, String)],
     ) -> anyhow::Result<()> {
         let tx = conn.transaction()?;
-        for (module_path, public_apis) in modules {
+        tx.execute("DELETE FROM repo_modules WHERE repo_id = ?1", [repo_id])?;
+        for (module_name, module_type) in modules {
             tx.execute(
-                "INSERT OR REPLACE INTO repo_modules_legacy (repo_id, module_path, public_apis, extracted_at) VALUES (?1, ?2, ?3, ?4)",
-                rusqlite::params![repo_id, module_path, public_apis, Utc::now().to_rfc3339()],
+                "INSERT OR REPLACE INTO repo_modules (repo_id, module_name, module_type, module_path) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![repo_id, module_name, module_type, module_name],
             )?;
         }
         tx.commit()?;

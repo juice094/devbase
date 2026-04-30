@@ -2,7 +2,7 @@ use super::*;
 use crate::storage::StorageBackend;
 use std::path::PathBuf;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 22;
+pub const CURRENT_SCHEMA_VERSION: i32 = 23;
 
 impl WorkspaceRegistry {
     pub fn db_path() -> anyhow::Result<PathBuf> {
@@ -1059,6 +1059,13 @@ impl WorkspaceRegistry {
             conn.execute("PRAGMA user_version = 22", [])?;
         }
 
+        if user_version < 23 {
+            // v23: Remove repo_modules_legacy which has a stale FK to repos(id).
+            // save_modules now writes to repo_modules (entity-model aligned, no FK).
+            let _ = conn.execute("DROP TABLE IF EXISTS repo_modules_legacy", []);
+            conn.execute("PRAGMA user_version = 23", [])?;
+        }
+
         conn.execute(
             "CREATE TABLE IF NOT EXISTS vault_repo_links (
                 vault_id TEXT NOT NULL,
@@ -1188,6 +1195,11 @@ impl WorkspaceRegistry {
                 }
             }
         }
+
+        // Ghost-table cleanup: repos is deprecated since v21.  It may be
+        // recreated by the historical CREATE TABLE IF NOT EXISTS at the top
+        // of this function, so drop it unconditionally at the end.
+        let _ = conn.execute("DROP TABLE IF EXISTS repos", []);
 
         conn.execute("COMMIT", [])?;
         Ok(conn)
