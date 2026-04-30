@@ -1,11 +1,14 @@
 # Agent 环境指引
 
-`devbase` 是本地优先的 AI Skill 编排基础设施。
+`devbase` 是 **本地情境编译器（Local Context Compiler）** —— AI agent 在本地数字世界中的海马体。
 
-- **当前阶段**：阶段三 — v0.12.0-alpha 进行中 / Phase 2 全部完成 (Stage A-E + managed-gate)
-- **当前版本**：v0.12.0-alpha（未打 tag）
-- **下一里程碑**：v0.12.0 正式发布 — 版本 tag + 预发布观察期（beta.1）
-- **核心方向**：将 GitHub 项目转换为标准化、可发现、可组合的 Skill，供弱 AI 子代理执行
+> 它将本地数字资产的原始数据（代码库、笔记、Skill、工作流）编译为 AI 可决策的结构化情境，不负责思考，不负责执行，只负责感知、编码、持久化、检索。
+
+- **当前阶段**：阶段三 — v0.12.0 已发布 / 安全硬化完成 / 双轨制迁移中
+- **当前版本**：v0.12.0
+- **下一里程碑**：v0.13.0 — 情境编译器闭环：entities 激活 + relations 填充 + project_context 增强
+- **核心方向**：让 Kimi CLI 在调用文件工具之前，先通过 devbase 获得"该读哪些文件、为什么读、它们之间的关系"
+- **本质分析**：见 `vault/99-Meta/devbase-essence-analysis-20260430.md` 与 `docs/architecture/redefinition.md`
 - **设计文档**：
   - [`docs/architecture/workflow-dsl.md`](docs/architecture/workflow-dsl.md) — Workflow DSL 规范
   - [`docs/architecture/workspace-as-schema.md`](docs/architecture/workspace-as-schema.md) — 统一实体模型设计
