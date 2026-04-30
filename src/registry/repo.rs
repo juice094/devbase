@@ -186,7 +186,7 @@ impl WorkspaceRegistry {
         language: Option<&str>,
     ) -> anyhow::Result<()> {
         let tx = conn.unchecked_transaction()?;
-        update_entity_metadata_field(&tx, repo_id, "language", language.unwrap_or("null"))?;
+        super::entity::update_entity_metadata_field(&tx, repo_id, "language", language.unwrap_or("null"))?;
         tx.commit()?;
         Ok(())
     }
@@ -197,7 +197,7 @@ impl WorkspaceRegistry {
         tier: &str,
     ) -> anyhow::Result<()> {
         let tx = conn.unchecked_transaction()?;
-        update_entity_metadata_field(&tx, repo_id, "data_tier", tier)?;
+        super::entity::update_entity_metadata_field(&tx, repo_id, "data_tier", tier)?;
         tx.commit()?;
         Ok(())
     }
@@ -208,7 +208,7 @@ impl WorkspaceRegistry {
         workspace_type: &str,
     ) -> anyhow::Result<()> {
         let tx = conn.unchecked_transaction()?;
-        update_entity_metadata_field(&tx, repo_id, "workspace_type", workspace_type)?;
+        super::entity::update_entity_metadata_field(&tx, repo_id, "workspace_type", workspace_type)?;
         tx.commit()?;
         Ok(())
     }
@@ -220,7 +220,7 @@ impl WorkspaceRegistry {
         timestamp: DateTime<Utc>,
     ) -> anyhow::Result<()> {
         let tx = conn.unchecked_transaction()?;
-        update_entity_metadata_field(&tx, repo_id, "last_synced_at", &timestamp.to_rfc3339())?;
+        super::entity::update_entity_metadata_field(&tx, repo_id, "last_synced_at", &timestamp.to_rfc3339())?;
         tx.commit()?;
         Ok(())
     }
@@ -257,7 +257,7 @@ impl WorkspaceRegistry {
                 |row| row.get(0),
             )
             .unwrap_or(None);
-        update_entity_metadata_field(
+        super::entity::update_entity_metadata_field(
             conn,
             repo_id,
             "tags",
@@ -289,31 +289,7 @@ fn upsert_entity_for_repo(conn: &rusqlite::Connection, repo: &RepoEntry) -> anyh
     )
 }
 
-/// Update a single JSON field in entities.metadata for a repo.
-/// When `value` is the JSON literal `"null"`, the key is removed instead (so json_extract returns SQL NULL).
-pub fn update_entity_metadata_field(
-    conn: &rusqlite::Connection,
-    repo_id: &str,
-    field: &str,
-    value: &str,
-) -> anyhow::Result<()> {
-    if value == "null" {
-        conn.execute(
-            &format!(
-                "UPDATE entities SET metadata = json_remove(metadata, '$.{field}'), updated_at = ?1 WHERE id = ?2"
-            ),
-            rusqlite::params![chrono::Utc::now().to_rfc3339(), repo_id],
-        )?;
-    } else {
-        conn.execute(
-            &format!(
-                "UPDATE entities SET metadata = json_set(metadata, '$.{field}', ?1), updated_at = ?2 WHERE id = ?3"
-            ),
-            rusqlite::params![value, chrono::Utc::now().to_rfc3339(), repo_id],
-        )?;
-    }
-    Ok(())
-}
+
 
 #[cfg(test)]
 mod tests {

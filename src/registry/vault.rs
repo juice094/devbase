@@ -137,7 +137,7 @@ impl WorkspaceRegistry {
     pub fn delete_vault_note(conn: &rusqlite::Connection, note_id: &str) -> anyhow::Result<()> {
         conn.execute("DELETE FROM vault_repo_links WHERE vault_id = ?1", [note_id])?;
         // Phase 2 Stage C: keep entities in sync
-        let _ = conn.execute("DELETE FROM entities WHERE id = ?1", [note_id]);
+        let _ = crate::registry::entity::delete_entity(conn, note_id);
         Ok(())
     }
 }
