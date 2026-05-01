@@ -180,6 +180,7 @@ pub mod known_limits;
 pub mod links;
 pub mod metrics;
 mod migrate;
+pub mod migrations;
 pub mod repo;
 pub mod repos_toml;
 pub mod vault;
