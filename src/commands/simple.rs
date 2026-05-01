@@ -450,6 +450,78 @@ pub fn run_oplog(
     Ok(())
 }
 
+pub fn run_metrics(
+    ctx: &mut crate::storage::AppContext,
+    repo_id: &str,
+    json: bool,
+) -> anyhow::Result<()> {
+    let conn = ctx.conn()?;
+    if repo_id.is_empty() {
+        let metrics = crate::registry::metrics::list_code_metrics(&conn)?;
+        if json {
+            let output: Vec<serde_json::Value> = metrics
+                .into_iter()
+                .map(|(id, m)| {
+                    serde_json::json!({
+                        "repo_id": id,
+                        "total_lines": m.total_lines,
+                        "source_lines": m.source_lines,
+                        "test_lines": m.test_lines,
+                        "comment_lines": m.comment_lines,
+                        "file_count": m.file_count,
+                        "language_breakdown": m.language_breakdown,
+                    })
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        } else {
+            println!("Code metrics for {} repo(s):", metrics.len());
+            for (id, m) in metrics {
+                println!(
+                    "  [{}] total={} source={} test={} comment={} files={}",
+                    id,
+                    m.total_lines,
+                    m.source_lines,
+                    m.test_lines,
+                    m.comment_lines,
+                    m.file_count
+                );
+            }
+        }
+    } else {
+        match crate::registry::metrics::get_code_metrics(&conn, repo_id)? {
+            Some(m) => {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "repo_id": repo_id,
+                            "total_lines": m.total_lines,
+                            "source_lines": m.source_lines,
+                            "test_lines": m.test_lines,
+                            "comment_lines": m.comment_lines,
+                            "file_count": m.file_count,
+                            "language_breakdown": m.language_breakdown,
+                        }))?
+                    );
+                } else {
+                    println!(
+                        "[{}] total={} source={} test={} comment={} files={}",
+                        repo_id,
+                        m.total_lines,
+                        m.source_lines,
+                        m.test_lines,
+                        m.comment_lines,
+                        m.file_count
+                    );
+                }
+            }
+            None => println!("No metrics found for '{}'.", repo_id),
+        }
+    }
+    Ok(())
+}
+
 pub fn run_discover(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     use discovery_engine::{Discovery, discover_dependencies, discover_similar_projects};
     use std::collections::HashMap;

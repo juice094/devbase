@@ -153,6 +153,15 @@ pub(crate) enum Commands {
         #[arg(long)]
         repo: Option<String>,
     },
+    /// Show code metrics for registered repositories
+    Metrics {
+        /// Specific repo ID; if omitted, shows all repos
+        #[arg(default_value = "")]
+        repo_id: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Registry backup and restore operations
     Registry {
         #[command(subcommand)]
@@ -531,6 +540,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Oplog { limit, repo } => {
             commands::simple::run_oplog(&mut ctx, limit, repo)?;
+        }
+        Commands::Metrics { repo_id, json } => {
+            commands::simple::run_metrics(&mut ctx, &repo_id, json)?;
         }
         Commands::Discover => {
             commands::simple::run_discover(&mut ctx)?;
