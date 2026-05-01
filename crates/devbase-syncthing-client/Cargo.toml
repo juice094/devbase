@@ -1,0 +1,14 @@
+[package]
+name = "devbase-syncthing-client"
+version = "0.1.0-alpha.1"
+edition = "2024"
+description = "Syncthing REST API client for folder management"
+authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+license = "MIT"
+keywords = ["syncthing", "p2p", "sync", "rest-client"]
+categories = ["network-programming"]
+
+[dependencies]
+reqwest = { version = "0.12", features = ["json"] }
+serde_json = "1"
+anyhow = "1"

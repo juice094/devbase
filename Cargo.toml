@@ -63,6 +63,9 @@ hf-hub = { version = "0.5", optional = true }
 devbase-symbol-links = { path = "crates/devbase-symbol-links" }
 devbase-sync-protocol = { path = "crates/devbase-sync-protocol" }
 devbase-core-types = { path = "crates/devbase-core-types" }
+devbase-syncthing-client = { path = "crates/devbase-syncthing-client" }
+devbase-vault-frontmatter = { path = "crates/devbase-vault-frontmatter" }
+devbase-vault-wikilink = { path = "crates/devbase-vault-wikilink" }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

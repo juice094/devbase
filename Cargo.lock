@@ -1072,6 +1072,9 @@ dependencies = [
  "devbase-core-types",
  "devbase-symbol-links",
  "devbase-sync-protocol",
+ "devbase-syncthing-client",
+ "devbase-vault-frontmatter",
+ "devbase-vault-wikilink",
  "dirs",
  "git2",
  "hf-hub",
@@ -1128,6 +1131,23 @@ dependencies = [
  "serde",
  "walkdir",
 ]
+
+[[package]]
+name = "devbase-syncthing-client"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "anyhow",
+ "reqwest",
+ "serde_json",
+]
+
+[[package]]
+name = "devbase-vault-frontmatter"
+version = "0.1.0-alpha.1"
+
+[[package]]
+name = "devbase-vault-wikilink"
+version = "0.1.0-alpha.1"
 
 [[package]]
 name = "difflib"

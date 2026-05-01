@@ -1,0 +1,11 @@
+[package]
+name = "devbase-vault-frontmatter"
+version = "0.1.0-alpha.1"
+edition = "2024"
+description = "Markdown frontmatter parser for vault notes"
+authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+license = "MIT"
+keywords = ["markdown", "frontmatter", "vault", "yaml"]
+categories = ["text-processing"]
+
+[dependencies]
