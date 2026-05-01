@@ -390,7 +390,7 @@ impl crate::mcp::clients::RegistryClient for AppContext {
         };
         let deps: Vec<serde_json::Value> = rows
             .into_iter()
-            .filter(|(_, rel, _)| rel_filter.map_or(true, |f| f == rel))
+            .filter(|(_, rel, _)| rel_filter.is_none_or(|f| f == rel))
             .map(|(id, rel, conf)| {
                 serde_json::json!({
                     "repo_id": id,
