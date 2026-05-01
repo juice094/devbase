@@ -13,6 +13,15 @@ pub(crate) enum SortMode {
     Stars,
 }
 
+impl SortMode {
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::Status => Self::Stars,
+            Self::Stars => Self::Status,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum MainView {
     RepoList,
@@ -323,5 +332,11 @@ mod tests {
         let i18n = crate::i18n::from_language("en");
         assert_eq!(SearchMode::Repo.label(&i18n), "Repo Search");
         assert_eq!(SearchMode::Code.label(&i18n), "Code Search");
+    }
+
+    #[test]
+    fn test_sort_mode_toggle() {
+        assert_eq!(SortMode::Status.toggle(), SortMode::Stars);
+        assert_eq!(SortMode::Stars.toggle(), SortMode::Status);
     }
 }

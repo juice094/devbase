@@ -288,10 +288,7 @@ pub(crate) async fn run_app<B: Backend>(
                         app.search_popup_mode = SearchPopupMode::Input;
                     }
                     KeyCode::Char('o') => {
-                        app.sort_mode = match app.sort_mode {
-                            SortMode::Status => SortMode::Stars,
-                            SortMode::Stars => SortMode::Status,
-                        };
+                        app.sort_mode = app.sort_mode.toggle();
                         if let Err(e) = app.load_repos() {
                             app.log_error(app.ctx.i18n.log.refresh_failed(e));
                         }
