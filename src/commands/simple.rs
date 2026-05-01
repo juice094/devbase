@@ -198,6 +198,18 @@ pub async fn run_vault(
             .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
             println!("Wrote vault note: {}", path);
         }
+        crate::VaultCommands::Search { query, limit } => {
+            let results = crate::search::search_vault(&query, limit)
+                .map_err(|e| anyhow::anyhow!("Vault search failed: {}", e))?;
+            if results.is_empty() {
+                println!("No vault notes found for '{}'.", query);
+            } else {
+                println!("Found {} note(s):", results.len());
+                for (id, score) in results {
+                    println!("  [{}] score={:.3}", id, score);
+                }
+            }
+        }
     }
     Ok(())
 }

@@ -360,6 +360,14 @@ pub(crate) enum VaultCommands {
         #[arg(short, long)]
         title: Option<String>,
     },
+    /// Search vault notes by keyword
+    Search {
+        /// Search query
+        query: String,
+        /// Maximum results
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
 }
 
 #[derive(Subcommand)]
