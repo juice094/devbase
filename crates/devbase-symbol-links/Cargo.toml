@@ -1,0 +1,14 @@
+[package]
+name = "devbase-symbol-links"
+version = "0.1.0-alpha.1"
+edition = "2024"
+description = "Code symbol link generator: similar-signature and co-located relationship discovery"
+authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+license = "MIT"
+keywords = ["code-analysis", "symbol-links", "rust", "knowledge-graph"]
+categories = ["development-tools"]
+
+[dependencies]
+rusqlite = { version = "0.34", features = ["bundled", "chrono"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"

@@ -1,0 +1,15 @@
+[package]
+name = "devbase-sync-protocol"
+version = "0.1.0-alpha.1"
+edition = "2024"
+description = "Lightweight directory sync protocol with version vectors"
+authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+license = "MIT"
+keywords = ["sync", "version-vector", "directory-scan", "rust"]
+categories = ["filesystem"]
+
+[dependencies]
+walkdir = "2"
+serde = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"

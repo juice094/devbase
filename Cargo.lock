@@ -1069,6 +1069,9 @@ dependencies = [
  "criterion",
  "crossbeam-channel",
  "crossterm 0.28.1",
+ "devbase-core-types",
+ "devbase-symbol-links",
+ "devbase-sync-protocol",
  "dirs",
  "git2",
  "hf-hub",
@@ -1098,6 +1101,32 @@ dependencies = [
  "tree-sitter-typescript",
  "walkdir",
  "which",
+]
+
+[[package]]
+name = "devbase-core-types"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "chrono",
+]
+
+[[package]]
+name = "devbase-symbol-links"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "rusqlite",
+]
+
+[[package]]
+name = "devbase-sync-protocol"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "walkdir",
 ]
 
 [[package]]

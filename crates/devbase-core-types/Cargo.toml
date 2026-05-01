@@ -1,0 +1,12 @@
+[package]
+name = "devbase-core-types"
+version = "0.1.0-alpha.1"
+edition = "2024"
+description = "Core knowledge graph types: Node, Edge, NodeType"
+authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+license = "MIT"
+keywords = ["knowledge-graph", "types", "rust"]
+categories = ["data-structures"]
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }

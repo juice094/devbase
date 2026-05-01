@@ -59,7 +59,10 @@ candle-transformers = { version = "0.10", optional = true }
 tokenizers = { version = "0.22", default-features = false, features = [], optional = true }
 hf-hub = { version = "0.5", optional = true }
 
-
+# Extracted crates (zero internal coupling)
+devbase-symbol-links = { path = "crates/devbase-symbol-links" }
+devbase-sync-protocol = { path = "crates/devbase-sync-protocol" }
+devbase-core-types = { path = "crates/devbase-core-types" }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -68,5 +71,14 @@ assert_cmd = "2"
 predicates = "3"
 
 [workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+version = "0.14.0"
+authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/juice094/devbase"
 
 
