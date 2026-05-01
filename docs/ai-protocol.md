@@ -5,7 +5,7 @@
 ## 当前架构快照
 
 - **版本**：v0.14.0
-- **测试**：397 lib passed / 0 failed / 5 ignored；11 CLI passed
+- **测试**：423 lib passed / 0 failed / 5 ignored；7 bin + 11 integration passed
 - **编译**：0 warnings
 - **Registry God Object**：生产代码业务逻辑已全部消除，`WorkspaceRegistry` 为纯向后兼容门面
 
@@ -35,7 +35,7 @@
 ## 待办（按优先级）
 
 1. **P1 — migrate.rs 拆解**：待 Claw 架构就绪后推进。计划按 schema 版本或职责切分为子模块（如 `migrate/v16.rs`、`migrate/v17.rs` 等），每次改动需保证 `test_in_memory_schema_version` 通过。
-2. **P2 — 测试覆盖率**：20 个零测试文件（`commands/simple.rs` 647L、`sync/tasks.rs` 622L 等）待补充 smoke tests。
+2. **P2 — 测试覆盖率**：已补充 33 个 smoke tests 覆盖 21 个零测试文件。剩余：`tui/render/detail.rs`(603L)、`tui/render/popups.rs`(828L)、`tui/event.rs`(413L)、`tui/render/list.rs`(194L)。
 3. **P3 — 12 个巨石文件 >500L**：持续瘦身。
 
 ## 模式约束
@@ -46,7 +46,7 @@
 
 ## 最近一次 AI 会话
 
-- **日期**：2026-04-26
+- **日期**：2026-04-26 / 2026-04-27
 - **架构**：CLI
-- **交付**：Batch 1-3 完成 + 文档同步
-- **Commit**：`dfc43d4`（重构）、`2def21c`（文档）
+- **交付**：Batch 1-3 完成 + MCP NDJSON 修复 + 33 个新增 smoke tests
+- **Commit**：`dfc43d4`（重构）、`2def21c`（文档）、`095f074`（MCP 修复）、`08b0f1b`（测试 batch 1）、`9e660a8`（测试 batch 2）、`07e21ca`（测试 batch 3）
