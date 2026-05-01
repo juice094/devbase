@@ -84,13 +84,39 @@ pub fn find_related_entities(
 
 #[cfg(test)]
 mod tests {
-    use crate::registry::WorkspaceRegistry;
+    fn in_memory() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+        conn.execute(
+            "CREATE TABLE entities (
+                id TEXT PRIMARY KEY
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "CREATE TABLE relations (
+                id TEXT PRIMARY KEY,
+                from_entity_id TEXT NOT NULL,
+                to_entity_id TEXT NOT NULL,
+                relation_type TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (from_entity_id) REFERENCES entities(id),
+                FOREIGN KEY (to_entity_id) REFERENCES entities(id),
+                UNIQUE(from_entity_id, to_entity_id, relation_type)
+            )",
+            [],
+        )
+        .unwrap();
+        conn
+    }
 
     #[test]
     fn test_save_relation_smoke() {
-        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
-        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-a").unwrap();
-        WorkspaceRegistry::seed_test_repo(&mut conn, "repo-b").unwrap();
+        let conn = in_memory();
+        conn.execute("INSERT INTO entities (id) VALUES ('repo-a'), ('repo-b')", [])
+            .unwrap();
         super::save_relation(&conn, "repo-a", "repo-b", "depends_on", 0.95).unwrap();
 
         let count: i64 = conn

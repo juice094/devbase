@@ -37,11 +37,29 @@ pub fn upsert_entity(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::registry::WorkspaceRegistry;
+
+    fn in_memory() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE entities (
+                id TEXT PRIMARY KEY,
+                entity_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                source_url TEXT,
+                local_path TEXT,
+                metadata TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            )",
+            [],
+        )
+        .unwrap();
+        conn
+    }
 
     #[test]
     fn test_entity_crud() {
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let conn = in_memory();
 
         // Upsert
         upsert_entity(
@@ -65,7 +83,7 @@ mod tests {
 
     #[test]
     fn test_entity_metadata_remove_null() {
-        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let conn = in_memory();
         upsert_entity(
             &conn,
             "ent-2",
