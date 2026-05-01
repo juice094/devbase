@@ -5,9 +5,10 @@
 ## 当前架构快照
 
 - **版本**：v0.14.0
-- **测试**：437 lib passed / 0 failed / 5 ignored；7 bin + 11 integration passed
-- **编译**：0 warnings
+- **测试**：437 workspace passed / 0 failed / 5 ignored；分布：devbase 418 + symbol-links 4 + sync-protocol 12 + core-types 3
+- **编译**：0 errors，1 unused import warning（SortMode）
 - **Registry God Object**：生产代码业务逻辑已全部消除，`WorkspaceRegistry` 为纯向后兼容门面
+- **Workspace 拆分**：3 个零耦合模块已提取为独立 crate（`crates/` 目录）
 
 ## 已完成的子模块提取（v0.15 重构）
 
@@ -32,11 +33,30 @@
 | `registry/migrate.rs` | 1273 | ⏳ 待拆分 | 巨石文件，含 schema 迁移 + DDL + 数据转换逻辑；需 Claw 架构支持多轮持久化拆分 |
 | `registry/test_helpers.rs` | 394 | ✅ 保留 | 纯测试基础设施，`init_in_memory()` / `seed_test_repo()` 等辅助方法 |
 
+## 已提取的 Workspace Crate
+
+| Crate | 来源模块 | 行数 | 测试 | 内部耦合 | Commit |
+|-------|---------|------|------|---------|--------|
+| `devbase-symbol-links` | `src/symbol_links.rs` | 280 | 4 | 0 `crate::` refs | `7eb139d` |
+| `devbase-sync-protocol` | `src/sync_protocol.rs` | 279 | 12 | 0 `crate::` refs | `7eb139d` |
+| `devbase-core-types` | `src/core/node.rs` | 128 | 3 | 0 `crate::` refs | `7eb139d` |
+
+> 向后兼容：原 `src/` 路径改为 `pub use <crate>::*;` 重新导出，API 不变。
+
+## 模块耦合健康度地图（按 `crate::` 引用数）
+
+| 等级 | 标准 | 代表模块 | 行动 |
+|------|------|---------|------|
+| 🟢 健康 | 0-3 个 `crate::` refs | `syncthing_client`, `embedding`, `semantic_index`, `search`, `registry/health`, `registry/metrics`, `vault/frontmatter`, `vault/wikilink`, `workflow/interpolate`, `workflow/model`, `skill_runtime/parser` | **下一轮拆分候选** |
+| 🟡 亚健康 | 4-15 个 refs | `scan`, `sync`, `query`, `health`, `vault/indexer`, `workflow/state`, `skill_runtime/discover` | 需 trait 化解耦后拆分 |
+| 🔴 不健康 | >15 个 refs | `mcp/tools/repo` (70), `knowledge_engine` (33), `skill_runtime/executor` (15), `workflow/executor` (10) | 需架构重构 |
+
 ## 待办（按优先级）
 
-1. **P1 — migrate.rs 拆解**：待 Claw 架构就绪后推进。计划按 schema 版本或职责切分为子模块（如 `migrate/v16.rs`、`migrate/v17.rs` 等），每次改动需保证 `test_in_memory_schema_version` 通过。
-2. **P2 — 测试覆盖率**：已补充 ~47 个 smoke tests 覆盖全部零测试文件。所有含逻辑的文件均已具备测试模块。
-3. **P3 — 12 个巨石文件 >500L**：持续瘦身。
+1. **P0 — Workspace 扩展**：提取 🟢 健康模块为独立 crate（`embedding`, `syncthing_client`, `registry/health`, `vault/frontmatter` 等）。目标：workspace 成员达到 8-10 个。
+2. **P1 — MCP trait 化**：`mcp/tools/repo.rs` 有 70 个 `crate::` 引用，是最大耦合点。需定义 `RegistryClient` / `SearchClient` trait，将具体调用改为接口调用。
+3. **P2 — registry 子模块拆分**：`health`, `metrics`, `workspace`, `entity`, `relation` 已零耦合，可优先提取。
+4. **P3 — migrate.rs 拆解**：待 Claw 架构就绪后推进。
 
 ## 模式约束
 
@@ -46,7 +66,8 @@
 
 ## 最近一次 AI 会话
 
-- **日期**：2026-04-26 / 2026-04-27
+- **日期**：2026-05-01
 - **架构**：CLI
-- **交付**：Batch 1-3 完成 + MCP NDJSON 修复 + 33 个新增 smoke tests
-- **Commit**：`dfc43d4`（重构）、`2def21c`（文档）、`095f074`（MCP 修复）、`08b0f1b`（测试 batch 1）、`9e660a8`（测试 batch 2）、`07e21ca`（测试 batch 3）
+- **交付**：Workspace 骨架搭建 + 3 个零耦合模块提取 + 全模块耦合地图扫描
+- **Commit**：`7eb139d`（workspace 拆分）
+- **关键决策**：采用"强叙事+弱绑定"分发策略；以 `crate::` 引用数作为耦合健康度金标准
