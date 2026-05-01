@@ -82,31 +82,9 @@ fn render_overview(
         _ => (false, 0, 0),
     };
 
-    let status_color = if dirty {
-        styles.theme.danger
-    } else if behind > 0 || ahead > 0 {
-        styles.theme.warning
-    } else {
-        styles.theme.success
-    };
-    let status_icon = if dirty {
-        "⚠"
-    } else if behind > 0 || ahead > 0 {
-        "●"
-    } else {
-        "✓"
-    };
-    let status_desc = if dirty {
-        "工作目录不干净".to_string()
-    } else if behind > 0 && ahead > 0 {
-        format!("分叉  ahead={} behind={}", ahead, behind)
-    } else if behind > 0 {
-        format!("落后远程 {} commit", behind)
-    } else if ahead > 0 {
-        format!("超前远程 {} commit", ahead)
-    } else {
-        "已最新".to_string()
-    };
+    let status_color = overview_status_color(dirty, behind > 0 || ahead > 0, &styles.theme);
+    let status_icon = overview_status_icon(dirty, behind > 0 || ahead > 0);
+    let status_desc = overview_status_desc(dirty, ahead, behind);
 
     let head_short = super::read_head_commit(&repo.local_path).unwrap_or_else(|| "—".to_string());
     let (last_sync_human, last_sync_action, last_sync_commit) =
@@ -120,12 +98,7 @@ fn render_overview(
 
     let policy = crate::sync::SyncPolicy::from_tags(&repo.tags.join(","));
     let policy_text = format!("{:?}", policy);
-    let policy_color = match policy {
-        crate::sync::SyncPolicy::Mirror => styles.theme.danger,
-        crate::sync::SyncPolicy::Conservative => styles.theme.warning,
-        crate::sync::SyncPolicy::Rebase => styles.theme.success,
-        crate::sync::SyncPolicy::Merge => Color::Magenta,
-    };
+    let policy_color = sync_policy_color(policy, &styles.theme);
 
     let mut tag_line = vec![Span::styled("标签: ", styles.label)];
     tag_line.extend(crate::tui::tag_spans(&repo.tags));
@@ -600,4 +573,78 @@ fn render_vault_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &St
         .wrap(Wrap { trim: true });
 
     frame.render_widget(paragraph, area);
+}
+
+fn overview_status_color(dirty: bool, diverged: bool, theme: &crate::tui::theme::Theme) -> Color {
+    if dirty {
+        theme.danger
+    } else if diverged {
+        theme.warning
+    } else {
+        theme.success
+    }
+}
+
+fn overview_status_icon(dirty: bool, diverged: bool) -> &'static str {
+    if dirty {
+        "⚠"
+    } else if diverged {
+        "●"
+    } else {
+        "✓"
+    }
+}
+
+fn overview_status_desc(dirty: bool, ahead: usize, behind: usize) -> String {
+    if dirty {
+        "工作目录不干净".to_string()
+    } else if behind > 0 && ahead > 0 {
+        format!("分叉  ahead={} behind={}", ahead, behind)
+    } else if behind > 0 {
+        format!("落后远程 {} commit", behind)
+    } else if ahead > 0 {
+        format!("超前远程 {} commit", ahead)
+    } else {
+        "已最新".to_string()
+    }
+}
+
+fn sync_policy_color(policy: crate::sync::SyncPolicy, theme: &crate::tui::theme::Theme) -> Color {
+    match policy {
+        crate::sync::SyncPolicy::Mirror => theme.danger,
+        crate::sync::SyncPolicy::Conservative => theme.warning,
+        crate::sync::SyncPolicy::Rebase => theme.success,
+        crate::sync::SyncPolicy::Merge => Color::Magenta,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui::theme::Theme;
+
+    #[test]
+    fn test_overview_status_icon() {
+        assert_eq!(overview_status_icon(true, false), "⚠");
+        assert_eq!(overview_status_icon(false, true), "●");
+        assert_eq!(overview_status_icon(false, false), "✓");
+    }
+
+    #[test]
+    fn test_overview_status_desc() {
+        assert_eq!(overview_status_desc(true, 0, 0), "工作目录不干净");
+        assert_eq!(overview_status_desc(false, 2, 3), "分叉  ahead=2 behind=3");
+        assert_eq!(overview_status_desc(false, 0, 1), "落后远程 1 commit");
+        assert_eq!(overview_status_desc(false, 1, 0), "超前远程 1 commit");
+        assert_eq!(overview_status_desc(false, 0, 0), "已最新");
+    }
+
+    #[test]
+    fn test_sync_policy_color() {
+        let theme = Theme::dark();
+        assert_eq!(sync_policy_color(crate::sync::SyncPolicy::Mirror, &theme), theme.danger);
+        assert_eq!(sync_policy_color(crate::sync::SyncPolicy::Conservative, &theme), theme.warning);
+        assert_eq!(sync_policy_color(crate::sync::SyncPolicy::Rebase, &theme), theme.success);
+        assert_eq!(sync_policy_color(crate::sync::SyncPolicy::Merge, &theme), Color::Magenta);
+    }
 }
