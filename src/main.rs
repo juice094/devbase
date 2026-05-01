@@ -191,6 +191,20 @@ pub(crate) enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Query cross-repository dependency graph
+    DependencyGraph {
+        /// Repository ID to query
+        repo_id: String,
+        /// Direction: outgoing (this repo depends on) or incoming (depends on this repo)
+        #[arg(long, default_value = "outgoing")]
+        direction: String,
+        /// Filter by relation type
+        #[arg(long)]
+        relation_type: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Registry backup and restore operations
     Registry {
         #[command(subcommand)]
@@ -578,6 +592,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::CallGraph { repo_id, callee, caller, file, limit, json } => {
             commands::simple::run_call_graph(&mut ctx, &repo_id, callee, caller, file, limit, json)?;
+        }
+        Commands::DependencyGraph { repo_id, direction, relation_type, json } => {
+            commands::simple::run_dependency_graph(&mut ctx, &repo_id, &direction, relation_type, json)?;
         }
         Commands::Discover => {
             commands::simple::run_discover(&mut ctx)?;

@@ -634,6 +634,50 @@ pub fn run_call_graph(
     Ok(())
 }
 
+pub fn run_dependency_graph(
+    ctx: &mut crate::storage::AppContext,
+    repo_id: &str,
+    direction: &str,
+    relation_type: Option<String>,
+    json: bool,
+) -> anyhow::Result<()> {
+    let conn = ctx.conn()?;
+    let rel_filter = relation_type.as_deref().filter(|s| !s.is_empty());
+    let (label, rows): (&str, Vec<(String, String, f64)>) = if direction == "incoming" || direction == "reverse" {
+        ("reverse dependencies", crate::dependency_graph::list_reverse_dependencies(&conn, repo_id)?)
+    } else {
+        ("dependencies", crate::dependency_graph::list_dependencies(&conn, repo_id)?)
+    };
+    let deps: Vec<(String, String, f64)> = rows
+        .into_iter()
+        .filter(|(_, rel, _)| rel_filter.map_or(true, |f| f == rel))
+        .collect();
+    if json {
+        let out: Vec<serde_json::Value> = deps
+            .iter()
+            .map(|(id, rel, conf)| {
+                serde_json::json!({
+                    "repo_id": id,
+                    "relation_type": rel,
+                    "confidence": conf,
+                })
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+            "repo_id": repo_id,
+            "direction": direction,
+            "count": out.len(),
+            "dependencies": out
+        }))?);
+    } else {
+        println!("{} for [{}]: {} edge(s)", label, repo_id, deps.len());
+        for (id, rel, conf) in deps {
+            println!("  -> {} ({} conf={:.2})", id, rel, conf);
+        }
+    }
+    Ok(())
+}
+
 pub fn run_discover(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     use discovery_engine::{Discovery, discover_dependencies, discover_similar_projects};
     use std::collections::HashMap;
