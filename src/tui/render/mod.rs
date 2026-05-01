@@ -177,3 +177,59 @@ pub(crate) fn read_repo_summary(conn: &rusqlite::Connection, repo_id: &str) -> O
     })
     .ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_read_syncdone_info_missing() {
+        let (human, action, commit) = read_syncdone_info("/nonexistent/path");
+        assert_eq!(human, "从未同步");
+        assert_eq!(action, "—");
+        assert_eq!(commit, "—");
+    }
+
+    #[test]
+    fn test_read_syncdone_info_valid() {
+        let tmp = std::env::temp_dir().join(format!("devbase_test_{}", std::process::id()));
+        let devbase = tmp.join(".devbase");
+        std::fs::create_dir_all(&devbase).unwrap();
+        let ts = chrono::Utc::now() - chrono::Duration::days(10);
+        let json = serde_json::json!({
+            "timestamp": ts.to_rfc3339(),
+            "action": "pull",
+            "local_commit": "abc123def456"
+        });
+        std::fs::write(devbase.join("syncdone"), json.to_string()).unwrap();
+        let (human, action, commit) = read_syncdone_info(tmp.to_str().unwrap());
+        assert_eq!(human, "1周前");
+        assert_eq!(action, "pull");
+        assert_eq!(commit, "abc123d");
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn test_read_repo_summary_found() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE repo_summaries (repo_id TEXT PRIMARY KEY, summary TEXT)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO repo_summaries VALUES (?1, ?2)",
+            ["r1", "A test summary"],
+        ).unwrap();
+        assert_eq!(read_repo_summary(&conn, "r1"), Some("A test summary".to_string()));
+    }
+
+    #[test]
+    fn test_read_repo_summary_missing() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE repo_summaries (repo_id TEXT PRIMARY KEY, summary TEXT)",
+            [],
+        ).unwrap();
+        assert_eq!(read_repo_summary(&conn, "missing"), None);
+    }
+}
