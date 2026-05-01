@@ -58,10 +58,7 @@ fn render_search_input(frame: &mut Frame, app: &App, styles: &Styles) {
         height: 1,
     };
     let i18n = &app.ctx.i18n;
-    let mode_label = match app.search_mode {
-        crate::tui::SearchMode::Repo => i18n.tui.search_mode_repo,
-        crate::tui::SearchMode::Code => i18n.tui.search_mode_code,
-    };
+    let mode_label = app.search_mode.label(i18n);
     let input_text = Line::from(vec![
         Span::styled(
             format!("[{}] /", mode_label),
@@ -77,19 +74,7 @@ fn render_search_results(frame: &mut Frame, app: &App, styles: &Styles) {
     let popup_inner = popup_area.inner(Margin::new(1, 1));
     let i18n = &app.ctx.i18n;
 
-    let title = if app.search_results.is_empty() {
-        format!(
-            "{}: \"{}\" - {}",
-            i18n.tui.search_results_title, app.search_pattern, i18n.tui.search_no_results
-        )
-    } else {
-        format!(
-            "{}: \"{}\" ({} results)",
-            i18n.tui.search_results_title,
-            app.search_pattern,
-            app.search_results.len()
-        )
-    };
+    let title = search_results_title(&app.search_pattern, app.search_results.len(), i18n);
 
     let items: Vec<ListItem> = app
         .search_results
@@ -130,6 +115,42 @@ fn render_search_results(frame: &mut Frame, app: &App, styles: &Styles) {
         height: hint_height,
     };
     frame.render_widget(hint, hint_area);
+}
+
+fn search_results_title(pattern: &str, count: usize, i18n: &crate::i18n::I18n) -> String {
+    if count == 0 {
+        format!("{}: \"{}\" - {}", i18n.tui.search_results_title, pattern, i18n.tui.search_no_results)
+    } else {
+        format!("{}: \"{}\" ({} results)", i18n.tui.search_results_title, pattern, count)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::i18n::I18n;
+
+    fn mock_i18n() -> I18n {
+        crate::i18n::en::build()
+    }
+
+    #[test]
+    fn test_search_results_title_empty() {
+        let i18n = mock_i18n();
+        assert_eq!(
+            search_results_title("foo", 0, &i18n),
+            "Search results: \"foo\" - No matches found"
+        );
+    }
+
+    #[test]
+    fn test_search_results_title_with_results() {
+        let i18n = mock_i18n();
+        assert_eq!(
+            search_results_title("bar", 3, &i18n),
+            "Search results: \"bar\" (3 results)"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

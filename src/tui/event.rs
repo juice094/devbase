@@ -264,14 +264,7 @@ pub(crate) async fn run_app<B: Backend>(
                     KeyCode::Char('q') => return Ok(TuiAction::Quit),
                     KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.toggle_search_mode();
-                        let mode_label = match app.search_mode {
-                            crate::tui::SearchMode::Repo => {
-                                app.ctx.i18n.tui.search_mode_repo
-                            }
-                            crate::tui::SearchMode::Code => {
-                                app.ctx.i18n.tui.search_mode_code
-                            }
-                        };
+                        let mode_label = app.search_mode.label(&app.ctx.i18n);
                         app.log_info(format!("搜索模式已切换为: {}", mode_label));
                     }
                     KeyCode::Char('r') => {

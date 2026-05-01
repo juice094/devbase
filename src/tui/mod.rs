@@ -57,6 +57,15 @@ pub(crate) enum SearchMode {
     Code,
 }
 
+impl SearchMode {
+    pub fn label(self, i18n: &crate::i18n::I18n) -> &'static str {
+        match self {
+            SearchMode::Repo => i18n.tui.search_mode_repo,
+            SearchMode::Code => i18n.tui.search_mode_code,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct RepoItem {
     pub(crate) id: String,
@@ -307,5 +316,12 @@ mod tests {
         assert_eq!(DetailTab::Overview.label(&i18n), "Overview");
         assert_eq!(DetailTab::Health.label(&i18n), "Health");
         assert_eq!(DetailTab::Insights.label(&i18n), "Insights");
+    }
+
+    #[test]
+    fn test_search_mode_label() {
+        let i18n = crate::i18n::from_language("en");
+        assert_eq!(SearchMode::Repo.label(&i18n), "Repo Search");
+        assert_eq!(SearchMode::Code.label(&i18n), "Code Search");
     }
 }
