@@ -5,7 +5,7 @@
 ## 当前架构快照
 
 - **版本**：v0.14.0
-- **测试**：423 lib passed / 0 failed / 5 ignored；7 bin + 11 integration passed
+- **测试**：437 lib passed / 0 failed / 5 ignored；7 bin + 11 integration passed
 - **编译**：0 warnings
 - **Registry God Object**：生产代码业务逻辑已全部消除，`WorkspaceRegistry` 为纯向后兼容门面
 
@@ -35,7 +35,7 @@
 ## 待办（按优先级）
 
 1. **P1 — migrate.rs 拆解**：待 Claw 架构就绪后推进。计划按 schema 版本或职责切分为子模块（如 `migrate/v16.rs`、`migrate/v17.rs` 等），每次改动需保证 `test_in_memory_schema_version` 通过。
-2. **P2 — 测试覆盖率**：已补充 33 个 smoke tests 覆盖 21 个零测试文件。剩余：`tui/render/detail.rs`(603L)、`tui/render/popups.rs`(828L)、`tui/event.rs`(413L)、`tui/render/list.rs`(194L)。
+2. **P2 — 测试覆盖率**：已补充 ~47 个 smoke tests 覆盖全部零测试文件。所有含逻辑的文件均已具备测试模块。
 3. **P3 — 12 个巨石文件 >500L**：持续瘦身。
 
 ## 模式约束
