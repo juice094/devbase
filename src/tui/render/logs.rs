@@ -53,3 +53,23 @@ fn format_log_line<'a>(line: &'a str, styles: &'a Styles) -> Line<'a> {
 
     Line::from(spans)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui::theme::Styles;
+
+    #[test]
+    fn test_format_log_line_plain() {
+        let styles = crate::tui::theme::Theme::dark().styles();
+        let line = format_log_line("plain message", &styles);
+        assert_eq!(line.spans.len(), 1);
+    }
+
+    #[test]
+    fn test_format_log_line_with_timestamp() {
+        let styles = crate::tui::theme::Theme::dark().styles();
+        let line = format_log_line("[12:34:56] [INFO] hello", &styles);
+        assert!(line.spans.len() >= 2);
+    }
+}

@@ -140,3 +140,22 @@ Returns: JSON array of known limits."#,
         Ok(serde_json::json!({ "success": true, "limits": results, "count": results.len() }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::McpTool;
+
+    #[test]
+    fn test_name() {
+        let t = DevkitKnownLimitStoreTool;
+        assert_eq!(t.name(), "devkit_known_limit_store");
+    }
+
+    #[test]
+    fn test_schema_is_object() {
+        let t = DevkitKnownLimitStoreTool;
+        let s = t.schema();
+        assert!(s.is_object());
+    }
+}

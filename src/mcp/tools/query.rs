@@ -67,3 +67,22 @@ Returns: JSON array of matching items, each with type (repo or note), id, title,
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::McpTool;
+
+    #[test]
+    fn test_name() {
+        let t = DevkitQueryTool;
+        assert_eq!(t.name(), "devkit_query");
+    }
+
+    #[test]
+    fn test_schema_is_object() {
+        let t = DevkitQueryTool;
+        let s = t.schema();
+        assert!(s.is_object());
+    }
+}

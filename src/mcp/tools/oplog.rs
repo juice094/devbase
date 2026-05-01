@@ -91,3 +91,22 @@ Returns: JSON array of OpLog entries. Each entry includes:
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::McpTool;
+
+    #[test]
+    fn test_name() {
+        let t = DevkitOplogQueryTool;
+        assert_eq!(t.name(), "devkit_oplog_query");
+    }
+
+    #[test]
+    fn test_schema_is_object() {
+        let t = DevkitOplogQueryTool;
+        let s = t.schema();
+        assert!(s.is_object());
+    }
+}

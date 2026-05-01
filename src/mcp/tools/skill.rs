@@ -319,3 +319,22 @@ Returns: JSON with status, stdout, stderr, exit_code, and duration_ms."#,
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::McpTool;
+
+    #[test]
+    fn test_name() {
+        let t = DevkitSkillListTool;
+        assert_eq!(t.name(), "devkit_skill_list");
+    }
+
+    #[test]
+    fn test_schema_is_object() {
+        let t = DevkitSkillListTool;
+        let s = t.schema();
+        assert!(s.is_object());
+    }
+}

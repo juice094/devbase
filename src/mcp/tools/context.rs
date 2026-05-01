@@ -414,3 +414,22 @@ Returns: JSON object with:
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::McpTool;
+
+    #[test]
+    fn test_name() {
+        let t = DevkitProjectContextTool;
+        assert_eq!(t.name(), "devkit_project_context");
+    }
+
+    #[test]
+    fn test_schema_is_object() {
+        let t = DevkitProjectContextTool;
+        let s = t.schema();
+        assert!(s.is_object());
+    }
+}

@@ -137,3 +137,15 @@ pub fn build() -> I18n {
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build() {
+        let i18n = build();
+        assert!(!i18n.tui.title_repos.is_empty());
+        assert_eq!(i18n.tui.title_repos, "Repositories");
+    }
+}
