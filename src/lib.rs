@@ -15,6 +15,7 @@ pub mod mcp;
 pub mod oplog_analytics;
 pub mod query;
 pub mod registry;
+pub mod repository;
 pub mod scan;
 pub mod search;
 pub mod semantic_index;
