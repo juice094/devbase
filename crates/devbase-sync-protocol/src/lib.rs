@@ -1,3 +1,17 @@
+//! devbase-sync-protocol — Lightweight directory sync protocol with version vectors.
+//!
+//! **提取日期**: 2026-05-01 (Workspace split)
+//! **零内部耦合**: 此 crate 不依赖 devbase 任何内部模块，仅使用 walkdir + serde + chrono + anyhow。
+//! **职责**: 扫描目录生成文件索引（`SyncIndex`），支持版本向量（VersionVector）用于冲突检测。
+//! **边界**: 输入 `&Path`，输出 `SyncIndex`。不触及网络或数据库。
+//!
+//! 与 devbase 的关系: 被 devbase `watch` 模块用于文件系统监控，被 syncthing 集成用于本地索引。
+//!
+//! Design decisions:
+//! - Hash = (size, mtime, path) 的 DefaultHasher: 轻量级，避免读取大文件内容。
+//! - VersionVector 而非 Lamport clocks: 支持多设备并发写入的偏序比较。
+//! - 跳过 `.git` 目录: 避免索引版本控制元数据。
+
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

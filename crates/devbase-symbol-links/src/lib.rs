@@ -1,12 +1,16 @@
-//! Explicit knowledge link generation between code symbols.
+//! devbase-symbol-links — Code symbol link generator.
 //!
-//! Unlike the call graph (which captures runtime relationships),
-//! symbol links capture *conceptual* relationships:
-//! - `similar_signature`: functions with similar parameter/type signatures
-//! - `co_located`: functions defined in the same file
+//! **提取日期**: 2026-05-01 (Workspace split)
+//! **零内部耦合**: 此 crate 不依赖 devbase 任何内部模块，仅使用 rusqlite + chrono + anyhow。
+//! **职责**: 计算代码符号间的概念关系（签名相似度 Jaccard / 同文件聚类），并持久化到 SQLite。
+//! **边界**: 输入 `rusqlite::Connection` + repo_id，输出 `Vec<SymbolLink>`。调用方负责事务管理。
 //!
-//! These links are stored in `code_symbol_links` (Schema v13) and can be
-//! traversed by AI agents to discover related concepts beyond direct calls.
+//! 与 devbase 的关系: 被 devbase `scan` 流程调用，生成 `code_symbol_links` 表数据 (Schema v13)。
+//!
+//! Design decisions:
+//! - Jaccard threshold 默认 0.3: 经验值，平衡召回与精度。
+//! - co_located strength 固定 0.5: 同文件是中等信号，不区分文件大小。
+//! - Tokenization 排除 Rust 关键字: 避免 `fn`/`pub`/`async` 等噪音影响相似度。
 
 use std::collections::{HashMap, HashSet};
 
