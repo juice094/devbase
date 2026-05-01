@@ -205,6 +205,40 @@ pub(crate) enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Query code symbols for a repository
+    CodeSymbols {
+        /// Repository ID to query
+        repo_id: String,
+        /// Optional symbol name substring filter
+        #[arg(long)]
+        name: Option<String>,
+        /// Optional symbol type filter (function, struct, enum, trait, impl, module, type_alias, constant, static)
+        #[arg(long)]
+        symbol_type: Option<String>,
+        /// Optional file path substring filter
+        #[arg(long)]
+        file: Option<String>,
+        /// Maximum results
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Find potentially dead (unused) functions in a repository
+    DeadCode {
+        /// Repository ID to analyze
+        repo_id: String,
+        /// Also report `pub fn` items
+        #[arg(long)]
+        include_pub: bool,
+        /// Maximum results
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Registry backup and restore operations
     Registry {
         #[command(subcommand)]
@@ -595,6 +629,12 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::DependencyGraph { repo_id, direction, relation_type, json } => {
             commands::simple::run_dependency_graph(&mut ctx, &repo_id, &direction, relation_type, json)?;
+        }
+        Commands::CodeSymbols { repo_id, name, symbol_type, file, limit, json } => {
+            commands::simple::run_code_symbols(&mut ctx, &repo_id, name, symbol_type, file, limit, json)?;
+        }
+        Commands::DeadCode { repo_id, include_pub, limit, json } => {
+            commands::simple::run_dead_code(&mut ctx, &repo_id, include_pub, limit, json)?;
         }
         Commands::Discover => {
             commands::simple::run_discover(&mut ctx)?;
