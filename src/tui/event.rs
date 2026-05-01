@@ -401,3 +401,17 @@ pub(crate) async fn run_app<B: Backend>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tui_action_variants() {
+        let _ = TuiAction::Quit;
+        let _ = TuiAction::LaunchExternal {
+            cmd: "gitui".to_string(),
+            cwd: ".".to_string(),
+        };
+    }
+}
