@@ -45,6 +45,38 @@ pub trait RegistryClient: Send + Sync {
     fn list_code_metrics(&self) -> Result<Value>;
     fn get_code_metrics(&self, repo_id: &str) -> Result<Value>;
     fn get_health(&self, repo_id: &str) -> Result<Value>;
+
+    fn query_call_graph(
+        &self,
+        repo_id: &str,
+        callee: Option<&str>,
+        caller: Option<&str>,
+        file: Option<&str>,
+        limit: usize,
+    ) -> Result<Value>;
+
+    fn query_dependencies(
+        &self,
+        repo_id: &str,
+        direction: &str,
+        relation_type: Option<&str>,
+    ) -> Result<Value>;
+
+    fn query_code_symbols(
+        &self,
+        repo_id: &str,
+        name: Option<&str>,
+        symbol_type: Option<&str>,
+        file: Option<&str>,
+        limit: usize,
+    ) -> Result<Value>;
+
+    fn query_dead_code(
+        &self,
+        repo_id: &str,
+        include_pub: bool,
+        limit: usize,
+    ) -> Result<Value>;
 }
 
 /// Knowledge engine operations.

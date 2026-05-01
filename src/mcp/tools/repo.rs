@@ -1,4 +1,6 @@
 use crate::mcp::McpTool;
+use crate::mcp::clients::{DigestClient, HealthClient, KnowledgeClient, RegistryClient, ScanClient, SyncClient};
+use crate::registry::{code_symbols, dead_code};
 use crate::storage::AppContext;
 use anyhow::Context;
 use rusqlite::OptionalExtension;
@@ -59,7 +61,6 @@ Returns: JSON array of discovered repos with id, path, language, source_type, an
             .and_then(|v| v.as_str())
             .context("Missing required argument: path")?;
         let register = args.get("register").and_then(|v| v.as_bool()).unwrap_or(false);
-        use crate::mcp::clients::ScanClient;
         ctx.scan_directory(path, register).await
     }
 }
@@ -110,7 +111,6 @@ Returns: JSON object with workspace summary and per-repo health records. Each re
         ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let detail = args.get("detail").and_then(|v| v.as_bool()).unwrap_or(false);
-        use crate::mcp::clients::HealthClient;
         ctx.check_health(detail).await
     }
 }
@@ -180,7 +180,6 @@ Returns: JSON object with per-repo sync results including: repo_id, action (pull
                 .filter(|t| !t.is_empty())
                 .collect::<Vec<_>>()
         });
-        use crate::mcp::clients::SyncClient;
         SyncClient::sync_repos(ctx, dry_run, filter_tags_vec).await
     }
 }
@@ -230,7 +229,6 @@ Returns: JSON with indexed count and error count."#,
         ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
-        use crate::mcp::clients::KnowledgeClient;
         KnowledgeClient::run_index(ctx, path)
     }
 }
@@ -283,7 +281,6 @@ Returns: JSON with success status."#,
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let text = args.get("text").and_then(|v| v.as_str()).context("text required")?;
         let author = args.get("author").and_then(|v| v.as_str()).unwrap_or("ai");
-        use crate::mcp::clients::KnowledgeClient;
         KnowledgeClient::save_note(ctx, repo_id, text, author)
     }
 }
@@ -320,7 +317,6 @@ Returns: JSON with a plain-text digest string."#,
         _args: serde_json::Value,
         ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        use crate::mcp::clients::DigestClient;
         DigestClient::generate_daily_digest(ctx)
     }
 }
@@ -598,7 +594,6 @@ Returns: JSON with stars, forks, open_issues, description, pushed_at, and update
         let html_url = data.get("html_url").and_then(|v| v.as_str()).map(String::from);
 
         if write_summary && let Some(ref desc) = description {
-            use crate::mcp::clients::KnowledgeClient;
             KnowledgeClient::save_summary(ctx, &repo_id, desc, "")?;
         }
 
@@ -660,7 +655,6 @@ Returns: JSON array of metric objects per repo: repo_id, total_lines, code_lines
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
-        use crate::mcp::clients::RegistryClient;
         if repo_id.is_empty() {
             RegistryClient::list_code_metrics(ctx)
         } else {
@@ -1249,46 +1243,27 @@ Returns: JSON array of symbols with file_path, name, symbol_type, line_start, li
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
-            let mut sql = String::from(
-                "SELECT file_path, symbol_type, name, line_start, line_end, signature \
-                 FROM code_symbols WHERE repo_id = ?1",
-            );
-            let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(repo_id.clone())];
-
-            if !symbol_type.is_empty() {
-                sql.push_str(" AND symbol_type = ?");
-                sql.push_str(&(params.len() + 1).to_string());
-                params.push(Box::new(symbol_type));
-            }
-            if !name_filter.is_empty() {
-                sql.push_str(" AND name LIKE ?");
-                sql.push_str(&(params.len() + 1).to_string());
-                params.push(Box::new(format!("%{}%", name_filter)));
-            }
-            if !file_path.is_empty() {
-                sql.push_str(" AND file_path LIKE ?");
-                sql.push_str(&(params.len() + 1).to_string());
-                params.push(Box::new(format!("%{}%", file_path)));
-            }
-            sql.push_str(&format!(" ORDER BY file_path, line_start LIMIT {}", limit));
-
-            let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-            let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt.query_map(rusqlite::params_from_iter(param_refs), |row| {
-                Ok(serde_json::json!({
-                    "file_path": row.get::<_, String>(0)?,
-                    "symbol_type": row.get::<_, String>(1)?,
-                    "name": row.get::<_, String>(2)?,
-                    "line_start": row.get::<_, i64>(3)?,
-                    "line_end": row.get::<_, i64>(4)?,
-                    "signature": row.get::<_, Option<String>>(5)?,
-                }))
-            })?;
-
-            let mut symbols = Vec::new();
-            for row in rows {
-                symbols.push(row?);
-            }
+            let symbols = code_symbols::query_code_symbols(
+                &conn,
+                &repo_id,
+                Some(name_filter.as_str()).filter(|s| !s.is_empty()),
+                Some(symbol_type.as_str()).filter(|s| !s.is_empty()),
+                Some(file_path.as_str()).filter(|s| !s.is_empty()),
+                limit,
+            )?;
+            let symbols: Vec<serde_json::Value> = symbols
+                .into_iter()
+                .map(|s| {
+                    serde_json::json!({
+                        "file_path": s.file_path,
+                        "symbol_type": s.symbol_type,
+                        "name": s.name,
+                        "line_start": s.line_start,
+                        "line_end": s.line_end,
+                        "signature": s.signature,
+                    })
+                })
+                .collect();
 
             Ok::<_, anyhow::Error>(serde_json::json!({
                 "success": true,
@@ -1559,41 +1534,17 @@ Returns: JSON array of potentially dead functions with file_path, name, and line
         tokio::task::spawn_blocking(move || {
 
             let conn = pool.get()?;
-
-            // Find all functions in the repo that have NO incoming call edges
-            let mut sql = String::from(
-                "SELECT cs.file_path, cs.name, cs.line_start \
-                 FROM code_symbols cs \
-                 WHERE cs.repo_id = ?1 AND cs.symbol_type = 'function' \
-                 AND NOT EXISTS ( \
-                     SELECT 1 FROM code_call_graph ccg \
-                     WHERE ccg.repo_id = cs.repo_id AND ccg.callee_name = cs.name \
-                 )"
-            );
-
-            if !include_pub {
-                // Heuristic: exclude signatures that contain "pub" followed by "fn"
-                // Covers: pub fn, pub async fn, pub(crate) fn, pub unsafe fn, etc.
-                sql.push_str(" AND (cs.signature IS NULL OR cs.signature NOT LIKE 'pub%fn%')");
-            }
-            // Exclude main() — entry points are never dead code
-            sql.push_str(" AND cs.name != 'main'");
-
-            sql.push_str(&format!(" ORDER BY cs.file_path, cs.line_start LIMIT {}", limit));
-
-            let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt.query_map([&repo_id], |row| {
-                Ok(serde_json::json!({
-                    "file_path": row.get::<_, String>(0)?,
-                    "name": row.get::<_, String>(1)?,
-                    "line_start": row.get::<_, i64>(2)?,
-                }))
-            })?;
-
-            let mut dead = Vec::new();
-            for row in rows {
-                dead.push(row?);
-            }
+            let dead = dead_code::query_dead_code(&conn, &repo_id, include_pub, limit)?;
+            let dead: Vec<serde_json::Value> = dead
+                .into_iter()
+                .map(|d| {
+                    serde_json::json!({
+                        "file_path": d.file_path,
+                        "name": d.name,
+                        "line_start": d.line_start,
+                    })
+                })
+                .collect();
 
             Ok::<_, anyhow::Error>(serde_json::json!({
                 "success": true,
