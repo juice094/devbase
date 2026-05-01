@@ -34,6 +34,54 @@ pub fn upsert_entity(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::WorkspaceRegistry;
+
+    #[test]
+    fn test_entity_crud() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+
+        // Upsert
+        upsert_entity(
+            &conn,
+            "ent-1",
+            "repo",
+            "test-repo",
+            Some("/tmp/test"),
+            &serde_json::json!({"lang": "rust"}),
+        )
+        .unwrap();
+        assert!(entity_exists(&conn, "ent-1").unwrap());
+
+        // Update metadata
+        update_entity_metadata_field(&conn, "ent-1", "lang", "\"go\"").unwrap();
+
+        // Delete
+        delete_entity(&conn, "ent-1").unwrap();
+        assert!(!entity_exists(&conn, "ent-1").unwrap());
+    }
+
+    #[test]
+    fn test_entity_metadata_remove_null() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        upsert_entity(
+            &conn,
+            "ent-2",
+            "skill",
+            "test-skill",
+            None,
+            &serde_json::json!({"key": "val"}),
+        )
+        .unwrap();
+
+        update_entity_metadata_field(&conn, "ent-2", "key", "null").unwrap();
+        // Should not panic; verify entity still exists
+        assert!(entity_exists(&conn, "ent-2").unwrap());
+    }
+}
+
 /// Check whether an entity with the given ID exists.
 pub fn entity_exists(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<bool> {
     let count: i64 = conn.query_row(

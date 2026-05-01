@@ -164,3 +164,16 @@ impl SyncOrchestrator {
         results
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sync_orchestrator_new() {
+        let i18n = crate::i18n::from_language("en");
+        let orch = SyncOrchestrator::new(4, i18n);
+        // Smoke test: creation succeeds
+        assert_eq!(orch.semaphore.available_permits(), 4);
+    }
+}

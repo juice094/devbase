@@ -135,3 +135,49 @@ impl AppContext {
         self.pool.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    struct TempStorageBackend {
+        dir: tempfile::TempDir,
+    }
+
+    impl TempStorageBackend {
+        fn new() -> Self {
+            Self {
+                dir: tempfile::tempdir().unwrap(),
+            }
+        }
+    }
+
+    impl StorageBackend for TempStorageBackend {
+        fn db_path(&self) -> anyhow::Result<PathBuf> {
+            Ok(self.dir.path().join("registry.db"))
+        }
+        fn workspace_dir(&self) -> anyhow::Result<PathBuf> {
+            let ws = self.dir.path().join("workspace");
+            std::fs::create_dir_all(&ws)?;
+            Ok(ws)
+        }
+        fn index_path(&self) -> anyhow::Result<PathBuf> {
+            Ok(self.dir.path().join("search_index"))
+        }
+        fn backup_dir(&self) -> anyhow::Result<PathBuf> {
+            Ok(self.dir.path().join("backups"))
+        }
+    }
+
+    #[test]
+    fn test_app_context_with_temp_storage() {
+        let storage = Arc::new(TempStorageBackend::new());
+        let ctx = AppContext::with_storage(storage).unwrap();
+        let conn = ctx.conn().unwrap();
+        let version: String = conn
+            .query_row("SELECT sqlite_version()", [], |row| row.get(0))
+            .unwrap();
+        assert!(!version.is_empty());
+    }
+}

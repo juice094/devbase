@@ -184,3 +184,17 @@ impl Daemon {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_daemon_new() {
+        let config = crate::config::Config::default();
+        let manager = r2d2_sqlite::SqliteConnectionManager::memory();
+        let pool = r2d2::Pool::builder().max_size(1).build(manager).unwrap();
+        let daemon = Daemon::new(60, config, pool);
+        assert_eq!(daemon.interval, Duration::from_secs(60));
+    }
+}
