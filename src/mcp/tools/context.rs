@@ -396,7 +396,18 @@ Returns: JSON object with:
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
 
-        let (repo_json, linked_vaults, modules, symbols, calls, assets, activity, related_symbols, relations, workflows) = result;
+        let (
+            repo_json,
+            linked_vaults,
+            modules,
+            symbols,
+            calls,
+            assets,
+            activity,
+            related_symbols,
+            relations,
+            workflows,
+        ) = result;
 
         Ok(serde_json::json!({
             "success": true,

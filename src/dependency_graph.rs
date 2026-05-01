@@ -583,13 +583,7 @@ pub fn build_dependency_graph(
 
         // Strategy 2: match dependency name against registered repo directory name
         if let Some(target_id) = name_to_repo.get(&dep.name) {
-            crate::registry::relation::save_relation(
-                conn,
-                repo_id,
-                target_id,
-                "depends_on",
-                0.7,
-            )?;
+            crate::registry::relation::save_relation(conn, repo_id, target_id, "depends_on", 0.7)?;
             resolved += 1;
             debug!("Resolved name dep: {} -> {}", repo_id, target_id);
         }

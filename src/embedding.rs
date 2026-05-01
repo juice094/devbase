@@ -51,9 +51,12 @@ impl EmbeddingProvider for CandleProvider {
 }
 
 #[cfg(feature = "local-embedding")]
-fn get_candle_resources() -> anyhow::Result<&'static (candle_transformers::models::bert::BertModel, tokenizers::Tokenizer)> {
+fn get_candle_resources()
+-> anyhow::Result<&'static (candle_transformers::models::bert::BertModel, tokenizers::Tokenizer)> {
     use std::sync::OnceLock;
-    static RESOURCES: OnceLock<Result<(candle_transformers::models::bert::BertModel, tokenizers::Tokenizer), String>> = OnceLock::new();
+    static RESOURCES: OnceLock<
+        Result<(candle_transformers::models::bert::BertModel, tokenizers::Tokenizer), String>,
+    > = OnceLock::new();
     match RESOURCES.get_or_init(|| init_candle_resources().map_err(|e| e.to_string())) {
         Ok(r) => Ok(r),
         Err(e) => Err(anyhow::anyhow!("CandleProvider init failed: {}", e)),
@@ -61,7 +64,8 @@ fn get_candle_resources() -> anyhow::Result<&'static (candle_transformers::model
 }
 
 #[cfg(feature = "local-embedding")]
-fn init_candle_resources() -> anyhow::Result<(candle_transformers::models::bert::BertModel, tokenizers::Tokenizer)> {
+fn init_candle_resources()
+-> anyhow::Result<(candle_transformers::models::bert::BertModel, tokenizers::Tokenizer)> {
     use candle_core::Device;
     use candle_nn::VarBuilder;
     use candle_transformers::models::bert::{BertModel, Config};
@@ -108,9 +112,7 @@ fn encode_with_candle(
     let output = model.forward(&input_ids, &token_type_ids, Some(&attention_mask_t))?;
 
     // Mean pooling: average over non-padding tokens
-    let mask = attention_mask_t
-        .to_dtype(candle_core::DType::F32)?
-        .unsqueeze(2)?;
+    let mask = attention_mask_t.to_dtype(candle_core::DType::F32)?.unsqueeze(2)?;
     let sum = output.broadcast_mul(&mask)?.sum(1)?;
     let count = mask.sum(1)?;
     let mean_pooled = sum.broadcast_div(&count)?;

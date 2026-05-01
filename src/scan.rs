@@ -1,5 +1,5 @@
-use crate::registry::{CodeMetrics, OplogEntry, RemoteEntry, RepoEntry};
 use crate::registry::repo;
+use crate::registry::{CodeMetrics, OplogEntry, RemoteEntry, RepoEntry};
 use chrono::Utc;
 use git2::Repository;
 use r2d2::Pool;
@@ -45,9 +45,7 @@ pub async fn run_json(
             let _ = tokio::task::spawn_blocking(move || {
                 if let Some(metrics) = compute_code_metrics(&path_str) {
                     let conn = pool.get()?;
-                    crate::registry::metrics::save_code_metrics(
-                        &conn, &repo_id, &metrics,
-                    )?;
+                    crate::registry::metrics::save_code_metrics(&conn, &repo_id, &metrics)?;
                 }
                 if is_rust && let Ok(modules) = extract_rust_modules(&path_str) {
                     let conn = pool.get()?;

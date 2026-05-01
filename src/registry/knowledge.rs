@@ -137,10 +137,7 @@ pub fn list_papers(conn: &rusqlite::Connection) -> anyhow::Result<Vec<PaperEntry
             bibtex: row.get(6)?,
             tags: tags
                 .map(|s| {
-                    s.split(',')
-                        .map(|t| t.trim().to_string())
-                        .filter(|t| !t.is_empty())
-                        .collect()
+                    s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()
                 })
                 .unwrap_or_default(),
             added_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
@@ -176,10 +173,7 @@ pub fn find_papers_by_venue(
             bibtex: row.get(6)?,
             tags: tags
                 .map(|s| {
-                    s.split(',')
-                        .map(|t| t.trim().to_string())
-                        .filter(|t| !t.is_empty())
-                        .collect()
+                    s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()
                 })
                 .unwrap_or_default(),
             added_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
@@ -193,10 +187,7 @@ pub fn find_papers_by_venue(
 // ------------------------------------------------------------------
 // Experiments
 // ------------------------------------------------------------------
-pub fn save_experiment(
-    conn: &rusqlite::Connection,
-    exp: &ExperimentEntry,
-) -> anyhow::Result<()> {
+pub fn save_experiment(conn: &rusqlite::Connection, exp: &ExperimentEntry) -> anyhow::Result<()> {
     conn.execute(
         "INSERT OR REPLACE INTO experiments (id, repo_id, paper_id, config_json, result_path, git_commit, syncthing_folder_id, status, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
@@ -368,8 +359,7 @@ pub fn cross_repo_search_symbols(
         deduped.entry(key).or_insert(row);
     }
 
-    let mut merged: Vec<crate::semantic_index::SemanticSearchRow> =
-        deduped.into_values().collect();
+    let mut merged: Vec<crate::semantic_index::SemanticSearchRow> = deduped.into_values().collect();
     merged.sort_by(|a, b| {
         b.4.partial_cmp(&a.4)
             .unwrap_or(std::cmp::Ordering::Equal)
@@ -481,15 +471,14 @@ pub fn find_related_symbols(
          ORDER BY strength DESC
          LIMIT ?3",
     )?;
-    let rows =
-        stmt.query_map(rusqlite::params![repo_id, symbol_name, limit as i64], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, f64>(3)? as f32,
-            ))
-        })?;
+    let rows = stmt.query_map(rusqlite::params![repo_id, symbol_name, limit as i64], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, f64>(3)? as f32,
+        ))
+    })?;
 
     let mut results = Vec::new();
     for row in rows {
@@ -549,25 +538,54 @@ pub fn semantic_search_symbols(
 }
 
 impl WorkspaceRegistry {
-    pub fn save_summary(conn: &rusqlite::Connection, repo_id: &str, summary: &str, keywords: &str) -> anyhow::Result<()> {
+    pub fn save_summary(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        summary: &str,
+        keywords: &str,
+    ) -> anyhow::Result<()> {
         save_summary(conn, repo_id, summary, keywords)
     }
-    pub fn save_modules(conn: &mut rusqlite::Connection, repo_id: &str, modules: &[(String, String)]) -> anyhow::Result<()> {
+    pub fn save_modules(
+        conn: &mut rusqlite::Connection,
+        repo_id: &str,
+        modules: &[(String, String)],
+    ) -> anyhow::Result<()> {
         save_modules(conn, repo_id, modules)
     }
-    pub fn save_module(conn: &rusqlite::Connection, repo_id: &str, module_name: &str, module_type: &str, module_path: &str) -> anyhow::Result<()> {
+    pub fn save_module(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        module_name: &str,
+        module_type: &str,
+        module_path: &str,
+    ) -> anyhow::Result<()> {
         save_module(conn, repo_id, module_name, module_type, module_path)
     }
-    pub fn list_modules(conn: &rusqlite::Connection, repo_id: &str) -> anyhow::Result<Vec<(String, String, String)>> {
+    pub fn list_modules(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+    ) -> anyhow::Result<Vec<(String, String, String)>> {
         list_modules(conn, repo_id)
     }
     pub fn clear_modules(conn: &rusqlite::Connection, repo_id: &str) -> anyhow::Result<()> {
         clear_modules(conn, repo_id)
     }
-    pub fn save_discovery(conn: &rusqlite::Connection, repo_id: Option<&str>, dtype: &str, desc: &str, confidence: f64) -> anyhow::Result<()> {
+    pub fn save_discovery(
+        conn: &rusqlite::Connection,
+        repo_id: Option<&str>,
+        dtype: &str,
+        desc: &str,
+        confidence: f64,
+    ) -> anyhow::Result<()> {
         save_discovery(conn, repo_id, dtype, desc, confidence)
     }
-    pub fn save_note(conn: &rusqlite::Connection, repo_id: &str, text: &str, author: &str) -> anyhow::Result<()> {
+    pub fn save_note(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        text: &str,
+        author: &str,
+    ) -> anyhow::Result<()> {
         save_note(conn, repo_id, text, author)
     }
     pub fn save_paper(conn: &rusqlite::Connection, paper: &PaperEntry) -> anyhow::Result<()> {
@@ -576,37 +594,81 @@ impl WorkspaceRegistry {
     pub fn list_papers(conn: &rusqlite::Connection) -> anyhow::Result<Vec<PaperEntry>> {
         list_papers(conn)
     }
-    pub fn find_papers_by_venue(conn: &rusqlite::Connection, venue: &str) -> anyhow::Result<Vec<PaperEntry>> {
+    pub fn find_papers_by_venue(
+        conn: &rusqlite::Connection,
+        venue: &str,
+    ) -> anyhow::Result<Vec<PaperEntry>> {
         find_papers_by_venue(conn, venue)
     }
-    pub fn save_experiment(conn: &rusqlite::Connection, exp: &ExperimentEntry) -> anyhow::Result<()> {
+    pub fn save_experiment(
+        conn: &rusqlite::Connection,
+        exp: &ExperimentEntry,
+    ) -> anyhow::Result<()> {
         save_experiment(conn, exp)
     }
     pub fn list_experiments(conn: &rusqlite::Connection) -> anyhow::Result<Vec<ExperimentEntry>> {
         list_experiments(conn)
     }
-    pub fn find_experiments_by_repo(conn: &rusqlite::Connection, repo_id: &str) -> anyhow::Result<Vec<ExperimentEntry>> {
+    pub fn find_experiments_by_repo(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+    ) -> anyhow::Result<Vec<ExperimentEntry>> {
         find_experiments_by_repo(conn, repo_id)
     }
-    pub fn save_embeddings(conn: &mut rusqlite::Connection, repo_id: &str, embeddings: &[(String, Vec<f32>)]) -> anyhow::Result<usize> {
+    pub fn save_embeddings(
+        conn: &mut rusqlite::Connection,
+        repo_id: &str,
+        embeddings: &[(String, Vec<f32>)],
+    ) -> anyhow::Result<usize> {
         save_embeddings(conn, repo_id, embeddings)
     }
-    pub fn cross_repo_search_symbols(conn: &rusqlite::Connection, tags: &[String], query_text: &str, query_embedding: Option<&[f32]>, limit: usize) -> anyhow::Result<Vec<crate::semantic_index::SemanticSearchRow>> {
+    pub fn cross_repo_search_symbols(
+        conn: &rusqlite::Connection,
+        tags: &[String],
+        query_text: &str,
+        query_embedding: Option<&[f32]>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<crate::semantic_index::SemanticSearchRow>> {
         cross_repo_search_symbols(conn, tags, query_text, query_embedding, limit)
     }
-    pub fn hybrid_search_symbols(conn: &rusqlite::Connection, repo_id: &str, query_text: &str, query_embedding: Option<&[f32]>, limit: usize) -> anyhow::Result<Vec<crate::semantic_index::SemanticSearchRow>> {
+    pub fn hybrid_search_symbols(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        query_text: &str,
+        query_embedding: Option<&[f32]>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<crate::semantic_index::SemanticSearchRow>> {
         hybrid_search_symbols(conn, repo_id, query_text, query_embedding, limit)
     }
-    pub fn record_symbol_read(conn: &rusqlite::Connection, repo_id: &str, symbol_name: &str, context: Option<&str>) -> anyhow::Result<()> {
+    pub fn record_symbol_read(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        symbol_name: &str,
+        context: Option<&str>,
+    ) -> anyhow::Result<()> {
         record_symbol_read(conn, repo_id, symbol_name, context)
     }
-    pub fn get_symbol_read_counts(conn: &rusqlite::Connection, repo_id: &str, symbol_names: &[String]) -> anyhow::Result<std::collections::HashMap<String, i64>> {
+    pub fn get_symbol_read_counts(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        symbol_names: &[String],
+    ) -> anyhow::Result<std::collections::HashMap<String, i64>> {
         get_symbol_read_counts(conn, repo_id, symbol_names)
     }
-    pub fn find_related_symbols(conn: &rusqlite::Connection, repo_id: &str, symbol_name: &str, limit: usize) -> anyhow::Result<Vec<(String, String, String, String, String, f32)>> {
+    pub fn find_related_symbols(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        symbol_name: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<(String, String, String, String, String, f32)>> {
         find_related_symbols(conn, repo_id, symbol_name, limit)
     }
-    pub fn semantic_search_symbols(conn: &rusqlite::Connection, repo_id: &str, query_embedding: &[f32], limit: usize) -> anyhow::Result<Vec<crate::semantic_index::SemanticSearchRow>> {
+    pub fn semantic_search_symbols(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        query_embedding: &[f32],
+        limit: usize,
+    ) -> anyhow::Result<Vec<crate::semantic_index::SemanticSearchRow>> {
         semantic_search_symbols(conn, repo_id, query_embedding, limit)
     }
 }
@@ -758,9 +820,7 @@ mod tests {
         )
         .unwrap();
 
-        let results =
-            semantic_search_symbols(&conn, "repo-a", &[1.0_f32, 0.0, 0.0], 10)
-                .unwrap();
+        let results = semantic_search_symbols(&conn, "repo-a", &[1.0_f32, 0.0, 0.0], 10).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].1, "hello");
         assert!((results[0].4 - 1.0).abs() < f32::EPSILON);
@@ -816,14 +876,8 @@ mod tests {
         assert!(empty.is_empty());
 
         // Empty tags should search all repos
-        let all = cross_repo_search_symbols(
-            &conn,
-            &[],
-            "hello",
-            Some(&[1.0_f32, 0.0, 0.0]),
-            10,
-        )
-        .unwrap();
+        let all =
+            cross_repo_search_symbols(&conn, &[], "hello", Some(&[1.0_f32, 0.0, 0.0]), 10).unwrap();
         assert!(!all.is_empty());
     }
 

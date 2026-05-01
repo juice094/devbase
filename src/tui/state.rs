@@ -232,23 +232,21 @@ impl App {
             // Phase 1: check cache serially (conn is not Send)
             let mut needs_fetch = Vec::new();
             for (repo_id, upstream_url) in repos {
-                let cache_hit =
-                    match crate::registry::health::get_stars_cache(&conn, &repo_id) {
-                        Ok(Some((stars, fetched_at))) => {
-                            let elapsed =
-                                Utc::now().signed_duration_since(fetched_at).num_seconds();
-                            if elapsed < ttl {
-                                let _ = tx.send(AsyncNotification::StarsUpdated {
-                                    repo_id: repo_id.clone(),
-                                    stars: Some(stars),
-                                });
-                                true
-                            } else {
-                                false
-                            }
+                let cache_hit = match crate::registry::health::get_stars_cache(&conn, &repo_id) {
+                    Ok(Some((stars, fetched_at))) => {
+                        let elapsed = Utc::now().signed_duration_since(fetched_at).num_seconds();
+                        if elapsed < ttl {
+                            let _ = tx.send(AsyncNotification::StarsUpdated {
+                                repo_id: repo_id.clone(),
+                                stars: Some(stars),
+                            });
+                            true
+                        } else {
+                            false
                         }
-                        _ => false,
-                    };
+                    }
+                    _ => false,
+                };
                 if !cache_hit && let Some(url) = upstream_url {
                     needs_fetch.push((repo_id, url));
                 }
@@ -277,8 +275,7 @@ impl App {
             for (repo_id, handle) in handles {
                 let stars = handle.await.ok().flatten();
                 if let Some(s) = stars {
-                    let _ =
-                        crate::registry::health::save_stars_cache(&conn, &repo_id, s);
+                    let _ = crate::registry::health::save_stars_cache(&conn, &repo_id, s);
                 }
                 let _ = tx.send(AsyncNotification::StarsUpdated { repo_id, stars });
             }
@@ -748,9 +745,7 @@ impl App {
                     repo.status_ahead = Some(n.ahead);
                     repo.status_behind = Some(n.behind);
                 }
-                self.log_info(
-                    self.ctx.i18n.log.status_fmt(&n.repo_id, n.dirty, n.ahead, n.behind),
-                );
+                self.log_info(self.ctx.i18n.log.status_fmt(&n.repo_id, n.dirty, n.ahead, n.behind));
                 // Trigger re-sort when all statuses are loaded
                 if self.loading_repo_status.is_empty() && self.sort_mode == SortMode::Status {
                     self.sort_repos();
@@ -785,8 +780,7 @@ impl App {
                 if let Some(s) = stars
                     && let Ok(conn) = self.ctx.conn_mut()
                 {
-                    let _ =
-                        crate::registry::health::save_stars_cache(&conn, &repo_id, s);
+                    let _ = crate::registry::health::save_stars_cache(&conn, &repo_id, s);
                 }
                 // Re-sort if currently sorting by stars
                 if self.sort_mode == SortMode::Stars {
@@ -1088,10 +1082,8 @@ impl App {
         self.sync_running.clear();
 
         if safe_items.is_empty() {
-            self.sync_popup_results.push((
-                "system".to_string(),
-                self.ctx.i18n.sync.no_safe_repos.to_string(),
-            ));
+            self.sync_popup_results
+                .push(("system".to_string(), self.ctx.i18n.sync.no_safe_repos.to_string()));
             return;
         }
 
@@ -1153,8 +1145,7 @@ impl App {
 
         // 4. Stars 检查（如果有历史数据）
         if let Ok(conn) = self.ctx.conn()
-            && let Ok(history) =
-                crate::registry::health::get_stars_history(&conn, &repo.id, 7)
+            && let Ok(history) = crate::registry::health::get_stars_history(&conn, &repo.id, 7)
             && history.len() >= 2
         {
             let first = history.first().map(|(s, _)| *s).unwrap_or(0);
@@ -1258,7 +1249,10 @@ mod tests {
             repo_status_job: crate::asyncgit::AsyncSingleJob::new(tx),
             loading_repo_status: HashSet::new(),
             loading_sync: HashSet::new(),
-            sync_orchestrator: crate::sync::SyncOrchestrator::new(1, crate::i18n::from_language("en")),
+            sync_orchestrator: crate::sync::SyncOrchestrator::new(
+                1,
+                crate::i18n::from_language("en"),
+            ),
             sync_popup_mode: SyncPopupMode::Hidden,
             sync_preview_items: vec![],
             sync_popup_results: vec![],

@@ -212,24 +212,18 @@ mod tests {
     #[test]
     fn test_read_repo_summary_found() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        conn.execute(
-            "CREATE TABLE repo_summaries (repo_id TEXT PRIMARY KEY, summary TEXT)",
-            [],
-        ).unwrap();
-        conn.execute(
-            "INSERT INTO repo_summaries VALUES (?1, ?2)",
-            ["r1", "A test summary"],
-        ).unwrap();
+        conn.execute("CREATE TABLE repo_summaries (repo_id TEXT PRIMARY KEY, summary TEXT)", [])
+            .unwrap();
+        conn.execute("INSERT INTO repo_summaries VALUES (?1, ?2)", ["r1", "A test summary"])
+            .unwrap();
         assert_eq!(read_repo_summary(&conn, "r1"), Some("A test summary".to_string()));
     }
 
     #[test]
     fn test_read_repo_summary_missing() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        conn.execute(
-            "CREATE TABLE repo_summaries (repo_id TEXT PRIMARY KEY, summary TEXT)",
-            [],
-        ).unwrap();
+        conn.execute("CREATE TABLE repo_summaries (repo_id TEXT PRIMARY KEY, summary TEXT)", [])
+            .unwrap();
         assert_eq!(read_repo_summary(&conn, "missing"), None);
     }
 }

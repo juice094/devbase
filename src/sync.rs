@@ -39,13 +39,7 @@ pub async fn run_json(
     let (tasks, skipped_unmanaged) =
         collect_tasks(conn, filter_tags, exclude, &config.scan.exclude_paths).await?;
     if filter_tags.is_none() && tasks.is_empty() && total_registered > 0 {
-        println!(
-            "{}",
-            i18n
-                .log
-                .hint_unmanaged_repos
-                .replace("{}", &total_registered.to_string())
-        );
+        println!("{}", i18n.log.hint_unmanaged_repos.replace("{}", &total_registered.to_string()));
     }
     let mut path_map = HashMap::new();
     for task in &tasks {
@@ -119,13 +113,7 @@ pub async fn run(
     let (tasks, skipped_unmanaged) =
         collect_tasks(conn, filter_tags, exclude, &config.scan.exclude_paths).await?;
     if filter_tags.is_none() && tasks.is_empty() && total_registered > 0 {
-        println!(
-            "{}",
-            i18n
-                .log
-                .hint_unmanaged_repos
-                .replace("{}", &total_registered.to_string())
-        );
+        println!("{}", i18n.log.hint_unmanaged_repos.replace("{}", &total_registered.to_string()));
     }
     let mut path_map = HashMap::new();
     for task in &tasks {
@@ -143,11 +131,7 @@ pub async fn run(
     let filter_suffix = filter_tags
         .map(|f| format!("{}{}）", i18n.sync.filter_prefix, f))
         .unwrap_or_default();
-    println!(
-        "{}: policy-per-repo{}\n",
-        i18n.sync.strategy_prefix,
-        filter_suffix
-    );
+    println!("{}: policy-per-repo{}\n", i18n.sync.strategy_prefix, filter_suffix);
 
     let results_json: Vec<serde_json::Value> = results
         .iter()
@@ -197,8 +181,7 @@ pub async fn run(
     if skipped_unmanaged > 0 {
         println!(
             "\n{}",
-            i18n
-                .sync
+            i18n.sync
                 .summary_unmanaged_skipped
                 .replace("{}", &skipped_unmanaged.to_string())
         );

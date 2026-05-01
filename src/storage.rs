@@ -89,12 +89,7 @@ impl AppContext {
         let pool = Self::build_pool(&path)?;
         let config = crate::config::Config::load()?;
         let i18n = crate::i18n::from_language(&config.general.language);
-        Ok(Self {
-            storage,
-            config,
-            i18n,
-            pool,
-        })
+        Ok(Self { storage, config, i18n, pool })
     }
 
     /// 使用自定义存储后端创建上下文（主要用于测试）。
@@ -104,12 +99,7 @@ impl AppContext {
         let pool = Self::build_pool(&path)?;
         let config = crate::config::Config::load()?;
         let i18n = crate::i18n::from_language(&config.general.language);
-        Ok(Self {
-            storage,
-            config,
-            i18n,
-            pool,
-        })
+        Ok(Self { storage, config, i18n, pool })
     }
 
     fn build_pool(path: &std::path::Path) -> anyhow::Result<Pool<SqliteConnectionManager>> {
@@ -137,8 +127,211 @@ impl AppContext {
 }
 
 impl crate::mcp::clients::ScanClient for AppContext {
-    async fn scan_directory(&self, path: &str, register: bool) -> anyhow::Result<serde_json::Value> {
+    async fn scan_directory(
+        &self,
+        path: &str,
+        register: bool,
+    ) -> anyhow::Result<serde_json::Value> {
         crate::scan::run_json(path, register, &self.pool()).await
+    }
+}
+
+impl crate::mcp::clients::HealthClient for AppContext {
+    async fn check_health(&self, detail: bool) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        crate::health::run_json(&conn, detail, 0, 1, self.config.cache.ttl_seconds, &self.i18n)
+            .await
+    }
+}
+
+impl crate::mcp::clients::SyncClient for AppContext {
+    async fn sync_repos(
+        &self,
+        dry_run: bool,
+        filter_tags: Option<Vec<String>>,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let filter_tags_str = filter_tags.as_deref().map(|v| v.join(","));
+        crate::sync::run_json(&conn, dry_run, filter_tags_str.as_deref(), None, &self.i18n).await
+    }
+}
+
+impl crate::mcp::clients::DigestClient for AppContext {
+    fn generate_daily_digest(&self) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let text = crate::digest::generate_daily_digest(&conn, &self.config, &self.i18n)?;
+        Ok(serde_json::json!({ "success": true, "digest": text }))
+    }
+}
+
+impl crate::mcp::clients::KnowledgeClient for AppContext {
+    fn run_index(&self, path: &str) -> anyhow::Result<serde_json::Value> {
+        let mut conn = self.conn()?;
+        let count = crate::knowledge_engine::run_index(&mut conn, path)?;
+        Ok(serde_json::json!({ "success": true, "indexed": count, "errors": 0 }))
+    }
+
+    fn save_note(
+        &self,
+        repo_id: &str,
+        text: &str,
+        author: &str,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        crate::registry::knowledge::save_note(&conn, repo_id, text, author)?;
+        Ok(serde_json::json!({ "success": true }))
+    }
+
+    fn save_summary(
+        &self,
+        repo_id: &str,
+        desc: &str,
+        author: &str,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        crate::registry::knowledge::save_summary(&conn, repo_id, desc, author)?;
+        Ok(serde_json::json!({ "success": true }))
+    }
+
+    fn get_paper(&self, arxiv_id: &str) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let papers = crate::registry::knowledge::list_papers(&conn)?;
+        match papers.into_iter().find(|p| p.id == arxiv_id) {
+            Some(p) => Ok(serde_json::json!({
+                "success": true,
+                "id": p.id,
+                "title": p.title,
+                "venue": p.venue,
+                "year": p.year,
+                "pdf_path": p.pdf_path,
+                "tags": p.tags,
+            })),
+            None => Ok(serde_json::json!({ "success": false, "error": "Paper not found" })),
+        }
+    }
+}
+
+impl crate::mcp::clients::RegistryClient for AppContext {
+    fn list_repos(&self, _filter: Option<&str>) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let repos = crate::registry::repo::list_repos(&conn)?;
+        let results: Vec<serde_json::Value> = repos
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "id": r.id,
+                    "local_path": r.local_path,
+                    "language": r.language,
+                    "tags": r.tags,
+                    "workspace_type": r.workspace_type,
+                    "data_tier": r.data_tier,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({ "success": true, "count": results.len(), "repos": results }))
+    }
+
+    fn get_repo(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let repos = crate::registry::repo::list_repos(&conn)?;
+        match repos.into_iter().find(|r| r.id == repo_id) {
+            Some(r) => Ok(serde_json::json!({
+                "success": true,
+                "id": r.id,
+                "local_path": r.local_path,
+                "language": r.language,
+                "tags": r.tags,
+                "workspace_type": r.workspace_type,
+                "data_tier": r.data_tier,
+            })),
+            None => Ok(serde_json::json!({ "success": false, "error": "repo not found" })),
+        }
+    }
+
+    fn list_modules(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let modules = crate::registry::knowledge::list_modules(&conn, repo_id)?;
+        let results: Vec<serde_json::Value> = modules
+            .into_iter()
+            .map(|(name, ty, path)| {
+                serde_json::json!({
+                    "name": name,
+                    "type": ty,
+                    "path": path,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({ "success": true, "count": results.len(), "modules": results }))
+    }
+
+    fn save_paper(&self, paper: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let paper_entry: crate::registry::PaperEntry = serde_json::from_value(paper.clone())?;
+        crate::registry::knowledge::save_paper(&conn, &paper_entry)?;
+        Ok(serde_json::json!({ "success": true }))
+    }
+
+    fn save_experiment(&self, exp: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let exp_entry: crate::registry::ExperimentEntry = serde_json::from_value(exp.clone())?;
+        crate::registry::WorkspaceRegistry::save_experiment(&conn, &exp_entry)?;
+        Ok(serde_json::json!({ "success": true }))
+    }
+
+    fn list_code_metrics(&self) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let metrics = crate::registry::metrics::list_code_metrics(&conn)?;
+        let repos: Vec<serde_json::Value> = metrics
+            .into_iter()
+            .map(|(id, m)| {
+                serde_json::json!({
+                    "repo_id": id,
+                    "total_lines": m.total_lines,
+                    "source_lines": m.source_lines,
+                    "test_lines": m.test_lines,
+                    "comment_lines": m.comment_lines,
+                    "file_count": m.file_count,
+                    "language_breakdown": m.language_breakdown,
+                    "updated_at": m.updated_at.to_rfc3339()
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({ "success": true, "count": repos.len(), "repos": repos }))
+    }
+
+    fn get_code_metrics(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        match crate::registry::metrics::get_code_metrics(&conn, repo_id)? {
+            Some(m) => Ok(serde_json::json!({
+                "success": true,
+                "repo_id": repo_id,
+                "total_lines": m.total_lines,
+                "source_lines": m.source_lines,
+                "test_lines": m.test_lines,
+                "comment_lines": m.comment_lines,
+                "file_count": m.file_count,
+                "language_breakdown": m.language_breakdown,
+                "updated_at": m.updated_at.to_rfc3339()
+            })),
+            None => {
+                Ok(serde_json::json!({ "success": false, "error": "No metrics found for repo" }))
+            }
+        }
+    }
+
+    fn get_health(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        match crate::registry::health::get_health(&conn, repo_id)? {
+            Some(h) => Ok(serde_json::json!({
+                "success": true,
+                "repo_id": repo_id,
+                "status": h.status,
+                "ahead": h.ahead,
+                "behind": h.behind,
+                "checked_at": h.checked_at.to_rfc3339()
+            })),
+            None => Ok(serde_json::json!({ "success": false, "error": "No health data found" })),
+        }
     }
 }
 
@@ -181,9 +374,8 @@ mod tests {
         let storage = Arc::new(TempStorageBackend::new());
         let ctx = AppContext::with_storage(storage).unwrap();
         let conn = ctx.conn().unwrap();
-        let version: String = conn
-            .query_row("SELECT sqlite_version()", [], |row| row.get(0))
-            .unwrap();
+        let version: String =
+            conn.query_row("SELECT sqlite_version()", [], |row| row.get(0)).unwrap();
         assert!(!version.is_empty());
     }
 }

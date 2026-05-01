@@ -23,10 +23,7 @@ pub trait ScanClient: Send + Sync {
 
 /// Check health status of registered repositories.
 pub trait HealthClient: Send + Sync {
-    fn check_health(
-        &self,
-        detail: bool,
-    ) -> impl std::future::Future<Output = Result<Value>> + Send;
+    fn check_health(&self, detail: bool) -> impl std::future::Future<Output = Result<Value>>;
 }
 
 /// Sync registered repositories.
@@ -35,7 +32,7 @@ pub trait SyncClient: Send + Sync {
         &self,
         dry_run: bool,
         filter_tags: Option<Vec<String>>,
-    ) -> impl std::future::Future<Output = Result<Value>> + Send;
+    ) -> impl std::future::Future<Output = Result<Value>>;
 }
 
 /// Registry CRUD operations exposed to MCP tools.

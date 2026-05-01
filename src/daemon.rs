@@ -72,9 +72,7 @@ impl Daemon {
                     behind,
                     checked_at: chrono::Utc::now(),
                 };
-                if let Err(e) =
-                    crate::registry::health::save_health(&conn, &repo.id, &health)
-                {
+                if let Err(e) = crate::registry::health::save_health(&conn, &repo.id, &health) {
                     tracing::warn!("Failed to save health for {}: {}", repo.id, e);
                 }
             }

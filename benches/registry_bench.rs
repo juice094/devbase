@@ -1,4 +1,5 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use devbase::registry::repo;
 use devbase::registry::{RepoEntry, WorkspaceRegistry};
 use std::cell::Cell;
 use std::path::PathBuf;
@@ -49,7 +50,7 @@ fn bench_save_repo(c: &mut Criterion) {
             let i = counter.get();
             counter.set(i + 1);
             let repo = sample_repo(&format!("bench-repo-{}", i));
-            WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+            repo::save_repo(&mut conn, &repo).unwrap();
         });
     });
 }
@@ -64,12 +65,12 @@ fn bench_list_repos(c: &mut Criterion) {
 
     for i in 0..500 {
         let repo = sample_repo(&format!("prefill-{}", i));
-        WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+        repo::save_repo(&mut conn, &repo).unwrap();
     }
 
     c.bench_function("list_repos_500", |b| {
         b.iter(|| {
-            let repos = WorkspaceRegistry::list_repos(&conn).unwrap();
+            let repos = repo::list_repos(&conn).unwrap();
             black_box(repos);
         });
     });
@@ -84,7 +85,7 @@ fn bench_get_health(c: &mut Criterion) {
     let mut conn = WorkspaceRegistry::init_db().unwrap();
 
     let repo = sample_repo("health-bench");
-    WorkspaceRegistry::save_repo(&mut conn, &repo).unwrap();
+    repo::save_repo(&mut conn, &repo).unwrap();
 
     let health = devbase::registry::HealthEntry {
         status: "ok".to_string(),
@@ -92,11 +93,11 @@ fn bench_get_health(c: &mut Criterion) {
         behind: 0,
         checked_at: chrono::Utc::now(),
     };
-    WorkspaceRegistry::save_health(&conn, "health-bench", &health).unwrap();
+    devbase::registry::health::save_health(&conn, "health-bench", &health).unwrap();
 
     c.bench_function("get_health", |b| {
         b.iter(|| {
-            let h = WorkspaceRegistry::get_health(&conn, "health-bench").unwrap();
+            let h = devbase::registry::health::get_health(&conn, "health-bench").unwrap();
             black_box(h);
         });
     });

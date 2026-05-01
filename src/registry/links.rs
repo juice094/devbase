@@ -5,8 +5,8 @@ pub fn get_linked_repos(
     conn: &rusqlite::Connection,
     vault_id: &str,
 ) -> anyhow::Result<Vec<String>> {
-    let mut stmt = conn
-        .prepare("SELECT repo_id FROM vault_repo_links WHERE vault_id = ?1 ORDER BY repo_id")?;
+    let mut stmt =
+        conn.prepare("SELECT repo_id FROM vault_repo_links WHERE vault_id = ?1 ORDER BY repo_id")?;
     let rows = stmt.query_map([vault_id], |row| row.get::<_, String>(0))?;
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
 }
@@ -16,9 +16,8 @@ pub fn get_linked_vaults(
     conn: &rusqlite::Connection,
     repo_id: &str,
 ) -> anyhow::Result<Vec<String>> {
-    let mut stmt = conn.prepare(
-        "SELECT vault_id FROM vault_repo_links WHERE repo_id = ?1 ORDER BY vault_id",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT vault_id FROM vault_repo_links WHERE repo_id = ?1 ORDER BY vault_id")?;
     let rows = stmt.query_map([repo_id], |row| row.get::<_, String>(0))?;
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
 }
@@ -52,23 +51,34 @@ pub fn get_linked_repos_full(
          ORDER BY e.id",
         super::ENTITY_TYPE_REPO
     ))?;
-    let rows = stmt.query_map([vault_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
+    let rows =
+        stmt.query_map([vault_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
 }
 
 impl WorkspaceRegistry {
-    pub fn get_linked_repos(conn: &rusqlite::Connection, vault_id: &str) -> anyhow::Result<Vec<String>> {
+    pub fn get_linked_repos(
+        conn: &rusqlite::Connection,
+        vault_id: &str,
+    ) -> anyhow::Result<Vec<String>> {
         get_linked_repos(conn, vault_id)
     }
-    pub fn get_linked_vaults(conn: &rusqlite::Connection, repo_id: &str) -> anyhow::Result<Vec<String>> {
+    pub fn get_linked_vaults(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+    ) -> anyhow::Result<Vec<String>> {
         get_linked_vaults(conn, repo_id)
     }
-    pub fn get_linked_vault_notes(conn: &rusqlite::Connection, repo_id: &str) -> anyhow::Result<Vec<(String, Option<String>)>> {
+    pub fn get_linked_vault_notes(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+    ) -> anyhow::Result<Vec<(String, Option<String>)>> {
         get_linked_vault_notes(conn, repo_id)
     }
-    pub fn get_linked_repos_full(conn: &rusqlite::Connection, vault_id: &str) -> anyhow::Result<Vec<(String, String)>> {
+    pub fn get_linked_repos_full(
+        conn: &rusqlite::Connection,
+        vault_id: &str,
+    ) -> anyhow::Result<Vec<(String, String)>> {
         get_linked_repos_full(conn, vault_id)
     }
 }

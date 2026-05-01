@@ -148,13 +148,23 @@ pub fn delete_knowledge_meta(conn: &rusqlite::Connection, id: &str) -> anyhow::R
 }
 
 impl super::WorkspaceRegistry {
-    pub fn save_knowledge_meta(conn: &rusqlite::Connection, meta: &KnowledgeMeta) -> anyhow::Result<()> {
+    pub fn save_knowledge_meta(
+        conn: &rusqlite::Connection,
+        meta: &KnowledgeMeta,
+    ) -> anyhow::Result<()> {
         save_knowledge_meta(conn, meta)
     }
-    pub fn get_knowledge_meta(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<Option<KnowledgeMeta>> {
+    pub fn get_knowledge_meta(
+        conn: &rusqlite::Connection,
+        id: &str,
+    ) -> anyhow::Result<Option<KnowledgeMeta>> {
         get_knowledge_meta(conn, id)
     }
-    pub fn list_knowledge_meta(conn: &rusqlite::Connection, target_level: Option<i32>, target_id: Option<&str>) -> anyhow::Result<Vec<KnowledgeMeta>> {
+    pub fn list_knowledge_meta(
+        conn: &rusqlite::Connection,
+        target_level: Option<i32>,
+        target_id: Option<&str>,
+    ) -> anyhow::Result<Vec<KnowledgeMeta>> {
         list_knowledge_meta(conn, target_level, target_id)
     }
     pub fn delete_knowledge_meta(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<bool> {
@@ -187,8 +197,7 @@ mod tests {
         assert_eq!(fetched.target_id, "test-limit-1");
         assert_eq!(fetched.confidence, 0.95);
 
-        let list =
-            list_knowledge_meta(&conn, Some(3), Some("test-limit-1")).unwrap();
+        let list = list_knowledge_meta(&conn, Some(3), Some("test-limit-1")).unwrap();
         assert_eq!(list.len(), 1);
 
         let deleted = delete_knowledge_meta(&conn, "meta-1").unwrap();

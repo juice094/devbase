@@ -323,10 +323,7 @@ pub(crate) async fn run_app<B: Backend>(
                                     Some("lazygit")
                                 } else {
                                     app.log_warn(
-                                        app.ctx.i18n
-                                            .log
-                                            .external_tui_not_found
-                                            .to_string(),
+                                        app.ctx.i18n.log.external_tui_not_found.to_string(),
                                     );
                                     None
                                 };

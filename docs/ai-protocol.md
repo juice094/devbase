@@ -52,14 +52,14 @@
 |------|------|---------|------|
 | 🟢 健康 | 0-3 个 `crate::` refs | `syncthing_client`, `embedding`, `semantic_index`, `search`, `registry/health`, `registry/metrics`, `registry/workspace`, `registry/entity`, `registry/relation`, `vault/frontmatter`, `vault/wikilink`, `workflow/interpolate`, `workflow/model`, `skill_runtime/parser` | **下一轮拆分候选** |
 | 🟡 亚健康 | 4-15 个 refs | `scan`, `sync`, `query`, `health`, `vault/indexer`, `workflow/state`, `skill_runtime/discover` | 需 trait 化解耦后拆分 |
-| 🔴 不健康 | >15 个 refs | `mcp/tools/repo` (70), `knowledge_engine` (33), `skill_runtime/executor` (15), `workflow/executor` (10) | 需架构重构 |
+| 🔴 不健康 | >15 个 refs | `mcp/tools/repo` (41), `knowledge_engine` (33), `skill_runtime/executor` (15), `workflow/executor` (10) | 需架构重构 |
 
 ## 待办（按优先级）
 
 > 完整规划见 [`docs/ROADMAP.md`](ROADMAP.md)。此处仅保留架构层面的关键决策锚点。
 
 1. **P0 — Workspace 扩展**：提取 🟢 健康模块为独立 crate。目标：workspace 成员达到 8-10 个。验收：`cargo check --workspace` 0 errors。
-2. **P1 — MCP trait 化**：`mcp/tools/repo.rs` 有 70 个 `crate::` 引用。需定义 `RegistryClient` / `SearchClient` trait。验收：mcp `crate::` 引用 <10。
+2. **P1 — MCP trait 化**：`mcp/tools/repo.rs` 有 41 个 `crate::` 引用（从 70 降下）。已定义 `ScanClient`/`HealthClient`/`SyncClient`/`KnowledgeClient`/`RegistryClient`/`DigestClient` trait，`AppContext` 统一实现。验收：<50 ✅，下一步 <30。
 3. **P2 — registry 子模块清洁**：`health`, `metrics`, `workspace`, `entity`, `relation` 已零耦合，消除所有 `crate::` 引用使其达到"随时可提取"状态。
 4. **P3 — migrate.rs 拆解**：按 schema 版本切分为 `migrate/v16.rs` 等。需 Claw 架构支持。
 
@@ -82,3 +82,8 @@
 - **交付**：Workspace 骨架搭建 + 3 个零耦合模块提取 + 全模块耦合地图扫描
 - **Commit**：`7eb139d`（workspace 拆分）
 - **关键决策**：采用"强叙事+弱绑定"分发策略；以 `crate::` 引用数作为耦合健康度金标准
+
+- **日期**：2026-05-01（续）
+- **架构**：CLI
+- **交付**：Batch 3 — MCP trait 化完成。`clients.rs` 定义 6 个 client trait；`AppContext` 统一实现；`repo.rs` `crate::` 引用 68→41；测试 405 passed（1 flaky）
+- **关键决策**：`HealthClient`/`SyncClient` 因 `rusqlite::Connection` 非 `Send`，去掉 future `+ Send` bound；`ScanClient` 保留 `+ Send`（`&Pool` 是 `Send`）

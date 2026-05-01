@@ -65,8 +65,9 @@ fn main() -> anyhow::Result<()> {
                 .chunks_exact(4)
                 .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                 .collect();
-            let vec_results =
-                WorkspaceRegistry::semantic_search_symbols(&conn, &emb_repo, &query_vec, 5);
+            let vec_results = devbase::registry::knowledge::semantic_search_symbols(
+                &conn, &emb_repo, &query_vec, 5,
+            );
             match vec_results {
                 Ok(v) if !v.is_empty() => {
                     println!(
@@ -97,7 +98,8 @@ fn main() -> anyhow::Result<()> {
 
     // 6. Traverse Related Symbols
     println!("6. Related symbols to 'run_index' in devbase:");
-    let related = WorkspaceRegistry::find_related_symbols(&conn, "unknown", "run_index", 10)?;
+    let related =
+        devbase::registry::knowledge::find_related_symbols(&conn, "unknown", "run_index", 10)?;
     println!("   Found {} related symbols:", related.len());
     for (_src_repo, _src_sym, target_repo, target_sym, link_type, strength) in
         related.iter().take(5)
@@ -112,7 +114,8 @@ fn main() -> anyhow::Result<()> {
     // 7. Cross-Repo Search
     println!("7. Cross-repo search: 'main' in Rust repos");
     let tags: Vec<String> = vec!["rust".into()];
-    let results = WorkspaceRegistry::cross_repo_search_symbols(&conn, &tags, "main", None, 10)?;
+    let results =
+        devbase::registry::knowledge::cross_repo_search_symbols(&conn, &tags, "main", None, 10)?;
     println!("   Found {} matches across Rust repos:", results.len());
     for (i, (repo, name, path, line, score)) in results.iter().take(5).enumerate() {
         println!("   {}. {}::{} ({}:{}) - score: {:.3}", i + 1, repo, name, path, line, score);

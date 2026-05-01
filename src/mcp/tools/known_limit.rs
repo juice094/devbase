@@ -118,8 +118,7 @@ Returns: JSON array of known limits."#,
         let mitigated = args.get("mitigated").and_then(|v| v.as_bool());
 
         let conn = ctx.conn()?;
-        let limits =
-            crate::registry::known_limits::list_known_limits(&conn, category, mitigated)?;
+        let limits = crate::registry::known_limits::list_known_limits(&conn, category, mitigated)?;
 
         let results: Vec<serde_json::Value> = limits
             .into_iter()

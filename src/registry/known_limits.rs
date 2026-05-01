@@ -231,10 +231,17 @@ impl super::WorkspaceRegistry {
     pub fn save_known_limit(conn: &rusqlite::Connection, limit: &KnownLimit) -> anyhow::Result<()> {
         save_known_limit(conn, limit)
     }
-    pub fn get_known_limit(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<Option<KnownLimit>> {
+    pub fn get_known_limit(
+        conn: &rusqlite::Connection,
+        id: &str,
+    ) -> anyhow::Result<Option<KnownLimit>> {
         get_known_limit(conn, id)
     }
-    pub fn list_known_limits(conn: &rusqlite::Connection, category: Option<&str>, mitigated: Option<bool>) -> anyhow::Result<Vec<KnownLimit>> {
+    pub fn list_known_limits(
+        conn: &rusqlite::Connection,
+        category: Option<&str>,
+        mitigated: Option<bool>,
+    ) -> anyhow::Result<Vec<KnownLimit>> {
         list_known_limits(conn, category, mitigated)
     }
     pub fn delete_known_limit(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<bool> {
@@ -275,8 +282,7 @@ mod tests {
 
         let resolved = resolve_known_limit(&conn, "test-limit-1").unwrap();
         assert!(resolved);
-        let resolved_fetched =
-            get_known_limit(&conn, "test-limit-1").unwrap().unwrap();
+        let resolved_fetched = get_known_limit(&conn, "test-limit-1").unwrap().unwrap();
         assert!(resolved_fetched.mitigated);
 
         let deleted = delete_known_limit(&conn, "test-limit-1").unwrap();
@@ -299,8 +305,7 @@ mod tests {
     fn test_list_known_limits_by_category() {
         let conn = WorkspaceRegistry::init_in_memory().unwrap();
         seed_hard_vetoes(&conn).unwrap();
-        let hard_vetoes =
-            list_known_limits(&conn, Some("hard-veto"), Some(false)).unwrap();
+        let hard_vetoes = list_known_limits(&conn, Some("hard-veto"), Some(false)).unwrap();
         assert!(!hard_vetoes.is_empty());
         for v in &hard_vetoes {
             assert_eq!(v.category, "hard-veto");

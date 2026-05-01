@@ -1,5 +1,5 @@
-use crate::registry::{RepoEntry, WorkspaceRegistry};
 use crate::registry::repo;
+use crate::registry::{RepoEntry, WorkspaceRegistry};
 use crate::storage::StorageBackend;
 use std::fs;
 use std::path::{Path, PathBuf};

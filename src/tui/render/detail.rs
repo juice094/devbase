@@ -156,9 +156,7 @@ fn render_overview(
         .ctx
         .conn()
         .ok()
-        .and_then(|conn| {
-            crate::registry::links::get_linked_vault_notes(&conn, &repo.id).ok()
-        })
+        .and_then(|conn| crate::registry::links::get_linked_vault_notes(&conn, &repo.id).ok())
         .unwrap_or_default();
 
     let mut vault_lines: Vec<Line> = Vec::new();
@@ -322,8 +320,7 @@ fn render_insights(
 ) {
     let insights = app.generate_insights(repo);
     let history = if let Ok(conn) = app.ctx.conn() {
-        crate::registry::health::get_stars_history(&conn, &repo.id, 30)
-            .unwrap_or_default()
+        crate::registry::health::get_stars_history(&conn, &repo.id, 30).unwrap_or_default()
     } else {
         vec![]
     };
@@ -496,9 +493,7 @@ fn render_vault_detail(frame: &mut Frame, app: &mut App, area: Rect, styles: &St
         .ctx
         .conn()
         .ok()
-        .and_then(|conn| {
-            crate::registry::links::get_linked_repos_full(&conn, &vault.id).ok()
-        })
+        .and_then(|conn| crate::registry::links::get_linked_repos_full(&conn, &vault.id).ok())
         .unwrap_or_default();
 
     let mut all_lines = text.lines.to_vec();

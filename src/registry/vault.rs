@@ -43,7 +43,7 @@ pub fn list_vault_notes(
                 json_extract(e.metadata, '$.created_at'), json_extract(e.metadata, '$.updated_at')
          FROM entities e
          WHERE e.entity_type = ?1
-         ORDER BY json_extract(e.metadata, '$.updated_at') DESC"
+         ORDER BY json_extract(e.metadata, '$.updated_at') DESC",
     )?;
     let rows = stmt.query_map([crate::registry::ENTITY_TYPE_VAULT_NOTE], |row| {
         let tags_raw: Option<String> = row.get(4)?;
@@ -56,10 +56,7 @@ pub fn list_vault_notes(
             frontmatter: row.get(3)?,
             tags: tags_raw
                 .map(|s| {
-                    s.split(',')
-                        .map(|t| t.trim().to_string())
-                        .filter(|t| !t.is_empty())
-                        .collect()
+                    s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()
                 })
                 .unwrap_or_default(),
             outgoing_links: links_raw
@@ -91,7 +88,7 @@ pub fn get_vault_note(
                 json_extract(e.metadata, '$.linked_repo'),
                 json_extract(e.metadata, '$.created_at'), json_extract(e.metadata, '$.updated_at')
          FROM entities e
-         WHERE e.entity_type = ?1 AND e.id = ?2"
+         WHERE e.entity_type = ?1 AND e.id = ?2",
     )?;
     let mut rows = stmt.query_map(
         rusqlite::params![crate::registry::ENTITY_TYPE_VAULT_NOTE, note_id],

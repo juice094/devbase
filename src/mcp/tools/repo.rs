@@ -1,4 +1,5 @@
 use crate::mcp::McpTool;
+use crate::storage::AppContext;
 use anyhow::Context;
 use rusqlite::OptionalExtension;
 
@@ -51,7 +52,7 @@ Returns: JSON array of discovered repos with id, path, language, source_type, an
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let path = args
             .get("path")
@@ -106,13 +107,11 @@ Returns: JSON object with workspace summary and per-repo health records. Each re
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let detail = args.get("detail").and_then(|v| v.as_bool()).unwrap_or(false);
-        let config = crate::config::Config::load()?;
-        let conn = ctx.conn()?;
-        let i18n = crate::i18n::from_language(&config.general.language);
-        crate::health::run_json(&conn, detail, 0, 1, config.cache.ttl_seconds, &i18n).await
+        use crate::mcp::clients::HealthClient;
+        ctx.check_health(detail).await
     }
 }
 
@@ -170,13 +169,19 @@ Returns: JSON object with per-repo sync results including: repo_id, action (pull
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         crate::mcp::check_destructive_enabled()?;
         let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(true);
         let filter_tags = args.get("filter_tags").and_then(|v| v.as_str());
-        let conn = ctx.conn()?;
-        crate::sync::run_json(&conn, dry_run, filter_tags, None, &ctx.i18n).await
+        let filter_tags_vec = filter_tags.map(|s| {
+            s.split(',')
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect::<Vec<_>>()
+        });
+        use crate::mcp::clients::SyncClient;
+        SyncClient::sync_repos(ctx, dry_run, filter_tags_vec).await
     }
 }
 
@@ -222,18 +227,11 @@ Returns: JSON with indexed count and error count."#,
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
-        let path_owned = path.to_string();
-        let pool = ctx.pool();
-        let count = tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get()?;
-            crate::knowledge_engine::run_index(&mut conn, &path_owned)
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
-        Ok(serde_json::json!({ "success": true, "indexed": count, "errors": 0 }))
+        use crate::mcp::clients::KnowledgeClient;
+        KnowledgeClient::run_index(ctx, path)
     }
 }
 
@@ -280,22 +278,13 @@ Returns: JSON with success status."#,
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let text = args.get("text").and_then(|v| v.as_str()).context("text required")?;
         let author = args.get("author").and_then(|v| v.as_str()).unwrap_or("ai");
-        let repo_id = repo_id.to_string();
-        let text = text.to_string();
-        let author = author.to_string();
-        let pool = ctx.pool();
-        tokio::task::spawn_blocking(move || {
-            let conn = pool.get()?;
-            crate::registry::knowledge::save_note(&conn, &repo_id, &text, &author)?;
-            Ok::<_, anyhow::Error>(serde_json::json!({ "success": true }))
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+        use crate::mcp::clients::KnowledgeClient;
+        KnowledgeClient::save_note(ctx, repo_id, text, author)
     }
 }
 
@@ -329,18 +318,10 @@ Returns: JSON with a plain-text digest string."#,
     async fn invoke(
         &self,
         _args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        let pool = ctx.pool();
-        tokio::task::spawn_blocking(move || {
-            let conn = pool.get()?;
-            let config = crate::config::Config::load()?;
-            let i18n = crate::i18n::from_language(&config.general.language);
-            let text = crate::digest::generate_daily_digest(&conn, &config, &i18n)?;
-            Ok::<_, anyhow::Error>(serde_json::json!({ "success": true, "digest": text }))
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+        use crate::mcp::clients::DigestClient;
+        DigestClient::generate_daily_digest(ctx)
     }
 }
 
@@ -382,7 +363,7 @@ Returns: JSON with discovered paper count and registration status."#,
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("~/papers");
         let tags_str = args.get("tags").and_then(|v| v.as_str()).unwrap_or("");
@@ -488,7 +469,7 @@ Returns: JSON with experiment log ID and success status."#,
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let id = args.get("id").and_then(|v| v.as_str()).context("id required")?.to_string();
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).map(String::from);
@@ -565,7 +546,7 @@ Returns: JSON with stars, forks, open_issues, description, pushed_at, and update
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args
             .get("repo_id")
@@ -617,16 +598,8 @@ Returns: JSON with stars, forks, open_issues, description, pushed_at, and update
         let html_url = data.get("html_url").and_then(|v| v.as_str()).map(String::from);
 
         if write_summary && let Some(ref desc) = description {
-            let repo_id2 = repo_id.clone();
-            let desc2 = desc.clone();
-            let pool = ctx.pool();
-            tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-                let conn = pool.get()?;
-                crate::registry::knowledge::save_summary(&conn, &repo_id2, &desc2, "")?;
-                Ok(())
-            })
-            .await
-            .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+            use crate::mcp::clients::KnowledgeClient;
+            KnowledgeClient::save_summary(ctx, &repo_id, desc, "")?;
         }
 
         Ok(serde_json::json!({
@@ -683,48 +656,16 @@ Returns: JSON array of metric objects per repo: repo_id, total_lines, code_lines
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
-        let pool = ctx.pool();
-        tokio::task::spawn_blocking(move || {
-
-            let conn = pool.get()?;
-            if repo_id.is_empty() {
-                let metrics = crate::registry::metrics::list_code_metrics(&conn)?;
-                let repos: Vec<serde_json::Value> = metrics.into_iter().map(|(id, m)| {
-                    serde_json::json!({
-                        "repo_id": id,
-                        "total_lines": m.total_lines,
-                        "source_lines": m.source_lines,
-                        "test_lines": m.test_lines,
-                        "comment_lines": m.comment_lines,
-                        "file_count": m.file_count,
-                        "language_breakdown": m.language_breakdown,
-                        "updated_at": m.updated_at.to_rfc3339()
-                    })
-                }).collect();
-                Ok::<_, anyhow::Error>(serde_json::json!({ "success": true, "count": repos.len(), "repos": repos }))
-            } else {
-                match crate::registry::metrics::get_code_metrics(&conn, &repo_id)? {
-                    Some(m) => Ok(serde_json::json!({
-                        "success": true,
-                        "repo_id": repo_id,
-                        "total_lines": m.total_lines,
-                        "source_lines": m.source_lines,
-                        "test_lines": m.test_lines,
-                        "comment_lines": m.comment_lines,
-                        "file_count": m.file_count,
-                        "language_breakdown": m.language_breakdown,
-                        "updated_at": m.updated_at.to_rfc3339()
-                    })),
-                    None => Ok(serde_json::json!({ "success": false, "error": "No metrics found for repo" })),
-                }
-            }
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+        use crate::mcp::clients::RegistryClient;
+        if repo_id.is_empty() {
+            RegistryClient::list_code_metrics(ctx)
+        } else {
+            RegistryClient::get_code_metrics(ctx, &repo_id)
+        }
     }
 }
 
@@ -766,7 +707,7 @@ Returns: JSON with workspace_members, packages (name, version, targets), and dep
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
@@ -876,7 +817,7 @@ Returns: JSON array of repo objects. Each includes: id, local_path, language, ta
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let language = args.get("language").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let tag = args.get("tag").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -905,18 +846,16 @@ Returns: JSON array of repo objects. Each includes: id, local_path, language, ta
 
                 // Gather status
                 let (ahead, behind, dirty) = if repo.workspace_type == "git" {
-                    let (st, ah, bh) =
-                        match crate::registry::health::get_health(&conn, &repo.id)? {
-                            Some(health) => (health.status.clone(), health.ahead, health.behind),
-                            None => {
-                                let path = repo.local_path.to_string_lossy();
-                                let primary = repo.primary_remote();
-                                let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
-                                let default_branch =
-                                    primary.and_then(|r| r.default_branch.as_deref());
-                                crate::health::analyze_repo(&path, upstream_url, default_branch)
-                            }
-                        };
+                    let (st, ah, bh) = match crate::registry::health::get_health(&conn, &repo.id)? {
+                        Some(health) => (health.status.clone(), health.ahead, health.behind),
+                        None => {
+                            let path = repo.local_path.to_string_lossy();
+                            let primary = repo.primary_remote();
+                            let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
+                            let default_branch = primary.and_then(|r| r.default_branch.as_deref());
+                            crate::health::analyze_repo(&path, upstream_url, default_branch)
+                        }
+                    };
                     let dirty = st == "dirty" || st == "changed";
                     (ah, bh, dirty)
                 } else {
@@ -1017,7 +956,7 @@ Returns: JSON array of matching repos with metadata, same format as devkit_query
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let query = args
             .get("query")
@@ -1294,7 +1233,7 @@ Returns: JSON array of symbols with file_path, name, symbol_type, line_start, li
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let name_filter = args.get("name_filter").and_then(|v| v.as_str()).unwrap_or("");
@@ -1407,7 +1346,7 @@ Returns: JSON array of dependency edges with target_repo_id, relation_type, and 
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let direction = args.get("direction").and_then(|v| v.as_str()).unwrap_or("outgoing");
@@ -1513,7 +1452,7 @@ Returns: JSON array of call edges with caller_file, caller_symbol, caller_line, 
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let callee_name = args.get("callee_name").and_then(|v| v.as_str()).unwrap_or("");
@@ -1628,7 +1567,7 @@ Returns: JSON array of potentially dead functions with file_path, name, and line
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50).min(200) as usize;
@@ -1751,7 +1690,7 @@ Returns: JSON array of matching symbols with file_path, name, line_start, and si
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let query_emb = parse_f32_array(&args, "query_embedding")?;
@@ -1832,7 +1771,7 @@ Returns: success flag and count of stored embeddings."#,
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let symbol_name = args
@@ -1848,8 +1787,7 @@ Returns: success flag and count of stored embeddings."#,
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get()?;
             let pairs = vec![(symbol_name.clone(), embedding)];
-            let count =
-                crate::registry::knowledge::save_embeddings(&mut conn, &repo_id, &pairs)?;
+            let count = crate::registry::knowledge::save_embeddings(&mut conn, &repo_id, &pairs)?;
 
             Ok::<_, anyhow::Error>(serde_json::json!({
                 "success": true,
@@ -1900,7 +1838,7 @@ Returns: JSON array of matching symbols with file_path, name, line_start, and si
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         // Delegate to DevkitSemanticSearchTool — same logic
         DevkitSemanticSearchTool.invoke(args, ctx).await
@@ -1931,7 +1869,7 @@ impl McpTool for DevkitArxivFetchTool {
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        _ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let arxiv_id = args
             .get("arxiv_id")
@@ -2004,7 +1942,7 @@ Returns: JSON object with repo_count, total_symbols, total_embeddings, total_cal
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).map(String::from);
         let activity_limit =
@@ -2076,7 +2014,7 @@ Returns: JSON array of symbols with file_path, name, line_start, and similarity_
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let query_text =
@@ -2163,7 +2101,7 @@ Returns: JSON array of related symbols with target_symbol, link_type, and streng
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let symbol_name = args
@@ -2262,7 +2200,7 @@ Returns: JSON array of symbols with repo_id, file_path, name, line_start, and si
     async fn invoke(
         &self,
         args: serde_json::Value,
-        ctx: &mut crate::storage::AppContext,
+        ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let tags = args
             .get("tags")

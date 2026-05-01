@@ -46,15 +46,12 @@ fn collect_repos_from_stmt(
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(Utc::now);
         let tags: Vec<String> = tags
-            .map(|s| {
-                s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()
-            })
+            .map(|s| s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect())
             .unwrap_or_default();
         let workspace_type = workspace_type.unwrap_or_else(|| "git".to_string());
         let data_tier = data_tier.unwrap_or_else(|| "private".to_string());
-        let last_synced_at = last_synced_at.and_then(|s| {
-            DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))
-        });
+        let last_synced_at = last_synced_at
+            .and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc)));
         let stars = stars.map(|s| s as u64);
         let remote = remote_name.map(|name| RemoteEntry {
             remote_name: name,
@@ -185,7 +182,12 @@ pub fn update_repo_language(
     language: Option<&str>,
 ) -> anyhow::Result<()> {
     let tx = conn.unchecked_transaction()?;
-    super::entity::update_entity_metadata_field(&tx, repo_id, "language", language.unwrap_or("null"))?;
+    super::entity::update_entity_metadata_field(
+        &tx,
+        repo_id,
+        "language",
+        language.unwrap_or("null"),
+    )?;
     tx.commit()?;
     Ok(())
 }
@@ -219,7 +221,12 @@ pub fn update_repo_last_synced_at(
     timestamp: DateTime<Utc>,
 ) -> anyhow::Result<()> {
     let tx = conn.unchecked_transaction()?;
-    super::entity::update_entity_metadata_field(&tx, repo_id, "last_synced_at", &timestamp.to_rfc3339())?;
+    super::entity::update_entity_metadata_field(
+        &tx,
+        repo_id,
+        "last_synced_at",
+        &timestamp.to_rfc3339(),
+    )?;
     tx.commit()?;
     Ok(())
 }
@@ -245,10 +252,7 @@ pub fn list_workspaces_by_tier(
 }
 
 /// Sync repo_tags sub-table back into entities.metadata.tags.
-pub fn sync_repo_tags_to_entity(
-    conn: &rusqlite::Connection,
-    repo_id: &str,
-) -> anyhow::Result<()> {
+pub fn sync_repo_tags_to_entity(conn: &rusqlite::Connection, repo_id: &str) -> anyhow::Result<()> {
     let tags: Option<String> = conn
         .query_row(
             "SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = ?1",
@@ -505,7 +509,8 @@ mod tests {
         assert_eq!(need[0].id, "repo-a");
 
         // Save summary with current timestamp
-        crate::registry::knowledge::save_summary(&conn, "repo-a", "A test summary", "test").unwrap();
+        crate::registry::knowledge::save_summary(&conn, "repo-a", "A test summary", "test")
+            .unwrap();
 
         // With current threshold → generated_at is not earlier → not need index
         let need = list_repos_need_index(&conn, &now).unwrap();

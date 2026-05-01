@@ -91,7 +91,8 @@ Returns: execution summary with status, step results, and execution_id."#,
         args: serde_json::Value,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let workflow_id =
+            args.get("workflow_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let inputs_value = args.get("inputs").cloned().unwrap_or(serde_json::json!({}));
 
         if workflow_id.is_empty() {
@@ -123,7 +124,13 @@ Returns: execution summary with status, step results, and execution_id."#,
 
         let inputs_json = inputs_value.to_string();
         let exec_id = crate::workflow::state::create_execution(&conn, &workflow_id, &inputs_json)?;
-        crate::workflow::state::update_execution(&conn, exec_id, &crate::workflow::model::ExecutionStatus::Running, None, None)?;
+        crate::workflow::state::update_execution(
+            &conn,
+            exec_id,
+            &crate::workflow::model::ExecutionStatus::Running,
+            None,
+            None,
+        )?;
 
         let pool = ctx.pool();
         let start = std::time::Instant::now();
@@ -220,19 +227,17 @@ Returns: execution record with status, current_step, timestamps, and duration."#
 
         let conn = ctx.conn()?;
         match crate::workflow::state::get_execution(&conn, exec_id)? {
-            Some(exec) => {
-                Ok(serde_json::json!({
-                    "success": true,
-                    "execution_id": exec.id,
-                    "workflow_id": exec.workflow_id,
-                    "status": format!("{:?}", exec.status),
-                    "current_step": exec.current_step,
-                    "started_at": exec.started_at,
-                    "finished_at": exec.finished_at,
-                    "duration_ms": exec.duration_ms,
-                    "inputs": exec.inputs_json
-                }))
-            }
+            Some(exec) => Ok(serde_json::json!({
+                "success": true,
+                "execution_id": exec.id,
+                "workflow_id": exec.workflow_id,
+                "status": format!("{:?}", exec.status),
+                "current_step": exec.current_step,
+                "started_at": exec.started_at,
+                "finished_at": exec.finished_at,
+                "duration_ms": exec.duration_ms,
+                "inputs": exec.inputs_json
+            })),
             None => Ok(serde_json::json!({
                 "success": false,
                 "error": format!("execution {} not found", exec_id)
@@ -269,10 +274,7 @@ mod tests {
 
         let tool = DevkitWorkflowRunTool;
         let result = tool
-            .invoke(
-                serde_json::json!({"workflow_id": "nonexistent-wf"}),
-                &mut ctx,
-            )
+            .invoke(serde_json::json!({"workflow_id": "nonexistent-wf"}), &mut ctx)
             .await
             .unwrap();
         assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(false));
@@ -287,10 +289,7 @@ mod tests {
         let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
 
         let tool = DevkitWorkflowStatusTool;
-        let result = tool
-            .invoke(serde_json::json!({"execution_id": -1}), &mut ctx)
-            .await
-            .unwrap();
+        let result = tool.invoke(serde_json::json!({"execution_id": -1}), &mut ctx).await.unwrap();
         assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(false));
     }
 }

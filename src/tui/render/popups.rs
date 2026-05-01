@@ -119,7 +119,10 @@ fn render_search_results(frame: &mut Frame, app: &App, styles: &Styles) {
 
 fn search_results_title(pattern: &str, count: usize, i18n: &crate::i18n::I18n) -> String {
     if count == 0 {
-        format!("{}: \"{}\" - {}", i18n.tui.search_results_title, pattern, i18n.tui.search_no_results)
+        format!(
+            "{}: \"{}\" - {}",
+            i18n.tui.search_results_title, pattern, i18n.tui.search_no_results
+        )
     } else {
         format!("{}: \"{}\" ({} results)", i18n.tui.search_results_title, pattern, count)
     }
@@ -146,10 +149,7 @@ mod tests {
     #[test]
     fn test_search_results_title_with_results() {
         let i18n = mock_i18n();
-        assert_eq!(
-            search_results_title("bar", 3, &i18n),
-            "Search results: \"bar\" (3 results)"
-        );
+        assert_eq!(search_results_title("bar", 3, &i18n), "Search results: \"bar\" (3 results)");
     }
 }
 

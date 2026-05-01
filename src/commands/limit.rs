@@ -163,12 +163,8 @@ mod tests {
         let storage = Arc::new(TempStorage::new());
         let mut ctx = AppContext::with_storage(storage).unwrap();
 
-        let result = run_limit(
-            &mut ctx,
-            crate::LimitCommands::Delete {
-                id: "nonexistent".to_string(),
-            },
-        );
+        let result =
+            run_limit(&mut ctx, crate::LimitCommands::Delete { id: "nonexistent".to_string() });
         assert!(result.is_ok());
     }
 }

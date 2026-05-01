@@ -102,11 +102,8 @@ mod tests {
 
 /// Check whether an entity with the given ID exists.
 pub fn entity_exists(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<bool> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM entities WHERE id = ?1",
-        [id],
-        |row| row.get(0),
-    )?;
+    let count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM entities WHERE id = ?1", [id], |row| row.get(0))?;
     Ok(count > 0)
 }
 

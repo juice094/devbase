@@ -1,5 +1,5 @@
-use crate::registry::{HealthEntry, OplogEntry, WorkspaceSnapshot};
 use crate::registry::repo;
+use crate::registry::{HealthEntry, OplogEntry, WorkspaceSnapshot};
 use chrono::Utc;
 use git2::Repository;
 use std::path::Path;
@@ -114,7 +114,8 @@ pub async fn run_json(
                             behind,
                             checked_at: Utc::now(),
                         };
-                        if let Err(e) = crate::registry::health::save_health(conn, &repo.id, &new_health)
+                        if let Err(e) =
+                            crate::registry::health::save_health(conn, &repo.id, &new_health)
                         {
                             tracing::warn!("Failed to save health for {}: {}", repo.id, e);
                         }
@@ -140,26 +141,28 @@ pub async fn run_json(
                         continue;
                     }
                 };
-                let status = match crate::registry::workspace::get_latest_workspace_snapshot(conn, &repo.id)
-                {
-                    Ok(Some(prev)) if prev.file_hash == current_hash => "ok".to_string(),
-                    _ => {
-                        let snapshot = WorkspaceSnapshot {
-                            repo_id: repo.id.clone(),
-                            file_hash: current_hash,
-                            checked_at: Utc::now(),
-                        };
-                        if let Err(e) = crate::registry::workspace::save_workspace_snapshot(conn, &snapshot)
-                        {
-                            tracing::warn!(
-                                "Failed to save workspace snapshot for {}: {}",
-                                repo.id,
-                                e
-                            );
+                let status =
+                    match crate::registry::workspace::get_latest_workspace_snapshot(conn, &repo.id)
+                    {
+                        Ok(Some(prev)) if prev.file_hash == current_hash => "ok".to_string(),
+                        _ => {
+                            let snapshot = WorkspaceSnapshot {
+                                repo_id: repo.id.clone(),
+                                file_hash: current_hash,
+                                checked_at: Utc::now(),
+                            };
+                            if let Err(e) =
+                                crate::registry::workspace::save_workspace_snapshot(conn, &snapshot)
+                            {
+                                tracing::warn!(
+                                    "Failed to save workspace snapshot for {}: {}",
+                                    repo.id,
+                                    e
+                                );
+                            }
+                            "changed".to_string()
                         }
-                        "changed".to_string()
-                    }
-                };
+                    };
                 (status, 0, 0)
             };
 
@@ -274,26 +277,11 @@ pub async fn run(
         .as_object()
         .ok_or_else(|| anyhow::anyhow!("environment is not an object"))?;
     println!("\n{}:", i18n.log.health_environment);
-    println!(
-        "  rustc: {}",
-        env["rustc"].as_str().unwrap_or(i18n.log.not_installed)
-    );
-    println!(
-        "  cargo: {}",
-        env["cargo"].as_str().unwrap_or(i18n.log.not_installed)
-    );
-    println!(
-        "  node: {}",
-        env["node"].as_str().unwrap_or(i18n.log.not_installed)
-    );
-    println!(
-        "  go: {}",
-        env["go"].as_str().unwrap_or(i18n.log.not_installed)
-    );
-    println!(
-        "  cmake: {}",
-        env["cmake"].as_str().unwrap_or(i18n.log.not_installed)
-    );
+    println!("  rustc: {}", env["rustc"].as_str().unwrap_or(i18n.log.not_installed));
+    println!("  cargo: {}", env["cargo"].as_str().unwrap_or(i18n.log.not_installed));
+    println!("  node: {}", env["node"].as_str().unwrap_or(i18n.log.not_installed));
+    println!("  go: {}", env["go"].as_str().unwrap_or(i18n.log.not_installed));
+    println!("  cmake: {}", env["cmake"].as_str().unwrap_or(i18n.log.not_installed));
 
     if detail {
         let repos = result["repos"]

@@ -461,7 +461,13 @@ pub fn run_discover(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> 
     }
 
     for d in merged.values() {
-        crate::registry::relation::save_relation(&conn, &d.from, &d.to, &d.relation_type, d.confidence)?;
+        crate::registry::relation::save_relation(
+            &conn,
+            &d.from,
+            &d.to,
+            &d.relation_type,
+            d.confidence,
+        )?;
     }
 
     let mut all: Vec<Discovery> = merged.into_values().collect();
@@ -497,7 +503,8 @@ pub async fn run_sync(
     let conn = ctx.conn()?;
     if json {
         let output =
-            sync::run_json(&conn, dry_run, filter_tags.as_deref(), exclude.as_deref(), &ctx.i18n).await?;
+            sync::run_json(&conn, dry_run, filter_tags.as_deref(), exclude.as_deref(), &ctx.i18n)
+                .await?;
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
         sync::run(&conn, dry_run, filter_tags.as_deref(), exclude.as_deref(), &ctx.i18n).await?;

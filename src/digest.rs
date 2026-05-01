@@ -54,14 +54,9 @@ pub fn generate_daily_digest(
         unhealthy.push(row?);
     }
     if !unhealthy.is_empty() {
-        lines.push(format!(
-            "{}: ({})",
-            i18n.log.digest_unhealthy_repos,
-            unhealthy.len()
-        ));
+        lines.push(format!("{}: ({})", i18n.log.digest_unhealthy_repos, unhealthy.len()));
         for (id, status, ahead, behind, summary_opt) in unhealthy.iter().take(10) {
-            let summary =
-                summary_opt.as_deref().unwrap_or(i18n.log.digest_no_summary);
+            let summary = summary_opt.as_deref().unwrap_or(i18n.log.digest_no_summary);
             lines.push(format!(
                 "  [{}] status={} ahead={} behind={} | {}",
                 id, status, ahead, behind, summary
@@ -77,11 +72,7 @@ pub fn generate_daily_digest(
         |row| row.get(0),
     )?;
     if disc_count > 0 {
-        lines.push(format!(
-            "{}: ({})",
-            i18n.log.digest_new_discoveries,
-            disc_count
-        ));
+        lines.push(format!("{}: ({})", i18n.log.digest_new_discoveries, disc_count));
         let mut stmt = conn.prepare("SELECT repo_id, discovery_type, description FROM ai_discoveries WHERE timestamp > ?1 ORDER BY timestamp DESC LIMIT 5")?;
         let rows = stmt.query_map([&since], |row| {
             Ok((
@@ -92,8 +83,7 @@ pub fn generate_daily_digest(
         })?;
         for row in rows {
             let (repo_id_opt, dtype, desc) = row?;
-            let repo =
-                repo_id_opt.unwrap_or_else(|| i18n.log.digest_global.to_string());
+            let repo = repo_id_opt.unwrap_or_else(|| i18n.log.digest_global.to_string());
             lines.push(format!("  [{}] {}: {}", repo, dtype, desc));
         }
         lines.push("".to_string());
@@ -115,9 +105,7 @@ pub fn generate_daily_digest(
     )?;
     lines.push(format!(
         "{}: {} repos in db, {} checked in past 24h",
-        i18n.log.digest_overall,
-        total,
-        synced
+        i18n.log.digest_overall, total, synced
     ));
 
     Ok(lines.join("\n"))

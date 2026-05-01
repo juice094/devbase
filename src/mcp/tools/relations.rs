@@ -139,11 +139,8 @@ Returns: JSON array of relations with to_entity_id, relation_type, confidence, a
                     .collect::<Vec<_>>()
             }
             _ => {
-                let rows = crate::registry::relation::list_relations(
-                    &conn,
-                    &entity_id,
-                    relation_type,
-                )?;
+                let rows =
+                    crate::registry::relation::list_relations(&conn, &entity_id, relation_type)?;
                 rows.into_iter()
                     .map(|(to, rt, conf, created)| {
                         serde_json::json!({
@@ -186,8 +183,24 @@ mod tests {
             "INSERT OR IGNORE INTO entity_types (name, schema_json, description, created_at) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params!["test", "{}", "test type", &now],
         ).unwrap();
-        crate::registry::upsert_entity(&conn, "entity-a", "test", "Entity A", None, &serde_json::json!({})).unwrap();
-        crate::registry::upsert_entity(&conn, "entity-b", "test", "Entity B", None, &serde_json::json!({})).unwrap();
+        crate::registry::upsert_entity(
+            &conn,
+            "entity-a",
+            "test",
+            "Entity A",
+            None,
+            &serde_json::json!({}),
+        )
+        .unwrap();
+        crate::registry::upsert_entity(
+            &conn,
+            "entity-b",
+            "test",
+            "Entity B",
+            None,
+            &serde_json::json!({}),
+        )
+        .unwrap();
         drop(conn);
 
         let store_tool = DevkitRelationStoreTool;
@@ -257,8 +270,10 @@ mod tests {
             "INSERT OR IGNORE INTO entity_types (name, schema_json, description, created_at) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params!["test", "{}", "test type", &now],
         ).unwrap();
-        crate::registry::upsert_entity(&conn, "src", "test", "Src", None, &serde_json::json!({})).unwrap();
-        crate::registry::upsert_entity(&conn, "dst", "test", "Dst", None, &serde_json::json!({})).unwrap();
+        crate::registry::upsert_entity(&conn, "src", "test", "Src", None, &serde_json::json!({}))
+            .unwrap();
+        crate::registry::upsert_entity(&conn, "dst", "test", "Dst", None, &serde_json::json!({}))
+            .unwrap();
         drop(conn);
 
         let store_tool = DevkitRelationStoreTool;

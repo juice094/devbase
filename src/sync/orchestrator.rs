@@ -78,16 +78,17 @@ impl SyncOrchestrator {
                     let tx = tx.clone();
                     let i18n = self.i18n;
                     tokio::spawn(async move {
-                        let summary = match timeout(timeout_duration, execute_task(&task, dry_run, i18n))
-                            .await
-                        {
-                            Ok(s) => s,
-                            Err(_) => SyncSummary {
-                                action: "TIMEOUT".to_string(),
-                                message: i18n.sync.network_timeout.to_string(),
-                                ..Default::default()
-                            },
-                        };
+                        let summary =
+                            match timeout(timeout_duration, execute_task(&task, dry_run, i18n))
+                                .await
+                            {
+                                Ok(s) => s,
+                                Err(_) => SyncSummary {
+                                    action: "TIMEOUT".to_string(),
+                                    message: i18n.sync.network_timeout.to_string(),
+                                    ..Default::default()
+                                },
+                            };
                         let _ = tx.send((task.id, summary));
                         drop(permit);
                     });

@@ -50,20 +50,14 @@ pub(super) fn fetch_single_repo(
         remote.fetch(&[] as &[&str], Some(&mut fetch_opts), None).map_err(|e| {
             anyhow::anyhow!(
                 "{}",
-                crate::i18n::format_template(
-                    i18n.sync.fetch_failed,
-                    &[&e.to_string()]
-                )
+                crate::i18n::format_template(i18n.sync.fetch_failed, &[&e.to_string()])
             )
         })?;
     } else {
         remote.fetch(&[] as &[&str], None, None).map_err(|e| {
             anyhow::anyhow!(
                 "{}",
-                crate::i18n::format_template(
-                    i18n.sync.fetch_failed,
-                    &[&e.to_string()]
-                )
+                crate::i18n::format_template(i18n.sync.fetch_failed, &[&e.to_string()])
             )
         })?;
     }
@@ -88,10 +82,7 @@ pub(super) async fn execute_task(
         let url = task.upstream_url.as_deref().unwrap_or("?");
         return SyncSummary {
             action: "DRY_RUN".to_string(),
-            message: crate::i18n::format_template(
-                i18n.sync.would_fetch,
-                &[url, &task.path],
-            ),
+            message: crate::i18n::format_template(i18n.sync.would_fetch, &[url, &task.path]),
             ..Default::default()
         };
     }
@@ -400,10 +391,7 @@ async fn sync_repo(
                 if local == remote {
                     SyncSummary {
                         action: "OK".to_string(),
-                        message: crate::i18n::format_template(
-                            i18n.sync.up_to_date,
-                            &[&branch],
-                        ),
+                        message: crate::i18n::format_template(i18n.sync.up_to_date, &[&branch]),
                         ..Default::default()
                     }
                 } else {
@@ -434,26 +422,17 @@ async fn sync_repo(
             }
             (None, Some(_)) => SyncSummary {
                 action: "WARN".to_string(),
-                message: crate::i18n::format_template(
-                    i18n.sync.local_branch_missing,
-                    &[&branch],
-                ),
+                message: crate::i18n::format_template(i18n.sync.local_branch_missing, &[&branch]),
                 ..Default::default()
             },
             (Some(_), None) => SyncSummary {
                 action: "WARN".to_string(),
-                message: crate::i18n::format_template(
-                    i18n.sync.remote_branch_missing,
-                    &[&branch],
-                ),
+                message: crate::i18n::format_template(i18n.sync.remote_branch_missing, &[&branch]),
                 ..Default::default()
             },
             (None, None) => SyncSummary {
                 action: "WARN".to_string(),
-                message: crate::i18n::format_template(
-                    i18n.sync.neither_branch_exists,
-                    &[&branch],
-                ),
+                message: crate::i18n::format_template(i18n.sync.neither_branch_exists, &[&branch]),
                 ..Default::default()
             },
         };

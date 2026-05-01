@@ -553,10 +553,7 @@ async fn call_llm(
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
     });
-    let mut request = client
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .json(&body);
+    let mut request = client.post(&url).header("Content-Type", "application/json").json(&body);
     if let Some(key) = api_key {
         request = request.header("Authorization", format!("Bearer {}", key));
     }
@@ -637,10 +634,9 @@ fn try_llm_summary(path: &Path, config: &crate::config::LlmConfig) -> Option<(St
         "dashscope" => {
             let key = config.api_key.clone()?;
             (
-                config
-                    .base_url
-                    .clone()
-                    .unwrap_or_else(|| "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string()),
+                config.base_url.clone().unwrap_or_else(|| {
+                    "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string()
+                }),
                 config.model.clone().unwrap_or_else(|| "qwen-max".to_string()),
                 Some(key),
             )

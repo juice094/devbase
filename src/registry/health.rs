@@ -23,9 +23,8 @@ pub fn get_health(
     conn: &rusqlite::Connection,
     repo_id: &str,
 ) -> anyhow::Result<Option<HealthEntry>> {
-    let mut stmt = conn.prepare(
-        "SELECT status, ahead, behind, checked_at FROM repo_health WHERE repo_id = ?1",
-    )?;
+    let mut stmt = conn
+        .prepare("SELECT status, ahead, behind, checked_at FROM repo_health WHERE repo_id = ?1")?;
     let mut rows = stmt.query([repo_id])?;
     if let Some(row) = rows.next()? {
         let status: String = row.get(0)?;
