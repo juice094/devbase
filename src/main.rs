@@ -162,6 +162,35 @@ pub(crate) enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Show module graph for a repository
+    ModuleGraph {
+        /// Repository ID; if omitted, shows all Rust repos
+        #[arg(default_value = "")]
+        repo_id: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Query the intra-repository call graph
+    CallGraph {
+        /// Repository ID to query
+        repo_id: String,
+        /// Called function name (who calls X)
+        #[arg(long)]
+        callee: Option<String>,
+        /// Calling function name (what does Y call)
+        #[arg(long)]
+        caller: Option<String>,
+        /// Optional file path substring to narrow scope
+        #[arg(long)]
+        file: Option<String>,
+        /// Maximum results
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Registry backup and restore operations
     Registry {
         #[command(subcommand)]
@@ -543,6 +572,12 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Metrics { repo_id, json } => {
             commands::simple::run_metrics(&mut ctx, &repo_id, json)?;
+        }
+        Commands::ModuleGraph { repo_id, json } => {
+            commands::simple::run_module_graph(&mut ctx, &repo_id, json)?;
+        }
+        Commands::CallGraph { repo_id, callee, caller, file, limit, json } => {
+            commands::simple::run_call_graph(&mut ctx, &repo_id, callee, caller, file, limit, json)?;
         }
         Commands::Discover => {
             commands::simple::run_discover(&mut ctx)?;

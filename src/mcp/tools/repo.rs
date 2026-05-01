@@ -1472,45 +1472,25 @@ Returns: JSON array of call edges with caller_file, caller_symbol, caller_line, 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
-            let mut sql = String::from(
-                "SELECT caller_file, caller_symbol, caller_line, callee_name \
-                 FROM code_call_graph WHERE repo_id = ?1",
-            );
-            let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(repo_id.clone())];
-
-            if !callee_name.is_empty() {
-                sql.push_str(" AND callee_name = ?");
-                sql.push_str(&(params.len() + 1).to_string());
-                params.push(Box::new(callee_name));
-            }
-            if !caller_name.is_empty() {
-                sql.push_str(" AND caller_symbol = ?");
-                sql.push_str(&(params.len() + 1).to_string());
-                params.push(Box::new(caller_name));
-            }
-            if !file_path.is_empty() {
-                sql.push_str(" AND caller_file LIKE ?");
-                sql.push_str(&(params.len() + 1).to_string());
-                params.push(Box::new(format!("%{}%", file_path)));
-            }
-            sql.push_str(&format!(" ORDER BY caller_file, caller_line LIMIT {}", limit));
-
-            let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-            let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt.query_map(rusqlite::params_from_iter(param_refs), |row| {
-                Ok(serde_json::json!({
-                    "caller_file": row.get::<_, String>(0)?,
-                    "caller_symbol": row.get::<_, String>(1)?,
-                    "caller_line": row.get::<_, i64>(2)?,
-                    "callee_name": row.get::<_, String>(3)?,
-                }))
-            })?;
-
-            let mut calls = Vec::new();
-            for row in rows {
-                calls.push(row?);
-            }
-
+            let edges = crate::registry::call_graph::query_call_edges(
+                &conn,
+                &repo_id,
+                Some(callee_name.as_str()).filter(|s| !s.is_empty()),
+                Some(caller_name.as_str()).filter(|s| !s.is_empty()),
+                Some(file_path.as_str()).filter(|s| !s.is_empty()),
+                limit,
+            )?;
+            let calls: Vec<serde_json::Value> = edges
+                .into_iter()
+                .map(|e| {
+                    serde_json::json!({
+                        "caller_file": e.caller_file,
+                        "caller_symbol": e.caller_symbol,
+                        "caller_line": e.caller_line,
+                        "callee_name": e.callee_name,
+                    })
+                })
+                .collect();
             Ok::<_, anyhow::Error>(serde_json::json!({
                 "success": true,
                 "repo_id": repo_id,

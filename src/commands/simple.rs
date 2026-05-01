@@ -522,6 +522,118 @@ pub fn run_metrics(
     Ok(())
 }
 
+pub fn run_module_graph(
+    ctx: &mut crate::storage::AppContext,
+    repo_id: &str,
+    json: bool,
+) -> anyhow::Result<()> {
+    let conn = ctx.conn()?;
+    if repo_id.is_empty() {
+        let repos = crate::registry::repo::list_repos(&conn)?;
+        let mut all = Vec::new();
+        for repo in repos {
+            if repo.language.as_deref() == Some("Rust") {
+                let modules = crate::registry::knowledge::list_modules(&conn, &repo.id)?;
+                if !modules.is_empty() {
+                    all.push((repo.id, modules));
+                }
+            }
+        }
+        if json {
+            let out: Vec<serde_json::Value> = all
+                .into_iter()
+                .map(|(id, mods)| {
+                    serde_json::json!({
+                        "repo_id": id,
+                        "modules": mods.iter().map(|(n, t, p)| serde_json::json!({
+                            "name": n, "type": t, "path": p
+                        })).collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&out)?);
+        } else {
+            println!("Module graph for {} Rust repo(s):", all.len());
+            for (id, mods) in all {
+                println!("  [{}] {} module(s)", id, mods.len());
+                for (name, ty, path) in mods {
+                    println!("    {} ({})  {}", name, ty, path);
+                }
+            }
+        }
+    } else {
+        let modules = crate::registry::knowledge::list_modules(&conn, repo_id)?;
+        if json {
+            let out: Vec<serde_json::Value> = modules
+                .iter()
+                .map(|(n, t, p)| serde_json::json!({ "name": n, "type": t, "path": p }))
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+                "repo_id": repo_id,
+                "modules": out
+            }))?);
+        } else {
+            println!("Module graph for [{}]:", repo_id);
+            for (name, ty, path) in modules {
+                println!("  {} ({})  {}", name, ty, path);
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn run_call_graph(
+    ctx: &mut crate::storage::AppContext,
+    repo_id: &str,
+    callee: Option<String>,
+    caller: Option<String>,
+    file: Option<String>,
+    limit: usize,
+    json: bool,
+) -> anyhow::Result<()> {
+    let callee_s = callee.as_deref().unwrap_or("");
+    let caller_s = caller.as_deref().unwrap_or("");
+    if callee_s.is_empty() && caller_s.is_empty() {
+        anyhow::bail!("At least one of --callee or --caller must be provided");
+    }
+    let conn = ctx.conn()?;
+    let edges = crate::registry::call_graph::query_call_edges(
+        &conn,
+        repo_id,
+        Some(callee_s).filter(|s| !s.is_empty()),
+        Some(caller_s).filter(|s| !s.is_empty()),
+        file.as_deref().filter(|s| !s.is_empty()),
+        limit,
+    )?;
+    if json {
+        let out: Vec<serde_json::Value> = edges
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "caller_file": e.caller_file,
+                    "caller_symbol": e.caller_symbol,
+                    "caller_line": e.caller_line,
+                    "callee_name": e.callee_name,
+                })
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+            "repo_id": repo_id,
+            "count": out.len(),
+            "calls": out
+        }))?);
+    } else {
+        println!("Call graph for [{}]: {} edge(s)", repo_id, edges.len());
+        for e in edges {
+            println!(
+                "  {}:{}  {} -> {}",
+                e.caller_file, e.caller_line, e.caller_symbol, e.callee_name
+            );
+        }
+    }
+    Ok(())
+}
+
 pub fn run_discover(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     use discovery_engine::{Discovery, discover_dependencies, discover_similar_projects};
     use std::collections::HashMap;

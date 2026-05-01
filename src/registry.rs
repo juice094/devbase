@@ -183,6 +183,7 @@ mod migrate;
 pub mod repo;
 pub mod repos_toml;
 pub mod vault;
+pub mod call_graph;
 pub mod workspace;
 
 #[cfg(test)]
