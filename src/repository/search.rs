@@ -8,6 +8,7 @@ impl<'a> SearchRepository<'a> {
     }
 
     /// Hybrid search: fuses vector similarity + keyword matching via RRF.
+    #[allow(unused_variables)]
     pub fn hybrid_search_symbols(
         &self,
         repo_id: &str,
@@ -20,6 +21,7 @@ impl<'a> SearchRepository<'a> {
     }
 
     /// Semantic search using embedding vector.
+    #[allow(unused_variables)]
     pub fn semantic_search_symbols(
         &self,
         repo_id: &str,
@@ -31,6 +33,7 @@ impl<'a> SearchRepository<'a> {
     }
 
     /// Find symbols related to a given symbol name.
+    #[allow(unused_variables)]
     pub fn related_symbols(
         &self,
         repo_id: &str,
@@ -42,6 +45,7 @@ impl<'a> SearchRepository<'a> {
     }
 
     /// Cross-repo search for symbols matching a query.
+    #[allow(unused_variables)]
     pub fn cross_repo_search(
         &self,
         query_text: &str,

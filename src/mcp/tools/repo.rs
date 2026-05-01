@@ -1,6 +1,12 @@
 use crate::mcp::McpTool;
 use crate::mcp::clients::{DigestClient, HealthClient, KnowledgeClient, RegistryClient, ScanClient, SyncClient};
-use crate::registry::{code_symbols, dead_code};
+use crate::registry::{ExperimentEntry, PaperEntry, RepoEntry};
+use crate::repository::dependency::DependencyRepository;
+use crate::repository::health::HealthRepository;
+use crate::repository::knowledge::KnowledgeRepository;
+use crate::repository::repo::RepoRepository;
+use crate::repository::symbol::SymbolRepository;
+use crate::repository::workspace::WorkspaceRepository;
 use crate::storage::AppContext;
 use anyhow::Context;
 use rusqlite::OptionalExtension;
@@ -393,7 +399,7 @@ Returns: JSON with discovered paper count and registration status."#,
                             } else {
                                 id.clone()
                             };
-                        let paper = crate::registry::PaperEntry {
+                        let paper = PaperEntry {
                             id: id.clone(),
                             title,
                             authors: None,
@@ -404,7 +410,7 @@ Returns: JSON with discovered paper count and registration status."#,
                             tags: tags.clone(),
                             added_at: chrono::Utc::now(),
                         };
-                        crate::registry::knowledge::save_paper(&conn, &paper)?;
+                        KnowledgeRepository::new(&conn).save_paper_entry(&paper)?;
                         count += 1;
                     }
                 }
@@ -470,7 +476,7 @@ Returns: JSON with experiment log ID and success status."#,
         let id = args.get("id").and_then(|v| v.as_str()).context("id required")?.to_string();
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).map(String::from);
         let tag_repo = args.get("tag_repo").and_then(|v| v.as_bool()).unwrap_or(false);
-        let exp = crate::registry::ExperimentEntry {
+        let exp = ExperimentEntry {
             id,
             repo_id: repo_id.clone(),
             paper_id: args.get("paper_id").and_then(|v| v.as_str()).map(String::from),
@@ -488,7 +494,7 @@ Returns: JSON with experiment log ID and success status."#,
         tokio::task::spawn_blocking(move || {
 
             let mut conn = pool.get()?;
-            crate::registry::WorkspaceRegistry::save_experiment(&conn, &exp)?;
+            KnowledgeRepository::new(&conn).save_experiment_entry(&exp)?;
             if tag_repo
                 && let Some(ref rid) = repo_id {
                     let tx = conn.transaction()?;
@@ -710,11 +716,11 @@ Returns: JSON with workspace_members, packages (name, version, targets), and dep
 
             let conn = pool.get()?;
             if repo_id.is_empty() {
-                let repos = crate::registry::repo::list_repos(&conn)?;
+                let repos = RepoRepository::new(&conn).list_repos(None)?;
                 let mut all_modules = vec![];
                 for repo in repos {
                     if repo.language.as_deref() == Some("Rust") {
-                        let modules = crate::registry::knowledge::list_modules(&conn, &repo.id)?;
+                        let modules = KnowledgeRepository::new(&conn).list_modules(&repo.id)?;
                         if !modules.is_empty() {
                             all_modules.push(serde_json::json!({
                                 "repo_id": repo.id,
@@ -727,7 +733,7 @@ Returns: JSON with workspace_members, packages (name, version, targets), and dep
                 }
                 Ok::<_, anyhow::Error>(serde_json::json!({ "success": true, "count": all_modules.len(), "repos": all_modules }))
             } else {
-                let modules = crate::registry::knowledge::list_modules(&conn, &repo_id)?;
+                let modules = KnowledgeRepository::new(&conn).list_modules(&repo_id)?;
                 Ok(serde_json::json!({
                     "success": true,
                     "repo_id": repo_id,
@@ -821,7 +827,7 @@ Returns: JSON array of repo objects. Each includes: id, local_path, language, ta
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
-            let repos = crate::registry::repo::list_repos(&conn)?;
+            let repos = RepoRepository::new(&conn).list_repos(None)?;
 
             let mut results = Vec::new();
             for repo in repos {
@@ -840,7 +846,7 @@ Returns: JSON array of repo objects. Each includes: id, local_path, language, ta
 
                 // Gather status
                 let (ahead, behind, dirty) = if repo.workspace_type == "git" {
-                    let (st, ah, bh) = match crate::registry::health::get_health(&conn, &repo.id)? {
+                    let (st, ah, bh) = match HealthRepository::new(&conn).get_health(&repo.id)? {
                         Some(health) => (health.status.clone(), health.ahead, health.behind),
                         None => {
                             let path = repo.local_path.to_string_lossy();
@@ -855,9 +861,7 @@ Returns: JSON array of repo objects. Each includes: id, local_path, language, ta
                 } else {
                     let dirty = match crate::health::compute_workspace_hash(&repo.local_path) {
                         Ok(current_hash) => {
-                            match crate::registry::workspace::get_latest_workspace_snapshot(
-                                &conn, &repo.id,
-                            )? {
+                            match WorkspaceRepository::new(&conn).get_latest_snapshot(&repo.id)? {
                                 Some(prev) => prev.file_hash != current_hash,
                                 None => true,
                             }
@@ -961,7 +965,7 @@ Returns: JSON array of matching repos with metadata, same format as devkit_query
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
-            let repos = crate::registry::repo::list_repos(&conn)?;
+            let repos = RepoRepository::new(&conn).list_repos(None)?;
             let filtered = nl_filter_repos(&query, &repos, &conn)?;
 
             let results: Vec<serde_json::Value> = filtered
@@ -990,7 +994,7 @@ Returns: JSON array of matching repos with metadata, same format as devkit_query
 }
 
 fn apply_nl_filters(
-    repo: &crate::registry::RepoEntry,
+    repo: &RepoEntry,
     q: &str,
     stars_cond: Option<(char, u64)>,
     explicit_tag: Option<&str>,
@@ -1045,7 +1049,7 @@ fn apply_nl_filters(
         || q.contains("up to date")
         || q.contains("uptodate")
     {
-        let (st, ah, bh) = match crate::registry::health::get_health(conn, &repo.id)? {
+        let (st, ah, bh) = match HealthRepository::new(conn).get_health(&repo.id)? {
             Some(h) => (h.status.clone(), h.ahead, h.behind),
             None => {
                 let path = repo.local_path.to_string_lossy();
@@ -1079,9 +1083,9 @@ fn apply_nl_filters(
 
 pub(crate) fn nl_filter_repos(
     query: &str,
-    repos: &[crate::registry::RepoEntry],
+    repos: &[RepoEntry],
     conn: &rusqlite::Connection,
-) -> anyhow::Result<Vec<crate::registry::RepoEntry>> {
+) -> anyhow::Result<Vec<RepoEntry>> {
     let q = query.to_lowercase();
     let stars_cond = parse_stars_condition(&q);
     let explicit_tag = extract_tag_from_query(&q);
@@ -1243,8 +1247,7 @@ Returns: JSON array of symbols with file_path, name, symbol_type, line_start, li
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
-            let symbols = code_symbols::query_code_symbols(
-                &conn,
+            let symbols = SymbolRepository::new(&conn).query_code_symbols(
                 &repo_id,
                 Some(name_filter.as_str()).filter(|s| !s.is_empty()),
                 Some(symbol_type.as_str()).filter(|s| !s.is_empty()),
@@ -1337,7 +1340,7 @@ Returns: JSON array of dependency edges with target_repo_id, relation_type, and 
 
             let mut results = Vec::new();
             if direction == "incoming" || direction == "reverse" {
-                let rows = crate::dependency_graph::list_reverse_dependencies(&conn, &repo_id)?;
+                let rows = DependencyRepository::new(&conn).list_reverse_dependencies(&repo_id)?;
                 for (from_id, rel, conf) in rows {
                     if !relation_type.is_empty() && rel != relation_type {
                         continue;
@@ -1350,7 +1353,7 @@ Returns: JSON array of dependency edges with target_repo_id, relation_type, and 
                     }));
                 }
             } else {
-                let rows = crate::dependency_graph::list_dependencies(&conn, &repo_id)?;
+                let rows = DependencyRepository::new(&conn).list_dependencies(&repo_id)?;
                 for (to_id, rel, conf) in rows {
                     if !relation_type.is_empty() && rel != relation_type {
                         continue;
@@ -1447,8 +1450,7 @@ Returns: JSON array of call edges with caller_file, caller_symbol, caller_line, 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
-            let edges = crate::registry::call_graph::query_call_edges(
-                &conn,
+            let edges = SymbolRepository::new(&conn).query_call_graph(
                 &repo_id,
                 Some(callee_name.as_str()).filter(|s| !s.is_empty()),
                 Some(caller_name.as_str()).filter(|s| !s.is_empty()),
@@ -1534,7 +1536,7 @@ Returns: JSON array of potentially dead functions with file_path, name, and line
         tokio::task::spawn_blocking(move || {
 
             let conn = pool.get()?;
-            let dead = dead_code::query_dead_code(&conn, &repo_id, include_pub, limit)?;
+            let dead = SymbolRepository::new(&conn).query_dead_code(&repo_id, include_pub, limit)?;
             let dead: Vec<serde_json::Value> = dead
                 .into_iter()
                 .map(|d| {
@@ -1716,9 +1718,9 @@ Returns: success flag and count of stored embeddings."#,
 
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get()?;
+            let conn = pool.get()?;
             let pairs = vec![(symbol_name.clone(), embedding)];
-            let count = crate::registry::knowledge::save_embeddings(&mut conn, &repo_id, &pairs)?;
+            let count = KnowledgeRepository::new(&conn).save_embeddings(&repo_id, &pairs)?;
 
             Ok::<_, anyhow::Error>(serde_json::json!({
                 "success": true,

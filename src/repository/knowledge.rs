@@ -102,7 +102,28 @@ impl<'a> KnowledgeRepository<'a> {
         Ok(serde_json::to_value(papers)?)
     }
 
-    /// Save a paper entry.
+    /// Save a paper entry from a strongly-typed struct.
+    pub fn save_paper_entry(&self, paper: &PaperEntry) -> anyhow::Result<()> {
+        let metadata = serde_json::json!({
+            "authors": paper.authors,
+            "venue": paper.venue,
+            "year": paper.year,
+            "bibtex": paper.bibtex,
+            "tags": paper.tags,
+            "added_at": paper.added_at.to_rfc3339(),
+        });
+        crate::registry::upsert_entity(
+            self.0,
+            &paper.id,
+            ENTITY_TYPE_PAPER,
+            &paper.title,
+            paper.pdf_path.as_deref(),
+            &metadata,
+        )?;
+        Ok(())
+    }
+
+    /// Save a paper entry from JSON.
     pub fn save_paper(&self, paper: &Value) -> anyhow::Result<Value> {
         let paper: PaperEntry = serde_json::from_value(paper.clone())?;
         let metadata = serde_json::json!({
@@ -124,7 +145,26 @@ impl<'a> KnowledgeRepository<'a> {
         Ok(serde_json::to_value(paper)?)
     }
 
-    /// Save an experiment log.
+    /// Save an experiment log from a strongly-typed struct.
+    pub fn save_experiment_entry(&self, exp: &ExperimentEntry) -> anyhow::Result<()> {
+        self.0.execute(
+            "INSERT OR REPLACE INTO experiments (id, repo_id, paper_id, config_json, result_path, git_commit, syncthing_folder_id, status, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                &exp.id,
+                exp.repo_id.as_ref(),
+                exp.paper_id.as_ref(),
+                exp.config_json.as_ref(),
+                exp.result_path.as_ref(),
+                exp.git_commit.as_ref(),
+                exp.syncthing_folder_id.as_ref(),
+                &exp.status,
+                exp.timestamp.to_rfc3339()
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Save an experiment log from JSON.
     pub fn save_experiment(&self, exp: &Value) -> anyhow::Result<Value> {
         let exp: ExperimentEntry = serde_json::from_value(exp.clone())?;
         self.0.execute(
@@ -142,6 +182,32 @@ impl<'a> KnowledgeRepository<'a> {
             ],
         )?;
         Ok(serde_json::to_value(exp)?)
+    }
+
+    /// Save symbol embeddings for a repo.
+    pub fn save_embeddings(
+        &self,
+        repo_id: &str,
+        embeddings: &[(String, Vec<f32>)],
+    ) -> anyhow::Result<usize> {
+        let tx = self.0.unchecked_transaction()?;
+        tx.execute("DELETE FROM code_embeddings WHERE repo_id = ?1", [repo_id])?;
+        let now = Utc::now().to_rfc3339();
+        let mut inserted = 0;
+        for (symbol_name, vec) in embeddings {
+            let blob = crate::embedding::embedding_to_bytes(vec);
+            tx.execute(
+                "INSERT INTO code_embeddings (repo_id, symbol_name, embedding, generated_at)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(repo_id, symbol_name) DO UPDATE SET
+                 embedding = excluded.embedding,
+                 generated_at = excluded.generated_at",
+                rusqlite::params![repo_id, symbol_name, blob, &now],
+            )?;
+            inserted += 1;
+        }
+        tx.commit()?;
+        Ok(inserted)
     }
 
     /// Generate a knowledge report for a repo.
