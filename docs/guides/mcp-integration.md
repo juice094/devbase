@@ -38,7 +38,19 @@ devbase health --detail
 
 #### Kimi CLI
 
-编辑 `~/.kimi/mcp.json`：
+Kimi CLI 使用 `~/.kimi/mcp.json`（Linux/macOS）或 `%USERPROFILE%\.kimi\mcp.json`（Windows）配置 MCP Server。
+
+**一键配置**（从仓库模板复制）：
+
+```powershell
+# Windows
+Copy-Item configs\kimi-mcp.json $env:USERPROFILE\.kimi\mcp.json
+
+# Linux / macOS
+cp configs/kimi-mcp.json ~/.kimi/mcp.json
+```
+
+**手动编辑**：
 
 ```json
 {
@@ -54,6 +66,8 @@ devbase health --detail
   }
 }
 ```
+
+配置后重启 Kimi CLI 或执行 `/mcp reload` 生效。
 
 #### Claude Code
 

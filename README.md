@@ -138,6 +138,23 @@ devbase mcp
 }
 ```
 
+**Kimi CLI 配置**（`~/.kimi/mcp.json`）：
+
+```json
+{
+  "mcpServers": {
+    "devbase": {
+      "command": "devbase",
+      "args": ["mcp"],
+      "env": {
+        "DEVBASE_MCP_ENABLE_DESTRUCTIVE": "1",
+        "DEVBASE_MCP_TOOL_TIERS": "stable,beta"
+      }
+    }
+  }
+}
+```
+
 ---
 
 ## 功能深度
