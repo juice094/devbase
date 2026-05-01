@@ -15,32 +15,62 @@ pub(crate) fn render_list(frame: &mut Frame, app: &mut App, area: Rect, styles: 
     }
 }
 
+fn repo_status_icon(
+    dirty: Option<bool>,
+    ahead: Option<usize>,
+    behind: Option<usize>,
+    has_upstream: bool,
+) -> &'static str {
+    match (dirty, ahead, behind) {
+        (None, _, _) => "⏳",
+        (Some(true), _, _) => "●",
+        (Some(false), Some(a), Some(b)) if a > 0 && b > 0 => "◆",
+        (Some(false), _, Some(b)) if b > 0 => "▼",
+        (Some(false), Some(a), _) if a > 0 => "▲",
+        _ if !has_upstream => "○",
+        _ => "✓",
+    }
+}
+
+fn repo_status_fg(
+    dirty: Option<bool>,
+    ahead: Option<usize>,
+    behind: Option<usize>,
+    has_upstream: bool,
+    theme: &crate::tui::theme::Theme,
+) -> Color {
+    match (dirty, ahead, behind) {
+        (Some(true), _, _) => theme.danger,
+        (Some(false), _, Some(b)) if b > 0 => theme.warning,
+        (Some(false), Some(a), _) if a > 0 => theme.primary,
+        _ if !has_upstream => theme.muted,
+        _ => theme.success,
+    }
+}
+
 fn render_repo_list(frame: &mut Frame, app: &mut App, area: Rect, styles: &Styles) {
     let items: Vec<ListItem> = app
         .repos
         .iter()
         .map(|repo| {
-            let status_icon = match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
-                (None, _, _) => "⏳",
-                (Some(true), _, _) => "●",
-                (Some(false), Some(a), Some(b)) if a > 0 && b > 0 => "◆",
-                (Some(false), _, Some(b)) if b > 0 => "▼",
-                (Some(false), Some(a), _) if a > 0 => "▲",
-                _ if repo.upstream_url.is_none() => "○",
-                _ => "✓",
-            };
+            let status_icon = repo_status_icon(
+                repo.status_dirty,
+                repo.status_ahead,
+                repo.status_behind,
+                repo.upstream_url.is_some(),
+            );
             let mut prefix = format!("{} ", status_icon);
             if app.loading_repo_status.contains(&repo.id) || app.loading_sync.contains(&repo.id) {
                 prefix.push_str("⟳ ");
             }
 
-            let base_fg = match (repo.status_dirty, repo.status_ahead, repo.status_behind) {
-                (Some(true), _, _) => styles.theme.danger,
-                (Some(false), _, Some(b)) if b > 0 => styles.theme.warning,
-                (Some(false), Some(a), _) if a > 0 => styles.theme.primary,
-                _ if repo.upstream_url.is_none() => styles.theme.muted,
-                _ => styles.theme.success,
-            };
+            let base_fg = repo_status_fg(
+                repo.status_dirty,
+                repo.status_ahead,
+                repo.status_behind,
+                repo.upstream_url.is_some(),
+                &styles.theme,
+            );
 
             let fg = if app.loading_repo_status.contains(&repo.id)
                 || app.loading_sync.contains(&repo.id)
@@ -191,4 +221,31 @@ fn render_vault_list(frame: &mut Frame, app: &mut App, area: Rect, styles: &Styl
     };
 
     frame.render_stateful_widget(list, area, &mut app.vault_list_state);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui::theme::Theme;
+
+    #[test]
+    fn test_repo_status_icon() {
+        assert_eq!(repo_status_icon(None, None, None, true), "⏳");
+        assert_eq!(repo_status_icon(Some(true), None, None, true), "●");
+        assert_eq!(repo_status_icon(Some(false), Some(1), Some(1), true), "◆");
+        assert_eq!(repo_status_icon(Some(false), None, Some(1), true), "▼");
+        assert_eq!(repo_status_icon(Some(false), Some(1), None, true), "▲");
+        assert_eq!(repo_status_icon(Some(false), None, None, false), "○");
+        assert_eq!(repo_status_icon(Some(false), None, None, true), "✓");
+    }
+
+    #[test]
+    fn test_repo_status_fg() {
+        let theme = Theme::dark();
+        assert_eq!(repo_status_fg(Some(true), None, None, true, &theme), theme.danger);
+        assert_eq!(repo_status_fg(Some(false), None, Some(1), true, &theme), theme.warning);
+        assert_eq!(repo_status_fg(Some(false), Some(1), None, true, &theme), theme.primary);
+        assert_eq!(repo_status_fg(Some(false), None, None, false, &theme), theme.muted);
+        assert_eq!(repo_status_fg(Some(false), None, None, true, &theme), theme.success);
+    }
 }
