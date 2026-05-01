@@ -1,182 +1,168 @@
 # devbase Roadmap
 
-> **当前阶段**：阶段三 — v0.10.0 发布闭环 / v0.11.0 规划
-> 
-> **最后更新**：2026-04-26
+> **当前阶段**：阶段四 — v0.14.0 Workspace 解耦 / v0.15.0 分发就绪
 >
-> **本轮维护**：main.rs 拆分 (-66%) + StorageBackend/AppContext 奠基 + `tui`/`watch` feature flags — 见 commit `f15cc95`
-> 
-> **版本状态**：`0.10.0`（L0-L4 知识模型 MVP 已交付）→ 下一里程碑 `0.11.0`（待定）
+> **最后更新**：2026-05-01
+>
+> **版本状态**：`0.14.0`（Workspace 骨架 + 3 个零耦合 crate 提取 + 全模块耦合地图）
 
 ---
 
-## 阶段一：产品化闭环（v0.3.0）— ✅ 已完成
+## 历史阶段（已完成）
 
-**核心原则：功能冻结。不修 bug、不补文档之外的一切代码。**
+### 阶段一：产品化闭环（v0.3.0）— ✅
 
-### 验收标准
+34 MCP tools 全量通过 MCP Inspector，README Quick Start 三步跑通，Tests 全绿。
 
-| # | 标准 | 状态 |
-|---|------|------|
-| 1 | 34 MCP tools 全量通过 MCP Inspector | ✅ 37 tools，`cargo test --lib mcp` 14 passed |
-| 2 | README Quick Start 三步内跑通 | ✅ 已走查，移除虚假声明 |
-| 3 | 无"计划中"残留文档 | ✅ roadmap-2026.md 已归档 |
-| 4 | CONTRIBUTING.md + ARCHITECTURE.md + AGENTS.md 闭环 | ✅ |
-| 5 | Tests 全绿 + Clippy 零警告 | ✅ 374 passed / 0 failed / 4 ignored（unit）；9 passed（integration） |
-| 6 | GitHub Release 预编译二进制 | ✅ `devbase.exe` 22.6 MB 已上传 |
+### 阶段二：AI Skill 编排基础设施（v0.4.0–v0.9.0）— ✅
 
-**Release**: https://github.com/juice094/devbase/releases/tag/v0.3.0
+Schema v16 统一实体模型、Skill 自动封装、Workflow Engine、Mind Market 评分、NLQ 自然语言查询、Workflow Loop Step 硬化。
 
-### 明确不做（Deferred）
+### 阶段三：自指知识库（v0.10.0–v0.11.0）— ✅
 
-| 功能 | 原因 | 预计阶段 |
-|------|------|---------|
-| SSE transport | 未实现，无 ETA，阻塞发布 | 阶段二或更晚 |
-| 跨仓库搜索 (`/`) | TUI grep，新功能 | 阶段二 |
-| Stars 趋势可视化 | 新功能，非阻塞 | 阶段二 |
-| ~~自然语言查询~~ | ~~新功能，非阻塞~~ | ~~阶段二~~ → ✅ v0.7.0 已完成 |
-| ~~智能同步建议~~ | ~~新功能，非阻塞~~ | ~~阶段二~~ → ✅ v0.7.0 已完成 |
-| Skill 市场 / Registry 服务 | 需社区规模支撑 | 阶段二 |
-| 跨设备注册表同步 | 依赖 syncthing-rust | 阶段二 |
-| 架构拆分为多 crate | 22.7 KLOC 单 crate 仍最优 | 50+ tools 或编译 > 60s 时 |
+L0-L4 五层知识模型 MVP：entities 统一模型、known_limits 风险层、knowledge_meta 元认知层、PARA vault 结构。
+
+### 阶段四：工程健康与解耦（v0.12.0–v0.14.0）— ✅ 已交付
+
+| 任务 | 交付物 | 状态 |
+|------|--------|------|
+| Registry God Object 拆解 | 10 子模块提取为 free-function 模块 | ✅ v0.12.0 |
+| AppContext Pool 化 | `r2d2::Pool` 替代单 Connection，22 处调用点迁移 | ✅ v0.12.0 |
+| 生产 unwrap 清零 | 0 个生产 unwrap，`clippy -D warnings` 全绿 | ✅ v0.13.0 |
+| 测试覆盖率收尾 | 437 workspace tests passed，零测试文件清零 | ✅ v0.13.0 |
+| Workspace 骨架搭建 | `crates/` 目录 + 3 个零耦合模块提取 | ✅ v0.14.0 |
+| 全模块耦合地图 | 按 `crate::` 引用数扫描，🟢/🟡/🔴 分级 | ✅ v0.14.0 |
 
 ---
 
-## 阶段二：AI Skill 编排基础设施（v0.4.0）— 进行中
+## 当前阶段：阶段五 — v0.15.0 分发就绪（进行中）
 
-**方向调整**：devbase 不是"个人外置大脑"，而是**将 GitHub 项目转换为 AI 可执行 Skill 的编排基础设施**。
+**核心目标**：让 devbase 的通用组件达到"可独立发布"标准，同时保持主 crate 的健康度。
 
-> 50 个仓库不是给人浏览的参考库，而是 AI Skill 的原材料。devbase 的职责是：分析项目 CLI/API 表面 → 自动生成 SKILL.md → 注册到 Skill Registry → 让弱 AI 子代理能够发现、组合、执行。
-
-### 核心文档
-
-- [`docs/architecture/workflow-dsl.md`](architecture/workflow-dsl.md) — Workflow DSL 规范（v0.4.0-reserved）
-- [`docs/architecture/workspace-as-schema.md`](architecture/workspace-as-schema.md) — 统一实体模型设计
-- [`docs/guides/mcp-integration-guide.md`](guides/mcp-integration-guide.md) — MCP 集成配置指南
-- [`docs/README.md`](README.md) — 完整文档导航
-
-### Phase 1 已完成 ✅
-
-| 任务 | 状态 | 说明 |
-|------|------|------|
-| Schema v16 | ✅ | `entity_types` + `entities` + `relations` 统一模型，渐进双写 |
-| Skill 自动封装 | ✅ | `devbase skill discover <path>` — Rust/Node/Python/Go/Docker/Generic 检测 |
-| 分类体系 | ✅ | `ai`/`dev`/`data`/`infra`/`communication` 二级分类自动推断 |
-| Workflow DSL 规范 | ✅ | YAML Schema 冻结，Engine 延后至 v0.5.0 |
-| 评分预留 | ✅ | `success_rate`/`usage_count`/`rating` 字段入库，算法 v0.6.0 实现 |
-
-### Phase 2 已完成 ✅（v0.4.0 发布）
-
-| 任务 | 交付物 | 状态 |
-|------|--------|------|
-| discover 非 dry-run | `devbase skill discover <path>` 默认注册， `--dry-run` 可选预览 | ✅ |
-| Git URL discover | `devbase skill discover https://github.com/...` 克隆+分析+注册 | ✅ |
-| Skill 执行验证 | devbase/zeroclaw 封装后 `skill run` 验证 entry_script | ✅ |
-| MCP discover tool | `devkit_skill_discover` 暴露给 AI Agent（35 tools） | ✅ |
-| executor 接口修复 | JSON via stdin 传参，与 discover wrapper 兼容 | ✅ |
-
-### Phase 3 已完成 ✅（v0.4.1–v0.4.2）
-
-| 任务 | 交付物 | 版本 |
-|------|--------|------|
-| Repo → entities 同步 | `save_repo`/`update_repo_*` 原子双写 entities 表 | v0.4.1 |
-| TUI category 显示 | Skill 列表/详情面板显示 `[category]` 标签 | v0.4.1 |
-| Skill marketplace 过滤 | `skill list --category <cat>` + `skill search --category <cat>` | v0.4.2 |
-
-### Phase 4 已完成 ✅（v0.5.0 — Workflow Engine）
-
-| 任务 | 交付物 | 优先级 | 状态 |
-|------|--------|--------|------|
-| Workflow YAML Parser | `workflow::parser` — 无 `type` 标签的 `untagged` 反序列化 | P0 | ✅ |
-| Topological Scheduler | `workflow::scheduler` — Kahn 算法分批调度 | P0 | ✅ |
-| Parallel Executor | `workflow::executor` — SkillRuntime 集成 + 错误策略 | P0 | ✅ |
-| State Persistence | Schema v17 + `workflow::state` CRUD | P0 | ✅ |
-| CLI Integration | `devbase workflow {list,show,register,run,delete}` | P0 | ✅ |
-| TUI Workflow Panel | `[w]` 键 workflow 列表/详情弹窗 | P1 | ✅ |
-
-### Phase 5 已完成 ✅（v0.6.0 — Mind Market）
-
-| 任务 | 交付物 | 状态 |
-|------|--------|------|
-| 评分算法 | `skill_runtime::scoring` — success_rate + usage_count + rating (0-5) | ✅ |
-| 自动评分更新 | `skill run` 执行后自动重新计算并写入 skills 表 | ✅ |
-| CLI `skill recalc-scores` | 批量重新计算所有 skill 评分 | ✅ |
-| CLI `skill top` | 按 rating 排序展示 Top-N skills | ✅ |
-| CLI `skill recommend` | 按 category 过滤 + 推荐理由 | ✅ |
-| TUI Workflow 执行 | `[w]` 详情页 `r/Enter` 运行 + 结果弹窗 | ✅ |
-
-### Phase 6 已完成 ✅（v0.7.0 — 自然语言查询 + 智能同步建议）
-
-| 任务 | 交付物 | 状态 |
-|------|--------|------|
-| Embedding 查询生成 | `embedding::generate_query_embedding` 迁移到 lib | ✅ |
-| TUI NLQ 输入 | `[:]` 键触发自然语言输入行 | ✅ |
-| 语义搜索 Skill | 后台线程生成 embedding + `search_skills_semantic` | ✅ |
-| NLQ 结果展示 | 弹窗列表展示语义搜索到的 skills | ✅ |
-| 智能同步建议 | `sync/policy.rs::recommend_sync_action` — 基于 safety/ahead/behind 生成建议 | ✅ |
-
-### Phase 7 已完成 ✅（v0.8.0 — Workflow 子类型执行）
-
-| 任务 | 交付物 | 状态 |
-|------|--------|------|
-| Subworkflow 执行 | `execute_subworkflow_step` — 递归调用 `execute_workflow` | ✅ |
-| Parallel 执行 | `execute_parallel_step` — 子步骤串行执行 + 结果聚合 | ✅ |
-| Condition 执行 | `execute_condition_step` — 字符串插值后 true/false 评估 | ✅ |
-| 并行 batch 执行 | `std::thread::scope` 替换串行 loop（#7 风险点修复） | ✅ |
-
-### Phase 8 已完成 ✅（v0.9.0 — Workflow Loop Step 硬化 + 发布闭环）
-
-| 任务 | 交付物 | 状态 |
-|------|--------|------|
-| Loop Step 结构补全 | `StepType::Loop { for_each, body }` | ✅ |
-| Loop Step 执行 | `execute_loop_step` — 集合解析 + 迭代执行 + 结果聚合 | ✅ |
-| Loop 变量插值 | `${loop.item}` / `${loop.index}` | ✅ |
-| Loop body 验证 | validator 检查 body ID 唯一性 + 依赖有效性 | ✅ |
-| 发布闭环 | 版本号、CHANGELOG、AGENTS、ROADMAP 对齐 | ✅ |
-
-### 不做（明确排除）
-
-- ❌ SSE transport（stdio 已足够）
-- ❌ `.devbase` 目录规范（无外部采纳者）
-- ❌ MCP 协议扩展提案（Star = 0，不会被采纳）
-- ❌ 商业化 / 付费版
-- ❌ 拆分 crate（22.7 KLOC 单 crate 仍最优）
+> 分发 ≠ 必须发布到 crates.io。分发标准是耦合健康度的检验手段：能拆 = 健康，不能拆 = 有债。
 
 ---
 
-## Phase 9（v0.10.0 — L0-L4 知识模型 + 工程健康维护）— ✅ 已交付
+## 待办清单（按优先级）
 
-**目标**：将 devbase 从"代码索引"升级为**自指知识库**，支持 L0-L4 五层知识索引。
+### P0 — Workspace 扩展（本周–本月）
 
-| 方向 | 状态 | 交付物 |
-|:---|:---:|:---|
-| L0 对象层 Schema | ✅ | Schema v16 `entities/entity_types/relations` 统一模型，渐进双写 |
-| L1 方法层 Schema | ✅ | embedding/semantic_search/hybrid_search 已实现，Ollama/OpenAI-compatible 生成 |
-| L2 哲学层 Schema | ✅ | `vault/` PARA 结构已集成（00-Inbox~99-Meta） |
-| L3 风险层 Schema | ✅ | Wave 35 `known_limits` / `boundary_map` + MCP tools + CLI `limit` + OpLog 集成 |
-| L4 元认知层 Schema | ✅ | Wave 36 `knowledge_meta` + `--reason` resolve + L3-L4 联动 |
-| 生长信号与遗忘机制 | 📝 草案 | 未实现；保留为 Future/Icebox |
+提取 🟢 健康模块（0-3 个 `crate::` refs）为独立 crate。
 
-### Phase 9b：工程健康维护（v0.10.0 并行）— ✅ 已完成
+| 候选模块 | 行数 | 测试 | 内部耦合 | 估计工时 |
+|----------|------|------|----------|----------|
+| `embedding` | 298 | 0 | 0 | 15 min |
+| `syncthing_client` | 85 | 2 | 0 | 15 min |
+| `registry/health` | 156 | 5 | 0 | 15 min |
+| `registry/metrics` | 153 | 3 | 0 | 15 min |
+| `registry/workspace` | 215 | 5 | 0 | 15 min |
+| `vault/frontmatter` | 175 | 0 | 0 | 15 min |
+| `vault/wikilink` | 130 | 0 | 0 | 15 min |
+| `workflow/interpolate` | 239 | 0 | 0 | 15 min |
+| `workflow/model` | 330 | 0 | 0 | 15 min |
+| `skill_runtime/parser` | 417 | 0 | 0 | 15 min |
 
-| 任务 | 交付物 | 状态 |
-|------|--------|------|
-| main.rs 拆分 | `commands/` 4 子模块，515 行（-66%） | ✅ |
-| StorageBackend 奠基 | `src/storage.rs` trait + `DefaultStorageBackend` + `AppContext` | ✅ |
-| Feature flags | `tui` + `watch`（ratatui/crossterm/notify 均为 optional） | ✅ |
-| `LOCALAPPDATA` 测试残留清零 | `DEVBASE_DATA_DIR` 统一覆盖 | ✅ |
-| 生产 unwrap 清零 | 0 个生产 unwrap，`clippy -D warnings` 全绿 | ✅ |
-| 计划文件清理 | [`docs/README.md`](README.md) 导航中心 + 过时内容归档 | ✅ |
+**目标**：workspace 成员达到 8-10 个。
+**验收**：`cargo check --workspace` 0 errors，`cargo test --workspace` 全绿。
 
 ---
 
-## Future / Icebox
+### P1 — MCP trait 化（本月–下月）
 
-- ~~自然语言查询~~ ✅ v0.8.1 已完成
-- ~~智能同步建议~~ ✅ v0.7.0 已完成
+**问题**：`mcp/tools/repo.rs` 有 **70 个 `crate::` 引用**，是 devbase 最大耦合黑洞。
+
+**方案**：
+1. 定义 `RegistryClient` trait：
+   ```rust
+   pub trait RegistryClient {
+       fn list_repos(&self, conn: &rusqlite::Connection, filter: &str) -> Vec<RepoEntry>;
+       fn get_repo(&self, conn: &rusqlite::Connection, id: &str) -> Option<RepoEntry>;
+       // ... 其他 repo 相关操作
+   }
+   ```
+2. 定义 `SearchClient` trait：
+   ```rust
+   pub trait SearchClient {
+       fn hybrid_search(&self, query: &str, limit: usize) -> Vec<SearchResult>;
+   }
+   ```
+3. `mcp/tools` 从 `crate::registry::*` 改为 `trait` 调用
+4. devbase 主 crate 实现这些 trait
+
+**阻塞**：需要确定 trait 边界——哪些操作属于 RegistryClient，哪些属于 SearchClient。
+**验收**：`mcp/` 目录的 `crate::` 引用数从 70 降至 <10。
+
+---
+
+### P2 — registry 子模块拆分（本月）
+
+`registry/health`, `registry/metrics`, `registry/workspace`, `registry/entity`, `registry/relation` 已零耦合，可直接提取为 workspace crate 或保持为子模块但消除 `crate::` 引用。
+
+**决策点**：registry 子模块是否值得独立为 crate？
+- 若作为独立 crate：`devbase-registry-health` 等
+- 若保持子模块：确保它们只对 `rusqlite::Connection` 有依赖
+
+**推荐**：暂时保持子模块结构（避免 crate 数量爆炸），但消除所有 `crate::` 引用，使它们达到"随时可提取"状态。
+
+---
+
+### P3 — migrate.rs 拆解（长期，阻塞）
+
+| 属性 | 值 |
+|------|-----|
+| 行数 | 1273 |
+| 耦合 | 4 `crate::` refs（低） |
+| 阻塞原因 | 含 schema 迁移 + DDL + 数据转换，风险极高 |
+| 解耦策略 | 按 schema 版本切分：`migrate/v16.rs`, `migrate/v17.rs`... |
+| 所需架构 | Claw（多轮持久化会话） |
+
+**当前状态**：⏳ 等待 Claw 架构就绪。
+
+---
+
+## 技术债务（清偿中）
+
+| 债项 | 严重 | 当前值 | 目标 | 清理路径 |
+|------|------|--------|------|----------|
+| Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调 | 补偿机制或 FTS5 替代 | 评估 `sync_index_to_db()` 两阶段提交 |
+| tree-sitter 编译成本 | 🟡 | ~15-20s | <10s | ccache 或 grammar 预编译 |
+| Feature flags 缺失 | 🟡 | 2/3（tui, watch） | ≥3 | 评估 mcp 是否独立 feature |
+| `init_db()` 全局路径 | 🟢 | 5 处 grandfathered | 0 新增 | StorageBackend trait 已奠基，迁移中 |
+| `SortMode` unused import | 🟢 | 1 warning | 0 | `cargo fix` 或手动移除 |
+
+---
+
+## Future / Icebox（无排期）
+
 - 跨设备注册表同步（syncthing-rust 集成，REST API 待就绪）
 - 形式化验证 / TEE 集成（长期，无排期）
-- Workflow 引擎细化（Loop body Retry/Fallback、TUI 执行进度条，无排期）
+- Workflow 引擎细化（Loop body Retry/Fallback、TUI 执行进度条）
+- 生长信号与遗忘机制（L0-L4 知识模型的自动衰减）
+- `devbase-mcp` 独立发布（待 MCP trait 化完成后）
+
+---
+
+## 明确不做（Deferred / 已排除）
+
+| 功能 | 原因 | 状态 |
+|------|------|------|
+| SSE transport | stdio 已覆盖主流 Client，维护负担高 | ❌ 排除 |
+| `.devbase` 目录规范 | 无外部采纳者 | ❌ 排除 |
+| MCP 协议扩展提案 | Star = 0，不会被采纳 | ❌ 排除 |
+| 商业化 / 付费版 | 与本地优先原则冲突 | ❌ 排除 |
+| ~~拆分 crate~~ | ~~22.7 KLOC 单 crate 仍最优~~ | ~~→ 已推翻，v0.14.0 已启动拆分~~ |
+
+---
+
+## 版本规划
+
+| 版本 | 主题 | 关键交付 | 预计时间 |
+|------|------|----------|----------|
+| v0.14.1 | Workspace 扩展 Phase 1 | 再提取 3-5 个 🟢 健康模块 | 2026-05 |
+| v0.15.0 | 分发就绪 | Workspace 成员 8-10 个，mcp trait 化启动 | 2026-05/06 |
+| v0.16.0 | MCP 解耦 | mcp/tools/repo.rs `crate::` 引用 <10 | 2026-06 |
+| v0.17.0 | registry 清洁 | 所有 registry 子模块零 `crate::` 引用 | 2026-06/07 |
+| v0.20.0 | 分发发布 | 首个 crate (`devbase-mcp`) 发布到 crates.io | 2026-07+ |
 
 ---
 
