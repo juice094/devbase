@@ -531,8 +531,19 @@ pub fn build_server() -> McpServer {
 }
 
 pub fn format_mcp_message(body: &serde_json::Value) -> String {
+    format_mcp_message_auto(body, false)
+}
+
+/// Format MCP message with optional NDJSON mode (no Content-Length headers).
+/// NDJSON mode outputs raw JSON followed by a newline, for clients that
+/// expect line-delimited JSON-RPC over stdio.
+pub fn format_mcp_message_auto(body: &serde_json::Value, ndjson: bool) -> String {
     let body_str = body.to_string();
-    format!("Content-Length: {}\r\n\r\n{}", body_str.len(), body_str)
+    if ndjson {
+        format!("{}\n", body_str)
+    } else {
+        format!("Content-Length: {}\r\n\r\n{}", body_str.len(), body_str)
+    }
 }
 
 /// Check whether destructive MCP tools are enabled via environment variable.
@@ -570,6 +581,7 @@ pub async fn run_stdio() -> anyhow::Result<()> {
     let mut stdout = tokio::io::stdout();
     let mut reader = BufReader::new(stdin);
     let mut line_buf = String::new();
+    let mut use_ndjson = false;
 
     loop {
         line_buf.clear();
@@ -586,6 +598,8 @@ pub async fn run_stdio() -> anyhow::Result<()> {
         let content_length = if line.starts_with("Content-Length: ") {
             line.strip_prefix("Content-Length: ").and_then(|v| v.parse::<usize>().ok())
         } else {
+            // Client is using NDJSON (raw JSON lines). Switch to NDJSON output.
+            use_ndjson = true;
             // Fallback: parse raw JSON line for backward compatibility
             let req: serde_json::Value = match serde_json::from_str(line) {
                 Ok(v) => v,
@@ -598,7 +612,7 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                             "message": format!("Parse error: {}", e)
                         }
                     });
-                    let msg = format_mcp_message(&resp);
+                    let msg = format_mcp_message_auto(&resp, use_ndjson);
                     if stdout.write_all(msg.as_bytes()).await.is_err()
                         || stdout.flush().await.is_err()
                     {
@@ -617,7 +631,7 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                     }
                 })
             });
-            let msg = format_mcp_message(&resp);
+            let msg = format_mcp_message_auto(&resp, use_ndjson);
             if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err() {
                 break;
             }
@@ -635,7 +649,7 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                         "message": format!("Invalid Content-Length header: {}", line)
                     }
                 });
-                let msg = format_mcp_message(&resp);
+                let msg = format_mcp_message_auto(&resp, use_ndjson);
                 if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err()
                 {
                     break;
@@ -659,7 +673,7 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                     "message": format!("Failed to read request body: {}", e)
                 }
             });
-            let msg = format_mcp_message(&resp);
+            let msg = format_mcp_message_auto(&resp, use_ndjson);
             if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err() {
                 break;
             }
@@ -678,7 +692,7 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                             "message": format!("Parse error: {}", e)
                         }
                     });
-                    let msg = format_mcp_message(&resp);
+                    let msg = format_mcp_message_auto(&resp, use_ndjson);
                     if stdout.write_all(msg.as_bytes()).await.is_err()
                         || stdout.flush().await.is_err()
                     {
@@ -696,7 +710,7 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                         "message": format!("Invalid UTF-8: {}", e)
                     }
                 });
-                let msg = format_mcp_message(&resp);
+                let msg = format_mcp_message_auto(&resp, use_ndjson);
                 if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err()
                 {
                     break; // broken pipe
@@ -724,7 +738,7 @@ pub async fn run_stdio() -> anyhow::Result<()> {
             })
         });
 
-        let msg = format_mcp_message(&resp);
+        let msg = format_mcp_message_auto(&resp, use_ndjson);
         if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err() {
             break; // broken pipe
         }
