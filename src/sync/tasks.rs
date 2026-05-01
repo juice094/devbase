@@ -631,3 +631,35 @@ pub(super) fn perform_merge(
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_map_action_known() {
+        assert_eq!(map_action("SKIP", ""), "skipped");
+        assert_eq!(map_action("FETCH", ""), "fetch_only");
+        assert_eq!(map_action("BLOCKED", ""), "blocked_dirty");
+        assert_eq!(map_action("MERGED_FF", ""), "merged_ff");
+        assert_eq!(map_action("CONFLICT", ""), "conflict");
+        assert_eq!(map_action("ERROR", ""), "error");
+    }
+
+    #[test]
+    fn test_map_action_unknown() {
+        assert_eq!(map_action("UNKNOWN", ""), "skipped");
+        assert_eq!(map_action("", ""), "skipped");
+    }
+
+    #[test]
+    fn test_write_syncdone_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        write_syncdone_marker(dir.path(), "MERGED_FF", Some("abc123"));
+        let path = dir.path().join(".devbase").join("syncdone");
+        assert!(path.exists());
+        let contents = std::fs::read_to_string(path).unwrap();
+        assert!(contents.contains("MERGED_FF"));
+        assert!(contents.contains("abc123"));
+    }
+}

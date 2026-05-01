@@ -57,7 +57,6 @@ fn format_log_line<'a>(line: &'a str, styles: &'a Styles) -> Line<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::theme::Styles;
 
     #[test]
     fn test_format_log_line_plain() {

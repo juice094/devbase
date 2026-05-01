@@ -102,3 +102,23 @@ fn help_section<'a>(
     }
     lines
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui::theme::Theme;
+
+    #[test]
+    fn test_help_section_empty() {
+        let styles = Theme::dark().styles();
+        let lines = help_section("Test", &[], &styles);
+        assert_eq!(lines.len(), 2); // title + blank
+    }
+
+    #[test]
+    fn test_help_section_with_bindings() {
+        let styles = Theme::dark().styles();
+        let lines = help_section("Nav", &[("↑", "up"), ("↓", "down")], &styles);
+        assert_eq!(lines.len(), 4); // title + blank + 2 bindings
+    }
+}

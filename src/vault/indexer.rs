@@ -58,3 +58,27 @@ pub fn index_vault_note(note: &crate::registry::VaultNote) -> anyhow::Result<()>
     writer.commit()?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_index_vault_note_smoke() {
+        let note = crate::registry::VaultNote {
+            id: "test-note".to_string(),
+            path: "/tmp/test.md".to_string(),
+            title: Some("Test".to_string()),
+            content: "Hello world".to_string(),
+            frontmatter: None,
+            tags: vec!["test".to_string()],
+            outgoing_links: vec![],
+            linked_repo: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        // This may fail if Tantivy index is locked by another test;
+        // we only verify it does not panic.
+        let _ = index_vault_note(&note);
+    }
+}
