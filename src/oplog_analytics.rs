@@ -260,7 +260,7 @@ mod tests {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         // Create minimal schema
         conn.execute(
-            "CREATE TABLE entities (id TEXT PRIMARY KEY, entity_type TEXT NOT NULL, name TEXT NOT NULL, source_url TEXT, local_path TEXT, metadata TEXT, content_hash TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+            "CREATE TABLE entities (id TEXT PRIMARY KEY, entity_type TEXT NOT NULL, name TEXT NOT NULL, source_url TEXT, local_path TEXT, metadata TEXT, content_hash TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, language TEXT, discovered_at TEXT, workspace_type TEXT DEFAULT 'git', data_tier TEXT DEFAULT 'private', last_synced_at TEXT, stars INTEGER)",
             [],
         )
         .unwrap();
@@ -280,7 +280,7 @@ mod tests {
     fn test_generate_report_with_data() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute(
-            "CREATE TABLE entities (id TEXT PRIMARY KEY, entity_type TEXT NOT NULL, name TEXT NOT NULL, source_url TEXT, local_path TEXT, metadata TEXT, content_hash TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+            "CREATE TABLE entities (id TEXT PRIMARY KEY, entity_type TEXT NOT NULL, name TEXT NOT NULL, source_url TEXT, local_path TEXT, metadata TEXT, content_hash TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, language TEXT, discovered_at TEXT, workspace_type TEXT DEFAULT 'git', data_tier TEXT DEFAULT 'private', last_synced_at TEXT, stars INTEGER)",
             [],
         )
         .unwrap();
@@ -300,7 +300,7 @@ mod tests {
         )
         .unwrap();
 
-        conn.execute(&format!("INSERT INTO entities VALUES ('repo1', '{}', 'repo1', NULL, '/path', '{{}}', NULL, '2026-01-01', '2026-01-01')", crate::registry::ENTITY_TYPE_REPO), [])
+        conn.execute(&format!("INSERT INTO entities(id, entity_type, name, source_url, local_path, metadata, content_hash, created_at, updated_at) VALUES ('repo1', '{}', 'repo1', NULL, '/path', '{{}}', NULL, '2026-01-01', '2026-01-01')", crate::registry::ENTITY_TYPE_REPO), [])
             .unwrap();
         conn.execute(
             "INSERT INTO code_symbols VALUES ('repo1', 'a.rs', 'function', 'foo', 1, 2, 'fn foo()'),

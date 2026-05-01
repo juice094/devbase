@@ -87,3 +87,19 @@
 - **架构**：CLI
 - **交付**：Batch 3 — MCP trait 化完成。`clients.rs` 定义 6 个 client trait；`AppContext` 统一实现；`repo.rs` `crate::` 引用 68→41；测试 405 passed（1 flaky）
 - **关键决策**：`HealthClient`/`SyncClient` 因 `rusqlite::Connection` 非 `Send`，去掉 future `+ Send` bound；`ScanClient` 保留 `+ Send`（`&Pool` 是 `Send`）
+
+- **日期**：2026-05-01（续续）
+- **架构**：CLI
+- **交付**：CLI-MCP 断层补全（metrics/module-graph/call-graph/dependency-graph/code-symbols/dead-code/github-info）+ simple.rs 去耦合（63→54）+ repo.rs 查询提取（42→36）+ RegistryClient trait 扩展
+- **Commit**：`92039d2`..`090b4b8`
+
+- **日期**：2026-05-01（P0 性能修复）
+- **架构**：CLI
+- **交付**：`index_repo_full` 并行化（2.4x 加速，83.7s→35.0s）+ `list_repos` NULL 崩溃修复
+- **Commit**：`c7dbacd`
+- **关键决策**：`std::thread::scope` + 4MB 线程栈；`DEVBASE_INDEX_THREADS` 环境变量调优
+
+- **当前计划**
+- **文档**：`docs/plans/ai-native-storage-plan.md`
+- **目标**：AI-Native Storage Engine Refactor（Phase 1-4）
+- **验收**：Kimi CLI 作为 AI 用户的视角评价

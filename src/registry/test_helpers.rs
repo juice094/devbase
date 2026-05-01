@@ -228,7 +228,13 @@ CREATE TABLE IF NOT EXISTS entities (
     metadata        TEXT,
     content_hash    TEXT,
     created_at      TEXT NOT NULL,
-    updated_at      TEXT NOT NULL
+    updated_at      TEXT NOT NULL,
+    language        TEXT,
+    discovered_at   TEXT,
+    workspace_type  TEXT DEFAULT 'git',
+    data_tier       TEXT DEFAULT 'private',
+    last_synced_at  TEXT,
+    stars           INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
 CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);

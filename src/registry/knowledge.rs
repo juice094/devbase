@@ -315,7 +315,7 @@ pub fn cross_repo_search_symbols(
             sql.push_str(&format!(
                 "SELECT repo_id FROM repo_tags WHERE LOWER(tag) = LOWER(?) \
                  UNION \
-                 SELECT id AS repo_id FROM entities WHERE entity_type = '{}' AND LOWER(json_extract(metadata, '$.language')) = LOWER(?)",
+                 SELECT id AS repo_id FROM entities WHERE entity_type = '{}' AND LOWER(language) = LOWER(?)",
                 crate::registry::ENTITY_TYPE_REPO
             ));
         }

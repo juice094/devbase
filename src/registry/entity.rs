@@ -48,8 +48,15 @@ mod tests {
                 source_url TEXT,
                 local_path TEXT,
                 metadata TEXT,
+                content_hash TEXT,
                 created_at TEXT,
-                updated_at TEXT
+                updated_at TEXT,
+                language TEXT,
+                discovered_at TEXT,
+                workspace_type TEXT DEFAULT 'git',
+                data_tier TEXT DEFAULT 'private',
+                last_synced_at TEXT,
+                stars INTEGER
             )",
             [],
         )

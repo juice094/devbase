@@ -2,7 +2,7 @@ use super::*;
 use crate::storage::StorageBackend;
 use std::path::PathBuf;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 25;
+pub const CURRENT_SCHEMA_VERSION: i32 = 26;
 
 impl WorkspaceRegistry {
     pub fn db_path() -> anyhow::Result<PathBuf> {
@@ -614,6 +614,7 @@ impl WorkspaceRegistry {
                 [],
             )?;
             // Unified entity storage: repo, skill, paper, vault_note, workflow, etc.
+            // v26: added denormalized columns for repo fields (nullable for other entity types).
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS entities (
                     id              TEXT PRIMARY KEY,
@@ -624,7 +625,13 @@ impl WorkspaceRegistry {
                     metadata        TEXT,
                     content_hash    TEXT,
                     created_at      TEXT NOT NULL,
-                    updated_at      TEXT NOT NULL
+                    updated_at      TEXT NOT NULL,
+                    language        TEXT,
+                    discovered_at   TEXT,
+                    workspace_type  TEXT DEFAULT 'git',
+                    data_tier       TEXT DEFAULT 'private',
+                    last_synced_at  TEXT,
+                    stars           INTEGER
                 )",
                 [],
             )?;
@@ -1109,6 +1116,47 @@ impl WorkspaceRegistry {
                 [],
             )?;
             conn.execute("PRAGMA user_version = 25", [])?;
+        }
+
+        if user_version < 26 {
+            // v26: Denormalize repo-specific fields from entities.metadata JSON into standalone columns.
+            // This eliminates json_extract drift and enables NOT NULL constraints for repos.
+            let cols: Vec<String> = {
+                let mut stmt = conn.prepare("PRAGMA table_info(entities)")?;
+                let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+                rows.filter_map(Result::ok).collect()
+            };
+            if !cols.contains(&"language".to_string()) {
+                conn.execute("ALTER TABLE entities ADD COLUMN language TEXT", [])?;
+            }
+            if !cols.contains(&"discovered_at".to_string()) {
+                conn.execute("ALTER TABLE entities ADD COLUMN discovered_at TEXT", [])?;
+            }
+            if !cols.contains(&"workspace_type".to_string()) {
+                conn.execute("ALTER TABLE entities ADD COLUMN workspace_type TEXT DEFAULT 'git'", [])?;
+            }
+            if !cols.contains(&"data_tier".to_string()) {
+                conn.execute("ALTER TABLE entities ADD COLUMN data_tier TEXT DEFAULT 'private'", [])?;
+            }
+            if !cols.contains(&"last_synced_at".to_string()) {
+                conn.execute("ALTER TABLE entities ADD COLUMN last_synced_at TEXT", [])?;
+            }
+            if !cols.contains(&"stars".to_string()) {
+                conn.execute("ALTER TABLE entities ADD COLUMN stars INTEGER", [])?;
+            }
+            // Migrate existing repo data from metadata JSON into new columns.
+            conn.execute(
+                "UPDATE entities SET
+                    language = json_extract(metadata, '$.language'),
+                    discovered_at = COALESCE(json_extract(metadata, '$.discovered_at'), datetime('now')),
+                    workspace_type = COALESCE(json_extract(metadata, '$.workspace_type'), 'git'),
+                    data_tier = COALESCE(json_extract(metadata, '$.data_tier'), 'private'),
+                    last_synced_at = json_extract(metadata, '$.last_synced_at'),
+                    stars = json_extract(metadata, '$.stars')
+                 WHERE entity_type = 'repo'",
+                [],
+            )?;
+            conn.execute("PRAGMA user_version = 26", [])?;
         }
 
         conn.execute(

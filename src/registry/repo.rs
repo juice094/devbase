@@ -91,9 +91,9 @@ fn collect_repos_from_stmt(
 pub fn list_repos(conn: &rusqlite::Connection) -> anyhow::Result<Vec<RepoEntry>> {
     let stmt = conn.prepare(&format!(
         "SELECT e.id, e.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = e.id) as tags,
-                json_extract(e.metadata, '$.language'), json_extract(e.metadata, '$.discovered_at'),
-                json_extract(e.metadata, '$.workspace_type'), json_extract(e.metadata, '$.data_tier'),
-                json_extract(e.metadata, '$.last_synced_at'), json_extract(e.metadata, '$.stars'),
+                e.language, e.discovered_at,
+                e.workspace_type, e.data_tier,
+                e.last_synced_at, e.stars,
                 rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
          FROM entities e
          LEFT JOIN repo_remotes rm ON e.id = rm.repo_id
@@ -110,9 +110,9 @@ pub fn list_repos_stale_health(
 ) -> anyhow::Result<Vec<RepoEntry>> {
     let stmt = conn.prepare(&format!(
         "SELECT e.id, e.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = e.id) as tags,
-                json_extract(e.metadata, '$.language'), json_extract(e.metadata, '$.discovered_at'),
-                json_extract(e.metadata, '$.workspace_type'), json_extract(e.metadata, '$.data_tier'),
-                json_extract(e.metadata, '$.last_synced_at'), json_extract(e.metadata, '$.stars'),
+                e.language, e.discovered_at,
+                e.workspace_type, e.data_tier,
+                e.last_synced_at, e.stars,
                 rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
          FROM entities e
          LEFT JOIN repo_remotes rm ON e.id = rm.repo_id
@@ -132,16 +132,16 @@ pub fn list_repos_need_index(
 ) -> anyhow::Result<Vec<RepoEntry>> {
     let stmt = conn.prepare(&format!(
         "SELECT e.id, e.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = e.id) as tags,
-                json_extract(e.metadata, '$.language'), json_extract(e.metadata, '$.discovered_at'),
-                json_extract(e.metadata, '$.workspace_type'), json_extract(e.metadata, '$.data_tier'),
-                json_extract(e.metadata, '$.last_synced_at'), json_extract(e.metadata, '$.stars'),
+                e.language, e.discovered_at,
+                e.workspace_type, e.data_tier,
+                e.last_synced_at, e.stars,
                 rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
          FROM entities e
          LEFT JOIN repo_remotes rm ON e.id = rm.repo_id
          WHERE e.entity_type = '{}' AND (
              NOT EXISTS (SELECT 1 FROM repo_summaries s WHERE s.repo_id = e.id)
              OR EXISTS (SELECT 1 FROM repo_summaries s WHERE s.repo_id = e.id AND s.generated_at < ?1)
-             OR json_extract(e.metadata, '$.language') IS NULL
+             OR e.language IS NULL
          )
          ORDER BY e.id, rm.remote_name",
         super::ENTITY_TYPE_REPO
@@ -182,14 +182,11 @@ pub fn update_repo_language(
     repo_id: &str,
     language: Option<&str>,
 ) -> anyhow::Result<()> {
-    let tx = conn.unchecked_transaction()?;
-    super::entity::update_entity_metadata_field(
-        &tx,
-        repo_id,
-        "language",
-        language.unwrap_or("null"),
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE entities SET language = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![language, &now, repo_id],
     )?;
-    tx.commit()?;
     Ok(())
 }
 
@@ -198,9 +195,11 @@ pub fn update_repo_tier(
     repo_id: &str,
     tier: &str,
 ) -> anyhow::Result<()> {
-    let tx = conn.unchecked_transaction()?;
-    super::entity::update_entity_metadata_field(&tx, repo_id, "data_tier", tier)?;
-    tx.commit()?;
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE entities SET data_tier = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![tier, &now, repo_id],
+    )?;
     Ok(())
 }
 
@@ -209,9 +208,11 @@ pub fn update_repo_workspace_type(
     repo_id: &str,
     workspace_type: &str,
 ) -> anyhow::Result<()> {
-    let tx = conn.unchecked_transaction()?;
-    super::entity::update_entity_metadata_field(&tx, repo_id, "workspace_type", workspace_type)?;
-    tx.commit()?;
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE entities SET workspace_type = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![workspace_type, &now, repo_id],
+    )?;
     Ok(())
 }
 
@@ -221,14 +222,11 @@ pub fn update_repo_last_synced_at(
     repo_id: &str,
     timestamp: DateTime<Utc>,
 ) -> anyhow::Result<()> {
-    let tx = conn.unchecked_transaction()?;
-    super::entity::update_entity_metadata_field(
-        &tx,
-        repo_id,
-        "last_synced_at",
-        &timestamp.to_rfc3339(),
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE entities SET last_synced_at = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![timestamp.to_rfc3339(), &now, repo_id],
     )?;
-    tx.commit()?;
     Ok(())
 }
 
@@ -239,13 +237,13 @@ pub fn list_workspaces_by_tier(
 ) -> anyhow::Result<Vec<RepoEntry>> {
     let stmt = conn.prepare(&format!(
         "SELECT e.id, e.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = e.id) as tags,
-                json_extract(e.metadata, '$.language'), json_extract(e.metadata, '$.discovered_at'),
-                json_extract(e.metadata, '$.workspace_type'), json_extract(e.metadata, '$.data_tier'),
-                json_extract(e.metadata, '$.last_synced_at'), json_extract(e.metadata, '$.stars'),
+                e.language, e.discovered_at,
+                e.workspace_type, e.data_tier,
+                e.last_synced_at, e.stars,
                 rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
          FROM entities e
          LEFT JOIN repo_remotes rm ON e.id = rm.repo_id
-         WHERE e.entity_type = '{}' AND json_extract(e.metadata, '$.data_tier') = ?1
+         WHERE e.entity_type = '{}' AND e.data_tier = ?1
          ORDER BY e.id, rm.remote_name",
         super::ENTITY_TYPE_REPO
     ))?;
@@ -273,23 +271,45 @@ pub fn sync_repo_tags_to_entity(conn: &rusqlite::Connection, repo_id: &str) -> a
 /// Dual-write helper: upsert a repo into the unified entities table.
 /// Entities is first-class; this writes directly from the RepoEntry without reading repos.
 fn upsert_entity_for_repo(conn: &rusqlite::Connection, repo: &RepoEntry) -> anyhow::Result<()> {
-    let metadata = serde_json::json!({
-        "language": repo.language,
-        "discovered_at": repo.discovered_at.to_rfc3339(),
-        "workspace_type": repo.workspace_type,
-        "data_tier": repo.data_tier,
-        "stars": repo.stars.map(|s| s as i64),
-        "last_synced_at": repo.last_synced_at.map(|dt| dt.to_rfc3339()),
-        "tags": repo.tags.join(","),
-    });
-    super::upsert_entity(
-        conn,
-        &repo.id,
-        super::ENTITY_TYPE_REPO,
-        &repo.id,
-        Some(&repo.local_path.to_string_lossy()),
-        &metadata,
-    )
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        &format!(
+            "INSERT INTO entities (
+                id, entity_type, name, source_url, local_path, metadata,
+                content_hash, created_at, updated_at,
+                language, discovered_at, workspace_type, data_tier, last_synced_at, stars
+            ) VALUES (
+                ?1, '{}', ?2, NULL, ?3, ?4, NULL, ?5, ?5,
+                ?6, ?7, ?8, ?9, ?10, ?11
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                local_path = excluded.local_path,
+                metadata = excluded.metadata,
+                updated_at = excluded.updated_at,
+                language = excluded.language,
+                discovered_at = excluded.discovered_at,
+                workspace_type = excluded.workspace_type,
+                data_tier = excluded.data_tier,
+                last_synced_at = excluded.last_synced_at,
+                stars = excluded.stars",
+            super::ENTITY_TYPE_REPO
+        ),
+        rusqlite::params![
+            &repo.id,
+            &repo.id,
+            repo.local_path.to_str(),
+            serde_json::json!({"tags": repo.tags.join(",")}).to_string(),
+            &now,
+            repo.language.as_deref(),
+            repo.discovered_at.to_rfc3339(),
+            &repo.workspace_type,
+            &repo.data_tier,
+            repo.last_synced_at.map(|dt| dt.to_rfc3339()),
+            repo.stars.map(|s| s as i64),
+        ],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
