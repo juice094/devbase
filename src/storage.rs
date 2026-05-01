@@ -136,6 +136,12 @@ impl AppContext {
     }
 }
 
+impl crate::mcp::clients::ScanClient for AppContext {
+    async fn scan_directory(&self, path: &str, register: bool) -> anyhow::Result<serde_json::Value> {
+        crate::scan::run_json(path, register, &self.pool()).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

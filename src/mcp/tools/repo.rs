@@ -58,8 +58,8 @@ Returns: JSON array of discovered repos with id, path, language, source_type, an
             .and_then(|v| v.as_str())
             .context("Missing required argument: path")?;
         let register = args.get("register").and_then(|v| v.as_bool()).unwrap_or(false);
-        let pool = ctx.pool();
-        crate::scan::run_json(path, register, &pool).await
+        use crate::mcp::clients::ScanClient;
+        ctx.scan_directory(path, register).await
     }
 }
 

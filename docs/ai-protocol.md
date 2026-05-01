@@ -50,7 +50,7 @@
 
 | 等级 | 标准 | 代表模块 | 行动 |
 |------|------|---------|------|
-| 🟢 健康 | 0-3 个 `crate::` refs | `syncthing_client`, `embedding`, `semantic_index`, `search`, `registry/health`, `registry/metrics`, `vault/frontmatter`, `vault/wikilink`, `workflow/interpolate`, `workflow/model`, `skill_runtime/parser` | **下一轮拆分候选** |
+| 🟢 健康 | 0-3 个 `crate::` refs | `syncthing_client`, `embedding`, `semantic_index`, `search`, `registry/health`, `registry/metrics`, `registry/workspace`, `registry/entity`, `registry/relation`, `vault/frontmatter`, `vault/wikilink`, `workflow/interpolate`, `workflow/model`, `skill_runtime/parser` | **下一轮拆分候选** |
 | 🟡 亚健康 | 4-15 个 refs | `scan`, `sync`, `query`, `health`, `vault/indexer`, `workflow/state`, `skill_runtime/discover` | 需 trait 化解耦后拆分 |
 | 🔴 不健康 | >15 个 refs | `mcp/tools/repo` (70), `knowledge_engine` (33), `skill_runtime/executor` (15), `workflow/executor` (10) | 需架构重构 |
 
