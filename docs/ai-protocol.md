@@ -5,7 +5,7 @@
 ## 当前架构快照
 
 - **版本**：v0.14.0
-- **测试**：437 workspace passed / 0 failed / 5 ignored；分布：devbase 418 + symbol-links 4 + sync-protocol 12 + core-types 3
+- **测试**：455 workspace passed / 0 failed / 5 ignored；分布：devbase 406 + symbol-links 4 + sync-protocol 12 + core-types 3 + syncthing-client 2 + vault-frontmatter 5 + vault-wikilink 5
 - **编译**：0 errors，1 unused import warning（SortMode）
 - **Registry God Object**：生产代码业务逻辑已全部消除，`WorkspaceRegistry` 为纯向后兼容门面
 - **Workspace 拆分**：3 个零耦合模块已提取为独立 crate（`crates/` 目录）
@@ -40,6 +40,9 @@
 | `devbase-symbol-links` | `src/symbol_links.rs` | 280 | 4 | 0 `crate::` refs | `7eb139d` |
 | `devbase-sync-protocol` | `src/sync_protocol.rs` | 279 | 12 | 0 `crate::` refs | `7eb139d` |
 | `devbase-core-types` | `src/core/node.rs` | 128 | 3 | 0 `crate::` refs | `7eb139d` |
+| `devbase-syncthing-client` | `src/syncthing_client.rs` | 85 | 2 | 0 `crate::` refs | `066b18d` |
+| `devbase-vault-frontmatter` | `src/vault/frontmatter.rs` | 175 | 5 | 0 `crate::` refs | `066b18d` |
+| `devbase-vault-wikilink` | `src/vault/wikilink.rs` | 130 | 5 | 0 `crate::` refs | `066b18d` |
 
 > 向后兼容：原 `src/` 路径改为 `pub use <crate>::*;` 重新导出，API 不变。
 
