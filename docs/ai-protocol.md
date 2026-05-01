@@ -53,10 +53,18 @@
 
 ## 待办（按优先级）
 
-1. **P0 — Workspace 扩展**：提取 🟢 健康模块为独立 crate（`embedding`, `syncthing_client`, `registry/health`, `vault/frontmatter` 等）。目标：workspace 成员达到 8-10 个。
-2. **P1 — MCP trait 化**：`mcp/tools/repo.rs` 有 70 个 `crate::` 引用，是最大耦合点。需定义 `RegistryClient` / `SearchClient` trait，将具体调用改为接口调用。
-3. **P2 — registry 子模块拆分**：`health`, `metrics`, `workspace`, `entity`, `relation` 已零耦合，可优先提取。
-4. **P3 — migrate.rs 拆解**：待 Claw 架构就绪后推进。
+> 完整规划见 [`docs/ROADMAP.md`](ROADMAP.md)。此处仅保留架构层面的关键决策锚点。
+
+1. **P0 — Workspace 扩展**：提取 🟢 健康模块为独立 crate。目标：workspace 成员达到 8-10 个。验收：`cargo check --workspace` 0 errors。
+2. **P1 — MCP trait 化**：`mcp/tools/repo.rs` 有 70 个 `crate::` 引用。需定义 `RegistryClient` / `SearchClient` trait。验收：mcp `crate::` 引用 <10。
+3. **P2 — registry 子模块清洁**：`health`, `metrics`, `workspace`, `entity`, `relation` 已零耦合，消除所有 `crate::` 引用使其达到"随时可提取"状态。
+4. **P3 — migrate.rs 拆解**：按 schema 版本切分为 `migrate/v16.rs` 等。需 Claw 架构支持。
+
+**技术债务**（清偿中）：
+- Tantivy+SQLite 双写一致性（无事务协调）→ 评估补偿机制或 FTS5 替代
+- tree-sitter 编译成本（~15-20s）→ ccache 或 grammar 预编译
+- Feature flags 扩展（mcp 待评估）
+- `SortMode` unused import（1 warning）
 
 ## 模式约束
 
