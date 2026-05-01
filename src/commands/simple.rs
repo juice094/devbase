@@ -1,4 +1,5 @@
 use devbase::*;
+use devbase::mcp::clients::RegistryClient;
 use tracing::{info, warn};
 
 pub async fn run_scan(
@@ -455,68 +456,66 @@ pub fn run_metrics(
     repo_id: &str,
     json: bool,
 ) -> anyhow::Result<()> {
-    let conn = ctx.conn()?;
     if repo_id.is_empty() {
-        let metrics = crate::registry::metrics::list_code_metrics(&conn)?;
+        let val = ctx.list_code_metrics()?;
+        let repos = val.get("repos").and_then(|v| v.as_array()).cloned().unwrap_or_default();
         if json {
-            let output: Vec<serde_json::Value> = metrics
+            let output: Vec<serde_json::Value> = repos
                 .into_iter()
-                .map(|(id, m)| {
+                .map(|r| {
                     serde_json::json!({
-                        "repo_id": id,
-                        "total_lines": m.total_lines,
-                        "source_lines": m.source_lines,
-                        "test_lines": m.test_lines,
-                        "comment_lines": m.comment_lines,
-                        "file_count": m.file_count,
-                        "language_breakdown": m.language_breakdown,
+                        "repo_id": r.get("repo_id").cloned().unwrap_or(serde_json::Value::Null),
+                        "total_lines": r.get("total_lines").cloned().unwrap_or(serde_json::Value::Null),
+                        "source_lines": r.get("source_lines").cloned().unwrap_or(serde_json::Value::Null),
+                        "test_lines": r.get("test_lines").cloned().unwrap_or(serde_json::Value::Null),
+                        "comment_lines": r.get("comment_lines").cloned().unwrap_or(serde_json::Value::Null),
+                        "file_count": r.get("file_count").cloned().unwrap_or(serde_json::Value::Null),
+                        "language_breakdown": r.get("language_breakdown").cloned().unwrap_or(serde_json::Value::Null),
                     })
                 })
                 .collect();
             println!("{}", serde_json::to_string_pretty(&output)?);
         } else {
-            println!("Code metrics for {} repo(s):", metrics.len());
-            for (id, m) in metrics {
+            println!("Code metrics for {} repo(s):", repos.len());
+            for r in repos {
+                let id = r.get("repo_id").and_then(|v| v.as_str()).unwrap_or("");
+                let total = r.get("total_lines").and_then(|v| v.as_u64()).unwrap_or(0);
+                let source = r.get("source_lines").and_then(|v| v.as_u64()).unwrap_or(0);
+                let test = r.get("test_lines").and_then(|v| v.as_u64()).unwrap_or(0);
+                let comment = r.get("comment_lines").and_then(|v| v.as_u64()).unwrap_or(0);
+                let files = r.get("file_count").and_then(|v| v.as_u64()).unwrap_or(0);
                 println!(
                     "  [{}] total={} source={} test={} comment={} files={}",
-                    id,
-                    m.total_lines,
-                    m.source_lines,
-                    m.test_lines,
-                    m.comment_lines,
-                    m.file_count
+                    id, total, source, test, comment, files
                 );
             }
         }
     } else {
-        match crate::registry::metrics::get_code_metrics(&conn, repo_id)? {
-            Some(m) => {
-                if json {
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(&serde_json::json!({
-                            "repo_id": repo_id,
-                            "total_lines": m.total_lines,
-                            "source_lines": m.source_lines,
-                            "test_lines": m.test_lines,
-                            "comment_lines": m.comment_lines,
-                            "file_count": m.file_count,
-                            "language_breakdown": m.language_breakdown,
-                        }))?
-                    );
-                } else {
-                    println!(
-                        "[{}] total={} source={} test={} comment={} files={}",
-                        repo_id,
-                        m.total_lines,
-                        m.source_lines,
-                        m.test_lines,
-                        m.comment_lines,
-                        m.file_count
-                    );
-                }
-            }
-            None => println!("No metrics found for '{}'.", repo_id),
+        let val = ctx.get_code_metrics(repo_id)?;
+        let success = val.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
+        if !success {
+            println!("No metrics found for '{}'.", repo_id);
+        } else if json {
+            let output = serde_json::json!({
+                "repo_id": repo_id,
+                "total_lines": val.get("total_lines").cloned().unwrap_or(serde_json::Value::Null),
+                "source_lines": val.get("source_lines").cloned().unwrap_or(serde_json::Value::Null),
+                "test_lines": val.get("test_lines").cloned().unwrap_or(serde_json::Value::Null),
+                "comment_lines": val.get("comment_lines").cloned().unwrap_or(serde_json::Value::Null),
+                "file_count": val.get("file_count").cloned().unwrap_or(serde_json::Value::Null),
+                "language_breakdown": val.get("language_breakdown").cloned().unwrap_or(serde_json::Value::Null),
+            });
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        } else {
+            let total = val.get("total_lines").and_then(|v| v.as_u64()).unwrap_or(0);
+            let source = val.get("source_lines").and_then(|v| v.as_u64()).unwrap_or(0);
+            let test = val.get("test_lines").and_then(|v| v.as_u64()).unwrap_or(0);
+            let comment = val.get("comment_lines").and_then(|v| v.as_u64()).unwrap_or(0);
+            let files = val.get("file_count").and_then(|v| v.as_u64()).unwrap_or(0);
+            println!(
+                "[{}] total={} source={} test={} comment={} files={}",
+                repo_id, total, source, test, comment, files
+            );
         }
     }
     Ok(())
@@ -527,15 +526,18 @@ pub fn run_module_graph(
     repo_id: &str,
     json: bool,
 ) -> anyhow::Result<()> {
-    let conn = ctx.conn()?;
     if repo_id.is_empty() {
-        let repos = crate::registry::repo::list_repos(&conn)?;
+        let repos_val = ctx.list_repos(None)?;
+        let repos = repos_val.get("repos").and_then(|v| v.as_array()).cloned().unwrap_or_default();
         let mut all = Vec::new();
         for repo in repos {
-            if repo.language.as_deref() == Some("Rust") {
-                let modules = crate::registry::knowledge::list_modules(&conn, &repo.id)?;
+            let id = repo.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let language = repo.get("language").and_then(|v| v.as_str()).unwrap_or("");
+            if language == "Rust" {
+                let mod_val = ctx.list_modules(id)?;
+                let modules = mod_val.get("modules").and_then(|v| v.as_array()).cloned().unwrap_or_default();
                 if !modules.is_empty() {
-                    all.push((repo.id, modules));
+                    all.push((id.to_string(), modules));
                 }
             }
         }
@@ -545,9 +547,7 @@ pub fn run_module_graph(
                 .map(|(id, mods)| {
                     serde_json::json!({
                         "repo_id": id,
-                        "modules": mods.iter().map(|(n, t, p)| serde_json::json!({
-                            "name": n, "type": t, "path": p
-                        })).collect::<Vec<_>>()
+                        "modules": mods
                     })
                 })
                 .collect();
@@ -556,25 +556,28 @@ pub fn run_module_graph(
             println!("Module graph for {} Rust repo(s):", all.len());
             for (id, mods) in all {
                 println!("  [{}] {} module(s)", id, mods.len());
-                for (name, ty, path) in mods {
+                for m in mods {
+                    let name = m.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    let ty = m.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                    let path = m.get("path").and_then(|v| v.as_str()).unwrap_or("");
                     println!("    {} ({})  {}", name, ty, path);
                 }
             }
         }
     } else {
-        let modules = crate::registry::knowledge::list_modules(&conn, repo_id)?;
+        let mod_val = ctx.list_modules(repo_id)?;
+        let modules = mod_val.get("modules").and_then(|v| v.as_array()).cloned().unwrap_or_default();
         if json {
-            let out: Vec<serde_json::Value> = modules
-                .iter()
-                .map(|(n, t, p)| serde_json::json!({ "name": n, "type": t, "path": p }))
-                .collect();
             println!("{}", serde_json::to_string_pretty(&serde_json::json!({
                 "repo_id": repo_id,
-                "modules": out
+                "modules": modules
             }))?);
         } else {
             println!("Module graph for [{}]:", repo_id);
-            for (name, ty, path) in modules {
+            for m in modules {
+                let name = m.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let ty = m.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                let path = m.get("path").and_then(|v| v.as_str()).unwrap_or("");
                 println!("  {} ({})  {}", name, ty, path);
             }
         }
@@ -596,38 +599,30 @@ pub fn run_call_graph(
     if callee_s.is_empty() && caller_s.is_empty() {
         anyhow::bail!("At least one of --callee or --caller must be provided");
     }
-    let conn = ctx.conn()?;
-    let edges = crate::registry::call_graph::query_call_edges(
-        &conn,
+    let val = ctx.query_call_graph(
         repo_id,
         Some(callee_s).filter(|s| !s.is_empty()),
         Some(caller_s).filter(|s| !s.is_empty()),
         file.as_deref().filter(|s| !s.is_empty()),
         limit,
     )?;
+    let edges = val.get("calls").and_then(|v| v.as_array()).cloned().unwrap_or_default();
     if json {
-        let out: Vec<serde_json::Value> = edges
-            .iter()
-            .map(|e| {
-                serde_json::json!({
-                    "caller_file": e.caller_file,
-                    "caller_symbol": e.caller_symbol,
-                    "caller_line": e.caller_line,
-                    "callee_name": e.callee_name,
-                })
-            })
-            .collect();
         println!("{}", serde_json::to_string_pretty(&serde_json::json!({
             "repo_id": repo_id,
-            "count": out.len(),
-            "calls": out
+            "count": edges.len(),
+            "calls": edges
         }))?);
     } else {
         println!("Call graph for [{}]: {} edge(s)", repo_id, edges.len());
         for e in edges {
+            let caller_file = e.get("caller_file").and_then(|v| v.as_str()).unwrap_or("");
+            let caller_symbol = e.get("caller_symbol").and_then(|v| v.as_str()).unwrap_or("");
+            let caller_line = e.get("caller_line").and_then(|v| v.as_i64()).unwrap_or(0);
+            let callee_name = e.get("callee_name").and_then(|v| v.as_str()).unwrap_or("");
             println!(
                 "  {}:{}  {} -> {}",
-                e.caller_file, e.caller_line, e.caller_symbol, e.callee_name
+                caller_file, caller_line, caller_symbol, callee_name
             );
         }
     }
@@ -641,37 +636,23 @@ pub fn run_dependency_graph(
     relation_type: Option<String>,
     json: bool,
 ) -> anyhow::Result<()> {
-    let conn = ctx.conn()?;
     let rel_filter = relation_type.as_deref().filter(|s| !s.is_empty());
-    let (label, rows): (&str, Vec<(String, String, f64)>) = if direction == "incoming" || direction == "reverse" {
-        ("reverse dependencies", crate::dependency_graph::list_reverse_dependencies(&conn, repo_id)?)
-    } else {
-        ("dependencies", crate::dependency_graph::list_dependencies(&conn, repo_id)?)
-    };
-    let deps: Vec<(String, String, f64)> = rows
-        .into_iter()
-        .filter(|(_, rel, _)| rel_filter.map_or(true, |f| f == rel))
-        .collect();
+    let val = ctx.query_dependencies(repo_id, direction, rel_filter)?;
+    let label = val.get("label").and_then(|v| v.as_str()).unwrap_or("dependencies");
+    let deps = val.get("dependencies").and_then(|v| v.as_array()).cloned().unwrap_or_default();
     if json {
-        let out: Vec<serde_json::Value> = deps
-            .iter()
-            .map(|(id, rel, conf)| {
-                serde_json::json!({
-                    "repo_id": id,
-                    "relation_type": rel,
-                    "confidence": conf,
-                })
-            })
-            .collect();
         println!("{}", serde_json::to_string_pretty(&serde_json::json!({
             "repo_id": repo_id,
             "direction": direction,
-            "count": out.len(),
-            "dependencies": out
+            "count": deps.len(),
+            "dependencies": deps
         }))?);
     } else {
         println!("{} for [{}]: {} edge(s)", label, repo_id, deps.len());
-        for (id, rel, conf) in deps {
+        for d in deps {
+            let id = d.get("repo_id").and_then(|v| v.as_str()).unwrap_or("");
+            let rel = d.get("relation_type").and_then(|v| v.as_str()).unwrap_or("");
+            let conf = d.get("confidence").and_then(|v| v.as_f64()).unwrap_or(0.0);
             println!("  -> {} ({} conf={:.2})", id, rel, conf);
         }
     }
@@ -687,69 +668,28 @@ pub fn run_code_symbols(
     limit: usize,
     json: bool,
 ) -> anyhow::Result<()> {
-    let conn = ctx.conn()?;
-    let mut sql = String::from(
-        "SELECT file_path, symbol_type, name, line_start, line_end, signature \
-         FROM code_symbols WHERE repo_id = ?1",
-    );
-    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(repo_id.to_string())];
-    if let Some(ty) = symbol_type.as_deref().filter(|s| !s.is_empty()) {
-        sql.push_str(" AND symbol_type = ?");
-        sql.push_str(&(params.len() + 1).to_string());
-        params.push(Box::new(ty.to_string()));
-    }
-    if let Some(n) = name.as_deref().filter(|s| !s.is_empty()) {
-        sql.push_str(" AND name LIKE ?");
-        sql.push_str(&(params.len() + 1).to_string());
-        params.push(Box::new(format!("%{}%", n)));
-    }
-    if let Some(f) = file.as_deref().filter(|s| !s.is_empty()) {
-        sql.push_str(" AND file_path LIKE ?");
-        sql.push_str(&(params.len() + 1).to_string());
-        params.push(Box::new(format!("%{}%", f)));
-    }
-    sql.push_str(&format!(" ORDER BY file_path, line_start LIMIT {}", limit.min(200)));
-
-    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-    let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params_from_iter(param_refs), |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, i64>(3)?,
-            row.get::<_, i64>(4)?,
-            row.get::<_, Option<String>>(5)?,
-        ))
-    })?;
-
-    let mut symbols = Vec::new();
-    for row in rows {
-        symbols.push(row?);
-    }
-
+    let val = ctx.query_code_symbols(
+        repo_id,
+        name.as_deref().filter(|s| !s.is_empty()),
+        symbol_type.as_deref().filter(|s| !s.is_empty()),
+        file.as_deref().filter(|s| !s.is_empty()),
+        limit,
+    )?;
+    let symbols = val.get("symbols").and_then(|v| v.as_array()).cloned().unwrap_or_default();
     if json {
-        let out: Vec<serde_json::Value> = symbols
-            .iter()
-            .map(|(fp, st, n, ls, le, sig)| {
-                serde_json::json!({
-                    "file_path": fp,
-                    "symbol_type": st,
-                    "name": n,
-                    "line_start": ls,
-                    "line_end": le,
-                    "signature": sig,
-                })
-            })
-            .collect();
         println!("{}", serde_json::to_string_pretty(&serde_json::json!({
             "repo_id": repo_id,
-            "count": out.len(),
-            "symbols": out
+            "count": symbols.len(),
+            "symbols": symbols
         }))?);
     } else {
         println!("Code symbols for [{}]: {} result(s)", repo_id, symbols.len());
-        for (fp, st, n, ls, _, sig) in symbols {
+        for s in symbols {
+            let fp = s.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+            let st = s.get("symbol_type").and_then(|v| v.as_str()).unwrap_or("");
+            let n = s.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let ls = s.get("line_start").and_then(|v| v.as_i64()).unwrap_or(0);
+            let sig = s.get("signature").and_then(|v| v.as_str());
             let sig_str = sig.map(|s| format!("  {}", s)).unwrap_or_default();
             println!("  {}:{} {} {} {}", fp, ls, st, n, sig_str);
         }
@@ -764,57 +704,21 @@ pub fn run_dead_code(
     limit: usize,
     json: bool,
 ) -> anyhow::Result<()> {
-    let conn = ctx.conn()?;
-    let mut sql = String::from(
-        "SELECT file_path, name, line_start, signature \
-         FROM code_symbols cs \
-         WHERE cs.repo_id = ?1 AND cs.symbol_type = 'function' \
-         AND NOT EXISTS ( \
-             SELECT 1 FROM code_call_graph ccg \
-             WHERE ccg.repo_id = cs.repo_id AND ccg.callee_name = cs.name \
-         )",
-    );
-    if !include_pub {
-        sql.push_str(" AND (cs.signature IS NULL OR cs.signature NOT LIKE 'pub%fn%')");
-    }
-    sql.push_str(" AND cs.name != 'main'");
-    sql.push_str(&format!(" ORDER BY cs.file_path, cs.line_start LIMIT {}", limit.min(200)));
-
-    let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map([repo_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, i64>(2)?,
-            row.get::<_, Option<String>>(3)?,
-        ))
-    })?;
-
-    let mut dead = Vec::new();
-    for row in rows {
-        dead.push(row?);
-    }
-
+    let val = ctx.query_dead_code(repo_id, include_pub, limit)?;
+    let dead = val.get("dead_functions").and_then(|v| v.as_array()).cloned().unwrap_or_default();
     if json {
-        let out: Vec<serde_json::Value> = dead
-            .iter()
-            .map(|(fp, n, line, sig)| {
-                serde_json::json!({
-                    "file_path": fp,
-                    "name": n,
-                    "line_start": line,
-                    "signature": sig,
-                })
-            })
-            .collect();
         println!("{}", serde_json::to_string_pretty(&serde_json::json!({
             "repo_id": repo_id,
-            "count": out.len(),
-            "dead_functions": out
+            "count": dead.len(),
+            "dead_functions": dead
         }))?);
     } else {
         println!("Potentially dead functions in [{}]: {}", repo_id, dead.len());
-        for (fp, n, line, sig) in dead {
+        for d in dead {
+            let fp = d.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+            let n = d.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let line = d.get("line_start").and_then(|v| v.as_i64()).unwrap_or(0);
+            let sig = d.get("signature").and_then(|v| v.as_str());
             let sig_str = sig.map(|s| format!("  {}", s)).unwrap_or_default();
             println!("  {}:{} {}{}", fp, line, n, sig_str);
         }
@@ -1040,7 +944,7 @@ pub fn run_registry(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{AppContext, StorageBackend};
+    use storage::{AppContext, StorageBackend};
     use std::path::PathBuf;
     use std::sync::Arc;
 
