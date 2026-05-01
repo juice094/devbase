@@ -428,38 +428,89 @@ fn node_text<'a>(node: &tree_sitter::Node, source: &'a [u8]) -> &'a str {
 
 /// Scan a repository for source files and extract all symbols and call relationships.
 pub fn index_repo_full(repo_path: &Path) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
-    let mut all_symbols = Vec::new();
-    let mut all_calls = Vec::new();
-
     let exts: &[&str] = &["rs", "py", "js", "ts", "jsx", "tsx", "go"];
 
-    for entry in walkdir::WalkDir::new(repo_path)
+    let files: Vec<std::path::PathBuf> = walkdir::WalkDir::new(repo_path)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
-    {
-        let path = entry.path();
-        let ext = path.extension().and_then(|e| e.to_str());
-        if ext.is_none_or(|e| !exts.contains(&e)) {
-            continue;
-        }
+        .filter(|e| {
+            let ext = e.path().extension().and_then(|e| e.to_str());
+            ext.is_some_and(|e| exts.contains(&e))
+        })
+        .map(|e| e.path().to_path_buf())
+        .collect();
 
-        match std::fs::read_to_string(path) {
-            Ok(source) => {
-                let rel_path = path.strip_prefix(repo_path).unwrap_or(path);
-                let symbols = extract_symbols(rel_path, &source);
-                all_symbols.extend(symbols);
+    let num_threads = std::env::var("DEVBASE_INDEX_THREADS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1)
+                .min(8)
+        });
 
-                let calls = extract_calls_from_file(rel_path, &source);
-                all_calls.extend(calls);
-            }
-            Err(e) => {
-                warn!("Failed to read {:?}: {}", path, e);
-            }
+    if num_threads <= 1 || files.len() < 16 {
+        let mut all_symbols = Vec::new();
+        let mut all_calls = Vec::new();
+        for path in files {
+            process_file(repo_path, &path, &mut all_symbols, &mut all_calls);
         }
+        return (all_symbols, all_calls);
     }
 
-    (all_symbols, all_calls)
+    std::thread::scope(|s| {
+        let chunk_size = (files.len() + num_threads - 1) / num_threads;
+        let mut handles = Vec::with_capacity(num_threads);
+
+        for chunk in files.chunks(chunk_size) {
+            handles.push(
+                std::thread::Builder::new()
+                    .stack_size(4 * 1024 * 1024)
+                    .spawn_scoped(s, move || {
+                        let mut symbols = Vec::new();
+                        let mut calls = Vec::new();
+                        for path in chunk {
+                            process_file(repo_path, path, &mut symbols, &mut calls);
+                        }
+                        (symbols, calls)
+                    })
+                    .expect("failed to spawn index worker"),
+            );
+        }
+
+        let mut all_symbols = Vec::new();
+        let mut all_calls = Vec::new();
+        for handle in handles {
+            let (s, c) = handle.join().unwrap();
+            all_symbols.extend(s);
+            all_calls.extend(c);
+        }
+        (all_symbols, all_calls)
+    })
+}
+
+#[inline]
+fn process_file(
+    repo_path: &Path,
+    path: &std::path::PathBuf,
+    all_symbols: &mut Vec<CodeSymbol>,
+    all_calls: &mut Vec<CodeCall>,
+) {
+    match std::fs::read_to_string(path) {
+        Ok(source) => {
+            let rel_path = path.strip_prefix(repo_path).unwrap_or(path);
+            let symbols = extract_symbols(rel_path, &source);
+            all_symbols.extend(symbols);
+
+            let calls = extract_calls_from_file(rel_path, &source);
+            all_calls.extend(calls);
+        }
+        Err(e) => {
+            warn!("Failed to read {:?}: {}", path, e);
+        }
+    }
 }
 
 /// Scan a repository for source files and extract all symbols.

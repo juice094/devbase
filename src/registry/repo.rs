@@ -12,7 +12,7 @@ fn collect_repos_from_stmt(
             row.get::<_, String>(1)?,
             row.get::<_, Option<String>>(2)?,
             row.get::<_, Option<String>>(3)?,
-            row.get::<_, String>(4)?,
+            row.get::<_, Option<String>>(4)?,
             row.get::<_, Option<String>>(5)?,
             row.get::<_, Option<String>>(6)?,
             row.get::<_, Option<String>>(7)?,
@@ -41,8 +41,9 @@ fn collect_repos_from_stmt(
             last_sync,
         ) = row?;
         let local_path = PathBuf::from(local_path);
-        let discovered_at = DateTime::parse_from_rfc3339(&discovered_at)
-            .ok()
+        let discovered_at = discovered_at
+            .as_deref()
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(Utc::now);
         let tags: Vec<String> = tags
