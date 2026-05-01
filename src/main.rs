@@ -239,6 +239,17 @@ pub(crate) enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Fetch GitHub metadata for a registered repository
+    GithubInfo {
+        /// Repository ID
+        repo_id: String,
+        /// Write GitHub description into repo summary
+        #[arg(long)]
+        write_summary: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Registry backup and restore operations
     Registry {
         #[command(subcommand)]
@@ -635,6 +646,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::DeadCode { repo_id, include_pub, limit, json } => {
             commands::simple::run_dead_code(&mut ctx, &repo_id, include_pub, limit, json)?;
+        }
+        Commands::GithubInfo { repo_id, write_summary, json } => {
+            commands::simple::run_github_info(&mut ctx, &repo_id, write_summary, json).await?;
         }
         Commands::Discover => {
             commands::simple::run_discover(&mut ctx)?;
