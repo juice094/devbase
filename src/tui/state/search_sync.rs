@@ -336,13 +336,7 @@ fn search_repo_fallback(
     repo_id: &str,
     results: &mut Vec<SearchResult>,
 ) {
-    use std::collections::HashSet;
-
-    let excluded_dirs: HashSet<&str> =
-        [".git", "target", "node_modules", ".venv", "venv", "dist", "build", "__pycache__", ".cargo"]
-            .iter()
-            .cloned()
-            .collect();
+    let exclude_patterns = crate::config::default_exclude_patterns();
 
     for entry in walkdir::WalkDir::new(repo_path).max_depth(10) {
         let entry = match entry {
@@ -354,13 +348,7 @@ fn search_repo_fallback(
         }
 
         let path = entry.path();
-        if path.components().any(|c| {
-            if let Some(name) = c.as_os_str().to_str() {
-                excluded_dirs.contains(name)
-            } else {
-                false
-            }
-        }) {
+        if crate::semantic_index::should_skip_dir(path, &exclude_patterns) {
             continue;
         }
 

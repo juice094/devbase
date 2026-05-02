@@ -5,10 +5,13 @@
 ## 当前架构快照
 
 - **版本**：v0.14.0
-- **测试**：455 workspace passed / 0 failed / 5 ignored；分布：devbase 406 + symbol-links 4 + sync-protocol 12 + core-types 3 + syncthing-client 2 + vault-frontmatter 5 + vault-wikilink 5
-- **编译**：0 errors，1 unused import warning（SortMode）
+- **测试**：407 passed / 0 failed / 6 ignored（`local-embedding` 默认启用后 +1 ignored candle test）
+- **编译**：0 errors，0 warnings
 - **Registry God Object**：生产代码业务逻辑已全部消除，`WorkspaceRegistry` 为纯向后兼容门面
-- **Workspace 拆分**：3 个零耦合模块已提取为独立 crate（`crates/` 目录）
+- **Workspace 拆分**：6 个零耦合模块已提取为独立 crate（`crates/` 目录）
+- **千行文件治理**：6/6 完成，最大文件降至 950 行
+- **Embedding 闭环**：Phase 3 完成，`local-embedding` 默认启用，candle `all-MiniLM-L6-v2` CPU 实时推理
+- **索引黑名单**：`semantic_index` / `scan` / `TUI` 统一排除 `target/` / `.venv/` / `node_modules/` 等 9 个目录
 
 ## 已完成的子模块提取（v0.15 重构）
 
@@ -99,7 +102,31 @@
 - **Commit**：`c7dbacd`
 - **关键决策**：`std::thread::scope` + 4MB 线程栈；`DEVBASE_INDEX_THREADS` 环境变量调优
 
+- **日期**：2026-04-26（千行文件治理 Batch 3/6 + Repository Phase 2）
+- **架构**：CLI
+- **交付**：`mcp/tools/repo.rs` 拆分 5 文件 + `registry/migrate.rs` 26 个独立迁移 + `commands/simple.rs` 拆分 5 文件 + `knowledge_engine.rs` / `semantic_index.rs` / `tui/state.rs` 拆分
+- **Commit**：`091d444`
+
+- **日期**：2026-04-26（千行文件治理收尾 + binary compat 修复）
+- **架构**：CLI
+- **交付**：`tui/state.rs` 1293→330+6 子模块 + `commands/simple.rs` re-export 修复 binary build
+- **Commit**：`1a937c8`
+
+- **日期**：2026-04-26（Phase 3 Embedding 闭环 + 索引黑名单）
+- **架构**：CLI
+- **交付**：
+  - `Cargo.toml`：`local-embedding` 默认启用（candle CPU 推理）
+  - `mcp/tools/search.rs`：`hybrid_search` / `semantic_search` 零参数自动生成 embedding
+  - `knowledge_engine/index.rs`：`index` 流程自动生成 symbol embeddings（1201/1201 distinct names = 100%）
+  - `semantic_index/mod.rs` / `scan.rs` / `config.rs`：9 个默认排除目录
+  - `search_sync.rs`：TUI 搜索黑名单扩展
+- **Commit**：`00c6765`
+- **关键决策**：
+  - embedding 按 `symbol_name` 去重存储，同名不同文件 symbol 共享 embedding
+  - `generate_query_embedding` 失败时自动降级到纯 keyword search（AI 无感知）
+  - MCP stdio 通过 Python subprocess 端到端验证通过：1.91s 返回 5 个融合结果
+
 - **当前计划**
 - **文档**：`docs/plans/ai-native-storage-plan.md`
-- **目标**：AI-Native Storage Engine Refactor（Phase 1-4）
+- **目标**：Phase 4 增量索引 + Saga 协调器（或 P0 Workspace crate 剥离）
 - **验收**：Kimi CLI 作为 AI 用户的视角评价

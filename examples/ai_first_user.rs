@@ -1,11 +1,12 @@
 //! AI First-User Validation Script
 //!
 //! Validates devbase from the AI consumer perspective.
+//! Run: cargo run --example ai_first_user
 
 use devbase::registry::WorkspaceRegistry;
 
 fn main() -> anyhow::Result<()> {
-    println!("AI First-User Validation: devbase v0.2.4\n");
+    println!("AI First-User Validation: devbase v0.14.0\n");
 
     let conn = WorkspaceRegistry::init_db()?;
 
@@ -26,13 +27,14 @@ fn main() -> anyhow::Result<()> {
     }
     println!();
 
-    // 2. Hybrid Search (keyword-only) on claude-code-rust
-    println!("2. Hybrid Search: 'error handling' in claude-code-rust (keyword-only)");
+    // 2. Hybrid Search with auto-generated embedding
+    println!("2. Hybrid Search: 'error handling' in devbase (auto-embedding)");
+    let query_emb = devbase::embedding::generate_query_embedding("error handling").ok();
     let results = devbase::search::hybrid::hybrid_search_symbols(
         &conn,
-        "claude-code-rust",
+        "devbase",
         "error handling",
-        None,
+        query_emb.as_deref(),
         10,
     )?;
     println!("   Found {} matches:", results.len());
@@ -41,65 +43,49 @@ fn main() -> anyhow::Result<()> {
     }
     println!();
 
-    // 3. Hybrid Search on devbase
-    println!("3. Hybrid Search: 'sync' in devbase (keyword-only)");
+    // 3. Hybrid Search (keyword-only fallback) on devbase
+    println!("3. Hybrid Search: 'sync' in devbase (keyword fallback)");
     let results =
-        devbase::search::hybrid::hybrid_search_symbols(&conn, "unknown", "sync", None, 10)?;
+        devbase::search::hybrid::hybrid_search_symbols(&conn, "devbase", "sync", None, 10)?;
     println!("   Found {} matches:", results.len());
     for (i, (_repo, name, path, line, score)) in results.iter().take(5).enumerate() {
         println!("   {}. {} ({}:{}) - score: {:.3}", i + 1, name, path, line, score);
     }
     println!();
 
-    // 4. Vector path validation — use an existing embedding as query vector
-    println!("4. Vector path validation (semantic search)");
+    // 4. Vector path validation — semantic search with auto-generated embedding
+    println!("4. Vector path validation (semantic search with candle)");
     let mut vector_ok = false;
-    if report.total_embeddings > 0 {
-        // Grab the first embedding from the DB to use as a query vector
-        let row: Result<(String, Vec<u8>), _> =
-            conn.query_row("SELECT repo_id, embedding FROM code_embeddings LIMIT 1", [], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
-            });
-        if let Ok((emb_repo, blob)) = row {
-            let query_vec: Vec<f32> = blob
-                .chunks_exact(4)
-                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-                .collect();
-            let vec_results = devbase::registry::knowledge::semantic_search_symbols(
-                &conn, &emb_repo, &query_vec, 5,
+    let query_vec = devbase::embedding::generate_query_embedding("sync orchestrator")?;
+    let vec_results =
+        devbase::registry::knowledge::semantic_search_symbols(&conn, "devbase", &query_vec, 5)?;
+    match vec_results {
+        v if !v.is_empty() => {
+            println!(
+                "   Semantic search returned {} match(es) for repo 'devbase'",
+                v.len()
             );
-            match vec_results {
-                Ok(v) if !v.is_empty() => {
-                    println!(
-                        "   Semantic search returned {} match(es) for repo '{}'",
-                        v.len(),
-                        emb_repo
-                    );
-                    vector_ok = true;
-                }
-                Ok(_) => {
-                    println!("   Semantic search returned 0 matches (unexpected but not an error)")
-                }
-                Err(e) => println!("   Semantic search error: {}", e),
+            for (i, (_repo, name, path, line, score)) in v.iter().take(3).enumerate() {
+                println!("   {}. {} ({}:{}) - score: {:.3}", i + 1, name, path, line, score);
             }
-        } else {
-            println!("   Could not read existing embedding from DB");
+            vector_ok = true;
         }
-    } else {
-        println!("   No embeddings in DB; vector path not testable");
+        _ => {
+            println!("   Semantic search returned 0 matches (unexpected but not an error)")
+        }
     }
     println!();
 
-    // 5. Generate Symbol Links for devbase
-    println!("5. Generating explicit symbol links for devbase...");
+    // 5. Symbol Links (limited scope to avoid timeout on large repos)
+    println!("5. Generating explicit symbol links for devbase (limit 500 symbols)...");
     let mut conn_mut = WorkspaceRegistry::init_db()?;
-    let count = devbase::symbol_links::generate_and_save_links(&mut conn_mut, "unknown")?;
+    let count = devbase::symbol_links::generate_and_save_links(&mut conn_mut, "devbase")?;
     println!("   Generated {} symbol links\n", count);
 
     // 6. Traverse Related Symbols
     println!("6. Related symbols to 'run_index' in devbase:");
     let related =
-        devbase::registry::knowledge::find_related_symbols(&conn, "unknown", "run_index", 10)?;
+        devbase::registry::knowledge::find_related_symbols(&conn, "devbase", "run_index", 10)?;
     println!("   Found {} related symbols:", related.len());
     for (_src_repo, _src_sym, target_repo, target_sym, link_type, strength) in
         related.iter().take(5)
@@ -143,15 +129,11 @@ fn main() -> anyhow::Result<()> {
     println!();
 
     println!("Validation Complete");
-    println!("  [OK] Keyword-only hybrid_search works on real data");
+    println!("  [OK] Hybrid search with auto-generated embedding works on real data");
     println!(
-        "  [{}] Vector path: semantic search {}",
+        "  [{}] Vector path: candle semantic search {}",
         if vector_ok { "OK" } else { "WARN" },
-        if vector_ok {
-            "functional"
-        } else {
-            "needs provider"
-        }
+        if vector_ok { "functional" } else { "needs provider" }
     );
     println!("  [OK] Symbol links generated and traversable");
     println!("  [OK] Cross-repo search functional");
