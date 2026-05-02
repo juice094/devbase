@@ -16,7 +16,7 @@ pub use crate::commands::system::{run_daemon, run_github_info, run_mcp, run_tui}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use storage::{AppContext, StorageBackend};
+    use crate::storage::{AppContext, StorageBackend};
     use std::path::PathBuf;
     use std::sync::Arc;
 

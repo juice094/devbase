@@ -1,0 +1,12 @@
+[package]
+name = "devbase-workflow-interpolate"
+version = "0.15.0"
+edition = "2024"
+description = "Workflow variable interpolation for devbase"
+authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+
+[dependencies]
+anyhow = "1"
+regex = "1"
+serde_json = "1"
+serde_yaml = "0.9"

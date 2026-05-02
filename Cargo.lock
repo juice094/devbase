@@ -1075,6 +1075,7 @@ dependencies = [
  "devbase-syncthing-client",
  "devbase-vault-frontmatter",
  "devbase-vault-wikilink",
+ "devbase-workflow-interpolate",
  "dirs",
  "git2",
  "hf-hub",
@@ -1149,6 +1150,16 @@ version = "0.1.0-alpha.1"
 [[package]]
 name = "devbase-vault-wikilink"
 version = "0.1.0-alpha.1"
+
+[[package]]
+name = "devbase-workflow-interpolate"
+version = "0.15.0"
+dependencies = [
+ "anyhow",
+ "regex",
+ "serde_json",
+ "serde_yaml",
+]
 
 [[package]]
 name = "difflib"
