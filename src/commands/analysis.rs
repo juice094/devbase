@@ -1,8 +1,4 @@
-use anyhow::Context;
-use devbase::*;
 use devbase::mcp::clients::RegistryClient;
-use rusqlite::OptionalExtension;
-use tracing::{info, warn};
 
 pub fn run_metrics(
     ctx: &mut crate::storage::AppContext,

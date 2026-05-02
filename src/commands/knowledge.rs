@@ -1,8 +1,5 @@
-use anyhow::Context;
 use devbase::*;
-use devbase::mcp::clients::RegistryClient;
-use rusqlite::OptionalExtension;
-use tracing::{info, warn};
+use tracing::info;
 
 pub async fn run_vault(
     ctx: &mut crate::storage::AppContext,

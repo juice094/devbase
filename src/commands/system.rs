@@ -1,8 +1,8 @@
 use anyhow::Context;
 use devbase::*;
-use devbase::mcp::clients::RegistryClient;
 use rusqlite::OptionalExtension;
-use tracing::{info, warn};
+use tracing::info;
+use crate::mcp::tools::parse_github_repo;
 
 pub async fn run_tui(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     info!("{}", ctx.i18n.cli.launching_tui);

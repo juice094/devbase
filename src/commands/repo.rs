@@ -1,7 +1,4 @@
-use anyhow::Context;
 use devbase::*;
-use devbase::mcp::clients::RegistryClient;
-use rusqlite::OptionalExtension;
 use tracing::{info, warn};
 
 pub async fn run_scan(

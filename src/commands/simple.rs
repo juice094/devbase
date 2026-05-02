@@ -1,31 +1,17 @@
-use anyhow::Context;
-use devbase::*;
-use devbase::mcp::clients::RegistryClient;
-use rusqlite::OptionalExtension;
-use tracing::{info, warn};
 
-fn parse_github_repo(url: &str) -> Option<(String, String)> {
-    let url = url.trim_end_matches(".git");
-    if let Some(rest) = url.strip_prefix("https://github.com/") {
-        let parts: Vec<&str> = rest.split('/').collect();
-        if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {
-            return Some((parts[0].to_string(), parts[1].to_string()));
-        }
-    }
-    if let Some(rest) = url.strip_prefix("http://github.com/") {
-        let parts: Vec<&str> = rest.split('/').collect();
-        if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {
-            return Some((parts[0].to_string(), parts[1].to_string()));
-        }
-    }
-    if let Some(rest) = url.strip_prefix("git@github.com:") {
-        let parts: Vec<&str> = rest.split('/').collect();
-        if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {
-            return Some((parts[0].to_string(), parts[1].to_string()));
-        }
-    }
-    None
-}
+// Re-exports to preserve main.rs compatibility after commands/simple.rs split
+pub use crate::commands::analysis::{
+    run_call_graph, run_code_symbols, run_dead_code, run_dependency_graph, run_metrics,
+    run_module_graph,
+};
+pub use crate::commands::knowledge::{
+    run_clean, run_digest, run_meta, run_oplog, run_skill_sync, run_tag, run_vault, run_watch,
+};
+pub use crate::commands::repo::{
+    run_discover, run_health, run_index, run_query, run_registry, run_scan, run_sync,
+    run_syncthing_push,
+};
+pub use crate::commands::system::{run_daemon, run_github_info, run_mcp, run_tui};
 
 #[cfg(test)]
 mod tests {
