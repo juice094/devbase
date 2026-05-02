@@ -1,5 +1,5 @@
-use crate::mcp::McpTool;
-use crate::mcp::clients::{HealthClient, KnowledgeClient, ScanClient, SyncClient};
+use super::super::McpTool;
+use super::super::clients::{HealthClient, KnowledgeClient, ScanClient, SyncClient};
 use crate::registry::RepoEntry;
 use crate::repository::health::HealthRepository;
 use crate::repository::repo::RepoRepository;
@@ -171,7 +171,7 @@ Returns: JSON object with per-repo sync results including: repo_id, action (pull
         args: serde_json::Value,
         ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        crate::mcp::check_destructive_enabled()?;
+        super::super::check_destructive_enabled()?;
         let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(true);
         let filter_tags = args.get("filter_tags").and_then(|v| v.as_str());
         let filter_tags_vec = filter_tags.map(|s| {
@@ -330,13 +330,7 @@ Returns: JSON array of repo objects. Each includes: id, local_path, language, ta
                 let (ahead, behind, dirty) = if repo.workspace_type == "git" {
                     let (st, ah, bh) = match HealthRepository::new(&conn).get_health(&repo.id)? {
                         Some(health) => (health.status.clone(), health.ahead, health.behind),
-                        None => {
-                            let path = repo.local_path.to_string_lossy();
-                            let primary = repo.primary_remote();
-                            let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
-                            let default_branch = primary.and_then(|r| r.default_branch.as_deref());
-                            crate::health::analyze_repo(&path, upstream_url, default_branch)
-                        }
+                        None => analyze_repo_for_repo(&repo)
                     };
                     let dirty = st == "dirty" || st == "changed";
                     (ah, bh, dirty)
@@ -531,13 +525,7 @@ fn apply_nl_filters(
     {
         let (st, ah, bh) = match HealthRepository::new(conn).get_health(&repo.id)? {
             Some(h) => (h.status.clone(), h.ahead, h.behind),
-            None => {
-                let path = repo.local_path.to_string_lossy();
-                let primary = repo.primary_remote();
-                let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
-                let default_branch = primary.and_then(|r| r.default_branch.as_deref());
-                crate::health::analyze_repo(&path, upstream_url, default_branch)
-            }
+            None => analyze_repo_for_repo(repo)
         };
         let dirty = st == "dirty" || st == "changed";
 
@@ -659,6 +647,14 @@ fn extract_tag_from_query(q: &str) -> Option<String> {
         None
     }
 }
+fn analyze_repo_for_repo(repo: &RepoEntry) -> (String, usize, usize) {
+    let path = repo.local_path.to_string_lossy();
+    let primary = repo.primary_remote();
+    let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
+    let default_branch = primary.and_then(|r| r.default_branch.as_deref());
+    crate::health::analyze_repo(&path, upstream_url, default_branch)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

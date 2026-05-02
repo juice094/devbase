@@ -593,7 +593,7 @@ pub fn format_mcp_message_auto(body: &serde_json::Value, ndjson: bool) -> String
 
 /// Check whether destructive MCP tools are enabled via environment variable.
 /// Returns Ok(()) if enabled, or an error with a clear message if disabled.
-pub(super) fn check_destructive_enabled() -> anyhow::Result<()> {
+pub(crate) fn check_destructive_enabled() -> anyhow::Result<()> {
     let enabled = std::env::var("DEVBASE_MCP_ENABLE_DESTRUCTIVE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
