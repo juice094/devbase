@@ -1070,6 +1070,9 @@ dependencies = [
  "crossbeam-channel",
  "crossterm 0.28.1",
  "devbase-core-types",
+ "devbase-registry-health",
+ "devbase-registry-metrics",
+ "devbase-registry-workspace",
  "devbase-symbol-links",
  "devbase-sync-protocol",
  "devbase-syncthing-client",
@@ -1114,6 +1117,37 @@ name = "devbase-core-types"
 version = "0.1.0-alpha.1"
 dependencies = [
  "chrono",
+]
+
+[[package]]
+name = "devbase-registry-health"
+version = "0.15.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "rusqlite",
+ "serde",
+]
+
+[[package]]
+name = "devbase-registry-metrics"
+version = "0.15.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "devbase-registry-workspace"
+version = "0.15.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "rusqlite",
+ "serde",
 ]
 
 [[package]]

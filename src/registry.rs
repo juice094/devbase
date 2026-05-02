@@ -11,14 +11,6 @@ pub struct RemoteEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HealthEntry {
-    pub status: String,
-    pub ahead: usize,
-    pub behind: usize,
-    pub checked_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepoEntry {
     pub id: String,
     pub local_path: PathBuf,
@@ -83,73 +75,6 @@ pub struct ExperimentEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkspaceSnapshot {
-    pub repo_id: String,
-    pub file_hash: String,
-    pub checked_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum OplogEventType {
-    Scan,
-    Sync,
-    Index,
-    HealthCheck,
-    KnownLimit,
-}
-
-impl OplogEventType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            OplogEventType::Scan => "scan",
-            OplogEventType::Sync => "sync",
-            OplogEventType::Index => "index",
-            OplogEventType::HealthCheck => "health_check",
-            OplogEventType::KnownLimit => "known_limit",
-        }
-    }
-}
-
-impl std::str::FromStr for OplogEventType {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "scan" => Ok(OplogEventType::Scan),
-            "sync" => Ok(OplogEventType::Sync),
-            "index" => Ok(OplogEventType::Index),
-            "health_check" => Ok(OplogEventType::HealthCheck),
-            "health" => Ok(OplogEventType::HealthCheck),
-            "known_limit" => Ok(OplogEventType::KnownLimit),
-            _ => Err(()),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OplogEntry {
-    pub id: Option<i64>,
-    pub event_type: OplogEventType,
-    pub repo_id: Option<String>,
-    pub details: Option<String>,
-    pub status: String,
-    pub timestamp: DateTime<Utc>,
-    pub duration_ms: Option<i64>,
-    pub event_version: i32,
-}
-
-#[derive(Debug, Clone)]
-pub struct CodeMetrics {
-    pub total_lines: usize,
-    pub source_lines: usize,
-    pub test_lines: usize,
-    pub comment_lines: usize,
-    pub file_count: usize,
-    pub language_breakdown: serde_json::Value,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceRegistry {
     pub version: String,
     pub entries: Vec<RepoEntry>,
@@ -163,6 +88,10 @@ impl Default for WorkspaceRegistry {
         }
     }
 }
+
+pub use devbase_registry_health::HealthEntry;
+pub use devbase_registry_metrics::CodeMetrics;
+pub use devbase_registry_workspace::{OplogEntry, OplogEventType, WorkspaceSnapshot};
 
 pub mod entity;
 pub mod relation;
