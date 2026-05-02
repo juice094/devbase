@@ -237,6 +237,8 @@ mod tests {
         let idx = Index::create_in_dir(&index_dir, schema.clone()).unwrap();
         let mut writer = idx.writer(15_000_000).unwrap();
         f(&idx, &schema, &mut writer);
+        // Explicitly drop writer before temp dir to avoid Windows file-lock races
+        drop(writer);
         if let Some(v) = old {
             // SAFETY: Restoring original DEVBASE_DATA_DIR after test.
             unsafe {

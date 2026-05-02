@@ -5,14 +5,15 @@
 ## 当前架构快照
 
 - **版本**：v0.14.0 (`main@9e774bb`)
-- **测试**：406 passed / 1 flaky（`search::test_index_is_empty` Windows Tantivy 锁竞争，与代码无关）/ 6 ignored
-- **编译**：0 errors，1 warning（`unused_variables: current_hash` 已清理）
+- **测试**：416 passed / 0 failed / 5 ignored（`search::test_index_is_empty` Tantivy writer 显式 drop 加固；`embedding::test_candle_provider_encode` 取消 ignore）
+- **编译**：0 errors，0 warnings
 - **Registry God Object**：生产代码业务逻辑已全部消除，`WorkspaceRegistry` 为纯向后兼容门面
 - **Workspace 拆分**：6 个零耦合模块已提取为独立 crate（`crates/` 目录）
 - **千行文件治理**：6/6 完成，最大文件降至 950 行
 - **Embedding 闭环**：Phase 3 完成，`local-embedding` 默认启用，candle `all-MiniLM-L6-v2` CPU 实时推理
 - **索引黑名单**：`semantic_index` / `scan` / `TUI` 统一排除 `target/` / `.venv/` / `node_modules/` 等 9 个目录
 - **增量索引**：Phase 4 完成，Git diff + 工作区变更检测，无变更 0.10s / 单文件变更 0.63s / 全量 130s
+- **测试覆盖**：新增 `git_diff.rs` 8 个单元测试（commit/工作区/untracked/删除/空变更/空仓库）
 
 ## 已完成的子模块提取（v0.15 重构）
 

@@ -277,7 +277,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires hf-hub model download (~90MB)"]
     #[cfg(feature = "local-embedding")]
     fn test_candle_provider_encode() {
         let provider = CandleProvider;
