@@ -69,6 +69,11 @@ devbase-registry-workspace = { path = "crates/devbase-registry-workspace" }
 devbase-embedding = { path = "crates/devbase-embedding" }
 devbase-skill-runtime-types = { path = "crates/devbase-skill-runtime-types" }
 devbase-skill-runtime-parser = { path = "crates/devbase-skill-runtime-parser" }
+devbase-registry-entity = { path = "crates/devbase-registry-entity" }
+devbase-registry-relation = { path = "crates/devbase-registry-relation" }
+devbase-registry-call-graph = { path = "crates/devbase-registry-call-graph" }
+devbase-registry-dead-code = { path = "crates/devbase-registry-dead-code" }
+devbase-registry-code-symbols = { path = "crates/devbase-registry-code-symbols" }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

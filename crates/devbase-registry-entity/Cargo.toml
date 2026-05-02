@@ -1,0 +1,13 @@
+[package]
+name = "devbase-registry-entity"
+version = "0.15.0"
+edition = "2024"
+authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+license = "MIT"
+repository = "https://github.com/juice094/devbase"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+rusqlite = { version = "0.34", features = ["bundled", "chrono"] }
+serde_json = "1"
+anyhow = "1"

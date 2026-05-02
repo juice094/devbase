@@ -1,0 +1,11 @@
+[package]
+name = "devbase-registry-code-symbols"
+version = "0.15.0"
+edition = "2024"
+authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+license = "MIT"
+repository = "https://github.com/juice094/devbase"
+
+[dependencies]
+rusqlite = { version = "0.34", features = ["bundled"] }
+anyhow = "1"
