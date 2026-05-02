@@ -1,7 +1,7 @@
 # devbase
 
 [![Version](https://img.shields.io/badge/version-v0.15.0-blue)](https://github.com/juice094/devbase/releases)
-[![Tests](https://img.shields.io/badge/tests-446%20passed-brightgreen)](./AGENTS.md)
+[![Tests](https://img.shields.io/badge/tests-456%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
 [![License](https://img.shields.io/badge/license-MIT-orange)](./LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-9cf)](https://www.rust-lang.org)

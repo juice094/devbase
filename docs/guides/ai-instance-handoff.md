@@ -37,7 +37,7 @@ Get-ChildItem src\*.rs | ForEach-Object { $count = (Select-String -Path $_.FullN
 
 ## 二、Workspace 结构
 
-### 已提取的独立 Crate（11 个）
+### 已提取的独立 Crate（13 个）
 
 | Crate | 路径 | 来源 | 测试 | 零耦合 |
 |-------|------|------|------|--------|
@@ -52,6 +52,9 @@ Get-ChildItem src\*.rs | ForEach-Object { $count = (Select-String -Path $_.FullN
 | `devbase-registry-health` | `crates/devbase-registry-health` | `src/registry/health.rs` | 3 | ✅ |
 | `devbase-registry-metrics` | `crates/devbase-registry-metrics` | `src/registry/metrics.rs` | 4 | ✅ |
 | `devbase-registry-workspace` | `crates/devbase-registry-workspace` | `src/registry/workspace.rs` | 5 | ✅ |
+| `devbase-embedding` | `crates/devbase-embedding` | `src/embedding.rs` | 5 | ✅ |
+| `devbase-skill-runtime-types` | `crates/devbase-skill-runtime-types` | `src/skill_runtime/mod.rs` | 7 | ✅ |
+| `devbase-skill-runtime-parser` | `crates/devbase-skill-runtime-parser` | `src/skill_runtime/parser.rs` | 3 | ✅ |
 
 ### 向后兼容机制
 
@@ -170,8 +173,10 @@ grep "devbase" src/<module_path>.rs  # 应为空（除 re-export 文件）
 | ~~`registry/metrics`~~ | ~~153~~ | ~~4~~ | ~~0~~ | ~~✅ 已完成~~ |
 | ~~`registry/workspace`~~ | ~~215~~ | ~~5~~ | ~~0~~ | ~~✅ 已完成~~ |
 | ~~`workflow/model`~~ | ~~330~~ | ~~2~~ | ~~0~~ | ~~✅ 已完成~~ |
-| `embedding` | 298 | 0 | 0 | ⏳ 待提取 |
-| `skill_runtime/parser` | 417 | 0 | 0 | ⏳ 待提取（需先处理 `SkillMeta` 类型依赖） |
+| ~~`embedding`~~ | ~~299~~ | ~~5~~ | ~~0~~ | ~~✅ 已完成~~ |
+| ~~`skill_runtime/parser`~~ | ~~417~~ | ~~3~~ | ~~0~~ | ~~✅ 已完成~~ |
+
+> P2 全部候选提取完成。下一步：v0.16.0 P1 MCP trait 化收尾，或 v0.17 `migrate.rs` 拆分。
 
 **阻塞项**：
 - `migrate.rs`（1273 行）拆分 → 推迟至 v0.17，需 Claw 架构支持
