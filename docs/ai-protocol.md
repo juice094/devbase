@@ -60,6 +60,7 @@
 | `devbase-skill-runtime-parser` | `src/skill_runtime/parser.rs` | 417 | 3 | 0 `crate::` refs | `7407053` |
 
 > 向后兼容：原 `src/` 路径改为 `pub use <crate>::*;` 重新导出，API 不变。
+> P3 状态更新：`migrate.rs` 实际 487 行，迁移逻辑已全部拆分至 `migrations/` 目录（29 个独立文件）。P3 关闭。
 > 类型迁移：`registry.rs` 中的 `HealthEntry`/`CodeMetrics`/`WorkspaceSnapshot`/`OplogEntry`/`OplogEventType` 定义已迁移至各自 crate，`registry.rs` 通过 `pub use` 重新导出保持路径兼容。
 
 ## 模块耦合健康度地图（按 `crate::` 引用数）

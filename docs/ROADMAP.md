@@ -59,22 +59,22 @@ L0-L4 五层知识模型 MVP：entities 统一模型、known_limits 风险层、
 
 | 候选模块 | 行数 | 测试 | 内部耦合 | 估计工时 |
 |----------|------|------|----------|----------|
-| `embedding` | 298 | 0 | 0 | 15 min |
-| `syncthing_client` | 85 | 2 | 0 | 15 min |
-| `registry/health` | 156 | 5 | 0 | 15 min |
-| `registry/metrics` | 153 | 3 | 0 | 15 min |
-| `registry/workspace` | 215 | 5 | 0 | 15 min |
-| `vault/frontmatter` | 175 | 0 | 0 | 15 min |
-| `vault/wikilink` | 130 | 0 | 0 | 15 min |
+
+| ~~`syncthing_client`~~ | ~~85~~ | ~~2~~ | ~~0~~ | ~~✅ 已完成~~ |
+| ~~`registry/health`~~ | ~~156~~ | ~~3~~ | ~~0~~ | ~~✅ 已完成~~ |
+| ~~`registry/metrics`~~ | ~~153~~ | ~~4~~ | ~~0~~ | ~~✅ 已完成~~ |
+
+| ~~`vault/frontmatter`~~ | ~~175~~ | ~~5~~ | ~~0~~ | ~~✅ 已完成~~ |
+| ~~`vault/wikilink`~~ | ~~130~~ | ~~5~~ | ~~0~~ | ~~✅ 已完成~~ |
 | ~~`workflow/interpolate`~~ | ~~239~~ | ~~9~~ | ~~0~~ | ~~✅ 已完成~~ |
 | ~~`workflow/model`~~ | ~~330~~ | ~~2~~ | ~~0~~ | ~~✅ 已完成~~ |
 | ~~`embedding`~~ | ~~299~~ | ~~5~~ | ~~0~~ | ~~✅ 已完成~~ |
-| ~~`skill_runtime/parser`~~ | ~~417~~ | ~~3~~ | ~~0~~ | ~~✅ 已完成（需先提取 types）~~ |
-| ~~`registry/health`~~ | ~~156~~ | ~~5~~ | ~~0~~ | ~~✅ 已完成~~ |
-| ~~`registry/metrics`~~ | ~~153~~ | ~~3~~ | ~~0~~ | ~~✅ 已完成~~ |
+
+
+
 | ~~`registry/workspace`~~ | ~~215~~ | ~~5~~ | ~~0~~ | ~~✅ 已完成~~ |
-| `workflow/model` | 330 | 0 | 0 | 15 min |
-| `skill_runtime/parser` | 417 | 0 | 0 | 15 min |
+
+
 
 **目标**：workspace 成员达到 8-10 个。当前：13 个（✅ 已超额达成）。
 **验收**：`cargo check --workspace` 0 errors，`cargo test --workspace` 全绿。
@@ -120,17 +120,16 @@ L0-L4 五层知识模型 MVP：entities 统一模型、known_limits 风险层、
 
 ---
 
-### P3 — migrate.rs 拆解（长期，阻塞）
+### P3 — migrate.rs 拆解（✅ 已完成，文档滞后）
 
 | 属性 | 值 |
 |------|-----|
-| 行数 | 1273 |
-| 耦合 | 4 `crate::` refs（低） |
-| 阻塞原因 | 含 schema 迁移 + DDL + 数据转换，风险极高 |
-| 解耦策略 | 按 schema 版本切分：`migrate/v16.rs`, `migrate/v17.rs`... |
-| 所需架构 | Claw（多轮持久化会话） |
+| 实际行数 | **487**（非 1273，文档已过时） |
+| 耦合 | `crate::storage::StorageBackend`, `crate::backup::auto_backup_before_migration`, `crate::registry::migrations::run_all` |
+| 状态 | 迁移逻辑已全部拆分至 `migrations/` 目录（29 个独立文件，1118 行） |
+| 当前角色 | 入口门面：`init_db_at()` + `run_migrations()` 委托 |
 
-**当前状态**：⏳ 等待 Claw 架构就绪。
+**结论**：`migrate.rs` 不再是巨石文件，无需进一步拆分。P3 关闭。
 
 ---
 
@@ -174,7 +173,8 @@ L0-L4 五层知识模型 MVP：entities 统一模型、known_limits 风险层、
 |------|------|----------|----------|
 | v0.15.0 | 数据层 + 可靠性 + Agent 体验 | Workspace 成员 6 个，三维 embedding + Saga 一致性 + MCP Streaming | ✅ 2026-05 |
 | v0.16.0 | Workspace 扩展 Phase 2 | Workspace 成员 8-10 个，debug 稳定性修复 | 2026-05 |
-| v0.17.0 | MCP 解耦 + registry 清洁 | mcp/tools/repo.rs `crate::` 引用 <10，registry 子模块零耦合 | 2026-06 |
+| v0.16.1 | MCP 解耦收尾 | mcp/tools/repo.rs `crate::` 引用 <10 | 2026-05 |
+| v0.17.0 | Registry 清洁 + Tantivy 一致性 | 所有 registry 子模块零 `crate::` 引用，FTS5 评估 | 2026-06 |
 | v0.20.0 | 分发发布 | 首个 crate (`devbase-mcp`) 发布到 crates.io | 2026-07+ |
 
 ---

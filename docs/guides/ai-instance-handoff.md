@@ -179,8 +179,8 @@ grep "devbase" src/<module_path>.rs  # 应为空（除 re-export 文件）
 > P2 全部候选提取完成。下一步：v0.16.0 P1 MCP trait 化收尾，或 v0.17 `migrate.rs` 拆分。
 
 **阻塞项**：
-- `migrate.rs`（1273 行）拆分 → 推迟至 v0.17，需 Claw 架构支持
-- MCP trait 化 → `mcp/tools/repo.rs` 仍有 41 个 `crate::` 引用
+- ~~`migrate.rs` 拆分~~ → ✅ 已完成（实际 487 行，迁移已拆分至 `migrations/` 29 个独立文件）
+- MCP trait 化 → `mcp/tools/repo.rs` 仍有 13 个 `crate::` 引用（从 41 降下，ai-protocol 数据已过时）
 
 ---
 
