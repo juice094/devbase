@@ -134,6 +134,30 @@ pub fn index_is_empty() -> Result<bool, TantivyError> {
     Ok(searcher.num_docs() == 0)
 }
 
+/// List all repo IDs currently stored in the Tantivy index.
+/// Used by startup consistency scan to detect orphan documents.
+pub fn list_indexed_repo_ids() -> Result<Vec<String>, TantivyError> {
+    let (index, reader) = init_index()?;
+    let searcher = reader.searcher();
+    let schema = index.schema();
+    let id_field = schema.get_field("id").expect("schema field 'id' defined in init_index");
+
+    let all_query = tantivy::query::AllQuery;
+    // Use a generous limit; typical deployment has < 1000 repos.
+    let top_docs = searcher.search(&all_query, &TopDocs::with_limit(10_000).order_by_score())?;
+
+    let mut ids = Vec::new();
+    for (_score, doc_address) in top_docs {
+        let doc: TantivyDocument = searcher.doc(doc_address)?;
+        if let Some(id) = doc.get_first(id_field).and_then(|v| v.as_str()) {
+            ids.push(id.to_string());
+        }
+    }
+    ids.sort_unstable();
+    ids.dedup();
+    Ok(ids)
+}
+
 pub fn search_repos(query_str: &str, limit: usize) -> Result<Vec<(String, f32)>, TantivyError> {
     search_by_doc_type(query_str, limit, None)
 }
@@ -406,5 +430,57 @@ mod tests {
                 search_with_reader(index, &reader, "workspace", 10, Some("vault")).unwrap();
             assert!(repo_results.is_empty());
         });
+    }
+
+    #[test]
+    fn test_list_indexed_repo_ids() {
+        with_temp_index(|index, schema, writer| {
+            // Empty index
+            {
+                let reader = index
+                    .reader_builder()
+                    .reload_policy(ReloadPolicy::Manual)
+                    .try_into()
+                    .unwrap();
+                let ids = list_indexed_repo_ids_from_reader(&reader, index).unwrap();
+                assert!(ids.is_empty());
+            }
+
+            add_repo_doc(writer, schema, "repo_a", "Title A", "content a", &[]).unwrap();
+            add_repo_doc(writer, schema, "repo_b", "Title B", "content b", &[]).unwrap();
+            commit_writer(writer).unwrap();
+
+            let reader = index
+                .reader_builder()
+                .reload_policy(ReloadPolicy::Manual)
+                .try_into()
+                .unwrap();
+            let ids = list_indexed_repo_ids_from_reader(&reader, index).unwrap();
+            assert_eq!(ids.len(), 2);
+            assert!(ids.contains(&"repo_a".to_string()));
+            assert!(ids.contains(&"repo_b".to_string()));
+        });
+    }
+
+    // Helper for test_list_indexed_repo_ids that works with an existing reader
+    fn list_indexed_repo_ids_from_reader(
+        reader: &tantivy::IndexReader,
+        index: &tantivy::Index,
+    ) -> Result<Vec<String>, TantivyError> {
+        let searcher = reader.searcher();
+        let schema = index.schema();
+        let id_field = schema.get_field("id").expect("schema field 'id' defined in init_index");
+        let all_query = tantivy::query::AllQuery;
+        let top_docs = searcher.search(&all_query, &TopDocs::with_limit(10_000).order_by_score())?;
+        let mut ids = Vec::new();
+        for (_score, doc_address) in top_docs {
+            let doc: TantivyDocument = searcher.doc(doc_address)?;
+            if let Some(id) = doc.get_first(id_field).and_then(|v| v.as_str()) {
+                ids.push(id.to_string());
+            }
+        }
+        ids.sort_unstable();
+        ids.dedup();
+        Ok(ids)
     }
 }

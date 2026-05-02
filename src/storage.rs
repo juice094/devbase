@@ -85,7 +85,11 @@ impl AppContext {
         let storage: Arc<dyn StorageBackend> = Arc::new(DefaultStorageBackend);
         let path = storage.db_path()?;
         // 先执行 init_db() 确保数据库已初始化并迁移
-        let _ = crate::registry::WorkspaceRegistry::init_db_at(&path)?;
+        let mut conn = crate::registry::WorkspaceRegistry::init_db_at(&path)?;
+        if let Err(e) = repair_tantivy_consistency(&mut conn) {
+            tracing::warn!("Startup Tantivy consistency check failed: {}", e);
+        }
+        drop(conn);
         let pool = Self::build_pool(&path)?;
         let config = crate::config::Config::load()?;
         let i18n = crate::i18n::from_language(&config.general.language);
@@ -95,7 +99,11 @@ impl AppContext {
     /// 使用自定义存储后端创建上下文（主要用于测试）。
     pub fn with_storage(storage: Arc<dyn StorageBackend>) -> anyhow::Result<Self> {
         let path = storage.db_path()?;
-        let _ = crate::registry::WorkspaceRegistry::init_db_at(&path)?;
+        let mut conn = crate::registry::WorkspaceRegistry::init_db_at(&path)?;
+        if let Err(e) = repair_tantivy_consistency(&mut conn) {
+            tracing::warn!("Startup Tantivy consistency check failed: {}", e);
+        }
+        drop(conn);
         let pool = Self::build_pool(&path)?;
         let config = crate::config::Config::load()?;
         let i18n = crate::i18n::from_language(&config.general.language);
@@ -124,6 +132,57 @@ impl AppContext {
     pub fn pool(&self) -> Pool<SqliteConnectionManager> {
         self.pool.clone()
     }
+}
+
+/// Startup consistency scan: detect Tantivy documents whose repo no longer exists in SQLite.
+/// Inserts orphan records into `orphan_tantivy_docs` for lazy cleanup during next index.
+pub(crate) fn repair_tantivy_consistency(conn: &mut rusqlite::Connection) -> anyhow::Result<usize> {
+    let tantivy_ids = match crate::search::list_indexed_repo_ids() {
+        Ok(ids) => ids,
+        Err(e) => {
+            tracing::warn!("Failed to list Tantivy repo IDs: {}", e);
+            return Ok(0);
+        }
+    };
+
+    let sqlite_ids: std::collections::HashSet<String> = {
+        let mut stmt = conn.prepare("SELECT id FROM entities WHERE entity_type = ?1")?;
+        let rows = stmt.query_map([crate::registry::ENTITY_TYPE_REPO], |row| {
+            row.get::<_, String>(0)
+        })?;
+        rows.filter_map(Result::ok).collect()
+    };
+
+    // Clear stale orphans: repos that are now present in SQLite but still marked orphan
+    let mut orphaned = 0usize;
+    {
+        let mut stmt = conn.prepare("SELECT repo_id FROM orphan_tantivy_docs")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        for repo_id in rows.filter_map(Result::ok) {
+            if sqlite_ids.contains(&repo_id) || !tantivy_ids.contains(&repo_id) {
+                conn.execute(
+                    "DELETE FROM orphan_tantivy_docs WHERE repo_id = ?1",
+                    [&repo_id],
+                )?;
+            }
+        }
+    }
+
+    // Record new orphans: Tantivy has doc but SQLite has no entity
+    for repo_id in &tantivy_ids {
+        if !sqlite_ids.contains(repo_id) {
+            conn.execute(
+                "INSERT OR IGNORE INTO orphan_tantivy_docs (repo_id) VALUES (?1)",
+                [repo_id],
+            )?;
+            orphaned += 1;
+        }
+    }
+
+    if orphaned > 0 {
+        tracing::info!("Detected {} orphan Tantivy document(s)", orphaned);
+    }
+    Ok(orphaned)
 }
 
 impl crate::mcp::clients::ScanClient for AppContext {
@@ -578,5 +637,69 @@ mod tests {
         let version: String =
             conn.query_row("SELECT sqlite_version()", [], |row| row.get(0)).unwrap();
         assert!(!version.is_empty());
+    }
+
+    #[test]
+    fn test_repair_tantivy_consistency_detects_orphan() {
+        let _guard = crate::search::SEARCH_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let old = std::env::var("DEVBASE_DATA_DIR").ok();
+        // SAFETY: Test-only DEVBASE_DATA_DIR override. Guarded by SEARCH_TEST_LOCK.
+        unsafe {
+            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+        }
+
+        // Initialize DB with full schema
+        let db_path = tmp.path().join("registry.db");
+        let mut conn = crate::registry::WorkspaceRegistry::init_db_at(&db_path).unwrap();
+
+        // Add a Tantivy doc for a repo that does NOT exist in SQLite
+        let (index, _reader) = crate::search::init_index().unwrap();
+        let mut writer = crate::search::get_writer(&index).unwrap();
+        let schema = index.schema();
+        crate::search::add_repo_doc(
+            &mut writer, &schema, "ghost_repo", "Ghost", "ghost content", &[],
+        ).unwrap();
+        crate::search::commit_writer(&mut writer).unwrap();
+
+        // Repair should detect the orphan
+        let count = repair_tantivy_consistency(&mut conn).unwrap();
+        assert_eq!(count, 1);
+
+        let orphan_exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM orphan_tantivy_docs WHERE repo_id = 'ghost_repo'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        assert!(orphan_exists);
+
+        // Now create the missing entity in SQLite
+        conn.execute(
+            "INSERT INTO entities (id, entity_type, name, local_path, metadata, created_at, updated_at)
+             VALUES ('ghost_repo', 'repo', 'Ghost', '/tmp/ghost', '{}', datetime('now'), datetime('now'))",
+            [],
+        ).unwrap();
+
+        // Repair should now find zero orphans and clear the record
+        let count2 = repair_tantivy_consistency(&mut conn).unwrap();
+        assert_eq!(count2, 0);
+
+        let orphan_still_exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM orphan_tantivy_docs WHERE repo_id = 'ghost_repo'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        assert!(!orphan_still_exists);
+
+        // Restore env
+        if let Some(old) = old {
+            unsafe { std::env::set_var("DEVBASE_DATA_DIR", old); }
+        } else {
+            unsafe { std::env::remove_var("DEVBASE_DATA_DIR"); }
+        }
     }
 }

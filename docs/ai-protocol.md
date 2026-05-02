@@ -4,7 +4,7 @@
 
 ## 当前架构快照
 
-- **版本**：v0.14.0 → v0.15.0-dev (`main@c785440` 基线, Sprint A 实施中)
+- **版本**：v0.14.0 → v0.15.0-dev (`main@dfdc1cc` 基线, Sprint B 实施中)
 - **测试**：416 passed / 0 failed / 5 ignored（`search::test_index_is_empty` Tantivy writer 显式 drop 加固；`embedding::test_candle_provider_encode` 取消 ignore）
 - **编译**：0 errors，0 warnings
 - **Registry God Object**：生产代码业务逻辑已全部消除，`WorkspaceRegistry` 为纯向后兼容门面
@@ -12,7 +12,8 @@
 - **千行文件治理**：6/6 完成，最大文件降至 950 行
 - **Embedding 闭环**：Phase 3 完成，`local-embedding` 默认启用，candle `all-MiniLM-L6-v2` CPU 实时推理
 - **索引黑名单**：`semantic_index` / `scan` / `TUI` 统一排除 `target/` / `.venv/` / `node_modules/` 等 9 个目录
-- **增量索引**：Phase 4 完成，Git diff + 工作区变更检测，无变更 0.10s / 单文件变更 0.63s / 全量 ~15-20s（Sprint A rayon 并行 embedding）
+- **增量索引**：Phase 4 完成，Git diff + 工作区变更检测，无变更 0.10s / 单文件变更 0.63s / 全量 ~15-25s（Sprint A rayon 并行 embedding）
+- **Tantivy-SQLite 一致性**：Sprint B 完成，启动时一致性扫描 + `orphan_tantivy_docs` 懒清理
 - **测试覆盖**：新增 `git_diff.rs` 8 个单元测试（commit/工作区/untracked/删除/空变更/空仓库）
 
 ## 已完成的子模块提取（v0.15 重构）
@@ -85,12 +86,22 @@
 - **日期**：2026-05-02
 - **架构**：CLI
 - **交付**：Sprint A — v28 migration 三维 embedding 主键 + rayon 并行化 + 性能基准达标
-- **Commit**：待提交
+- **Commit**：`dfdc1cc`
 - **关键决策**：
   - `code_embeddings` 主键从 `(repo_id, symbol_name)` 扩展为 `(repo_id, file_path, symbol_name)`，消除同名不同文件 symbol 的 embedding 共享问题
-  - `rayon::par_iter` 并行生成 embeddings，全量索引从 130s 降至 ~15-20s（<60s 目标达成）
+  - `rayon::par_iter` 并行生成 embeddings，全量索引从 130s 降至 ~15-25s（<60s 目标达成）
   - v28 迁移安全策略：检测旧表 → 创建新表 + `''` 填充迁移 + 原子 RENAME，零数据丢失
   - `generate_and_save_embeddings` 统一使用 `ON CONFLICT DO UPDATE`，消除同名 symbol UNIQUE constraint 失败
+
+- **日期**：2026-05-02（续）
+- **架构**：CLI
+- **交付**：Sprint B — Tantivy-SQLite 双写一致性（启动扫描 + 懒清理）
+- **Commit**：待提交
+- **关键决策**：
+  - `orphan_tantivy_docs` 表记录 Tantivy 有但 SQLite `entities` 无的孤儿文档
+  - `AppContext::with_defaults()` 启动时自动扫描并修复一致性（`repair_tantivy_consistency`）
+  - `run_index` 中对孤儿文档自动 `delete_repo_doc` + `commit_writer` 后清除 orphan 记录
+  - 扫描双向清理：检测新孤儿 + 清除已恢复的过时孤儿标记
 
 - **日期**：2026-05-01
 - **架构**：CLI

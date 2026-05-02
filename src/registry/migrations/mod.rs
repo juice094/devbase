@@ -28,6 +28,7 @@ pub mod v25_agent_reads;
 pub mod v26_denormalize;
 pub mod v27_repo_index_state;
 pub mod v28_embedding_precision;
+pub mod v29_compensation_log;
 
 pub fn run_all(conn: &mut Connection) -> anyhow::Result<()> {
     let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -115,6 +116,9 @@ pub fn run_all(conn: &mut Connection) -> anyhow::Result<()> {
     }
     if user_version < 28 {
         v28_embedding_precision::run(conn)?;
+    }
+    if user_version < 29 {
+        v29_compensation_log::run(conn)?;
     }
 
     Ok(())

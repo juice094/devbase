@@ -347,6 +347,11 @@ CREATE TABLE IF NOT EXISTS code_symbol_links (
 );
 CREATE INDEX IF NOT EXISTS idx_symbol_links_source ON code_symbol_links(source_repo, source_symbol);
 CREATE INDEX IF NOT EXISTS idx_symbol_links_target ON code_symbol_links(target_repo, target_symbol);
+
+CREATE TABLE IF NOT EXISTS orphan_tantivy_docs (
+    repo_id TEXT PRIMARY KEY,
+    detected_at DATETIME DEFAULT current_timestamp
+);
 "#;
 
 #[cfg(test)]

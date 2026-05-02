@@ -83,6 +83,13 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
     let mut search_writer = crate::search::get_writer(&search_index)?;
     let search_schema = search_index.schema();
 
+    // Load orphan list for lazy repair; delete_repo_doc below will clean them.
+    let orphaned_repos: Vec<String> = conn
+        .prepare("SELECT repo_id FROM orphan_tantivy_docs")?
+        .query_map([], |row| row.get::<_, String>(0))?
+        .filter_map(Result::ok)
+        .collect();
+
     let mut count = 0;
     for repo in &repos {
         let config = crate::config::Config::load().ok();
@@ -207,6 +214,20 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
     }
 
     crate::search::commit_writer(&mut search_writer)?;
+
+    // Clean up orphan records for repos that were successfully indexed this run.
+    if count > 0 && !orphaned_repos.is_empty() {
+        let indexed_ids: std::collections::HashSet<&str> =
+            repos.iter().map(|r| r.id.as_str()).collect();
+        for orphan_id in &orphaned_repos {
+            if indexed_ids.contains(orphan_id.as_str()) {
+                let _ = conn.execute(
+                    "DELETE FROM orphan_tantivy_docs WHERE repo_id = ?1",
+                    [orphan_id],
+                );
+            }
+        }
+    }
 
     println!("\nIndexed {} repositories.", count);
     Ok(count)
