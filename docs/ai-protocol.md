@@ -115,6 +115,26 @@
   - `DevkitIndexStreamTool` + `handle_request` `stream: true` 支持：stdio 传输层流式事件
   - 45 个 MCP 工具（原 43 + 2 新增）
 
+- **日期**：2026-05-02（P0 修复）
+- **架构**：CLI
+- **交付**：Windows Tantivy 并发 flaky 根治
+- **Commit**：`4a2db97`
+- **关键决策**：
+  - `with_temp_index` 和 `test_repair_tantivy_consistency_detects_orphan` 显式 `drop(index)` + `drop(writer)`
+  - 添加 50ms sleep 给 Windows OS 时间释放 mmap 文件句柄
+  - 测试从 flaky（~2 失败/运行）→ 稳定 419/0/5
+
+## v0.16.0 计划（已制定）
+
+| 优先级 | 任务 | 状态 | 方案 |
+|--------|------|------|------|
+| P0 | Windows Tantivy flaky | ✅ 完成 | 显式 drop index + 50ms sleep |
+| P1 | `run_index` 阶段化 streaming | ⏳ 待执行 | crossbeam-channel 阶段上报 |
+| P2 | Workspace crate 第二批提取 | ⏳ 待执行 | 10 个 🟢 模块分 3 Batch |
+| P3 | `migrate.rs` 拆分 | ⏳ 推迟 v0.17 | 需 Claw 架构支持 |
+
+> 完整计划文件：`C:\Users\22414\.kimi\plans\v0.16.0-plan.md`
+
 - **日期**：2026-05-01
 - **架构**：CLI
 - **交付**：Workspace 骨架搭建 + 3 个零耦合模块提取 + 全模块耦合地图扫描
