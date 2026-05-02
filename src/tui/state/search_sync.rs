@@ -339,7 +339,7 @@ fn search_repo_fallback(
     use std::collections::HashSet;
 
     let excluded_dirs: HashSet<&str> =
-        [".git", "target", "node_modules", ".venv", "venv", "dist", "build"]
+        [".git", "target", "node_modules", ".venv", "venv", "dist", "build", "__pycache__", ".cargo"]
             .iter()
             .cloned()
             .collect();

@@ -50,10 +50,35 @@ impl Default for SyncConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanConfig {
     #[serde(default)]
     pub exclude_paths: Vec<String>,
+    #[serde(default = "default_exclude_patterns")]
+    pub exclude_patterns: Vec<String>,
+}
+
+impl Default for ScanConfig {
+    fn default() -> Self {
+        Self {
+            exclude_paths: Vec::new(),
+            exclude_patterns: default_exclude_patterns(),
+        }
+    }
+}
+
+pub fn default_exclude_patterns() -> Vec<String> {
+    vec![
+        "target".into(),
+        ".venv".into(),
+        "venv".into(),
+        "node_modules".into(),
+        "dist".into(),
+        "build".into(),
+        "__pycache__".into(),
+        ".git".into(),
+        ".cargo".into(),
+    ]
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

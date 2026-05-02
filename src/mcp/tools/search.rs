@@ -27,7 +27,7 @@ impl McpTool for DevkitSemanticSearchTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": r#"Search for code symbols semantically similar to a query embedding vector. This is the "outboard brain" interface: embedding generation is performed externally (by an MCP Server or Skill using Ollama, llama.cpp, ONNX, etc.), and devbase only handles storage and similarity search.
+            "description": r#"Search for code symbols semantically similar to a query embedding vector. Supports both externally-generated embeddings and on-the-fly local embedding generation.
 
 Use this when the user wants to:
 - Find code related to a concept (e.g., "authentication", "error handling", "config parsing")
@@ -42,6 +42,7 @@ Do NOT use this for:
 Parameters:
 - repo_id: Registered repository ID to search within.
 - query_embedding: Query vector as an array of f32 numbers. Must match the dimension of stored embeddings.
+- query_text: Natural language query text. If query_embedding is omitted, devbase will generate it locally.
 - limit: Maximum results (default: 10, max: 50).
 
 Returns: JSON array of matching symbols with file_path, name, line_start, and similarity_score (0.0-1.0)."#,
@@ -54,9 +55,10 @@ Returns: JSON array of matching symbols with file_path, name, line_start, and si
                         "items": { "type": "number" },
                         "description": "Query embedding vector as an array of f32 numbers"
                     },
+                    "query_text": { "type": "string", "description": "Natural language query text (alternative to query_embedding)" },
                     "limit": { "type": "integer", "default": 10 }
                 },
-                "required": ["repo_id", "query_embedding"]
+                "required": ["repo_id"]
             }
         })
     }
@@ -67,7 +69,17 @@ Returns: JSON array of matching symbols with file_path, name, line_start, and si
         ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
-        let query_emb = parse_f32_array(&args, "query_embedding")?;
+        let query_emb = match args.get("query_embedding").and_then(|v| v.as_array()) {
+            Some(arr) => arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect::<Vec<f32>>(),
+            None => {
+                let query_text = args.get("query_text").and_then(|v| v.as_str())
+                    .context("query_embedding or query_text required")?;
+                match crate::embedding::generate_query_embedding(query_text) {
+                    Ok(emb) => emb,
+                    Err(e) => return Err(anyhow::anyhow!("Embedding generation failed: {}", e)),
+                }
+            }
+        };
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10).min(50) as usize;
 
         let repo_id = repo_id.to_string();
@@ -274,6 +286,19 @@ Returns: JSON array of symbols with file_path, name, line_start, and similarity_
             arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect::<Vec<f32>>()
         });
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10).min(50) as usize;
+
+        let query_embedding = match query_embedding {
+            Some(e) => Some(e),
+            None => {
+                match crate::embedding::generate_query_embedding(&query_text) {
+                    Ok(emb) => Some(emb),
+                    Err(e) => {
+                        tracing::warn!("Embedding generation failed, falling back to keyword: {}", e);
+                        None
+                    }
+                }
+            }
+        };
 
         let repo_id = repo_id.to_string();
         let query_text = query_text.to_string();

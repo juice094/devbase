@@ -26,7 +26,7 @@ pub async fn run_json(
     }
 
     let config = crate::config::Config::load().unwrap_or_default();
-    let repos = discover_repos(&root, Some(&config.github), &config.scan.exclude_paths)?;
+    let repos = discover_repos(&root, Some(&config.github), &config.scan.exclude_paths, &config.scan.exclude_patterns)?;
     let count = repos.len();
 
     let mut registered = 0usize;
@@ -187,11 +187,17 @@ fn discover_repos(
     root: &Path,
     github: Option<&crate::config::GithubConfig>,
     exclude_paths: &[String],
+    exclude_patterns: &[String],
 ) -> anyhow::Result<Vec<RepoEntry>> {
     let mut ignored_dirs: Vec<PathBuf> = Vec::new();
 
     // First pass: collect all directories containing .devbase-ignore
-    for entry in WalkDir::new(root).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), exclude_patterns))
+        .filter_map(|e| e.ok())
+    {
         if entry.file_type().is_dir() && entry.path().join(".devbase-ignore").exists() {
             ignored_dirs.push(entry.path().to_path_buf());
         }
@@ -204,7 +210,12 @@ fn discover_repos(
 
     let mut git_repos = Vec::new();
 
-    for entry in WalkDir::new(root).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), exclude_patterns))
+        .filter_map(|e| e.ok())
+    {
         if entry.file_name() == ".git" && entry.file_type().is_dir() {
             let repo_path = entry.path().parent().unwrap_or(root).to_path_buf();
 
@@ -225,7 +236,12 @@ fn discover_repos(
 
     // Discover non-git workspaces by marker files
     let mut non_git_repos = Vec::new();
-    for entry in WalkDir::new(root).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), exclude_patterns))
+        .filter_map(|e| e.ok())
+    {
         let name = entry.file_name().to_string_lossy();
         let is_marker = (name == "SOUL.md" || name == "MEMORY.md" || name == ".devbase")
             && entry.file_type().is_file();
@@ -652,7 +668,7 @@ mod tests {
         fs::create_dir(&generic_path).unwrap();
         fs::write(generic_path.join("MEMORY.md"), "# memory").unwrap();
 
-        let repos = discover_repos(dir.path(), None, &[]).unwrap();
+        let repos = discover_repos(dir.path(), None, &[], &[]).unwrap();
         assert_eq!(repos.len(), 2);
 
         let types: std::collections::HashSet<_> =
@@ -673,7 +689,7 @@ mod tests {
         git2::Repository::init(&excluded).unwrap();
 
         // Exclude by relative path
-        let repos = discover_repos(dir.path(), None, &["excluded".to_string()]).unwrap();
+        let repos = discover_repos(dir.path(), None, &["excluded".to_string()], &[]).unwrap();
         assert_eq!(repos.len(), 1);
         assert!(repos[0].local_path.to_string_lossy().contains("included"));
     }
@@ -690,7 +706,27 @@ mod tests {
         git2::Repository::init(&ignored).unwrap();
         fs::write(dir.path().join("ignored").join(".devbase-ignore"), "").unwrap();
 
-        let repos = discover_repos(dir.path(), None, &[]).unwrap();
+        let repos = discover_repos(dir.path(), None, &[], &[]).unwrap();
+        assert_eq!(repos.len(), 1);
+        assert!(repos[0].local_path.to_string_lossy().contains("included"));
+    }
+
+    #[test]
+    fn test_discover_repos_excludes_patterns() {
+        let dir = TempDir::new().unwrap();
+        let included = dir.path().join("included").join("repo");
+        fs::create_dir_all(&included).unwrap();
+        git2::Repository::init(&included).unwrap();
+
+        let node_modules = dir.path().join("node_modules").join("some_pkg");
+        fs::create_dir_all(&node_modules).unwrap();
+        git2::Repository::init(&node_modules).unwrap();
+
+        let target = dir.path().join("target").join("debug");
+        fs::create_dir_all(&target).unwrap();
+        git2::Repository::init(&target).unwrap();
+
+        let repos = discover_repos(dir.path(), None, &[], &["node_modules".to_string(), "target".to_string()]).unwrap();
         assert_eq!(repos.len(), 1);
         assert!(repos[0].local_path.to_string_lossy().contains("included"));
     }

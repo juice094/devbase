@@ -113,14 +113,27 @@ impl Lang {
 // Symbol extraction
 // ---------------------------------------------------------------------------
 
+/// Check whether any path component matches one of the excluded directory names.
+pub fn should_skip_dir(path: &Path, exclude: &[String]) -> bool {
+    path.components().any(|c| {
+        if let Some(name) = c.as_os_str().to_str() {
+            exclude.iter().any(|ex| ex == name)
+        } else {
+            false
+        }
+    })
+}
+
 /// Extract symbols from a single source file.
 ///
 /// Supports Rust, Python, JavaScript/TypeScript, and Go.
 pub fn index_repo_full(repo_path: &Path) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
     let exts: &[&str] = &["rs", "py", "js", "ts", "jsx", "tsx", "go"];
+    let exclude = crate::config::default_exclude_patterns();
 
     let files: Vec<std::path::PathBuf> = walkdir::WalkDir::new(repo_path)
         .into_iter()
+        .filter_entry(|e| !should_skip_dir(e.path(), &exclude))
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
         .filter(|e| {

@@ -14,7 +14,7 @@ name = "registry_bench"
 harness = false
 
 [features]
-default = ["tui"]
+default = ["tui", "local-embedding"]
 tui = ["ratatui", "crossterm", "watch"]
 watch = ["notify"]
 # Sprint 14: local embedding via candle + all-MiniLM-L6-v2

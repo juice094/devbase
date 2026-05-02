@@ -133,6 +133,14 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
             }
         }
 
+        // Generate embeddings for code symbols (local candle, Sprint 14)
+        if !symbols.is_empty() {
+            match save_symbol_embeddings(conn, &repo.id, &symbols) {
+                Ok(n) => info!("Saved {} symbol embeddings for {}", n, repo.id),
+                Err(e) => warn!("Failed to save symbol embeddings for {}: {}", repo.id, e),
+            }
+        }
+
         // Cross-repo dependency graph
         match crate::dependency_graph::build_dependency_graph(conn, &repo.id, &repo.local_path) {
             Ok(n) => {
@@ -159,5 +167,43 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
 
     println!("\nIndexed {} repositories.", count);
     Ok(count)
+}
+
+/// Generate and save embeddings for code symbols using the default provider.
+/// Clears old embeddings for the repo before inserting new ones.
+fn save_symbol_embeddings(
+    conn: &mut rusqlite::Connection,
+    repo_id: &str,
+    symbols: &[crate::semantic_index::CodeSymbol],
+) -> anyhow::Result<usize> {
+    use tracing::{info, warn};
+
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM code_embeddings WHERE repo_id = ?1", [repo_id])?;
+
+    let mut inserted = 0usize;
+    for symbol in symbols {
+        let text = format!("{} {}", symbol.name, symbol.signature.as_deref().unwrap_or(""));
+        match crate::embedding::generate_query_embedding(&text) {
+            Ok(embedding) => {
+                let blob = crate::embedding::embedding_to_bytes(&embedding);
+                let now = chrono::Utc::now().to_rfc3339();
+                match tx.execute(
+                    "INSERT INTO code_embeddings (repo_id, symbol_name, embedding, generated_at) VALUES (?1, ?2, ?3, ?4)",
+                    rusqlite::params![repo_id, &symbol.name, &blob, &now],
+                ) {
+                    Ok(_) => inserted += 1,
+                    Err(e) => warn!("Failed to insert embedding for {}: {}", symbol.name, e),
+                }
+            }
+            Err(e) => {
+                warn!("Embedding generation failed for '{}': {}", symbol.name, e);
+            }
+        }
+    }
+
+    tx.commit()?;
+    info!("Saved {} symbol embeddings for {}", inserted, repo_id);
+    Ok(inserted)
 }
 
