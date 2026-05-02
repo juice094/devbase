@@ -1,0 +1,12 @@
+[package]
+name = "devbase-skill-runtime-parser"
+version = "0.15.0"
+edition = "2024"
+authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+license = "MIT"
+repository = "https://github.com/juice094/devbase"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
+devbase-skill-runtime-types = { path = "../devbase-skill-runtime-types" }

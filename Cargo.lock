@@ -1071,6 +1071,8 @@ dependencies = [
  "devbase-registry-health",
  "devbase-registry-metrics",
  "devbase-registry-workspace",
+ "devbase-skill-runtime-parser",
+ "devbase-skill-runtime-types",
  "devbase-symbol-links",
  "devbase-sync-protocol",
  "devbase-syncthing-client",
@@ -1157,6 +1159,25 @@ dependencies = [
  "chrono",
  "rusqlite",
  "serde",
+]
+
+[[package]]
+name = "devbase-skill-runtime-parser"
+version = "0.15.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "devbase-skill-runtime-types",
+]
+
+[[package]]
+name = "devbase-skill-runtime-types"
+version = "0.15.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -1,0 +1,13 @@
+[package]
+name = "devbase-skill-runtime-types"
+version = "0.15.0"
+edition = "2024"
+authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+license = "MIT"
+repository = "https://github.com/juice094/devbase"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
