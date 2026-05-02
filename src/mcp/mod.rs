@@ -60,7 +60,9 @@ pub enum McpToolEnum {
     Query(DevkitQueryTool),
     QueryRepos(DevkitQueryReposTool),
     Index(DevkitIndexTool),
+    IndexStream(DevkitIndexStreamTool),
     Note(DevkitNoteTool),
+    Status(DevkitStatusTool),
     Digest(DevkitDigestTool),
     Paper(DevkitPaperIndexTool),
     Experiment(DevkitExperimentLogTool),
@@ -133,6 +135,8 @@ impl McpToolEnum {
             McpToolEnum::Sync(_) => ToolTier::Beta,
             McpToolEnum::Query(_) => ToolTier::Beta,
             McpToolEnum::Index(_) => ToolTier::Beta,
+            McpToolEnum::IndexStream(_) => ToolTier::Beta,
+            McpToolEnum::Status(_) => ToolTier::Beta,
             McpToolEnum::Note(_) => ToolTier::Beta,
             McpToolEnum::VaultWrite(_) => ToolTier::Beta,
             McpToolEnum::VaultBacklinks(_) => ToolTier::Beta,
@@ -181,6 +185,8 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Query(t) => t.name(),
             McpToolEnum::QueryRepos(t) => t.name(),
             McpToolEnum::Index(t) => t.name(),
+            McpToolEnum::IndexStream(t) => t.name(),
+            McpToolEnum::Status(t) => t.name(),
             McpToolEnum::Note(t) => t.name(),
             McpToolEnum::Digest(t) => t.name(),
             McpToolEnum::Paper(t) => t.name(),
@@ -229,6 +235,8 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Query(t) => t.schema(),
             McpToolEnum::QueryRepos(t) => t.schema(),
             McpToolEnum::Index(t) => t.schema(),
+            McpToolEnum::IndexStream(t) => t.schema(),
+            McpToolEnum::Status(t) => t.schema(),
             McpToolEnum::Note(t) => t.schema(),
             McpToolEnum::Digest(t) => t.schema(),
             McpToolEnum::Paper(t) => t.schema(),
@@ -281,6 +289,8 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Query(t) => t.invoke(args, ctx).await,
             McpToolEnum::QueryRepos(t) => t.invoke(args, ctx).await,
             McpToolEnum::Index(t) => t.invoke(args, ctx).await,
+            McpToolEnum::IndexStream(t) => t.invoke(args, ctx).await,
+            McpToolEnum::Status(t) => t.invoke(args, ctx).await,
             McpToolEnum::Note(t) => t.invoke(args, ctx).await,
             McpToolEnum::Digest(t) => t.invoke(args, ctx).await,
             McpToolEnum::Paper(t) => t.invoke(args, ctx).await,
@@ -387,8 +397,41 @@ impl McpServer {
                 let params = req.get("params").cloned().unwrap_or(serde_json::Value::Null);
                 let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let args = params.get("arguments").cloned().unwrap_or(serde_json::Value::Null);
+                let stream = params.get("stream").and_then(|v| v.as_bool()).unwrap_or(false);
 
                 match self.tools.get(name) {
+                    Some(_tool) if stream => {
+                        match self.handle_streaming_call(name, args, ctx).await {
+                            Ok(events) => {
+                                let events_json = serde_json::to_string(&events)?;
+                                let content = serde_json::json!({
+                                    "type": "text",
+                                    "text": events_json
+                                });
+                                Ok(serde_json::json!({
+                                    "jsonrpc": "2.0",
+                                    "id": id,
+                                    "result": {
+                                        "content": [content],
+                                        "isError": false
+                                    }
+                                }))
+                            }
+                            Err(e) => {
+                                let payload = serde_json::json!({ "success": false, "error": e.to_string() });
+                                let text = serde_json::to_string(&payload)?;
+                                let content = serde_json::json!({ "type": "text", "text": text });
+                                Ok(serde_json::json!({
+                                    "jsonrpc": "2.0",
+                                    "id": id,
+                                    "result": {
+                                        "content": [content],
+                                        "isError": true
+                                    }
+                                }))
+                            }
+                        }
+                    }
                     Some(tool) => match tool.invoke(args, ctx).await {
                         Ok(result) => {
                             let text = result.to_string();
@@ -476,6 +519,8 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::Query(DevkitQueryTool),
         McpToolEnum::QueryRepos(DevkitQueryReposTool),
         McpToolEnum::Index(DevkitIndexTool),
+        McpToolEnum::IndexStream(DevkitIndexStreamTool),
+        McpToolEnum::Status(DevkitStatusTool),
         McpToolEnum::Note(DevkitNoteTool),
         McpToolEnum::Digest(DevkitDigestTool),
         McpToolEnum::Paper(DevkitPaperIndexTool),

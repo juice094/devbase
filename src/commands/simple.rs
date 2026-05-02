@@ -8,7 +8,7 @@ pub use crate::commands::knowledge::{
     run_clean, run_digest, run_meta, run_oplog, run_skill_sync, run_tag, run_vault, run_watch,
 };
 pub use crate::commands::repo::{
-    run_discover, run_health, run_index, run_query, run_registry, run_scan, run_sync,
+    run_discover, run_health, run_index, run_query, run_registry, run_scan, run_status, run_sync,
     run_syncthing_push,
 };
 pub use crate::commands::system::{run_daemon, run_github_info, run_mcp, run_tui};

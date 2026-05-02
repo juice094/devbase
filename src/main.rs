@@ -35,6 +35,12 @@ pub(crate) enum Commands {
         #[arg(long, default_value_t = 1)]
         page: usize,
     },
+    /// Show index status for registered repositories
+    Status {
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Sync registered repositories with their upstream remotes
     Sync {
         /// Dry-run: show what would be updated without applying
@@ -567,6 +573,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Health { detail, limit, page } => {
             commands::simple::run_health(&mut ctx, detail, limit, page).await?;
+        }
+        Commands::Status { json } => {
+            commands::simple::run_status(&mut ctx, json).await?;
         }
         Commands::Sync {
             dry_run,

@@ -4,7 +4,7 @@
 
 ## 当前架构快照
 
-- **版本**：v0.14.0 → v0.15.0-dev (`main@dfdc1cc` 基线, Sprint B 实施中)
+- **版本**：v0.14.0 → v0.15.0-dev (`main@dcbe256` 基线, Sprint C 完成)
 - **测试**：416 passed / 0 failed / 5 ignored（`search::test_index_is_empty` Tantivy writer 显式 drop 加固；`embedding::test_candle_provider_encode` 取消 ignore）
 - **编译**：0 errors，0 warnings
 - **Registry God Object**：生产代码业务逻辑已全部消除，`WorkspaceRegistry` 为纯向后兼容门面
@@ -14,6 +14,7 @@
 - **索引黑名单**：`semantic_index` / `scan` / `TUI` 统一排除 `target/` / `.venv/` / `node_modules/` 等 9 个目录
 - **增量索引**：Phase 4 完成，Git diff + 工作区变更检测，无变更 0.10s / 单文件变更 0.63s / 全量 ~15-25s（Sprint A rayon 并行 embedding）
 - **Tantivy-SQLite 一致性**：Sprint B 完成，启动时一致性扫描 + `orphan_tantivy_docs` 懒清理
+- **Agent 状态接口**：Sprint C 完成，`devbase status [--json]` + `DevkitStatusTool` + `DevkitIndexStreamTool` + `tools/call` streaming 支持
 - **测试覆盖**：新增 `git_diff.rs` 8 个单元测试（commit/工作区/untracked/删除/空变更/空仓库）
 
 ## 已完成的子模块提取（v0.15 重构）
@@ -96,12 +97,23 @@
 - **日期**：2026-05-02（续）
 - **架构**：CLI
 - **交付**：Sprint B — Tantivy-SQLite 双写一致性（启动扫描 + 懒清理）
-- **Commit**：待提交
+- **Commit**：`dcbe256`
 - **关键决策**：
   - `orphan_tantivy_docs` 表记录 Tantivy 有但 SQLite `entities` 无的孤儿文档
   - `AppContext::with_defaults()` 启动时自动扫描并修复一致性（`repair_tantivy_consistency`）
   - `run_index` 中对孤儿文档自动 `delete_repo_doc` + `commit_writer` 后清除 orphan 记录
   - 扫描双向清理：检测新孤儿 + 清除已恢复的过时孤儿标记
+
+- **日期**：2026-05-02（续续）
+- **架构**：CLI
+- **交付**：Sprint C — Agent 状态接口 + MCP Streaming
+- **Commit**：待提交
+- **关键决策**：
+  - `IndexState` 状态机（Fresh/Stale/Missing/Unknown），`detect_changes` 重构为 `get_repo_index_state`
+  - `devbase status [--json]` CLI 命令，JSON 输出可被 Python `json.loads` 解析
+  - `DevkitStatusTool` MCP 工具：100ms 内返回 repo 索引状态
+  - `DevkitIndexStreamTool` + `handle_request` `stream: true` 支持：stdio 传输层流式事件
+  - 45 个 MCP 工具（原 43 + 2 新增）
 
 - **日期**：2026-05-01
 - **架构**：CLI

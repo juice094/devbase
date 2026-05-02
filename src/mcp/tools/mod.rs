@@ -5,6 +5,7 @@ pub mod query;
 pub mod relations;
 pub mod repo;
 pub mod skill;
+pub mod status;
 pub mod vault;
 pub mod workflow;
 
@@ -20,6 +21,7 @@ pub use query::*;
 pub use relations::*;
 pub use repo::*;
 pub use skill::*;
+pub use status::*;
 pub use vault::*;
 pub use workflow::*;
 
@@ -38,6 +40,7 @@ mod tests {
         let _ = super::oplog::DevkitOplogQueryTool;
         let _ = super::query::DevkitQueryTool;
         let _ = super::repo::DevkitIndexTool;
+        let _ = super::status::DevkitStatusTool;
         let _ = super::skill::DevkitSkillListTool;
         let _ = super::vault::DevkitVaultSearchTool;
         let _ = super::workflow::DevkitWorkflowListTool;

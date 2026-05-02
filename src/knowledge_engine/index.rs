@@ -312,54 +312,34 @@ fn detect_changes(
 ) -> Option<crate::semantic_index::git_diff::ChangedFiles> {
     use tracing::{info, warn};
 
-    // Ensure repo has a HEAD commit (non-Git repos fall back to full index)
-    if let Err(e) = crate::semantic_index::git_diff::current_head_hash(&repo.local_path) {
-        warn!("Failed to read HEAD for {}: {}, falling back to full index", repo.id, e);
-        return None;
-    }
-
-    let last_hash = match get_last_indexed_hash(conn, &repo.id) {
-        Ok(h) => h,
-        Err(e) => {
-            warn!("Failed to read last indexed hash for {}: {}, falling back to full index", repo.id, e);
-            return None;
+    match super::index_state::get_repo_index_state(conn, repo) {
+        super::index_state::IndexState::Fresh => {
+            Some(crate::semantic_index::git_diff::ChangedFiles {
+                added: vec![],
+                modified: vec![],
+                deleted: vec![],
+            })
         }
-    };
-
-    let changed = match crate::semantic_index::git_diff::diff_since(&repo.local_path, last_hash.as_deref()) {
-        Ok(c) => c,
-        Err(e) => {
-            warn!("Git diff failed for {}: {}, falling back to full index", repo.id, e);
-            return None;
+        super::index_state::IndexState::Stale { added, modified, deleted } => {
+            let total = added.len() + modified.len() + deleted.len();
+            if total > 100 {
+                info!("Repo {} has {} changed files (>100 threshold), falling back to full index", repo.id, total);
+                return None;
+            }
+            info!("Repo {}: incremental index ({} added, {} modified, {} deleted)",
+                repo.id, added.len(), modified.len(), deleted.len()
+            );
+            Some(crate::semantic_index::git_diff::ChangedFiles { added, modified, deleted })
         }
-    };
-
-    let total = changed.added.len() + changed.modified.len() + changed.deleted.len();
-    if total == 0 {
-        // No changes detected (commit hash may or may not differ)
-        return Some(changed);
+        super::index_state::IndexState::Missing => {
+            info!("Repo {}: no prior index state, falling back to full index", repo.id);
+            None
+        }
+        super::index_state::IndexState::Unknown { ref reason } => {
+            warn!("Repo {}: index state unknown ({}), falling back to full index", repo.id, reason);
+            None
+        }
     }
-    if total > 100 {
-        info!("Repo {} has {} changed files (>100 threshold), falling back to full index", repo.id, total);
-        return None;
-    }
-
-    info!("Repo {}: incremental index ({} added, {} modified, {} deleted)",
-        repo.id, changed.added.len(), changed.modified.len(), changed.deleted.len()
-    );
-    Some(changed)
-}
-
-fn get_last_indexed_hash(
-    conn: &rusqlite::Connection,
-    repo_id: &str,
-) -> anyhow::Result<Option<String>> {
-    let row: Result<Option<String>, _> = conn.query_row(
-        "SELECT last_commit_hash FROM repo_index_state WHERE repo_id = ?1",
-        [repo_id],
-        |row| row.get(0),
-    );
-    Ok(row.unwrap_or(None))
 }
 
 fn save_repo_index_state(
