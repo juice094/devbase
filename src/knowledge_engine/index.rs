@@ -118,16 +118,48 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
             crate::registry::repo::update_repo_language(conn, &repo.id, Some(lang))?;
         }
 
+        // Determine incremental vs full index
+        let changed_opt = detect_changes(conn, repo);
+        if let Some(ref changed) = changed_opt {
+            if changed.added.is_empty() && changed.modified.is_empty() && changed.deleted.is_empty() {
+                println!("[{}] Already up-to-date", repo.id);
+                count += 1;
+                continue;
+            }
+        }
+        let is_incremental = changed_opt.is_some();
+
         // Semantic code indexing (tree-sitter AST extraction + call graph)
-        let (symbols, calls) = crate::semantic_index::index_repo_full(&repo.local_path);
+        let (symbols, calls) = if let Some(ref changed) = changed_opt {
+            // Incremental: delete old symbols for modified/deleted files
+            let files_to_delete: Vec<String> = changed.modified.iter().chain(changed.deleted.iter()).cloned().collect();
+            if !files_to_delete.is_empty() {
+                let _ = crate::semantic_index::persist::delete_symbols_for_files(conn, &repo.id, &files_to_delete);
+            }
+            crate::semantic_index::index_repo_incremental(&repo.local_path, changed)
+        } else {
+            // Full index
+            crate::semantic_index::index_repo_full(&repo.local_path)
+        };
+
         if !symbols.is_empty() {
-            match crate::semantic_index::save_symbols(conn, &repo.id, &symbols) {
+            let result = if is_incremental {
+                crate::semantic_index::persist::save_symbols_incremental(conn, &repo.id, &symbols)
+            } else {
+                crate::semantic_index::save_symbols(conn, &repo.id, &symbols)
+            };
+            match result {
                 Ok(n) => info!("Saved {} code symbols for {}", n, repo.id),
                 Err(e) => warn!("Failed to save code symbols for {}: {}", repo.id, e),
             }
         }
         if !calls.is_empty() {
-            match crate::semantic_index::save_calls(conn, &repo.id, &calls) {
+            let result = if is_incremental {
+                crate::semantic_index::persist::save_calls_incremental(conn, &repo.id, &calls)
+            } else {
+                crate::semantic_index::save_calls(conn, &repo.id, &calls)
+            };
+            match result {
                 Ok(n) => info!("Saved {} call edges for {}", n, repo.id),
                 Err(e) => warn!("Failed to save call graph for {}: {}", repo.id, e),
             }
@@ -135,10 +167,20 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
 
         // Generate embeddings for code symbols (local candle, Sprint 14)
         if !symbols.is_empty() {
-            match save_symbol_embeddings(conn, &repo.id, &symbols) {
+            let result = if is_incremental {
+                save_symbol_embeddings_incremental(conn, &repo.id, &symbols)
+            } else {
+                save_symbol_embeddings(conn, &repo.id, &symbols)
+            };
+            match result {
                 Ok(n) => info!("Saved {} symbol embeddings for {}", n, repo.id),
                 Err(e) => warn!("Failed to save symbol embeddings for {}: {}", repo.id, e),
             }
+        }
+
+        // Save repo_index_state for next incremental run
+        if let Ok(Some(hash)) = crate::semantic_index::git_diff::current_head_hash(&repo.local_path) {
+            let _ = save_repo_index_state(conn, &repo.id, &hash);
         }
 
         // Cross-repo dependency graph
@@ -205,5 +247,115 @@ fn save_symbol_embeddings(
     tx.commit()?;
     info!("Saved {} symbol embeddings for {}", inserted, repo_id);
     Ok(inserted)
+}
+
+/// Incremental embedding save: does NOT clear the repo, only inserts/replaces.
+fn save_symbol_embeddings_incremental(
+    conn: &mut rusqlite::Connection,
+    repo_id: &str,
+    symbols: &[crate::semantic_index::CodeSymbol],
+) -> anyhow::Result<usize> {
+    use tracing::{info, warn};
+
+    let tx = conn.transaction()?;
+    let mut inserted = 0usize;
+    for symbol in symbols {
+        let text = format!("{} {}", symbol.name, symbol.signature.as_deref().unwrap_or(""));
+        match crate::embedding::generate_query_embedding(&text) {
+            Ok(embedding) => {
+                let blob = crate::embedding::embedding_to_bytes(&embedding);
+                let now = chrono::Utc::now().to_rfc3339();
+                match tx.execute(
+                    "INSERT INTO code_embeddings (repo_id, symbol_name, embedding, generated_at) VALUES (?1, ?2, ?3, ?4)
+                     ON CONFLICT(repo_id, symbol_name) DO UPDATE SET
+                     embedding = excluded.embedding,
+                     generated_at = excluded.generated_at",
+                    rusqlite::params![repo_id, &symbol.name, &blob, &now],
+                ) {
+                    Ok(_) => inserted += 1,
+                    Err(e) => warn!("Failed to insert embedding for {}: {}", symbol.name, e),
+                }
+            }
+            Err(e) => {
+                warn!("Embedding generation failed for '{}': {}", symbol.name, e);
+            }
+        }
+    }
+
+    tx.commit()?;
+    info!("Saved {} symbol embeddings (incremental) for {}", inserted, repo_id);
+    Ok(inserted)
+}
+
+/// Detect whether a repo can be incrementally indexed.
+/// Returns `Some(ChangedFiles)` if incremental is possible and worthwhile.
+/// Returns `None` for first-time index, non-Git repos, too many changes, or errors.
+fn detect_changes(
+    conn: &rusqlite::Connection,
+    repo: &crate::registry::RepoEntry,
+) -> Option<crate::semantic_index::git_diff::ChangedFiles> {
+    use tracing::{info, warn};
+
+    // Ensure repo has a HEAD commit (non-Git repos fall back to full index)
+    if let Err(e) = crate::semantic_index::git_diff::current_head_hash(&repo.local_path) {
+        warn!("Failed to read HEAD for {}: {}, falling back to full index", repo.id, e);
+        return None;
+    }
+
+    let last_hash = match get_last_indexed_hash(conn, &repo.id) {
+        Ok(h) => h,
+        Err(e) => {
+            warn!("Failed to read last indexed hash for {}: {}, falling back to full index", repo.id, e);
+            return None;
+        }
+    };
+
+    let changed = match crate::semantic_index::git_diff::diff_since(&repo.local_path, last_hash.as_deref()) {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("Git diff failed for {}: {}, falling back to full index", repo.id, e);
+            return None;
+        }
+    };
+
+    let total = changed.added.len() + changed.modified.len() + changed.deleted.len();
+    if total == 0 {
+        // No changes detected (commit hash may or may not differ)
+        return Some(changed);
+    }
+    if total > 100 {
+        info!("Repo {} has {} changed files (>100 threshold), falling back to full index", repo.id, total);
+        return None;
+    }
+
+    info!("Repo {}: incremental index ({} added, {} modified, {} deleted)",
+        repo.id, changed.added.len(), changed.modified.len(), changed.deleted.len()
+    );
+    Some(changed)
+}
+
+fn get_last_indexed_hash(
+    conn: &rusqlite::Connection,
+    repo_id: &str,
+) -> anyhow::Result<Option<String>> {
+    let row: Result<Option<String>, _> = conn.query_row(
+        "SELECT last_commit_hash FROM repo_index_state WHERE repo_id = ?1",
+        [repo_id],
+        |row| row.get(0),
+    );
+    Ok(row.unwrap_or(None))
+}
+
+fn save_repo_index_state(
+    conn: &mut rusqlite::Connection,
+    repo_id: &str,
+    hash: &str,
+) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO repo_index_state (repo_id, last_commit_hash, indexed_at)
+         VALUES (?1, ?2, datetime('now'))",
+        [repo_id, hash],
+    )?;
+    Ok(())
 }
 

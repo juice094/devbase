@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use tracing::warn;
 
 pub mod call_graph;
+pub mod git_diff;
 pub mod persist;
 pub mod symbol;
 
@@ -191,6 +192,26 @@ pub fn index_repo_full(repo_path: &Path) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
         }
         (all_symbols, all_calls)
     })
+}
+
+/// Incrementally parse only changed files.
+pub fn index_repo_incremental(
+    repo_path: &Path,
+    changed: &crate::semantic_index::git_diff::ChangedFiles,
+) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
+    let exts: &[&str] = &["rs", "py", "js", "ts", "jsx", "tsx", "go"];
+    let mut symbols = Vec::new();
+    let mut calls = Vec::new();
+
+    for file in changed.added.iter().chain(changed.modified.iter()) {
+        let path = repo_path.join(file);
+        let ext = path.extension().and_then(|e| e.to_str());
+        if ext.is_some_and(|e| exts.contains(&e)) {
+            process_file(repo_path, &path, &mut symbols, &mut calls);
+        }
+    }
+
+    (symbols, calls)
 }
 
 #[inline]

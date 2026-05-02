@@ -26,6 +26,7 @@ pub mod v23_cleanup;
 pub mod v24_relations;
 pub mod v25_agent_reads;
 pub mod v26_denormalize;
+pub mod v27_repo_index_state;
 
 pub fn run_all(conn: &mut Connection) -> anyhow::Result<()> {
     let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -107,6 +108,9 @@ pub fn run_all(conn: &mut Connection) -> anyhow::Result<()> {
     }
     if user_version < 26 {
         v26_denormalize::run(conn)?;
+    }
+    if user_version < 27 {
+        v27_repo_index_state::run(conn)?;
     }
 
     Ok(())
