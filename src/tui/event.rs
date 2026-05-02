@@ -1,6 +1,6 @@
 use crate::tui::render::ui;
 use crate::tui::{
-    App, InputMode, MainView, NLPPopupMode, SearchPopupMode, SkillPopupMode, SortMode,
+    App, InputMode, MainView, NLPPopupMode, SearchPopupMode, SkillPopupMode,
     SyncPopupMode, WorkflowPopupMode,
 };
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
