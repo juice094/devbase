@@ -1,6 +1,9 @@
 use super::*;
 use chrono::{DateTime, Utc};
 
+/// (source_repo, source_symbol, target_repo, target_symbol, link_type, strength)
+pub type RelatedSymbolRow = (String, String, String, String, String, f32);
+
 pub fn save_summary(
     conn: &rusqlite::Connection,
     repo_id: &str,
@@ -463,7 +466,7 @@ pub fn find_related_symbols(
     repo_id: &str,
     symbol_name: &str,
     limit: usize,
-) -> anyhow::Result<Vec<(String, String, String, String, String, f32)>> {
+) -> anyhow::Result<Vec<RelatedSymbolRow>> {
     let mut stmt = conn.prepare(
         "SELECT target_repo, target_symbol, link_type, strength
          FROM code_symbol_links
@@ -661,7 +664,7 @@ impl WorkspaceRegistry {
         repo_id: &str,
         symbol_name: &str,
         limit: usize,
-    ) -> anyhow::Result<Vec<(String, String, String, String, String, f32)>> {
+    ) -> anyhow::Result<Vec<RelatedSymbolRow>> {
         find_related_symbols(conn, repo_id, symbol_name, limit)
     }
     pub fn semantic_search_symbols(

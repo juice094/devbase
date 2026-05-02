@@ -34,6 +34,45 @@ pub fn upsert_entity(
     Ok(())
 }
 
+/// Check whether an entity with the given ID exists.
+pub fn entity_exists(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<bool> {
+    let count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM entities WHERE id = ?1", [id], |row| row.get(0))?;
+    Ok(count > 0)
+}
+
+/// Delete an entity by ID.
+pub fn delete_entity(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<()> {
+    conn.execute("DELETE FROM entities WHERE id = ?1", [id])?;
+    Ok(())
+}
+
+/// Update a single JSON field in entities.metadata for an entity.
+/// When `value` is the JSON literal `"null"`, the key is removed instead.
+pub fn update_entity_metadata_field(
+    conn: &rusqlite::Connection,
+    entity_id: &str,
+    field: &str,
+    value: &str,
+) -> anyhow::Result<()> {
+    if value == "null" {
+        conn.execute(
+            &format!(
+                "UPDATE entities SET metadata = json_remove(metadata, '$.{field}'), updated_at = ?1 WHERE id = ?2"
+            ),
+            rusqlite::params![Utc::now().to_rfc3339(), entity_id],
+        )?;
+    } else {
+        conn.execute(
+            &format!(
+                "UPDATE entities SET metadata = json_set(metadata, '$.{field}', ?1), updated_at = ?2 WHERE id = ?3"
+            ),
+            rusqlite::params![value, Utc::now().to_rfc3339(), entity_id],
+        )?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,43 +144,4 @@ mod tests {
         // Should not panic; verify entity still exists
         assert!(entity_exists(&conn, "ent-2").unwrap());
     }
-}
-
-/// Check whether an entity with the given ID exists.
-pub fn entity_exists(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<bool> {
-    let count: i64 =
-        conn.query_row("SELECT COUNT(*) FROM entities WHERE id = ?1", [id], |row| row.get(0))?;
-    Ok(count > 0)
-}
-
-/// Delete an entity by ID.
-pub fn delete_entity(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<()> {
-    conn.execute("DELETE FROM entities WHERE id = ?1", [id])?;
-    Ok(())
-}
-
-/// Update a single JSON field in entities.metadata for an entity.
-/// When `value` is the JSON literal `"null"`, the key is removed instead.
-pub fn update_entity_metadata_field(
-    conn: &rusqlite::Connection,
-    entity_id: &str,
-    field: &str,
-    value: &str,
-) -> anyhow::Result<()> {
-    if value == "null" {
-        conn.execute(
-            &format!(
-                "UPDATE entities SET metadata = json_remove(metadata, '$.{field}'), updated_at = ?1 WHERE id = ?2"
-            ),
-            rusqlite::params![Utc::now().to_rfc3339(), entity_id],
-        )?;
-    } else {
-        conn.execute(
-            &format!(
-                "UPDATE entities SET metadata = json_set(metadata, '$.{field}', ?1), updated_at = ?2 WHERE id = ?3"
-            ),
-            rusqlite::params![value, Utc::now().to_rfc3339(), entity_id],
-        )?;
-    }
-    Ok(())
 }

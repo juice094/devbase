@@ -3,6 +3,9 @@
 use crate::repository::Repository;
 use std::collections::HashMap;
 
+/// (repo_id, symbol_name, file_path, line_start, score)
+pub type SearchResultRow = (String, String, String, i64, f64);
+
 pub struct SearchRepository<'a>(&'a rusqlite::Connection);
 
 impl<'a> SearchRepository<'a> {
@@ -17,7 +20,7 @@ impl<'a> SearchRepository<'a> {
         query_text: &str,
         query_embedding: Option<&[f32]>,
         limit: usize,
-    ) -> anyhow::Result<Vec<(String, String, String, i64, f64)>> {
+    ) -> anyhow::Result<Vec<SearchResultRow>> {
         let mut results = crate::search::hybrid::hybrid_search_symbols(
             self.conn(),
             repo_id,
@@ -56,7 +59,7 @@ impl<'a> SearchRepository<'a> {
         repo_id: &str,
         query_embedding: &[f32],
         limit: usize,
-    ) -> anyhow::Result<Vec<(String, String, String, i64, f64)>> {
+    ) -> anyhow::Result<Vec<SearchResultRow>> {
         let mut stmt = self.conn().prepare(
             "SELECT ce.symbol_name, cs.file_path, cs.line_start, ce.embedding
              FROM code_embeddings ce
@@ -97,7 +100,7 @@ impl<'a> SearchRepository<'a> {
         repo_id: &str,
         symbol_name: &str,
         limit: usize,
-    ) -> anyhow::Result<Vec<(String, String, String, i64, f64)>> {
+    ) -> anyhow::Result<Vec<SearchResultRow>> {
         let mut stmt = self.conn().prepare(
             "SELECT target_repo, target_symbol, strength
              FROM code_symbol_links
@@ -141,7 +144,7 @@ impl<'a> SearchRepository<'a> {
         &self,
         query_text: &str,
         limit: usize,
-    ) -> anyhow::Result<Vec<(String, String, String, i64, f64)>> {
+    ) -> anyhow::Result<Vec<SearchResultRow>> {
         // 1. Find all repos (empty tags semantics).
         let mut stmt = self.conn().prepare(&format!(
             "SELECT id FROM entities WHERE entity_type = '{}'",

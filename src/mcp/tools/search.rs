@@ -290,7 +290,7 @@ Returns: JSON array of symbols with file_path, name, line_start, and similarity_
         let query_embedding = match query_embedding {
             Some(e) => Some(e),
             None => {
-                match crate::embedding::generate_query_embedding(&query_text) {
+                match crate::embedding::generate_query_embedding(query_text) {
                     Ok(emb) => Some(emb),
                     Err(e) => {
                         tracing::warn!("Embedding generation failed, falling back to keyword: {}", e);

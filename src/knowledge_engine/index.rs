@@ -144,13 +144,12 @@ pub fn run_index_with_progress(
 
         // Determine incremental vs full index
         let changed_opt = detect_changes(conn, repo);
-        if let Some(ref changed) = changed_opt {
-            if changed.added.is_empty() && changed.modified.is_empty() && changed.deleted.is_empty() {
+        if let Some(ref changed) = changed_opt
+            && changed.added.is_empty() && changed.modified.is_empty() && changed.deleted.is_empty() {
                 println!("[{}] Already up-to-date", repo.id);
                 count += 1;
                 continue;
             }
-        }
         let is_incremental = changed_opt.is_some();
         notify(format!("detect_changes:{},incremental={}", repo.id, is_incremental));
 

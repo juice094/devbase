@@ -127,8 +127,8 @@ Returns: JSON object with:
 
                 // 4. Code structure: modules
                 let mut modules = Vec::new();
-                if let Some(ref rid) = repo_id {
-                    if let Ok(ms) = crate::registry::knowledge::list_modules(&conn, rid) {
+                if let Some(ref rid) = repo_id
+                    && let Ok(ms) = crate::registry::knowledge::list_modules(&conn, rid) {
                         for (name, kind, path) in ms {
                             modules.push(serde_json::json!({
                                 "name": name,
@@ -139,7 +139,6 @@ Returns: JSON object with:
                             }));
                         }
                     }
-                }
 
                 // 5. Code symbols (top 50, relevance-ranked when goal is provided)
                 let mut symbols = Vec::new();
@@ -187,8 +186,8 @@ Returns: JSON object with:
 
                 // 5b. Record symbol reads + apply behavioral boosting for non-goal path
                 if let Some(ref rid) = repo_id {
-                    if !symbols.is_empty() {
-                        if let Ok(tx) = conn.unchecked_transaction() {
+                    if !symbols.is_empty()
+                        && let Ok(tx) = conn.unchecked_transaction() {
                             for sym in &symbols {
                                 if let Some(name) = sym.get("name").and_then(|n| n.as_str()) {
                                     let _ = tx.execute(
@@ -199,7 +198,6 @@ Returns: JSON object with:
                             }
                             let _ = tx.commit();
                         }
-                    }
 
                     // Behavioral boosting for non-goal path (goal path already boosted in hybrid_search)
                     if goal.is_none() && symbols.len() > 1 {

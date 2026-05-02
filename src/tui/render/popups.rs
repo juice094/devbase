@@ -128,31 +128,6 @@ fn search_results_title(pattern: &str, count: usize, i18n: &crate::i18n::I18n) -
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::i18n::I18n;
-
-    fn mock_i18n() -> I18n {
-        crate::i18n::en::build()
-    }
-
-    #[test]
-    fn test_search_results_title_empty() {
-        let i18n = mock_i18n();
-        assert_eq!(
-            search_results_title("foo", 0, &i18n),
-            "Search results: \"foo\" - No matches found"
-        );
-    }
-
-    #[test]
-    fn test_search_results_title_with_results() {
-        let i18n = mock_i18n();
-        assert_eq!(search_results_title("bar", 3, &i18n), "Search results: \"bar\" (3 results)");
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Skill Panel
 // ---------------------------------------------------------------------------
@@ -846,4 +821,29 @@ fn render_nlp_results(frame: &mut Frame, app: &App, styles: &Styles) {
         height: 1,
     };
     frame.render_widget(hint, hint_area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::i18n::I18n;
+
+    fn mock_i18n() -> I18n {
+        crate::i18n::en::build()
+    }
+
+    #[test]
+    fn test_search_results_title_empty() {
+        let i18n = mock_i18n();
+        assert_eq!(
+            search_results_title("foo", 0, &i18n),
+            "Search results: \"foo\" - No matches found"
+        );
+    }
+
+    #[test]
+    fn test_search_results_title_with_results() {
+        let i18n = mock_i18n();
+        assert_eq!(search_results_title("bar", 3, &i18n), "Search results: \"bar\" (3 results)");
+    }
 }

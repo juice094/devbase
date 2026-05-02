@@ -50,7 +50,7 @@ pub async fn run_vault(
             if filtered.is_empty() {
                 println!("No vault notes found.");
             } else {
-                println!("{:<40} {:<20} {}", "PATH", "TITLE", "TAGS");
+                println!("{:<40} {:<20} TAGS", "PATH", "TITLE");
                 for note in filtered {
                     let title = note.title.as_deref().unwrap_or("(no title)");
                     let tags = if note.tags.is_empty() {

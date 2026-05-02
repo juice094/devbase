@@ -164,7 +164,7 @@ pub fn index_repo_full(repo_path: &Path) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
     }
 
     std::thread::scope(|s| {
-        let chunk_size = (files.len() + num_threads - 1) / num_threads;
+        let chunk_size = files.len().div_ceil(num_threads);
         let mut handles = Vec::with_capacity(num_threads);
 
         for chunk in files.chunks(chunk_size) {

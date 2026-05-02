@@ -56,11 +56,10 @@ hash, current HEAD hash, symbol count, embedding count, and changed files."#,
 
         let mut statuses = Vec::new();
         for repo in &repos {
-            if let Some(id) = target_id {
-                if repo.id != id {
+            if let Some(id) = target_id
+                && repo.id != id {
                     continue;
                 }
-            }
 
             let state = crate::knowledge_engine::index_state::get_repo_index_state(&conn, repo);
             let (last_hash, indexed_at) = conn

@@ -1,5 +1,8 @@
 use chrono::Utc;
 
+/// (from_entity_id, to_entity_id, relation_type, confidence, created_at)
+pub type RelatedEntityRow = (String, String, String, f64, String);
+
 /// Store a directed relation between two entities.
 /// Upserts on conflict (from, to, type) to update confidence and timestamp.
 pub fn save_relation(
@@ -67,7 +70,7 @@ pub fn find_related_entities(
     conn: &rusqlite::Connection,
     entity_id: &str,
     relation_type: Option<&str>,
-) -> anyhow::Result<Vec<(String, String, String, f64, String)>> {
+) -> anyhow::Result<Vec<RelatedEntityRow>> {
     let filter_type = relation_type.filter(|s| !s.is_empty());
     if let Some(rt) = filter_type {
         let mut stmt = conn.prepare(
