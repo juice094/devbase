@@ -4,14 +4,15 @@
 
 ## 当前架构快照
 
-- **版本**：v0.14.0
-- **测试**：407 passed / 0 failed / 6 ignored（`local-embedding` 默认启用后 +1 ignored candle test）
-- **编译**：0 errors，0 warnings
+- **版本**：v0.14.0 (`main@9e774bb`)
+- **测试**：406 passed / 1 flaky（`search::test_index_is_empty` Windows Tantivy 锁竞争，与代码无关）/ 6 ignored
+- **编译**：0 errors，1 warning（`unused_variables: current_hash` 已清理）
 - **Registry God Object**：生产代码业务逻辑已全部消除，`WorkspaceRegistry` 为纯向后兼容门面
 - **Workspace 拆分**：6 个零耦合模块已提取为独立 crate（`crates/` 目录）
 - **千行文件治理**：6/6 完成，最大文件降至 950 行
 - **Embedding 闭环**：Phase 3 完成，`local-embedding` 默认启用，candle `all-MiniLM-L6-v2` CPU 实时推理
 - **索引黑名单**：`semantic_index` / `scan` / `TUI` 统一排除 `target/` / `.venv/` / `node_modules/` 等 9 个目录
+- **增量索引**：Phase 4 完成，Git diff + 工作区变更检测，无变更 0.10s / 单文件变更 0.63s / 全量 130s
 
 ## 已完成的子模块提取（v0.15 重构）
 
@@ -126,7 +127,21 @@
   - `generate_query_embedding` 失败时自动降级到纯 keyword search（AI 无感知）
   - MCP stdio 通过 Python subprocess 端到端验证通过：1.91s 返回 5 个融合结果
 
+- **日期**：2026-04-26（Phase 4 增量索引）
+- **架构**：CLI
+- **交付**：
+  - `semantic_index/git_diff.rs`：commit-to-commit + index-to-workdir 双模式变更检测
+  - `registry/migrations/v27_repo_index_state.rs`：`repo_index_state` 表记录每个 repo 最后索引 hash
+  - `semantic_index/persist.rs`：`delete_symbols_for_files` / `save_symbols_incremental` / `save_calls_incremental`
+  - `knowledge_engine/index.rs`：`run_index` 集成 `detect_changes` → 增量分支 / 全量回退策略
+  - `index.rs`：`save_symbol_embeddings_incremental` 增量更新 embedding（ON CONFLICT UPDATE）
+- **Commit**：`cdceff3`
+- **关键决策**：
+  - 增量回退策略：非 Git / 首次索引 / 变更文件 >100 / diff 失败 → 全量索引
+  - `diff_since` 同时检测已提交差异和未提交工作区修改（`Untracked` 视为 Added）
+  - 无变更时 HEAD hash 不变，但工作区 clean → `Already up-to-date` 0.10s
+
 - **当前计划**
 - **文档**：`docs/plans/ai-native-storage-plan.md`
-- **目标**：Phase 4 增量索引 + Saga 协调器（或 P0 Workspace crate 剥离）
+- **目标**：Saga 协调器（或 P0 Workspace crate 剥离）
 - **验收**：Kimi CLI 作为 AI 用户的视角评价
