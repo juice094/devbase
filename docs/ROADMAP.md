@@ -67,10 +67,14 @@ L0-L4 五层知识模型 MVP：entities 统一模型、known_limits 风险层、
 | `vault/frontmatter` | 175 | 0 | 0 | 15 min |
 | `vault/wikilink` | 130 | 0 | 0 | 15 min |
 | ~~`workflow/interpolate`~~ | ~~239~~ | ~~9~~ | ~~0~~ | ~~✅ 已完成~~ |
+| ~~`workflow/model`~~ | ~~330~~ | ~~2~~ | ~~0~~ | ~~✅ 已完成~~ |
+| ~~`registry/health`~~ | ~~156~~ | ~~5~~ | ~~0~~ | ~~✅ 已完成~~ |
+| ~~`registry/metrics`~~ | ~~153~~ | ~~3~~ | ~~0~~ | ~~✅ 已完成~~ |
+| ~~`registry/workspace`~~ | ~~215~~ | ~~5~~ | ~~0~~ | ~~✅ 已完成~~ |
 | `workflow/model` | 330 | 0 | 0 | 15 min |
 | `skill_runtime/parser` | 417 | 0 | 0 | 15 min |
 
-**目标**：workspace 成员达到 8-10 个。当前：7 个。
+**目标**：workspace 成员达到 8-10 个。当前：10 个（✅ 已达成）。
 **验收**：`cargo check --workspace` 0 errors，`cargo test --workspace` 全绿。
 
 ---

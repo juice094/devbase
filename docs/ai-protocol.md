@@ -4,8 +4,8 @@
 
 ## 当前架构快照
 
-- **版本**：v0.16.0-dev (`main@93b0860`)
-- **测试**：450 passed / 0 failed / 5 ignored（主 crate 410 + workspace crates 40；`devbase-workflow-interpolate` 新增 9 测试全部通过）
+- **版本**：v0.16.0-dev (`main@69cbc3d`)
+- **测试**：446 passed / 0 failed / 5 ignored（主 crate 396 + workspace crates 50；新增 4 个 crate：`workflow-model` 2 测试 + `registry-health` 3 测试 + `registry-metrics` 4 测试 + `registry-workspace` 5 测试）
 - **编译**：0 errors，0 warnings
 - **Registry God Object**：生产代码业务逻辑已全部消除，`WorkspaceRegistry` 为纯向后兼容门面
 - **Workspace 拆分**：6 个零耦合模块已提取为独立 crate（`crates/` 目录）
@@ -51,8 +51,13 @@
 | `devbase-vault-frontmatter` | `src/vault/frontmatter.rs` | 175 | 5 | 0 `crate::` refs | `066b18d` |
 | `devbase-vault-wikilink` | `src/vault/wikilink.rs` | 130 | 5 | 0 `crate::` refs | `066b18d` |
 | `devbase-workflow-interpolate` | `src/workflow/interpolate.rs` | 239 | 9 | 0 `crate::` refs | `93b0860` |
+| `devbase-workflow-model` | `src/workflow/model.rs` | 330 | 2 | 0 `crate::` refs | `bf8b097` |
+| `devbase-registry-health` | `src/registry/health.rs` | 156 | 5 | 0 `crate::` refs | `69cbc3d` |
+| `devbase-registry-metrics` | `src/registry/metrics.rs` | 153 | 4 | 0 `crate::` refs | `69cbc3d` |
+| `devbase-registry-workspace` | `src/registry/workspace.rs` | 215 | 5 | 0 `crate::` refs | `69cbc3d` |
 
 > 向后兼容：原 `src/` 路径改为 `pub use <crate>::*;` 重新导出，API 不变。
+> 类型迁移：`registry.rs` 中的 `HealthEntry`/`CodeMetrics`/`WorkspaceSnapshot`/`OplogEntry`/`OplogEventType` 定义已迁移至各自 crate，`registry.rs` 通过 `pub use` 重新导出保持路径兼容。
 
 ## 模块耦合健康度地图（按 `crate::` 引用数）
 

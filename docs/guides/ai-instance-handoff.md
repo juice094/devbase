@@ -37,7 +37,7 @@ Get-ChildItem src\*.rs | ForEach-Object { $count = (Select-String -Path $_.FullN
 
 ## 二、Workspace 结构
 
-### 已提取的独立 Crate（7 个）
+### 已提取的独立 Crate（11 个）
 
 | Crate | 路径 | 来源 | 测试 | 零耦合 |
 |-------|------|------|------|--------|
@@ -48,6 +48,10 @@ Get-ChildItem src\*.rs | ForEach-Object { $count = (Select-String -Path $_.FullN
 | `devbase-vault-frontmatter` | `crates/devbase-vault-frontmatter` | `src/vault/frontmatter.rs` | 5 | ✅ |
 | `devbase-vault-wikilink` | `crates/devbase-vault-wikilink` | `src/vault/wikilink.rs` | 5 | ✅ |
 | `devbase-workflow-interpolate` | `crates/devbase-workflow-interpolate` | `src/workflow/interpolate.rs` | 9 | ✅ |
+| `devbase-workflow-model` | `crates/devbase-workflow-model` | `src/workflow/model.rs` | 2 | ✅ |
+| `devbase-registry-health` | `crates/devbase-registry-health` | `src/registry/health.rs` | 3 | ✅ |
+| `devbase-registry-metrics` | `crates/devbase-registry-metrics` | `src/registry/metrics.rs` | 4 | ✅ |
+| `devbase-registry-workspace` | `crates/devbase-registry-workspace` | `src/registry/workspace.rs` | 5 | ✅ |
 
 ### 向后兼容机制
 
@@ -162,12 +166,12 @@ grep "devbase" src/<module_path>.rs  # 应为空（除 re-export 文件）
 
 | 候选模块 | 行数 | 测试 | 内部耦合 | 状态 |
 |----------|------|------|----------|------|
-| `registry/health` | 156 | 5 | 0 | ⏳ 待提取 |
-| `registry/metrics` | 153 | 3 | 0 | ⏳ 待提取 |
-| `registry/workspace` | 215 | 5 | 0 | ⏳ 待提取 |
+| ~~`registry/health`~~ | ~~156~~ | ~~3~~ | ~~0~~ | ~~✅ 已完成~~ |
+| ~~`registry/metrics`~~ | ~~153~~ | ~~4~~ | ~~0~~ | ~~✅ 已完成~~ |
+| ~~`registry/workspace`~~ | ~~215~~ | ~~5~~ | ~~0~~ | ~~✅ 已完成~~ |
+| ~~`workflow/model`~~ | ~~330~~ | ~~2~~ | ~~0~~ | ~~✅ 已完成~~ |
 | `embedding` | 298 | 0 | 0 | ⏳ 待提取 |
-| `workflow/model` | 330 | 0 | 0 | ⏳ 待提取 |
-| `skill_runtime/parser` | 417 | 0 | 0 | ⏳ 待提取 |
+| `skill_runtime/parser` | 417 | 0 | 0 | ⏳ 待提取（需先处理 `SkillMeta` 类型依赖） |
 
 **阻塞项**：
 - `migrate.rs`（1273 行）拆分 → 推迟至 v0.17，需 Claw 架构支持
