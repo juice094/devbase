@@ -183,25 +183,54 @@ returns a JSON array of progress events."#,
 
         events.push(ToolStreamEvent {
             phase: StreamPhase::Progress,
-            payload: serde_json::json!({ "step": "start", "path": path }),
+            payload: serde_json::json!({ "step": "start", "path": &path }),
         });
 
-        // For streaming, we emit coarse-grained events since the actual index
-        // runs in a blocking thread and cannot easily yield intermediate events.
-        // Future refinement: instrument run_index to emit crossbeam/channel events.
+        let (tx, rx) = crossbeam_channel::bounded(32);
         let pool = ctx.pool();
-        let count = tokio::task::spawn_blocking(move || {
+        let path_clone = path.clone();
+        let handle = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get()?;
-            crate::knowledge_engine::run_index(&mut conn, &path)
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+            crate::knowledge_engine::run_index_with_progress(&mut conn, &path_clone, Some(tx))
+        });
+
+        // Collect progress events as they arrive from the blocking thread.
+        loop {
+            match rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                Ok(msg) => {
+                    events.push(ToolStreamEvent {
+                        phase: StreamPhase::Progress,
+                        payload: serde_json::json!({ "step": msg }),
+                    });
+                }
+                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                    if handle.is_finished() {
+                        while let Ok(msg) = rx.try_recv() {
+                            events.push(ToolStreamEvent {
+                                phase: StreamPhase::Progress,
+                                payload: serde_json::json!({ "step": msg }),
+                            });
+                        }
+                        break;
+                    }
+                }
+                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                    while let Ok(msg) = rx.try_recv() {
+                        events.push(ToolStreamEvent {
+                            phase: StreamPhase::Progress,
+                            payload: serde_json::json!({ "step": msg }),
+                        });
+                    }
+                    break;
+                }
+            }
+        }
+
+        let count = handle
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
 
         let duration_ms = start.elapsed().as_millis() as u64;
-        events.push(ToolStreamEvent {
-            phase: StreamPhase::Progress,
-            payload: serde_json::json!({ "step": "complete", "indexed": count }),
-        });
         events.push(ToolStreamEvent {
             phase: StreamPhase::Done,
             payload: serde_json::json!({ "indexed": count, "duration_ms": duration_ms }),

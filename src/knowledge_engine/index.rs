@@ -58,7 +58,23 @@ pub fn index_repo(
 
 /// 兼容旧调用的包装层：执行索引逻辑
 pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<usize> {
+    run_index_with_progress(conn, path, None)
+}
+
+/// 带进度上报的索引逻辑。
+/// `progress_tx` 接收阶段性进度消息，用于 MCP streaming 等实时反馈场景。
+pub fn run_index_with_progress(
+    conn: &mut rusqlite::Connection,
+    path: &str,
+    progress_tx: Option<crossbeam_channel::Sender<String>>,
+) -> anyhow::Result<usize> {
     use tracing::{info, warn};
+
+    let notify = |msg: String| {
+        if let Some(ref tx) = progress_tx {
+            let _ = tx.send(msg);
+        }
+    };
 
     let repos: Vec<RepoEntry> = if path.is_empty() {
         crate::registry::repo::list_repos(conn)?
@@ -136,6 +152,7 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
             }
         }
         let is_incremental = changed_opt.is_some();
+        notify(format!("detect_changes:{},incremental={}", repo.id, is_incremental));
 
         // Semantic code indexing (tree-sitter AST extraction + call graph)
         let (symbols, calls) = if let Some(ref changed) = changed_opt {
@@ -157,7 +174,10 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
                 crate::semantic_index::save_symbols(conn, &repo.id, &symbols)
             };
             match result {
-                Ok(n) => info!("Saved {} code symbols for {}", n, repo.id),
+                Ok(n) => {
+                    info!("Saved {} code symbols for {}", n, repo.id);
+                    notify(format!("semantic_index:{},symbols={}", repo.id, n));
+                }
                 Err(e) => warn!("Failed to save code symbols for {}: {}", repo.id, e),
             }
         }
@@ -168,7 +188,10 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
                 crate::semantic_index::save_calls(conn, &repo.id, &calls)
             };
             match result {
-                Ok(n) => info!("Saved {} call edges for {}", n, repo.id),
+                Ok(n) => {
+                    info!("Saved {} call edges for {}", n, repo.id);
+                    notify(format!("call_graph:{},calls={}", repo.id, n));
+                }
                 Err(e) => warn!("Failed to save call graph for {}: {}", repo.id, e),
             }
         }
@@ -181,7 +204,10 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
                 save_symbol_embeddings(conn, &repo.id, &symbols)
             };
             match result {
-                Ok(n) => info!("Saved {} symbol embeddings for {}", n, repo.id),
+                Ok(n) => {
+                    info!("Saved {} symbol embeddings for {}", n, repo.id);
+                    notify(format!("embeddings:{},count={}", repo.id, n));
+                }
                 Err(e) => warn!("Failed to save symbol embeddings for {}: {}", repo.id, e),
             }
         }
@@ -197,6 +223,7 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
                 if n > 0 {
                     info!("Resolved {} local dependencies for {}", n, repo.id);
                 }
+                notify(format!("dependency_graph:{},count={}", repo.id, n));
             }
             Err(e) => warn!("Failed to build dependency graph for {}: {}", repo.id, e),
         }
@@ -214,6 +241,7 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
     }
 
     crate::search::commit_writer(&mut search_writer)?;
+    notify("tantivy_commit".to_string());
 
     // Clean up orphan records for repos that were successfully indexed this run.
     if count > 0 && !orphaned_repos.is_empty() {
