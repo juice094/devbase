@@ -4,8 +4,8 @@
 
 ## 当前架构快照
 
-- **版本**：v0.16.0-dev (`main@7407053`)
-- **测试**：456 passed / 0 failed / 5 ignored（主 crate 379 + workspace crates 77；新增 6 个 crate：embedding 5 测试 + skill-runtime-types 7 测试 + skill-runtime-parser 3 测试）
+- **版本**：v0.16.0-dev (`main@fd98011`)
+- **测试**：460 passed / 0 failed / 5 ignored（主 crate 378 + workspace crates 82；新增 11 个 crate：embedding 5 测试 + skill-runtime-types 7 测试 + skill-runtime-parser 3 测试 + registry-entity 3 测试 + registry-relation 1 测试）
 - **编译**：0 errors，0 warnings
 - **Registry God Object**：生产代码业务逻辑已全部消除，`WorkspaceRegistry` 为纯向后兼容门面
 - **Workspace 拆分**：6 个零耦合模块已提取为独立 crate（`crates/` 目录）
@@ -58,6 +58,11 @@
 | `devbase-embedding` | `src/embedding.rs` | 299 | 5 | 0 `crate::` refs | `5de76ce` |
 | `devbase-skill-runtime-types` | `src/skill_runtime/mod.rs` | 254 | 7 | 0 `crate::` refs | `7407053` |
 | `devbase-skill-runtime-parser` | `src/skill_runtime/parser.rs` | 417 | 3 | 0 `crate::` refs | `7407053` |
+| `devbase-registry-entity` | `src/registry/entity.rs` | 147 | 3 | 0 `crate::` refs | `fd98011` |
+| `devbase-registry-relation` | `src/registry/relation.rs` | 156 | 1 | 0 `crate::` refs | `fd98011` |
+| `devbase-registry-call-graph` | `src/registry/call_graph.rs` | 63 | 0 | 0 `crate::` refs | `fd98011` |
+| `devbase-registry-dead-code` | `src/registry/dead_code.rs` | 59 | 0 | 0 `crate::` refs | `fd98011` |
+| `devbase-registry-code-symbols` | `src/registry/code_symbols.rs` | 63 | 0 | 0 `crate::` refs | `fd98011` |
 
 > 向后兼容：原 `src/` 路径改为 `pub use <crate>::*;` 重新导出，API 不变。
 > P3 状态更新：`migrate.rs` 实际 487 行，迁移逻辑已全部拆分至 `migrations/` 目录（29 个独立文件）。P3 关闭。

@@ -55,6 +55,11 @@ Get-ChildItem src\*.rs | ForEach-Object { $count = (Select-String -Path $_.FullN
 | `devbase-embedding` | `crates/devbase-embedding` | `src/embedding.rs` | 5 | ✅ |
 | `devbase-skill-runtime-types` | `crates/devbase-skill-runtime-types` | `src/skill_runtime/mod.rs` | 7 | ✅ |
 | `devbase-skill-runtime-parser` | `crates/devbase-skill-runtime-parser` | `src/skill_runtime/parser.rs` | 3 | ✅ |
+| `devbase-registry-entity` | `crates/devbase-registry-entity` | `src/registry/entity.rs` | 3 | ✅ |
+| `devbase-registry-relation` | `crates/devbase-registry-relation` | `src/registry/relation.rs` | 1 | ✅ |
+| `devbase-registry-call-graph` | `crates/devbase-registry-call-graph` | `src/registry/call_graph.rs` | 0 | ✅ |
+| `devbase-registry-dead-code` | `crates/devbase-registry-dead-code` | `src/registry/dead_code.rs` | 0 | ✅ |
+| `devbase-registry-code-symbols` | `crates/devbase-registry-code-symbols` | `src/registry/code_symbols.rs` | 0 | ✅ |
 
 ### 向后兼容机制
 
