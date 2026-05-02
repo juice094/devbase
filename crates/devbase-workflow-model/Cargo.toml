@@ -1,0 +1,12 @@
+[package]
+name = "devbase-workflow-model"
+version = "0.15.0"
+edition = "2024"
+authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+license = "MIT"
+repository = "https://github.com/juice094/devbase"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"

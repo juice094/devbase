@@ -1076,6 +1076,7 @@ dependencies = [
  "devbase-vault-frontmatter",
  "devbase-vault-wikilink",
  "devbase-workflow-interpolate",
+ "devbase-workflow-model",
  "dirs",
  "git2",
  "hf-hub",
@@ -1157,6 +1158,15 @@ version = "0.15.0"
 dependencies = [
  "anyhow",
  "regex",
+ "serde_json",
+ "serde_yaml",
+]
+
+[[package]]
+name = "devbase-workflow-model"
+version = "0.15.0"
+dependencies = [
+ "serde",
  "serde_json",
  "serde_yaml",
 ]

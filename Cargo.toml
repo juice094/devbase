@@ -68,6 +68,7 @@ devbase-syncthing-client = { path = "crates/devbase-syncthing-client" }
 devbase-vault-frontmatter = { path = "crates/devbase-vault-frontmatter" }
 devbase-vault-wikilink = { path = "crates/devbase-vault-wikilink" }
 devbase-workflow-interpolate = { path = "crates/devbase-workflow-interpolate" }
+devbase-workflow-model = { path = "crates/devbase-workflow-model" }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
