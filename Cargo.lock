@@ -1061,15 +1061,13 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "blake3",
- "candle-core",
- "candle-nn",
- "candle-transformers",
  "chrono",
  "clap",
  "criterion",
  "crossbeam-channel",
  "crossterm 0.28.1",
  "devbase-core-types",
+ "devbase-embedding",
  "devbase-registry-health",
  "devbase-registry-metrics",
  "devbase-registry-workspace",
@@ -1082,7 +1080,6 @@ dependencies = [
  "devbase-workflow-model",
  "dirs",
  "git2",
- "hf-hub",
  "notify",
  "predicates",
  "r2d2",
@@ -1098,7 +1095,6 @@ dependencies = [
  "tantivy",
  "tempfile",
  "tokei",
- "tokenizers",
  "tokio",
  "toml",
  "tracing",
@@ -1117,6 +1113,19 @@ name = "devbase-core-types"
 version = "0.1.0-alpha.1"
 dependencies = [
  "chrono",
+]
+
+[[package]]
+name = "devbase-embedding"
+version = "0.15.0"
+dependencies = [
+ "anyhow",
+ "candle-core",
+ "candle-nn",
+ "candle-transformers",
+ "hf-hub",
+ "serde_json",
+ "tokenizers",
 ]
 
 [[package]]
