@@ -4,8 +4,8 @@
 
 ## 当前架构快照
 
-- **版本**：v0.15.0 (`main@e8860ba`)
-- **测试**：418 passed / 0 failed / 5 ignored（`search::test_index_is_empty` Tantivy writer 显式 drop 加固；`embedding::test_candle_provider_encode` 取消 ignore）
+- **版本**：v0.16.0-dev (`main@93b0860`)
+- **测试**：450 passed / 0 failed / 5 ignored（主 crate 410 + workspace crates 40；`devbase-workflow-interpolate` 新增 9 测试全部通过）
 - **编译**：0 errors，0 warnings
 - **Registry God Object**：生产代码业务逻辑已全部消除，`WorkspaceRegistry` 为纯向后兼容门面
 - **Workspace 拆分**：6 个零耦合模块已提取为独立 crate（`crates/` 目录）
@@ -50,6 +50,7 @@
 | `devbase-syncthing-client` | `src/syncthing_client.rs` | 85 | 2 | 0 `crate::` refs | `066b18d` |
 | `devbase-vault-frontmatter` | `src/vault/frontmatter.rs` | 175 | 5 | 0 `crate::` refs | `066b18d` |
 | `devbase-vault-wikilink` | `src/vault/wikilink.rs` | 130 | 5 | 0 `crate::` refs | `066b18d` |
+| `devbase-workflow-interpolate` | `src/workflow/interpolate.rs` | 239 | 9 | 0 `crate::` refs | `93b0860` |
 
 > 向后兼容：原 `src/` 路径改为 `pub use <crate>::*;` 重新导出，API 不变。
 

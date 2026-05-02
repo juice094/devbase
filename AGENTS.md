@@ -4,8 +4,8 @@
 
 > 它将本地数字资产的原始数据（代码库、笔记、Skill、工作流）编译为 AI 可决策的结构化情境，不负责思考，不负责执行，只负责感知、编码、持久化、检索。
 
-- **当前阶段**：阶段三 — v0.14.0 已发布 / Registry 架构重构完成，MCP trait 化完成
-- **当前版本**：v0.14.0
+- **当前阶段**：阶段六 — v0.16.0-dev / Workspace crate 第二批提取进行中
+- **当前版本**：v0.16.0-dev (`main@93b0860`)
 - **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ entities 统一模型 + Vault CLI 补全 + OpLog MCP 暴露 + project_context 代码结构增强
 - **核心方向**：让 Kimi CLI 在调用文件工具之前，先通过 devbase 获得"该读哪些文件、为什么读、它们之间的关系"
 - **本质分析**：见 `vault/99-Meta/devbase-essence-analysis-20260430.md` 与 `docs/architecture/redefinition.md`
@@ -22,11 +22,11 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 - **Workspace**：`%LOCALAPPDATA%\devbase\workspace/` —— 文件系统 = source of truth
   - `vault/` —— PARA 结构：00-Inbox, 01-Projects, 02-Areas, 03-Resources, 04-Archives, 99-Meta
   - `assets/` —— 二进制资源
-- **MCP Server**：stdio only（SSE 开发中），**38 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools）；配置见 `mcp.json`
+- **MCP Server**：stdio only，**45 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools + 2 个 Agent 状态工具 + 1 个 streaming index 工具）；配置见 `mcp.json`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：406 workspace passed / 0 failed / 5 ignored（devbase 406 + symbol-links 4 + sync-protocol 12 + core-types 3 + syncthing-client 2 + vault-frontmatter 5 + vault-wikilink 5）；11 passed（integration `tests/cli.rs`）
+- **当前测试**：450 workspace passed / 0 failed / 5 ignored（主 crate 410 + symbol-links 4 + sync-protocol 12 + core-types 3 + syncthing-client 2 + vault-frontmatter 5 + vault-wikilink 5 + workflow-interpolate 9）；9/11 passed（integration `tests/cli.rs`）
 - **编译状态**：1 warning（unused import `SortMode`）/ 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
-- **Workspace 结构**：`crates/` 目录已启用，3 个零耦合模块已提取为独立 crate（`devbase-symbol-links`, `devbase-sync-protocol`, `devbase-core-types`）
+- **Workspace 结构**：`crates/` 目录已启用，7 个零耦合模块已提取为独立 crate（`devbase-symbol-links`, `devbase-sync-protocol`, `devbase-core-types`, `devbase-syncthing-client`, `devbase-vault-frontmatter`, `devbase-vault-wikilink`, `devbase-workflow-interpolate`）
 - **Workflow Engine**：YAML 解析 + 拓扑调度 + batch 并行执行 + 5 种 step 类型（skill/subworkflow/parallel/condition/loop）
 - **NLQ 自然语言查询**：TUI `[:]` 触发 embedding 语义搜索，fallback 降级文本搜索
 - **Mind Market 评分**：success_rate / usage_count / rating（0-5），`skill recalc-scores/top/recommend`

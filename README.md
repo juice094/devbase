@@ -1,7 +1,7 @@
 # devbase
 
 [![Version](https://img.shields.io/badge/version-v0.15.0-blue)](https://github.com/juice094/devbase/releases)
-[![Tests](https://img.shields.io/badge/tests-418%20passed-brightgreen)](./AGENTS.md)
+[![Tests](https://img.shields.io/badge/tests-450%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
 [![License](https://img.shields.io/badge/license-MIT-orange)](./LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-9cf)](https://www.rust-lang.org)
@@ -288,6 +288,7 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | **v0.13.0** | **✅ 已发布** | **Registry God Object 拆解：10 子模块提取为 free function；WorkspaceRegistry 退化为纯 facade** |
 | **v0.14.0** | **✅ 已发布** | **Workspace 拆分：6 个零耦合 crate 提取；MCP trait 化：`mcp/tools/repo.rs` `crate::` 引用 68→41** |
 | **v0.15.0** | **✅ 已发布** | **Sprint A/B/C：三维 embedding + Saga 一致性 + Agent 状态接口 + MCP Streaming（45 tools）** |
+| **v0.16.0** | **🚧 开发中** | **Workspace crate 第二批提取 + Windows debug 栈溢出修复** |
 
 ---
 

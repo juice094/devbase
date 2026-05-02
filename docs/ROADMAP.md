@@ -1,10 +1,10 @@
 # devbase Roadmap
 
-> **当前阶段**：阶段四 — v0.14.0 Workspace 解耦 / v0.15.0 分发就绪
+> **当前阶段**：阶段六 — v0.16.0 分发就绪（进行中）
 >
-> **最后更新**：2026-05-01
+> **最后更新**：2026-04-26
 >
-> **版本状态**：`0.15.0`（Sprint A/B/C 完成：三维 embedding + Saga 一致性 + Agent 状态接口）
+> **版本状态**：`0.16.0-dev`（P2 Workspace crate 第二批提取 #1 完成：`devbase-workflow-interpolate`）
 
 ---
 
@@ -66,11 +66,11 @@ L0-L4 五层知识模型 MVP：entities 统一模型、known_limits 风险层、
 | `registry/workspace` | 215 | 5 | 0 | 15 min |
 | `vault/frontmatter` | 175 | 0 | 0 | 15 min |
 | `vault/wikilink` | 130 | 0 | 0 | 15 min |
-| `workflow/interpolate` | 239 | 0 | 0 | 15 min |
+| ~~`workflow/interpolate`~~ | ~~239~~ | ~~9~~ | ~~0~~ | ~~✅ 已完成~~ |
 | `workflow/model` | 330 | 0 | 0 | 15 min |
 | `skill_runtime/parser` | 417 | 0 | 0 | 15 min |
 
-**目标**：workspace 成员达到 8-10 个。
+**目标**：workspace 成员达到 8-10 个。当前：7 个。
 **验收**：`cargo check --workspace` 0 errors，`cargo test --workspace` 全绿。
 
 ---
@@ -166,10 +166,9 @@ L0-L4 五层知识模型 MVP：entities 统一模型、known_limits 风险层、
 
 | 版本 | 主题 | 关键交付 | 预计时间 |
 |------|------|----------|----------|
-| v0.14.1 | Workspace 扩展 Phase 1 | 再提取 3-5 个 🟢 健康模块 | 2026-05 |
-| v0.15.0 | 分发就绪 | Workspace 成员 8-10 个，mcp trait 化启动 | 2026-05/06 |
-| v0.16.0 | MCP 解耦 | mcp/tools/repo.rs `crate::` 引用 <10 | 2026-06 |
-| v0.17.0 | registry 清洁 | 所有 registry 子模块零 `crate::` 引用 | 2026-06/07 |
+| v0.15.0 | 数据层 + 可靠性 + Agent 体验 | Workspace 成员 6 个，三维 embedding + Saga 一致性 + MCP Streaming | ✅ 2026-05 |
+| v0.16.0 | Workspace 扩展 Phase 2 | Workspace 成员 8-10 个，debug 稳定性修复 | 2026-05 |
+| v0.17.0 | MCP 解耦 + registry 清洁 | mcp/tools/repo.rs `crate::` 引用 <10，registry 子模块零耦合 | 2026-06 |
 | v0.20.0 | 分发发布 | 首个 crate (`devbase-mcp`) 发布到 crates.io | 2026-07+ |
 
 ---
