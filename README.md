@@ -1,7 +1,7 @@
 # devbase
 
-[![Version](https://img.shields.io/badge/version-v0.14.0-blue)](https://github.com/juice094/devbase/releases)
-[![Tests](https://img.shields.io/badge/tests-406%20passed-brightgreen)](./AGENTS.md)
+[![Version](https://img.shields.io/badge/version-v0.15.0-blue)](https://github.com/juice094/devbase/releases)
+[![Tests](https://img.shields.io/badge/tests-418%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
 [![License](https://img.shields.io/badge/license-MIT-orange)](./LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-9cf)](https://www.rust-lang.org)
@@ -31,8 +31,8 @@ devbase 将 GitHub 项目自动封装为**标准化、可发现、可组合的 S
 │       Human Layer           │         AI Layer              │
 │  ┌─────────────────────┐    │    ┌─────────────────────┐    │
 │  │   TUI Dashboard     │    │    │   MCP Server        │    │
-│  │   终端交互仪表盘     │    │    │   37 Tools          │    │
-│  │   • 多仓库健康总览   │    │    │   stdio only         │    │
+│  │   终端交互仪表盘     │    │    │   45 Tools          │    │
+│  │   • 多仓库健康总览   │    │    │   stdio + streaming  │    │
 │  │   • 跨仓库代码搜索   │    │    │                     │    │
 │  │   • 一键启动 gitui   │    │    │   • devkit_scan     │    │
 │  │   • Skill / Workflow │    │    │   • devkit_skill_run│    │
@@ -86,7 +86,7 @@ cd devbase && cargo install --path .
 
 **面板布局**：左侧 35% 仓库列表（状态图标 ● dirty ◆ diverged ▼ behind ✓ 正常），右侧 65% 三标签页详情（Overview / Health / Insights）。
 
-### AI Layer — 38 个 MCP Tools
+### AI Layer — 45 个 MCP Tools
 
 基于 [Model Context Protocol](https://modelcontextprotocol.io) 标准化接口，stdio 本地进程通信。
 
@@ -118,10 +118,13 @@ cd devbase && cargo install --path .
 # 1. 扫描并注册工作区
 devbase scan . --register
 
-# 2. 启动 TUI 仪表盘
+# 2. 检查索引状态（Agent 自检）
+devbase status --json
+
+# 3. 启动 TUI 仪表盘
 devbase tui
 
-# 3. 启动 MCP Server（供 AI 助手调用）
+# 4. 启动 MCP Server（供 AI 助手调用）
 devbase mcp
 ```
 
@@ -224,6 +227,8 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | `devkit_module_graph` | 模块结构 | "有哪些二进制目标？" |
 | `devkit_natural_language_query` | 自然语言查询 | "dirty rust repos with >100 stars" |
 | `devkit_index` | 索引仓库摘要 | "为所有仓库生成索引" |
+| `devkit_index_stream` | 流式索引（进度事件） | "索引 devbase 并显示进度" |
+| `devkit_status` | 索引状态查询 | "devbase 索引是否新鲜？" |
 | `devkit_query` | 知识库搜索 | "搜索 sync policy" |
 | `devkit_note` | 添加笔记 | "给 devbase 添加笔记" |
 | `devkit_digest` | 知识日报 | "今天的知识日报" |
@@ -282,7 +287,7 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | **v0.12.0-alpha** | **✅ 已发布** | **Phase 2 完成 (Stage A-E): entities 统一重构 + `.devbase-ignore` + managed-gate fail-safe 同步** |
 | **v0.13.0** | **✅ 已发布** | **Registry God Object 拆解：10 子模块提取为 free function；WorkspaceRegistry 退化为纯 facade** |
 | **v0.14.0** | **✅ 已发布** | **Workspace 拆分：6 个零耦合 crate 提取；MCP trait 化：`mcp/tools/repo.rs` `crate::` 引用 68→41** |
-| **v0.15.0** | **🚧 进行中** | **分发就绪：第二批 crate 提取（registry/health, metrics, workspace...）；MCP `crate::` 引用 <30** |
+| **v0.15.0** | **✅ 已发布** | **Sprint A/B/C：三维 embedding + Saga 一致性 + Agent 状态接口 + MCP Streaming（45 tools）** |
 
 ---
 

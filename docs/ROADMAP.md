@@ -4,7 +4,7 @@
 >
 > **最后更新**：2026-05-01
 >
-> **版本状态**：`0.14.0`（Workspace 骨架 + 3 个零耦合 crate 提取 + 全模块耦合地图）
+> **版本状态**：`0.15.0`（Sprint A/B/C 完成：三维 embedding + Saga 一致性 + Agent 状态接口）
 
 ---
 
@@ -33,9 +33,17 @@ L0-L4 五层知识模型 MVP：entities 统一模型、known_limits 风险层、
 | Workspace 骨架搭建 | `crates/` 目录 + 3 个零耦合模块提取 | ✅ v0.14.0 |
 | 全模块耦合地图 | 按 `crate::` 引用数扫描，🟢/🟡/🔴 分级 | ✅ v0.14.0 |
 
+### 阶段五：v0.15.0 数据层 + 可靠性 + Agent 体验 — ✅ 已交付
+
+| Sprint | 核心交付 | 状态 |
+|--------|---------|------|
+| Sprint A — 数据层 + 性能 | v28 三维 embedding 主键；rayon 并行化（130s→~20s） | ✅ `dfdc1cc` |
+| Sprint B — 可靠性 | Tantivy-SQLite Saga 一致性扫描 + orphan 懒清理 | ✅ `dcbe256` |
+| Sprint C — Agent 体验 | `devbase status` + `DevkitStatusTool` + MCP streaming | ✅ `e8860ba` |
+
 ---
 
-## 当前阶段：阶段五 — v0.15.0 分发就绪（进行中）
+## 当前阶段：阶段六 — v0.16.0 分发就绪（进行中）
 
 **核心目标**：让 devbase 的通用组件达到"可独立发布"标准，同时保持主 crate 的健康度。
 

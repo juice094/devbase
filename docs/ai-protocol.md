@@ -4,8 +4,8 @@
 
 ## 当前架构快照
 
-- **版本**：v0.14.0 → v0.15.0-dev (`main@dcbe256` 基线, Sprint C 完成)
-- **测试**：416 passed / 0 failed / 5 ignored（`search::test_index_is_empty` Tantivy writer 显式 drop 加固；`embedding::test_candle_provider_encode` 取消 ignore）
+- **版本**：v0.15.0 (`main@e8860ba`)
+- **测试**：418 passed / 0 failed / 5 ignored（`search::test_index_is_empty` Tantivy writer 显式 drop 加固；`embedding::test_candle_provider_encode` 取消 ignore）
 - **编译**：0 errors，0 warnings
 - **Registry God Object**：生产代码业务逻辑已全部消除，`WorkspaceRegistry` 为纯向后兼容门面
 - **Workspace 拆分**：6 个零耦合模块已提取为独立 crate（`crates/` 目录）
@@ -107,7 +107,7 @@
 - **日期**：2026-05-02（续续）
 - **架构**：CLI
 - **交付**：Sprint C — Agent 状态接口 + MCP Streaming
-- **Commit**：待提交
+- **Commit**：`e8860ba`
 - **关键决策**：
   - `IndexState` 状态机（Fresh/Stale/Missing/Unknown），`detect_changes` 重构为 `get_repo_index_state`
   - `devbase status [--json]` CLI 命令，JSON 输出可被 Python `json.loads` 解析
