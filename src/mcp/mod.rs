@@ -360,6 +360,11 @@ impl McpServer {
         let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
 
         match method {
+            "ping" => Ok(serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {}
+            })),
             "initialize" => Ok(serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -477,14 +482,22 @@ impl McpServer {
                     })),
                 }
             }
-            _ => Ok(serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": {
-                    "code": -32601,
-                    "message": format!("Method '{}' not found", method)
+            _ => {
+                if id.is_null() {
+                    // Workaround: Python MCP SDK 1.16.0 cannot parse JSON-RPC
+                    // error responses with `id: null`. Return Null so the
+                    // caller can silently drop it.
+                    return Ok(serde_json::Value::Null);
                 }
-            })),
+                Ok(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": -32601,
+                        "message": format!("Method '{}' not found", method)
+                    }
+                }))
+            }
         }
     }
 
@@ -676,9 +689,11 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                     }
                 })
             });
-            let msg = format_mcp_message_auto(&resp, use_ndjson);
-            if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err() {
-                break;
+            if !resp.is_null() {
+                let msg = format_mcp_message_auto(&resp, use_ndjson);
+                if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err() {
+                    break;
+                }
             }
             continue;
         };
@@ -766,9 +781,8 @@ pub async fn run_stdio() -> anyhow::Result<()> {
 
         // Notifications have no "id" field and require no response.
         let is_notification = req.get("id").is_none();
-        let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
-        if is_notification && method.starts_with("notifications/") {
-            // Silently acknowledge the notification.
+        if is_notification {
+            // Silently acknowledge all notifications (not just notifications/*).
             continue;
         }
 
@@ -783,9 +797,11 @@ pub async fn run_stdio() -> anyhow::Result<()> {
             })
         });
 
-        let msg = format_mcp_message_auto(&resp, use_ndjson);
-        if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err() {
-            break; // broken pipe
+        if !resp.is_null() {
+            let msg = format_mcp_message_auto(&resp, use_ndjson);
+            if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err() {
+                break; // broken pipe
+            }
         }
     }
 
