@@ -12,11 +12,11 @@ pub fn run(conn: &Connection) -> anyhow::Result<()> {
         conn.execute(
             "CREATE TABLE code_embeddings (
                 repo_id TEXT NOT NULL,
+                file_path TEXT NOT NULL DEFAULT '',
                 symbol_name TEXT NOT NULL,
                 embedding BLOB NOT NULL,
                 generated_at TEXT NOT NULL,
-                PRIMARY KEY (repo_id, symbol_name),
-                FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+                PRIMARY KEY (repo_id, file_path, symbol_name)
             )",
             [],
         )?;

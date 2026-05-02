@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use crate::registry::RepoEntry;
+use rayon::prelude::*;
 
 fn index_repo_in_search(
     repo: &crate::registry::RepoEntry,
@@ -211,80 +212,74 @@ pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<
     Ok(count)
 }
 
-/// Generate and save embeddings for code symbols using the default provider.
-/// Clears old embeddings for the repo before inserting new ones.
+/// Parallel embedding generation for code symbols.
+/// Phase 1: CPU-intensive encoding across all available cores (rayon).
+/// Phase 2: Single-threaded SQLite batch write to avoid lock contention.
+fn generate_and_save_embeddings(
+    conn: &mut rusqlite::Connection,
+    repo_id: &str,
+    symbols: &[crate::semantic_index::CodeSymbol],
+    clear_existing: bool,
+) -> anyhow::Result<usize> {
+    use tracing::{info, warn};
+
+    // Phase 1: parallel encoding
+    let items: Vec<(String, String, Vec<f32>)> = symbols
+        .par_iter()
+        .filter_map(|sym| {
+            let text = format!("{} {}", sym.name, sym.signature.as_deref().unwrap_or(""));
+            match crate::embedding::generate_query_embedding(&text) {
+                Ok(emb) => {
+                    let fp = sym.file_path.to_string_lossy().to_string();
+                    Some((fp, sym.name.clone(), emb))
+                }
+                Err(e) => {
+                    warn!("Embedding generation failed for '{}': {}", sym.name, e);
+                    None
+                }
+            }
+        })
+        .collect();
+
+    // Phase 2: single-threaded batch write
+    let tx = conn.transaction()?;
+    if clear_existing {
+        tx.execute("DELETE FROM code_embeddings WHERE repo_id = ?1", [repo_id])?;
+    }
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut inserted = 0usize;
+    for (file_path, name, embedding) in items {
+        let blob = crate::embedding::embedding_to_bytes(&embedding);
+        let sql = "INSERT INTO code_embeddings (repo_id, file_path, symbol_name, embedding, generated_at) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(repo_id, file_path, symbol_name) DO UPDATE SET
+             embedding = excluded.embedding,
+             generated_at = excluded.generated_at";
+        match tx.execute(sql, rusqlite::params![repo_id, &file_path, &name, &blob, &now]) {
+            Ok(_) => inserted += 1,
+            Err(e) => warn!("Failed to insert embedding for {}: {}", name, e),
+        }
+    }
+    tx.commit()?;
+
+    let mode = if clear_existing { "" } else { " (incremental)" };
+    info!("Saved {} symbol embeddings{} for {}", inserted, mode, repo_id);
+    Ok(inserted)
+}
+
 fn save_symbol_embeddings(
     conn: &mut rusqlite::Connection,
     repo_id: &str,
     symbols: &[crate::semantic_index::CodeSymbol],
 ) -> anyhow::Result<usize> {
-    use tracing::{info, warn};
-
-    let tx = conn.transaction()?;
-    tx.execute("DELETE FROM code_embeddings WHERE repo_id = ?1", [repo_id])?;
-
-    let mut inserted = 0usize;
-    for symbol in symbols {
-        let text = format!("{} {}", symbol.name, symbol.signature.as_deref().unwrap_or(""));
-        match crate::embedding::generate_query_embedding(&text) {
-            Ok(embedding) => {
-                let blob = crate::embedding::embedding_to_bytes(&embedding);
-                let now = chrono::Utc::now().to_rfc3339();
-                match tx.execute(
-                    "INSERT INTO code_embeddings (repo_id, symbol_name, embedding, generated_at) VALUES (?1, ?2, ?3, ?4)",
-                    rusqlite::params![repo_id, &symbol.name, &blob, &now],
-                ) {
-                    Ok(_) => inserted += 1,
-                    Err(e) => warn!("Failed to insert embedding for {}: {}", symbol.name, e),
-                }
-            }
-            Err(e) => {
-                warn!("Embedding generation failed for '{}': {}", symbol.name, e);
-            }
-        }
-    }
-
-    tx.commit()?;
-    info!("Saved {} symbol embeddings for {}", inserted, repo_id);
-    Ok(inserted)
+    generate_and_save_embeddings(conn, repo_id, symbols, true)
 }
 
-/// Incremental embedding save: does NOT clear the repo, only inserts/replaces.
 fn save_symbol_embeddings_incremental(
     conn: &mut rusqlite::Connection,
     repo_id: &str,
     symbols: &[crate::semantic_index::CodeSymbol],
 ) -> anyhow::Result<usize> {
-    use tracing::{info, warn};
-
-    let tx = conn.transaction()?;
-    let mut inserted = 0usize;
-    for symbol in symbols {
-        let text = format!("{} {}", symbol.name, symbol.signature.as_deref().unwrap_or(""));
-        match crate::embedding::generate_query_embedding(&text) {
-            Ok(embedding) => {
-                let blob = crate::embedding::embedding_to_bytes(&embedding);
-                let now = chrono::Utc::now().to_rfc3339();
-                match tx.execute(
-                    "INSERT INTO code_embeddings (repo_id, symbol_name, embedding, generated_at) VALUES (?1, ?2, ?3, ?4)
-                     ON CONFLICT(repo_id, symbol_name) DO UPDATE SET
-                     embedding = excluded.embedding,
-                     generated_at = excluded.generated_at",
-                    rusqlite::params![repo_id, &symbol.name, &blob, &now],
-                ) {
-                    Ok(_) => inserted += 1,
-                    Err(e) => warn!("Failed to insert embedding for {}: {}", symbol.name, e),
-                }
-            }
-            Err(e) => {
-                warn!("Embedding generation failed for '{}': {}", symbol.name, e);
-            }
-        }
-    }
-
-    tx.commit()?;
-    info!("Saved {} symbol embeddings (incremental) for {}", inserted, repo_id);
-    Ok(inserted)
+    generate_and_save_embeddings(conn, repo_id, symbols, false)
 }
 
 /// Detect whether a repo can be incrementally indexed.

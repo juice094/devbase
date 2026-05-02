@@ -328,10 +328,11 @@ CREATE INDEX idx_call_graph_caller ON code_call_graph(repo_id, caller_file, call
 
 CREATE TABLE IF NOT EXISTS code_embeddings (
     repo_id TEXT NOT NULL,
+    file_path TEXT NOT NULL,
     symbol_name TEXT NOT NULL,
     embedding BLOB NOT NULL,
     generated_at TEXT NOT NULL,
-    PRIMARY KEY (repo_id, symbol_name)
+    PRIMARY KEY (repo_id, file_path, symbol_name)
 );
 
 CREATE TABLE IF NOT EXISTS code_symbol_links (

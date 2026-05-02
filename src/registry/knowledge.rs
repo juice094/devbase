@@ -268,12 +268,12 @@ pub fn save_embeddings(
     for (symbol_name, vec) in embeddings {
         let blob = crate::embedding::embedding_to_bytes(vec);
         tx.execute(
-            "INSERT INTO code_embeddings (repo_id, symbol_name, embedding, generated_at)
-             VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(repo_id, symbol_name) DO UPDATE SET
+            "INSERT INTO code_embeddings (repo_id, file_path, symbol_name, embedding, generated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(repo_id, file_path, symbol_name) DO UPDATE SET
              embedding = excluded.embedding,
              generated_at = excluded.generated_at",
-            rusqlite::params![repo_id, symbol_name, blob, &now],
+            rusqlite::params![repo_id, "", symbol_name, blob, &now],
         )?;
         inserted += 1;
     }
@@ -504,9 +504,10 @@ pub fn semantic_search_symbols(
     limit: usize,
 ) -> anyhow::Result<Vec<crate::semantic_index::SemanticSearchRow>> {
     let mut stmt = conn.prepare(
-        "SELECT ce.symbol_name, cs.file_path, cs.line_start, ce.embedding
+        "SELECT ce.symbol_name, ce.file_path, cs.line_start, ce.embedding
          FROM code_embeddings ce
          JOIN code_symbols cs ON ce.repo_id = cs.repo_id
+             AND ce.file_path = cs.file_path
              AND ce.symbol_name = cs.name
          WHERE ce.repo_id = ?1 AND cs.symbol_type = 'function'
          ORDER BY ce.symbol_name",
@@ -813,10 +814,16 @@ mod tests {
         )
         .unwrap();
 
+        conn.execute(
+            "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start, line_end, signature) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params!["repo-a", "", "function", "hello", 1_i64, 3_i64, Option::<&str>::None],
+        )
+        .unwrap();
+
         let emb = crate::embedding::embedding_to_bytes(&[1.0_f32, 0.0, 0.0]);
         conn.execute(
-            "INSERT INTO code_embeddings (repo_id, symbol_name, embedding, generated_at) VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params!["repo-a", "hello", emb, chrono::Utc::now().to_rfc3339()],
+            "INSERT INTO code_embeddings (repo_id, file_path, symbol_name, embedding, generated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params!["repo-a", "", "hello", emb, chrono::Utc::now().to_rfc3339()],
         )
         .unwrap();
 
@@ -848,8 +855,8 @@ mod tests {
 
         let emb = crate::embedding::embedding_to_bytes(&[1.0_f32, 0.0, 0.0]);
         conn.execute(
-            "INSERT INTO code_embeddings (repo_id, symbol_name, embedding, generated_at) VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params!["repo-a", "hello", emb, chrono::Utc::now().to_rfc3339()],
+            "INSERT INTO code_embeddings (repo_id, file_path, symbol_name, embedding, generated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params!["repo-a", "src/lib.rs", "hello", emb, chrono::Utc::now().to_rfc3339()],
         )
         .unwrap();
 

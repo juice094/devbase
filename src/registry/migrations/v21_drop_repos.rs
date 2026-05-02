@@ -89,7 +89,7 @@ pub fn run(conn: &Connection) -> anyhow::Result<()> {
     rebuild_table_without_fk(
         conn,
         "code_embeddings",
-        "CREATE TABLE code_embeddings (repo_id TEXT NOT NULL, symbol_name TEXT NOT NULL, embedding BLOB NOT NULL, generated_at TEXT NOT NULL, PRIMARY KEY (repo_id, symbol_name))",
+        "CREATE TABLE code_embeddings (repo_id TEXT NOT NULL, file_path TEXT NOT NULL DEFAULT '', symbol_name TEXT NOT NULL, embedding BLOB NOT NULL, generated_at TEXT NOT NULL, PRIMARY KEY (repo_id, file_path, symbol_name))",
     )?;
 
     conn.execute("DROP TABLE IF EXISTS repos", [])?;

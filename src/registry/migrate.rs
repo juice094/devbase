@@ -177,8 +177,7 @@ impl WorkspaceRegistry {
                 module_path TEXT NOT NULL,
                 public_apis TEXT,
                 extracted_at TEXT,
-                PRIMARY KEY (repo_id, module_path),
-                FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
+                PRIMARY KEY (repo_id, module_path)
             )",
             [],
         )?;
@@ -289,14 +288,15 @@ impl WorkspaceRegistry {
         conn.execute("CREATE INDEX IF NOT EXISTS idx_oplog_operation ON oplog(operation)", [])?;
         conn.execute("CREATE INDEX IF NOT EXISTS idx_oplog_timestamp ON oplog(timestamp)", [])?;
 
-        // v11: code embeddings for semantic vector search
+        // v11+v28: code embeddings for semantic vector search (3D PK since v28)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS code_embeddings (
                 repo_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
                 symbol_name TEXT NOT NULL,
                 embedding BLOB NOT NULL,
                 generated_at TEXT NOT NULL,
-                PRIMARY KEY (repo_id, symbol_name),
+                PRIMARY KEY (repo_id, file_path, symbol_name),
                 FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE
             )",
             [],
@@ -440,6 +440,14 @@ impl WorkspaceRegistry {
         // of this function, so drop it unconditionally at the end.
         let _ = conn.execute("DROP TABLE IF EXISTS repos", []);
 
+        // Debug: explicit FK check before commit to surface any dangling constraints
+        match conn.execute("PRAGMA foreign_key_check", []) {
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("FK check failed before COMMIT: {}", e);
+                return Err(e.into());
+            }
+        }
         conn.execute("COMMIT", [])?;
         Ok(conn)
     }
