@@ -4,9 +4,9 @@
 
 > 它将本地数字资产的原始数据（代码库、笔记、Skill、工作流）编译为 AI 可决策的结构化情境，不负责思考，不负责执行，只负责感知、编码、持久化、检索。
 
-- **当前阶段**：阶段六 — v0.16.0-dev / Workspace crate 第二批提取进行中
-- **当前版本**：v0.16.0-dev (`main@93b0860`)
-- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ entities 统一模型 + Vault CLI 补全 + OpLog MCP 暴露 + project_context 代码结构增强
+- **当前阶段**：阶段六 — v0.16.1 / MCP Python SDK 兼容修复 + repo.rs trait 化收尾
+- **当前版本**：v0.16.1 (`main@5928499`)
+- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ 18 workspace crates 提取 + MCP Python SDK 1.16.0 兼容修复（NDJSON + null-id workaround）+ repo.rs crate:: 引用 13→9
 - **核心方向**：让 Kimi CLI 在调用文件工具之前，先通过 devbase 获得"该读哪些文件、为什么读、它们之间的关系"
 - **本质分析**：见 `vault/99-Meta/devbase-essence-analysis-20260430.md` 与 `docs/architecture/redefinition.md`
 - **设计文档**：
