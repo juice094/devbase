@@ -661,6 +661,9 @@ mod tests {
             &mut writer, &schema, "ghost_repo", "Ghost", "ghost content", &[],
         ).unwrap();
         crate::search::commit_writer(&mut writer).unwrap();
+        drop(writer);
+        drop(index);
+        std::thread::sleep(std::time::Duration::from_millis(50));
 
         // Repair should detect the orphan
         let count = repair_tantivy_consistency(&mut conn).unwrap();
