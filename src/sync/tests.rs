@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use super::tasks::{perform_merge, write_syncdone_marker};
 use super::*;
 use git2::Repository;

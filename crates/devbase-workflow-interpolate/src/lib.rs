@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;

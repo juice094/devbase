@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use chrono::{DateTime, Utc};
 
 /// A single known limit (L3 risk layer entry).

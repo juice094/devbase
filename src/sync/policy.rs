@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use git2::Repository;
 
 pub(super) fn classify_sync_error(error: &anyhow::Error) -> &'static str {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use super::SkillRow;
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet, VecDeque};

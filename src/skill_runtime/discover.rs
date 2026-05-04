@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! Auto-discovery: analyze a GitHub project and generate a SKILL.md draft + entry_script wrapper.
 //!
 //! Phase 1 scope:

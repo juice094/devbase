@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! Repository layer — encapsulates all persistence logic for the AI-Native Storage Engine.
 //!
 //! Design principles:

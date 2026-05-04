@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 
 pub mod hybrid;
 

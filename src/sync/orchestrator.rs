@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::time::{Duration, timeout};

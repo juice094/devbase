@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 pub fn run_workflow(
     ctx: &mut crate::storage::AppContext,
     cmd: crate::WorkflowCommands,

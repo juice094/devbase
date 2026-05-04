@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use ratatui::style::{Color, Modifier, Style};
 
 /// Semantic color tokens for the application theme.

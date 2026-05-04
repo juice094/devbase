@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use super::*;
 
 fn test_ctx() -> (crate::storage::AppContext, tempfile::TempDir) {

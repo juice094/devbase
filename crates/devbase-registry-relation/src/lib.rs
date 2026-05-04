@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use chrono::Utc;
 
 /// (from_entity_id, to_entity_id, relation_type, confidence, created_at)

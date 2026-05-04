@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use crate::asyncgit::AsyncNotification;
 use crossbeam_channel::Receiver;
 use ratatui::widgets::ListState;

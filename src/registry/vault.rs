@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use chrono::{DateTime, Utc};
 
 pub fn save_vault_note(

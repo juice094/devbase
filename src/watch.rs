@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use crate::sync_protocol::{FileInfo, SyncIndex, scan_directory};
 use anyhow::Context;
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};

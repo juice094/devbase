@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use crate::registry::WorkspaceRegistry;
 use chrono::{DateTime, Utc};
 use git2::Repository;

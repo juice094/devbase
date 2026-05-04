@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! MCP tool client traits — decouple tools from concrete devbase modules.
 //!
 //! **日期**: 2026-05-01 (Batch 3 — MCP trait 化启动)

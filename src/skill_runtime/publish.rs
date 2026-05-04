@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use super::parser::parse_skill_md;
 use std::path::Path;
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! devbase-core-types — Core knowledge graph types: Node, Edge, NodeType.
 //!
 //! **提取日期**: 2026-05-01 (Workspace split)

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! devbase-symbol-links — Code symbol link generator.
 //!
 //! **提取日期**: 2026-05-01 (Workspace split)

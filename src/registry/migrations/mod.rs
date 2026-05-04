@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use rusqlite::Connection;
 
 pub mod v01_initial;

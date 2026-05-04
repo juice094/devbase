@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! RE-EXPORT ONLY: This module has been extracted to `crates/devbase-symbol-links`.
 //! Do NOT add new code here. Edit `crates/devbase-symbol-links/src/lib.rs` instead.
 pub use devbase_symbol_links::*;

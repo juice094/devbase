@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! devbase-vault-wikilink — WikiLink parser and resolver for Markdown vaults.
 //!
 //! **提取日期**: 2026-05-01 (Workspace split)

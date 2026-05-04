@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! devbase-syncthing-client — Syncthing REST API client for folder management.
 //!
 //! **提取日期**: 2026-05-01 (Workspace split)

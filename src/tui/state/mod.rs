@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use crate::asyncgit::AsyncNotification;
 use crate::tui::{
     App, InputMode, ListState, MainView, NLPPopupMode, RepoItem, SearchPopupMode, SkillItem,

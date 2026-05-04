@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! arXiv API metadata fetcher.
 //!
 //! Fetches paper metadata from export.arxiv.org and parses Atom XML

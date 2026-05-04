@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 // Re-exports to preserve main.rs compatibility after commands/simple.rs split
 pub use crate::commands::analysis::{
     run_call_graph, run_code_symbols, run_dead_code, run_dependency_graph, run_metrics,

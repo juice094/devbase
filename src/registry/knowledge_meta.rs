@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use chrono::{DateTime, Utc};
 
 /// L4 metacognition layer entry — human corrections and cross-session consistency tracking.

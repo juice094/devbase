@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! Hybrid search: vector similarity + keyword matching with RRF merge.
 //!
 //! This module provides the core fusion algorithm for combining dense

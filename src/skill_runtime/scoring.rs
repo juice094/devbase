@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use rusqlite::{Connection, params};
 
 /// Recompute usage_count, success_rate, and rating for a single skill

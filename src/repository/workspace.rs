@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! Repository for workspace snapshot operations.
 
 use crate::registry::WorkspaceSnapshot;

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 pub fn run_limit(
     ctx: &mut crate::storage::AppContext,
     cmd: crate::LimitCommands,

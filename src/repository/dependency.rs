@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! Repository for dependency graph operations.
 
 pub struct DependencyRepository<'a>(&'a rusqlite::Connection);

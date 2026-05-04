@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use crate::search;
 use crate::vault::fs_io;
 use tracing::info;

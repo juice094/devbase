@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! Code symbol query helpers.
 
 /// A single code symbol from the `code_symbols` table.

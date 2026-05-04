@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! Sync vault notes with ai_context=true to Clarity SKILL.md format.
 
 use crate::vault::frontmatter::extract_frontmatter;

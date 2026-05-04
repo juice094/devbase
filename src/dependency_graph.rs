@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! Cross-repository dependency graph builder.
 //!
 //! Parses manifest files (Cargo.toml, package.json, go.mod) to discover

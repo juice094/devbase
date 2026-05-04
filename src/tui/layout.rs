@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
 
 /// Computed layout rectangles for all major UI regions.

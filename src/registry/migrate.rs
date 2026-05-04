@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use super::*;
 use crate::storage::StorageBackend;
 use std::path::PathBuf;

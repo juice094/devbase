@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! Embedding storage protocol and similarity utilities.
 //!
 //! Devbase handles storage (SQLite BLOB), serialization, query-time

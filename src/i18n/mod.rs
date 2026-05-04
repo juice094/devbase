@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
 pub struct I18n {

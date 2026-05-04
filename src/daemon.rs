@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{info, warn};

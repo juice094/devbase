@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use crate::mcp::McpTool;
 use crate::skill_runtime::registry;
 use anyhow::Context;

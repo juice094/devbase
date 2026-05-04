@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use crate::registry::repo;
 use crate::registry::{RepoEntry, WorkspaceRegistry};
 use crate::storage::StorageBackend;

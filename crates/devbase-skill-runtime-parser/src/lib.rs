@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use devbase_skill_runtime_types::{SkillDependency, SkillInput, SkillMeta, SkillOutput, SkillType};
 
 /// Parse a SKILL.md file into `SkillMeta`.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 pub mod context;
 pub mod known_limit;
 pub mod oplog;

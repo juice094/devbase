@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use crate::tui::layout::AppLayout;
 use crate::tui::theme::{Styles, Theme};
 use crate::tui::{App, HelpPopupMode};

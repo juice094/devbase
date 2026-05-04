@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use super::interpolate::{InterpolationContext, interpolate, interpolate_value};
 use super::model::{
     ErrorPolicy, ExecutionStatus, StepDefinition, StepResult, StepType, WorkflowDefinition,

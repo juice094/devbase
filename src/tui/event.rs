@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use crate::tui::render::ui;
 use crate::tui::{
     App, InputMode, MainView, NLPPopupMode, SearchPopupMode, SkillPopupMode, SyncPopupMode,

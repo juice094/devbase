@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! Sync devbase skills to Clarity plans.
 
 use anyhow::{Context, Result};

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! Knowledge coverage analytics and workspace reporting.
 //!
 //! Aggregates registry statistics to produce human-readable and

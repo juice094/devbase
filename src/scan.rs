@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use crate::registry::repo;
 use crate::registry::{CodeMetrics, OplogEntry, RemoteEntry, RepoEntry};
 use chrono::Utc;

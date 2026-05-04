@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! Intra-repository call graph query helpers.
 
 /// A single call edge from the `code_call_graph` table.

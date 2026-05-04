@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use crate::mcp::tools::parse_github_repo;
 use anyhow::Context;
 use devbase::*;

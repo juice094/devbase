@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use crate::tui::theme::Styles;
 use crate::tui::{App, DetailTab, MainView};
 use ratatui::{

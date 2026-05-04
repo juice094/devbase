@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 use super::{CliStrings, I18n, LogStrings, SyncStrings, TuiStrings};
 
 pub fn build() -> I18n {

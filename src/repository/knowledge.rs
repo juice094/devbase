@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! Repository for knowledge base operations (summaries, modules, papers, experiments).
 
 use crate::registry::{ENTITY_TYPE_PAPER, ExperimentEntry, PaperEntry};

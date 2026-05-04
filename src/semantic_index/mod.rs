@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 juice094
 //! Semantic code indexing using tree-sitter.
 //!
 //! Extracts symbols (functions, structs, enums, traits, impls, classes,
