@@ -42,9 +42,24 @@ Returns: success boolean and relation details."#,
         args: serde_json::Value,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        let from = args.get("from_entity_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let to = args.get("to_entity_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let rel_type = args.get("relation_type").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let from = args
+            .get("from_entity_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let to = args
+            .get("to_entity_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let rel_type = args
+            .get("relation_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
         let confidence = args.get("confidence").and_then(|v| v.as_f64()).unwrap_or(1.0);
 
         if from.is_empty() || to.is_empty() || rel_type.is_empty() {
@@ -53,9 +68,35 @@ Returns: success boolean and relation details."#,
                 "error": "from_entity_id, to_entity_id, and relation_type are required"
             }));
         }
+        if !(0.0..=1.0).contains(&confidence) {
+            return Ok(serde_json::json!({
+                "success": false,
+                "error": "confidence must be between 0.0 and 1.0"
+            }));
+        }
+        if from == to {
+            return Ok(serde_json::json!({
+                "success": false,
+                "error": "self-relations (from_entity_id == to_entity_id) are not allowed"
+            }));
+        }
 
         let conn = ctx.conn()?;
-        crate::registry::relation::save_relation(&conn, &from, &to, &rel_type, confidence)?;
+        if let Err(e) =
+            crate::registry::relation::save_relation(&conn, &from, &to, &rel_type, confidence)
+        {
+            let msg = e.to_string();
+            if msg.contains("foreign key constraint") || msg.contains("FOREIGN KEY") {
+                return Ok(serde_json::json!({
+                    "success": false,
+                    "error": format!("Entity not found in registry. Ensure both '{}' and '{}' exist as registered entities.", from, to)
+                }));
+            }
+            return Ok(serde_json::json!({
+                "success": false,
+                "error": msg
+            }));
+        }
 
         Ok(serde_json::json!({
             "success": true,
@@ -95,7 +136,7 @@ Returns: JSON array of relations with to_entity_id, relation_type, confidence, a
                 "properties": {
                     "entity_id": { "type": "string" },
                     "relation_type": { "type": "string" },
-                    "direction": { "type": "string", "enum": ["outgoing", "bidirectional"] }
+                    "direction": { "type": "string", "enum": ["outgoing", "incoming", "bidirectional"] }
                 },
                 "required": ["entity_id"]
             }
@@ -107,7 +148,8 @@ Returns: JSON array of relations with to_entity_id, relation_type, confidence, a
         args: serde_json::Value,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        let entity_id = args.get("entity_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let entity_id =
+            args.get("entity_id").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
         let relation_type = args.get("relation_type").and_then(|v| v.as_str());
         let direction = args.get("direction").and_then(|v| v.as_str()).unwrap_or("outgoing");
 
@@ -138,6 +180,38 @@ Returns: JSON array of relations with to_entity_id, relation_type, confidence, a
                     })
                     .collect::<Vec<_>>()
             }
+            "incoming" => {
+                let mut stmt = conn.prepare(
+                    "SELECT from_entity_id, relation_type, confidence, created_at FROM relations
+                     WHERE to_entity_id = ?1
+                     ORDER BY confidence DESC",
+                )?;
+                let rows = stmt.query_map([&entity_id], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, f64>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                })?;
+                let filtered: Vec<_> = if let Some(rt) = relation_type.filter(|s| !s.is_empty()) {
+                    rows.filter(|r| r.as_ref().map(|(_, t, _, _)| t == rt).unwrap_or(false))
+                        .collect::<Result<Vec<_>, _>>()?
+                } else {
+                    rows.collect::<Result<Vec<_>, _>>()?
+                };
+                filtered
+                    .into_iter()
+                    .map(|(from, rt, conf, created)| {
+                        serde_json::json!({
+                            "from_entity_id": from,
+                            "relation_type": rt,
+                            "confidence": conf,
+                            "created_at": created
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            }
             _ => {
                 let rows =
                     crate::registry::relation::list_relations(&conn, &entity_id, relation_type)?;
@@ -160,6 +234,85 @@ Returns: JSON array of relations with to_entity_id, relation_type, confidence, a
             "direction": direction,
             "count": results.len(),
             "relations": results
+        }))
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitRelationDeleteTool;
+
+impl McpTool for DevkitRelationDeleteTool {
+    fn name(&self) -> &'static str {
+        "devkit_relation_delete"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Delete a relation between two entities from the devbase registry.
+
+Parameters:
+- from_entity_id: Source entity ID
+- to_entity_id: Target entity ID
+- relation_type: Relationship label (optional — if omitted, deletes all relations between the two entities)
+
+Returns: success boolean and count of deleted relations."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "from_entity_id": { "type": "string" },
+                    "to_entity_id": { "type": "string" },
+                    "relation_type": { "type": "string" }
+                },
+                "required": ["from_entity_id", "to_entity_id"]
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let from = args
+            .get("from_entity_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let to = args
+            .get("to_entity_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let rel_type =
+            args.get("relation_type").and_then(|v| v.as_str()).map(|s| s.trim().to_string());
+
+        if from.is_empty() || to.is_empty() {
+            return Ok(serde_json::json!({
+                "success": false,
+                "error": "from_entity_id and to_entity_id are required"
+            }));
+        }
+
+        let conn = ctx.conn()?;
+        let count = match rel_type.as_deref().filter(|s| !s.is_empty()) {
+            Some(rt) => conn.execute(
+                "DELETE FROM relations WHERE from_entity_id = ?1 AND to_entity_id = ?2 AND relation_type = ?3",
+                rusqlite::params![&from, &to, rt],
+            )?,
+            None => conn.execute(
+                "DELETE FROM relations WHERE from_entity_id = ?1 AND to_entity_id = ?2",
+                rusqlite::params![&from, &to],
+            )?,
+        };
+
+        Ok(serde_json::json!({
+            "success": true,
+            "deleted": count,
+            "from_entity_id": from,
+            "to_entity_id": to,
+            "relation_type": rel_type
         }))
     }
 }
