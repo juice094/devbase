@@ -170,6 +170,9 @@ pub(crate) enum Commands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Recompute metrics from source (tokei) before showing
+        #[arg(long)]
+        recalc: bool,
     },
     /// Show module graph for a repository
     ModuleGraph {
@@ -641,8 +644,8 @@ async fn main() -> anyhow::Result<()> {
         Commands::Oplog { limit, repo } => {
             commands::simple::run_oplog(&mut ctx, limit, repo)?;
         }
-        Commands::Metrics { repo_id, json } => {
-            commands::simple::run_metrics(&mut ctx, &repo_id, json)?;
+        Commands::Metrics { repo_id, json, recalc } => {
+            commands::simple::run_metrics(&mut ctx, &repo_id, json, recalc)?;
         }
         Commands::ModuleGraph { repo_id, json } => {
             commands::simple::run_module_graph(&mut ctx, &repo_id, json)?;

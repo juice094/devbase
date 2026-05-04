@@ -4,7 +4,24 @@ pub fn run_metrics(
     ctx: &mut crate::storage::AppContext,
     repo_id: &str,
     json: bool,
+    recalc: bool,
 ) -> anyhow::Result<()> {
+    if recalc && !repo_id.is_empty() {
+        let conn = ctx.conn()?;
+        let local_path: String = conn
+            .query_row("SELECT local_path FROM entities WHERE id = ?1", [repo_id], |row| row.get(0))
+            .unwrap_or_default();
+        if !local_path.is_empty() {
+            if let Some(metrics) = crate::scan::compute_code_metrics(&local_path) {
+                crate::registry::metrics::save_code_metrics(&conn, repo_id, &metrics)?;
+                println!("Recomputed metrics for '{}'.", repo_id);
+            } else {
+                println!("Failed to compute metrics for '{}'.", repo_id);
+            }
+        } else {
+            println!("Repository '{}' not found in registry.", repo_id);
+        }
+    }
     if repo_id.is_empty() {
         let val = ctx.list_code_metrics()?;
         let repos = val.get("repos").and_then(|v| v.as_array()).cloned().unwrap_or_default();
