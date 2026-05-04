@@ -42,23 +42,21 @@ impl<'a> SymbolRepository<'a> {
             sql.push_str(&(params.len() + 1).to_string());
             params.push(Box::new(format!("%{}%", path)));
         }
-        sql.push_str(&format!(
-            " ORDER BY file_path, line_start LIMIT {}",
-            limit.min(200)
-        ));
+        sql.push_str(&format!(" ORDER BY file_path, line_start LIMIT {}", limit.min(200)));
 
         let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = self.conn().prepare(&sql)?;
-        let rows = stmt.query_map(rusqlite::params_from_iter(param_refs), |row: &rusqlite::Row| {
-            Ok(CodeSymbol {
-                file_path: row.get::<_, String>(0)?,
-                symbol_type: row.get::<_, String>(1)?,
-                name: row.get::<_, String>(2)?,
-                line_start: row.get::<_, i64>(3)?,
-                line_end: row.get::<_, i64>(4)?,
-                signature: row.get::<_, Option<String>>(5)?,
-            })
-        })?;
+        let rows =
+            stmt.query_map(rusqlite::params_from_iter(param_refs), |row: &rusqlite::Row| {
+                Ok(CodeSymbol {
+                    file_path: row.get::<_, String>(0)?,
+                    symbol_type: row.get::<_, String>(1)?,
+                    name: row.get::<_, String>(2)?,
+                    line_start: row.get::<_, i64>(3)?,
+                    line_end: row.get::<_, i64>(4)?,
+                    signature: row.get::<_, Option<String>>(5)?,
+                })
+            })?;
 
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
@@ -93,21 +91,19 @@ impl<'a> SymbolRepository<'a> {
             sql.push_str(&(params.len() + 1).to_string());
             params.push(Box::new(format!("%{}%", path)));
         }
-        sql.push_str(&format!(
-            " ORDER BY caller_file, caller_line LIMIT {}",
-            limit.min(200)
-        ));
+        sql.push_str(&format!(" ORDER BY caller_file, caller_line LIMIT {}", limit.min(200)));
 
         let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = self.conn().prepare(&sql)?;
-        let rows = stmt.query_map(rusqlite::params_from_iter(param_refs), |row: &rusqlite::Row| {
-            Ok(CallEdge {
-                caller_file: row.get::<_, String>(0)?,
-                caller_symbol: row.get::<_, String>(1)?,
-                caller_line: row.get::<_, i64>(2)?,
-                callee_name: row.get::<_, String>(3)?,
-            })
-        })?;
+        let rows =
+            stmt.query_map(rusqlite::params_from_iter(param_refs), |row: &rusqlite::Row| {
+                Ok(CallEdge {
+                    caller_file: row.get::<_, String>(0)?,
+                    caller_symbol: row.get::<_, String>(1)?,
+                    caller_line: row.get::<_, i64>(2)?,
+                    callee_name: row.get::<_, String>(3)?,
+                })
+            })?;
 
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
@@ -138,21 +134,19 @@ impl<'a> SymbolRepository<'a> {
         // Exclude main() — entry points are never dead code
         sql.push_str(" AND cs.name != 'main'");
 
-        sql.push_str(&format!(
-            " ORDER BY cs.file_path, cs.line_start LIMIT {}",
-            limit.min(200)
-        ));
+        sql.push_str(&format!(" ORDER BY cs.file_path, cs.line_start LIMIT {}", limit.min(200)));
 
         let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = self.conn().prepare(&sql)?;
-        let rows = stmt.query_map(rusqlite::params_from_iter(param_refs), |row: &rusqlite::Row| {
-            Ok(DeadFunction {
-                file_path: row.get::<_, String>(0)?,
-                name: row.get::<_, String>(1)?,
-                line_start: row.get::<_, i64>(2)?,
-                signature: row.get::<_, Option<String>>(3)?,
-            })
-        })?;
+        let rows =
+            stmt.query_map(rusqlite::params_from_iter(param_refs), |row: &rusqlite::Row| {
+                Ok(DeadFunction {
+                    file_path: row.get::<_, String>(0)?,
+                    name: row.get::<_, String>(1)?,
+                    line_start: row.get::<_, i64>(2)?,
+                    signature: row.get::<_, Option<String>>(3)?,
+                })
+            })?;
 
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }

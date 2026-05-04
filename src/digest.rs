@@ -16,10 +16,14 @@ pub fn generate_daily_digest(
     lines.push("".to_string());
 
     // 1. 新入库仓库统计
-    let new_count: i64 =
-        conn.query_row(&format!("SELECT COUNT(*) FROM entities WHERE entity_type = '{}' AND discovered_at > ?1", crate::registry::ENTITY_TYPE_REPO), [&since], |row| {
-            row.get(0)
-        })?;
+    let new_count: i64 = conn.query_row(
+        &format!(
+            "SELECT COUNT(*) FROM entities WHERE entity_type = '{}' AND discovered_at > ?1",
+            crate::registry::ENTITY_TYPE_REPO
+        ),
+        [&since],
+        |row| row.get(0),
+    )?;
     if new_count > 0 {
         lines.push(format!("{}: {} repos", i18n.log.digest_new_repos, new_count));
         let mut stmt = conn

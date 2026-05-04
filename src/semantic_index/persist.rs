@@ -1,6 +1,4 @@
-
 use super::{CodeCall, CodeSymbol};
-
 
 /// Batch save symbols to the SQLite registry.
 pub fn save_symbols(
@@ -157,4 +155,3 @@ pub fn save_calls_incremental(
     tx.commit()?;
     Ok(inserted)
 }
-

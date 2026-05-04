@@ -22,21 +22,18 @@ pub fn run(conn: &Connection) -> anyhow::Result<()> {
         "experiments",
         "CREATE TABLE experiments (id TEXT PRIMARY KEY, repo_id TEXT, paper_id TEXT, config_json TEXT, result_path TEXT, git_commit TEXT, syncthing_folder_id TEXT, status TEXT, timestamp TEXT NOT NULL)",
     )?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_experiments_repo ON experiments(repo_id)",
-        [],
-    )?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_experiments_paper ON experiments(paper_id)",
-        [],
-    )?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_experiments_repo ON experiments(repo_id)", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_experiments_paper ON experiments(paper_id)", [])?;
 
     rebuild_table_without_fk(
         conn,
         "workflow_executions",
         "CREATE TABLE workflow_executions (id INTEGER PRIMARY KEY AUTOINCREMENT, workflow_id TEXT NOT NULL, inputs_json TEXT, status TEXT NOT NULL, current_step TEXT, started_at TEXT NOT NULL, finished_at TEXT, duration_ms INTEGER)",
     )?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_workflow_execs_wf ON workflow_executions(workflow_id)", [])?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workflow_execs_wf ON workflow_executions(workflow_id)",
+        [],
+    )?;
 
     conn.execute("DROP TABLE IF EXISTS vault_notes", [])?;
     conn.execute("DROP TABLE IF EXISTS papers", [])?;

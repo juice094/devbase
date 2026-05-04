@@ -2,11 +2,9 @@ use rusqlite::Connection;
 
 pub fn run(conn: &Connection) -> anyhow::Result<()> {
     let oplog_exists: bool = conn
-        .query_row(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='oplog'",
-            [],
-            |_| Ok(true),
-        )
+        .query_row("SELECT 1 FROM sqlite_master WHERE type='table' AND name='oplog'", [], |_| {
+            Ok(true)
+        })
         .unwrap_or(false);
     if !oplog_exists {
         conn.execute(

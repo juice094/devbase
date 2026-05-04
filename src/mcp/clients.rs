@@ -71,12 +71,7 @@ pub trait RegistryClient: Send + Sync {
         limit: usize,
     ) -> Result<Value>;
 
-    fn query_dead_code(
-        &self,
-        repo_id: &str,
-        include_pub: bool,
-        limit: usize,
-    ) -> Result<Value>;
+    fn query_dead_code(&self, repo_id: &str, include_pub: bool, limit: usize) -> Result<Value>;
 }
 
 /// Knowledge engine operations.

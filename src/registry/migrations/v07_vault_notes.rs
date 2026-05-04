@@ -14,10 +14,7 @@ pub fn run(conn: &Connection) -> anyhow::Result<()> {
         )",
         [],
     )?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_vault_notes_tags ON vault_notes(tags)",
-        [],
-    )?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_vault_notes_tags ON vault_notes(tags)", [])?;
     conn.execute("PRAGMA user_version = 7", [])?;
     Ok(())
 }

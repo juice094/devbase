@@ -147,9 +147,8 @@ pub(crate) fn repair_tantivy_consistency(conn: &mut rusqlite::Connection) -> any
 
     let sqlite_ids: std::collections::HashSet<String> = {
         let mut stmt = conn.prepare("SELECT id FROM entities WHERE entity_type = ?1")?;
-        let rows = stmt.query_map([crate::registry::ENTITY_TYPE_REPO], |row| {
-            row.get::<_, String>(0)
-        })?;
+        let rows =
+            stmt.query_map([crate::registry::ENTITY_TYPE_REPO], |row| row.get::<_, String>(0))?;
         rows.filter_map(Result::ok).collect()
     };
 
@@ -160,10 +159,7 @@ pub(crate) fn repair_tantivy_consistency(conn: &mut rusqlite::Connection) -> any
         let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
         for repo_id in rows.filter_map(Result::ok) {
             if sqlite_ids.contains(&repo_id) || !tantivy_ids.contains(&repo_id) {
-                conn.execute(
-                    "DELETE FROM orphan_tantivy_docs WHERE repo_id = ?1",
-                    [&repo_id],
-                )?;
+                conn.execute("DELETE FROM orphan_tantivy_docs WHERE repo_id = ?1", [&repo_id])?;
             }
         }
     }
@@ -658,8 +654,14 @@ mod tests {
         let mut writer = crate::search::get_writer(&index).unwrap();
         let schema = index.schema();
         crate::search::add_repo_doc(
-            &mut writer, &schema, "ghost_repo", "Ghost", "ghost content", &[],
-        ).unwrap();
+            &mut writer,
+            &schema,
+            "ghost_repo",
+            "Ghost",
+            "ghost content",
+            &[],
+        )
+        .unwrap();
         crate::search::commit_writer(&mut writer).unwrap();
         drop(writer);
         drop(index);
@@ -670,11 +672,9 @@ mod tests {
         assert_eq!(count, 1);
 
         let orphan_exists: bool = conn
-            .query_row(
-                "SELECT 1 FROM orphan_tantivy_docs WHERE repo_id = 'ghost_repo'",
-                [],
-                |_| Ok(true),
-            )
+            .query_row("SELECT 1 FROM orphan_tantivy_docs WHERE repo_id = 'ghost_repo'", [], |_| {
+                Ok(true)
+            })
             .unwrap_or(false);
         assert!(orphan_exists);
 
@@ -690,19 +690,21 @@ mod tests {
         assert_eq!(count2, 0);
 
         let orphan_still_exists: bool = conn
-            .query_row(
-                "SELECT 1 FROM orphan_tantivy_docs WHERE repo_id = 'ghost_repo'",
-                [],
-                |_| Ok(true),
-            )
+            .query_row("SELECT 1 FROM orphan_tantivy_docs WHERE repo_id = 'ghost_repo'", [], |_| {
+                Ok(true)
+            })
             .unwrap_or(false);
         assert!(!orphan_still_exists);
 
         // Restore env
         if let Some(old) = old {
-            unsafe { std::env::set_var("DEVBASE_DATA_DIR", old); }
+            unsafe {
+                std::env::set_var("DEVBASE_DATA_DIR", old);
+            }
         } else {
-            unsafe { std::env::remove_var("DEVBASE_DATA_DIR"); }
+            unsafe {
+                std::env::remove_var("DEVBASE_DATA_DIR");
+            }
         }
     }
 }

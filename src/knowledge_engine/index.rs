@@ -1,6 +1,6 @@
-use std::path::PathBuf;
 use crate::registry::RepoEntry;
 use rayon::prelude::*;
+use std::path::PathBuf;
 
 fn index_repo_in_search(
     repo: &crate::registry::RepoEntry,
@@ -112,7 +112,9 @@ pub fn run_index_with_progress(
         let (summary, keywords) = config
             .as_ref()
             .and_then(|cfg| super::try_llm_summary(&repo.local_path, &cfg.llm))
-            .or_else(|| super::extract_readme_summary(&repo.local_path).map(|(s, k)| (s, k.join(", "))))
+            .or_else(|| {
+                super::extract_readme_summary(&repo.local_path).map(|(s, k)| (s, k.join(", ")))
+            })
             .unwrap_or_else(|| {
                 warn!("No README found for {}, generating fallback summary", repo.id);
                 super::generate_fallback_summary(&repo.local_path)
@@ -145,20 +147,28 @@ pub fn run_index_with_progress(
         // Determine incremental vs full index
         let changed_opt = detect_changes(conn, repo);
         if let Some(ref changed) = changed_opt
-            && changed.added.is_empty() && changed.modified.is_empty() && changed.deleted.is_empty() {
-                println!("[{}] Already up-to-date", repo.id);
-                count += 1;
-                continue;
-            }
+            && changed.added.is_empty()
+            && changed.modified.is_empty()
+            && changed.deleted.is_empty()
+        {
+            println!("[{}] Already up-to-date", repo.id);
+            count += 1;
+            continue;
+        }
         let is_incremental = changed_opt.is_some();
         notify(format!("detect_changes:{},incremental={}", repo.id, is_incremental));
 
         // Semantic code indexing (tree-sitter AST extraction + call graph)
         let (symbols, calls) = if let Some(ref changed) = changed_opt {
             // Incremental: delete old symbols for modified/deleted files
-            let files_to_delete: Vec<String> = changed.modified.iter().chain(changed.deleted.iter()).cloned().collect();
+            let files_to_delete: Vec<String> =
+                changed.modified.iter().chain(changed.deleted.iter()).cloned().collect();
             if !files_to_delete.is_empty() {
-                let _ = crate::semantic_index::persist::delete_symbols_for_files(conn, &repo.id, &files_to_delete);
+                let _ = crate::semantic_index::persist::delete_symbols_for_files(
+                    conn,
+                    &repo.id,
+                    &files_to_delete,
+                );
             }
             crate::semantic_index::index_repo_incremental(&repo.local_path, changed)
         } else {
@@ -212,7 +222,8 @@ pub fn run_index_with_progress(
         }
 
         // Save repo_index_state for next incremental run
-        if let Ok(Some(hash)) = crate::semantic_index::git_diff::current_head_hash(&repo.local_path) {
+        if let Ok(Some(hash)) = crate::semantic_index::git_diff::current_head_hash(&repo.local_path)
+        {
             let _ = save_repo_index_state(conn, &repo.id, &hash);
         }
 
@@ -248,10 +259,8 @@ pub fn run_index_with_progress(
             repos.iter().map(|r| r.id.as_str()).collect();
         for orphan_id in &orphaned_repos {
             if indexed_ids.contains(orphan_id.as_str()) {
-                let _ = conn.execute(
-                    "DELETE FROM orphan_tantivy_docs WHERE repo_id = ?1",
-                    [orphan_id],
-                );
+                let _ =
+                    conn.execute("DELETE FROM orphan_tantivy_docs WHERE repo_id = ?1", [orphan_id]);
             }
         }
     }
@@ -350,11 +359,18 @@ fn detect_changes(
         super::index_state::IndexState::Stale { added, modified, deleted } => {
             let total = added.len() + modified.len() + deleted.len();
             if total > 100 {
-                info!("Repo {} has {} changed files (>100 threshold), falling back to full index", repo.id, total);
+                info!(
+                    "Repo {} has {} changed files (>100 threshold), falling back to full index",
+                    repo.id, total
+                );
                 return None;
             }
-            info!("Repo {}: incremental index ({} added, {} modified, {} deleted)",
-                repo.id, added.len(), modified.len(), deleted.len()
+            info!(
+                "Repo {}: incremental index ({} added, {} modified, {} deleted)",
+                repo.id,
+                added.len(),
+                modified.len(),
+                deleted.len()
             );
             Some(crate::semantic_index::git_diff::ChangedFiles { added, modified, deleted })
         }
@@ -381,4 +397,3 @@ fn save_repo_index_state(
     )?;
     Ok(())
 }
-

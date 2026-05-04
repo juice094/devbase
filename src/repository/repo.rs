@@ -1,6 +1,6 @@
 //! Repository for repo entities.
 
-use crate::registry::{RepoEntry, RemoteEntry, ENTITY_TYPE_REPO};
+use crate::registry::{ENTITY_TYPE_REPO, RemoteEntry, RepoEntry};
 use chrono::{DateTime, Utc};
 use rusqlite::OptionalExtension;
 use std::path::PathBuf;

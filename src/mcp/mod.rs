@@ -423,7 +423,8 @@ impl McpServer {
                                 }))
                             }
                             Err(e) => {
-                                let payload = serde_json::json!({ "success": false, "error": e.to_string() });
+                                let payload =
+                                    serde_json::json!({ "success": false, "error": e.to_string() });
                                 let text = serde_json::to_string(&payload)?;
                                 let content = serde_json::json!({ "type": "text", "text": text });
                                 Ok(serde_json::json!({
@@ -691,7 +692,8 @@ pub async fn run_stdio() -> anyhow::Result<()> {
             });
             if !resp.is_null() {
                 let msg = format_mcp_message_auto(&resp, use_ndjson);
-                if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err() {
+                if stdout.write_all(msg.as_bytes()).await.is_err() || stdout.flush().await.is_err()
+                {
                     break;
                 }
             }

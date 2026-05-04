@@ -41,10 +41,7 @@ pub fn query_code_symbols(
         sql.push_str(&(params.len() + 1).to_string());
         params.push(Box::new(format!("%{}%", path)));
     }
-    sql.push_str(&format!(
-        " ORDER BY file_path, line_start LIMIT {}",
-        limit.min(200)
-    ));
+    sql.push_str(&format!(" ORDER BY file_path, line_start LIMIT {}", limit.min(200)));
 
     let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;

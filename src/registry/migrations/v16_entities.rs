@@ -34,15 +34,9 @@ pub fn run(conn: &Connection) -> anyhow::Result<()> {
         )",
         [],
     )?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type)",
-        [],
-    )?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type)", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name)", [])?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_entities_source ON entities(source_url)",
-        [],
-    )?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_entities_source ON entities(source_url)", [])?;
     // Unified relation storage between any two entities.
     conn.execute(
         "CREATE TABLE IF NOT EXISTS relations (
@@ -56,18 +50,9 @@ pub fn run(conn: &Connection) -> anyhow::Result<()> {
         )",
         [],
     )?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_relations_from ON relations(from_entity_id)",
-        [],
-    )?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_relations_to ON relations(to_entity_id)",
-        [],
-    )?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_relations_type ON relations(relation_type)",
-        [],
-    )?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_relations_from ON relations(from_entity_id)", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_relations_to ON relations(to_entity_id)", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_relations_type ON relations(relation_type)", [])?;
     // Seed default entity types for dual-write alignment
     let seed_types = [
         (
@@ -104,8 +89,7 @@ pub fn run(conn: &Connection) -> anyhow::Result<()> {
         )?;
     }
     // Migrate existing repos → entities (one-way seed)
-    let repo_count: i64 =
-        conn.query_row("SELECT COUNT(*) FROM repos", [], |row| row.get(0))?;
+    let repo_count: i64 = conn.query_row("SELECT COUNT(*) FROM repos", [], |row| row.get(0))?;
     let entity_count: i64 =
         conn.query_row("SELECT COUNT(*) FROM entities", [], |row| row.get(0))?;
     if repo_count > 0 && entity_count == 0 {
@@ -150,8 +134,7 @@ pub fn run(conn: &Connection) -> anyhow::Result<()> {
         }
     }
     // Migrate existing skills → entities
-    let skill_count: i64 =
-        conn.query_row("SELECT COUNT(*) FROM skills", [], |row| row.get(0))?;
+    let skill_count: i64 = conn.query_row("SELECT COUNT(*) FROM skills", [], |row| row.get(0))?;
     if skill_count > 0 && entity_count == 0 {
         let mut stmt = conn.prepare(
             "SELECT id, name, version, author, skill_type, local_path, entry_script, inputs_schema, outputs_schema, dependencies, installed_at, updated_at FROM skills"

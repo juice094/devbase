@@ -170,4 +170,3 @@ pub fn try_llm_summary(path: &Path, config: &crate::config::LlmConfig) -> Option
         }
     }
 }
-

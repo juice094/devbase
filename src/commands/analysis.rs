@@ -84,7 +84,8 @@ pub fn run_module_graph(
             let language = repo.get("language").and_then(|v| v.as_str()).unwrap_or("");
             if language == "Rust" {
                 let mod_val = ctx.list_modules(id)?;
-                let modules = mod_val.get("modules").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+                let modules =
+                    mod_val.get("modules").and_then(|v| v.as_array()).cloned().unwrap_or_default();
                 if !modules.is_empty() {
                     all.push((id.to_string(), modules));
                 }
@@ -115,12 +116,16 @@ pub fn run_module_graph(
         }
     } else {
         let mod_val = ctx.list_modules(repo_id)?;
-        let modules = mod_val.get("modules").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let modules =
+            mod_val.get("modules").and_then(|v| v.as_array()).cloned().unwrap_or_default();
         if json {
-            println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                "repo_id": repo_id,
-                "modules": modules
-            }))?);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "repo_id": repo_id,
+                    "modules": modules
+                }))?
+            );
         } else {
             println!("Module graph for [{}]:", repo_id);
             for m in modules {
@@ -157,11 +162,14 @@ pub fn run_call_graph(
     )?;
     let edges = val.get("calls").and_then(|v| v.as_array()).cloned().unwrap_or_default();
     if json {
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-            "repo_id": repo_id,
-            "count": edges.len(),
-            "calls": edges
-        }))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "repo_id": repo_id,
+                "count": edges.len(),
+                "calls": edges
+            }))?
+        );
     } else {
         println!("Call graph for [{}]: {} edge(s)", repo_id, edges.len());
         for e in edges {
@@ -169,10 +177,7 @@ pub fn run_call_graph(
             let caller_symbol = e.get("caller_symbol").and_then(|v| v.as_str()).unwrap_or("");
             let caller_line = e.get("caller_line").and_then(|v| v.as_i64()).unwrap_or(0);
             let callee_name = e.get("callee_name").and_then(|v| v.as_str()).unwrap_or("");
-            println!(
-                "  {}:{}  {} -> {}",
-                caller_file, caller_line, caller_symbol, callee_name
-            );
+            println!("  {}:{}  {} -> {}", caller_file, caller_line, caller_symbol, callee_name);
         }
     }
     Ok(())
@@ -190,12 +195,15 @@ pub fn run_dependency_graph(
     let label = val.get("label").and_then(|v| v.as_str()).unwrap_or("dependencies");
     let deps = val.get("dependencies").and_then(|v| v.as_array()).cloned().unwrap_or_default();
     if json {
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-            "repo_id": repo_id,
-            "direction": direction,
-            "count": deps.len(),
-            "dependencies": deps
-        }))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "repo_id": repo_id,
+                "direction": direction,
+                "count": deps.len(),
+                "dependencies": deps
+            }))?
+        );
     } else {
         println!("{} for [{}]: {} edge(s)", label, repo_id, deps.len());
         for d in deps {
@@ -226,11 +234,14 @@ pub fn run_code_symbols(
     )?;
     let symbols = val.get("symbols").and_then(|v| v.as_array()).cloned().unwrap_or_default();
     if json {
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-            "repo_id": repo_id,
-            "count": symbols.len(),
-            "symbols": symbols
-        }))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "repo_id": repo_id,
+                "count": symbols.len(),
+                "symbols": symbols
+            }))?
+        );
     } else {
         println!("Code symbols for [{}]: {} result(s)", repo_id, symbols.len());
         for s in symbols {
@@ -254,13 +265,20 @@ pub fn run_dead_code(
     json: bool,
 ) -> anyhow::Result<()> {
     let val = ctx.query_dead_code(repo_id, include_pub, limit)?;
-    let dead = val.get("dead_functions").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let dead = val
+        .get("dead_functions")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
     if json {
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-            "repo_id": repo_id,
-            "count": dead.len(),
-            "dead_functions": dead
-        }))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "repo_id": repo_id,
+                "count": dead.len(),
+                "dead_functions": dead
+            }))?
+        );
     } else {
         println!("Potentially dead functions in [{}]: {}", repo_id, dead.len());
         for d in dead {
@@ -274,4 +292,3 @@ pub fn run_dead_code(
     }
     Ok(())
 }
-

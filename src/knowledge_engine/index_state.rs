@@ -28,7 +28,9 @@ impl IndexState {
 
     pub fn changed_files_count(&self) -> usize {
         match self {
-            IndexState::Stale { added, modified, deleted } => added.len() + modified.len() + deleted.len(),
+            IndexState::Stale { added, modified, deleted } => {
+                added.len() + modified.len() + deleted.len()
+            }
             _ => 0,
         }
     }
@@ -36,10 +38,7 @@ impl IndexState {
 
 /// Determine the index state of a single repository.
 /// This is a read-only operation — it never modifies the database or the index.
-pub fn get_repo_index_state(
-    conn: &rusqlite::Connection,
-    repo: &RepoEntry,
-) -> IndexState {
+pub fn get_repo_index_state(conn: &rusqlite::Connection, repo: &RepoEntry) -> IndexState {
     use tracing::warn;
 
     // 1. Ensure repo has a HEAD commit
@@ -70,23 +69,22 @@ pub fn get_repo_index_state(
     };
 
     // 3. Diff since last indexed commit
-    let changed = match crate::semantic_index::git_diff::diff_since(&repo.local_path, Some(&last_hash)) {
-        Ok(c) => c,
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("revspec") || msg.contains("not found") {
-                // Stale hash (e.g. after rebase) — clear it to trigger full re-index
-                let _ = conn.execute(
-                    "DELETE FROM repo_index_state WHERE repo_id = ?1",
-                    [&repo.id],
-                );
-                return IndexState::Missing;
+    let changed =
+        match crate::semantic_index::git_diff::diff_since(&repo.local_path, Some(&last_hash)) {
+            Ok(c) => c,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("revspec") || msg.contains("not found") {
+                    // Stale hash (e.g. after rebase) — clear it to trigger full re-index
+                    let _ =
+                        conn.execute("DELETE FROM repo_index_state WHERE repo_id = ?1", [&repo.id]);
+                    return IndexState::Missing;
+                }
+                return IndexState::Unknown {
+                    reason: format!("git diff failed: {}", e),
+                };
             }
-            return IndexState::Unknown {
-                reason: format!("git diff failed: {}", e),
-            };
-        }
-    };
+        };
 
     let total = changed.added.len() + changed.modified.len() + changed.deleted.len();
     if total == 0 {

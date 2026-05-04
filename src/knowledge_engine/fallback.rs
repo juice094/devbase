@@ -98,4 +98,3 @@ pub(crate) fn try_pyproject(path: &Path) -> Option<(String, String)> {
         format!("python, {}, {}", name, desc.split_whitespace().next().unwrap_or("")),
     ))
 }
-

@@ -8,19 +8,12 @@ impl<'a> DependencyRepository<'a> {
     }
 
     /// List outgoing dependencies for a repo.
-    pub fn list_dependencies(
-        &self,
-        repo_id: &str,
-    ) -> anyhow::Result<Vec<(String, String, f64)>> {
+    pub fn list_dependencies(&self, repo_id: &str) -> anyhow::Result<Vec<(String, String, f64)>> {
         let mut stmt = self.0.prepare(
             "SELECT to_entity_id, relation_type, confidence FROM relations WHERE from_entity_id = ?1",
         )?;
         let rows = stmt.query_map([repo_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, f64>(2)?,
-            ))
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, f64>(2)?))
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
@@ -34,11 +27,7 @@ impl<'a> DependencyRepository<'a> {
             "SELECT from_entity_id, relation_type, confidence FROM relations WHERE to_entity_id = ?1",
         )?;
         let rows = stmt.query_map([repo_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, f64>(2)?,
-            ))
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, f64>(2)?))
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }

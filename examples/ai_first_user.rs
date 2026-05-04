@@ -61,10 +61,7 @@ fn main() -> anyhow::Result<()> {
         devbase::registry::knowledge::semantic_search_symbols(&conn, "devbase", &query_vec, 5)?;
     match vec_results {
         v if !v.is_empty() => {
-            println!(
-                "   Semantic search returned {} match(es) for repo 'devbase'",
-                v.len()
-            );
+            println!("   Semantic search returned {} match(es) for repo 'devbase'", v.len());
             for (i, (_repo, name, path, line, score)) in v.iter().take(3).enumerate() {
                 println!("   {}. {} ({}:{}) - score: {:.3}", i + 1, name, path, line, score);
             }
@@ -133,7 +130,11 @@ fn main() -> anyhow::Result<()> {
     println!(
         "  [{}] Vector path: candle semantic search {}",
         if vector_ok { "OK" } else { "WARN" },
-        if vector_ok { "functional" } else { "needs provider" }
+        if vector_ok {
+            "functional"
+        } else {
+            "needs provider"
+        }
     );
     println!("  [OK] Symbol links generated and traversable");
     println!("  [OK] Cross-repo search functional");

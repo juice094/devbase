@@ -644,16 +644,56 @@ async fn main() -> anyhow::Result<()> {
         Commands::ModuleGraph { repo_id, json } => {
             commands::simple::run_module_graph(&mut ctx, &repo_id, json)?;
         }
-        Commands::CallGraph { repo_id, callee, caller, file, limit, json } => {
-            commands::simple::run_call_graph(&mut ctx, &repo_id, callee, caller, file, limit, json)?;
+        Commands::CallGraph {
+            repo_id,
+            callee,
+            caller,
+            file,
+            limit,
+            json,
+        } => {
+            commands::simple::run_call_graph(
+                &mut ctx, &repo_id, callee, caller, file, limit, json,
+            )?;
         }
-        Commands::DependencyGraph { repo_id, direction, relation_type, json } => {
-            commands::simple::run_dependency_graph(&mut ctx, &repo_id, &direction, relation_type, json)?;
+        Commands::DependencyGraph {
+            repo_id,
+            direction,
+            relation_type,
+            json,
+        } => {
+            commands::simple::run_dependency_graph(
+                &mut ctx,
+                &repo_id,
+                &direction,
+                relation_type,
+                json,
+            )?;
         }
-        Commands::CodeSymbols { repo_id, name, symbol_type, file, limit, json } => {
-            commands::simple::run_code_symbols(&mut ctx, &repo_id, name, symbol_type, file, limit, json)?;
+        Commands::CodeSymbols {
+            repo_id,
+            name,
+            symbol_type,
+            file,
+            limit,
+            json,
+        } => {
+            commands::simple::run_code_symbols(
+                &mut ctx,
+                &repo_id,
+                name,
+                symbol_type,
+                file,
+                limit,
+                json,
+            )?;
         }
-        Commands::DeadCode { repo_id, include_pub, limit, json } => {
+        Commands::DeadCode {
+            repo_id,
+            include_pub,
+            limit,
+            json,
+        } => {
             commands::simple::run_dead_code(&mut ctx, &repo_id, include_pub, limit, json)?;
         }
         Commands::GithubInfo { repo_id, write_summary, json } => {
@@ -681,4 +721,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-

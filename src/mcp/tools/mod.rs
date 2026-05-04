@@ -9,10 +9,10 @@ pub mod status;
 pub mod vault;
 pub mod workflow;
 
-pub mod knowledge;
 pub mod code_analysis;
-pub mod search;
 pub mod external;
+pub mod knowledge;
+pub mod search;
 
 pub use context::*;
 pub use known_limit::*;
@@ -25,10 +25,10 @@ pub use status::*;
 pub use vault::*;
 pub use workflow::*;
 
-pub use knowledge::*;
 pub use code_analysis::*;
-pub use search::*;
 pub use external::*;
+pub use knowledge::*;
+pub use search::*;
 
 #[cfg(test)]
 mod tests {

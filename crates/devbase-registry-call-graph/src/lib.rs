@@ -43,10 +43,7 @@ pub fn query_call_edges(
         sql.push_str(&(params.len() + 1).to_string());
         params.push(Box::new(format!("%{}%", path)));
     }
-    sql.push_str(&format!(
-        " ORDER BY caller_file, caller_line LIMIT {}",
-        limit.min(200)
-    ));
+    sql.push_str(&format!(" ORDER BY caller_file, caller_line LIMIT {}", limit.min(200)));
 
     let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;

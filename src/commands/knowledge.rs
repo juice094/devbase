@@ -371,4 +371,3 @@ pub fn run_oplog(
     }
     Ok(())
 }
-

@@ -21,10 +21,7 @@ pub fn run(conn: &Connection) -> anyhow::Result<()> {
             [],
         )?;
         conn.execute("CREATE INDEX idx_call_graph_repo ON code_call_graph(repo_id)", [])?;
-        conn.execute(
-            "CREATE INDEX idx_call_graph_callee ON code_call_graph(callee_name)",
-            [],
-        )?;
+        conn.execute("CREATE INDEX idx_call_graph_callee ON code_call_graph(callee_name)", [])?;
         conn.execute("CREATE INDEX idx_call_graph_caller ON code_call_graph(repo_id, caller_file, caller_symbol)", [])?;
     }
     conn.execute("PRAGMA user_version = 10", [])?;

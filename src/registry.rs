@@ -102,6 +102,9 @@ pub use entity::{
     ENTITY_TYPE_WORKFLOW, upsert_entity,
 };
 
+pub mod call_graph;
+pub mod code_symbols;
+pub mod dead_code;
 pub mod health;
 pub mod knowledge;
 pub mod knowledge_meta;
@@ -113,9 +116,6 @@ pub mod migrations;
 pub mod repo;
 pub mod repos_toml;
 pub mod vault;
-pub mod call_graph;
-pub mod code_symbols;
-pub mod dead_code;
 pub mod workspace;
 
 #[cfg(test)]

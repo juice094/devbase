@@ -51,4 +51,3 @@ pub fn extract_module_structure(path: &Path) -> Vec<super::ModuleInfo> {
 
     modules
 }
-

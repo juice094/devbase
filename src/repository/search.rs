@@ -47,10 +47,7 @@ impl<'a> SearchRepository<'a> {
             });
         }
 
-        Ok(results
-            .into_iter()
-            .map(|(r, n, p, l, s)| (r, n, p, l, s as f64))
-            .collect())
+        Ok(results.into_iter().map(|(r, n, p, l, s)| (r, n, p, l, s as f64)).collect())
     }
 
     /// Semantic search using embedding vector.
@@ -111,11 +108,7 @@ impl<'a> SearchRepository<'a> {
         let rows = stmt.query_map(
             rusqlite::params![repo_id, symbol_name, limit as i64],
             |row: &rusqlite::Row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, f64>(2)?,
-                ))
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, f64>(2)?))
             },
         )?;
 
@@ -182,7 +175,8 @@ impl<'a> SearchRepository<'a> {
             deduped.entry(key).or_insert(row);
         }
 
-        let mut merged: Vec<crate::semantic_index::SemanticSearchRow> = deduped.into_values().collect();
+        let mut merged: Vec<crate::semantic_index::SemanticSearchRow> =
+            deduped.into_values().collect();
         merged.sort_by(|a, b| {
             b.4.partial_cmp(&a.4)
                 .unwrap_or(std::cmp::Ordering::Equal)
@@ -190,10 +184,7 @@ impl<'a> SearchRepository<'a> {
         });
         merged.truncate(limit);
 
-        Ok(merged
-            .into_iter()
-            .map(|(r, n, p, l, s)| (r, n, p, l, s as f64))
-            .collect())
+        Ok(merged.into_iter().map(|(r, n, p, l, s)| (r, n, p, l, s as f64)).collect())
     }
 }
 

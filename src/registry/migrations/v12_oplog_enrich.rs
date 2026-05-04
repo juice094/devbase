@@ -19,10 +19,7 @@ pub fn run(conn: &Connection) -> anyhow::Result<()> {
         "UPDATE oplog SET event_type = CASE operation WHEN 'health' THEN 'health_check' ELSE operation END WHERE event_type IS NULL",
         [],
     )?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_oplog_event_type ON oplog(event_type)",
-        [],
-    )?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_oplog_event_type ON oplog(event_type)", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_oplog_repo ON oplog(repo_id)", [])?;
     conn.execute("PRAGMA user_version = 12", [])?;
     Ok(())

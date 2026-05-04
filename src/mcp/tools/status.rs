@@ -1,4 +1,4 @@
-use crate::mcp::{McpTool, ToolStreamEvent, StreamPhase};
+use crate::mcp::{McpTool, StreamPhase, ToolStreamEvent};
 use crate::storage::AppContext;
 
 #[derive(Clone)]
@@ -57,9 +57,10 @@ hash, current HEAD hash, symbol count, embedding count, and changed files."#,
         let mut statuses = Vec::new();
         for repo in &repos {
             if let Some(id) = target_id
-                && repo.id != id {
-                    continue;
-                }
+                && repo.id != id
+            {
+                continue;
+            }
 
             let state = crate::knowledge_engine::index_state::get_repo_index_state(&conn, repo);
             let (last_hash, indexed_at) = conn
@@ -104,9 +105,14 @@ hash, current HEAD hash, symbol count, embedding count, and changed files."#,
 
         let overall = if statuses.iter().all(|s| s.state.is_fresh()) {
             "fresh"
-        } else if statuses.iter().any(|s| matches!(s.state, crate::knowledge_engine::index_state::IndexState::Stale { .. })) {
+        } else if statuses.iter().any(|s| {
+            matches!(s.state, crate::knowledge_engine::index_state::IndexState::Stale { .. })
+        }) {
             "stale"
-        } else if statuses.iter().any(|s| matches!(s.state, crate::knowledge_engine::index_state::IndexState::Missing)) {
+        } else if statuses
+            .iter()
+            .any(|s| matches!(s.state, crate::knowledge_engine::index_state::IndexState::Missing))
+        {
             "missing"
         } else {
             "unknown"
@@ -225,9 +231,7 @@ returns a JSON array of progress events."#,
             }
         }
 
-        let count = handle
-            .await
-            .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+        let count = handle.await.map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
 
         let duration_ms = start.elapsed().as_millis() as u64;
         events.push(ToolStreamEvent {

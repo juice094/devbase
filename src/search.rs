@@ -440,11 +440,8 @@ mod tests {
         with_temp_index(|index, schema, writer| {
             // Empty index
             {
-                let reader = index
-                    .reader_builder()
-                    .reload_policy(ReloadPolicy::Manual)
-                    .try_into()
-                    .unwrap();
+                let reader =
+                    index.reader_builder().reload_policy(ReloadPolicy::Manual).try_into().unwrap();
                 let ids = list_indexed_repo_ids_from_reader(&reader, index).unwrap();
                 assert!(ids.is_empty());
             }
@@ -453,11 +450,8 @@ mod tests {
             add_repo_doc(writer, schema, "repo_b", "Title B", "content b", &[]).unwrap();
             commit_writer(writer).unwrap();
 
-            let reader = index
-                .reader_builder()
-                .reload_policy(ReloadPolicy::Manual)
-                .try_into()
-                .unwrap();
+            let reader =
+                index.reader_builder().reload_policy(ReloadPolicy::Manual).try_into().unwrap();
             let ids = list_indexed_repo_ids_from_reader(&reader, index).unwrap();
             assert_eq!(ids.len(), 2);
             assert!(ids.contains(&"repo_a".to_string()));
@@ -474,7 +468,8 @@ mod tests {
         let schema = index.schema();
         let id_field = schema.get_field("id").expect("schema field 'id' defined in init_index");
         let all_query = tantivy::query::AllQuery;
-        let top_docs = searcher.search(&all_query, &TopDocs::with_limit(10_000).order_by_score())?;
+        let top_docs =
+            searcher.search(&all_query, &TopDocs::with_limit(10_000).order_by_score())?;
         let mut ids = Vec::new();
         for (_score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;

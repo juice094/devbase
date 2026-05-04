@@ -71,14 +71,8 @@ pub fn run(conn: &Connection) -> anyhow::Result<()> {
         "experiments",
         "CREATE TABLE experiments (id TEXT PRIMARY KEY, repo_id TEXT, paper_id TEXT, config_json TEXT, result_path TEXT, git_commit TEXT, syncthing_folder_id TEXT, status TEXT, timestamp TEXT NOT NULL, FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE SET NULL)",
     )?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_experiments_repo ON experiments(repo_id)",
-        [],
-    )?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_experiments_paper ON experiments(paper_id)",
-        [],
-    )?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_experiments_repo ON experiments(repo_id)", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_experiments_paper ON experiments(paper_id)", [])?;
 
     rebuild_table_without_fk(
         conn,

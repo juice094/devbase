@@ -70,9 +70,13 @@ Returns: JSON array of matching symbols with file_path, name, line_start, and si
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
         let query_emb = match args.get("query_embedding").and_then(|v| v.as_array()) {
-            Some(arr) => arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect::<Vec<f32>>(),
+            Some(arr) => {
+                arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect::<Vec<f32>>()
+            }
             None => {
-                let query_text = args.get("query_text").and_then(|v| v.as_str())
+                let query_text = args
+                    .get("query_text")
+                    .and_then(|v| v.as_str())
                     .context("query_embedding or query_text required")?;
                 match crate::embedding::generate_query_embedding(query_text) {
                     Ok(emb) => emb,
@@ -289,15 +293,13 @@ Returns: JSON array of symbols with file_path, name, line_start, and similarity_
 
         let query_embedding = match query_embedding {
             Some(e) => Some(e),
-            None => {
-                match crate::embedding::generate_query_embedding(query_text) {
-                    Ok(emb) => Some(emb),
-                    Err(e) => {
-                        tracing::warn!("Embedding generation failed, falling back to keyword: {}", e);
-                        None
-                    }
+            None => match crate::embedding::generate_query_embedding(query_text) {
+                Ok(emb) => Some(emb),
+                Err(e) => {
+                    tracing::warn!("Embedding generation failed, falling back to keyword: {}", e);
+                    None
                 }
-            }
+            },
         };
 
         let repo_id = repo_id.to_string();

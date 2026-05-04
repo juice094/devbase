@@ -30,10 +30,7 @@ pub fn run(conn: &Connection) -> anyhow::Result<()> {
         )?;
         conn.execute("DROP TABLE vault_notes", [])?;
         conn.execute("ALTER TABLE vault_notes_v2 RENAME TO vault_notes", [])?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vault_notes_tags ON vault_notes(tags)",
-            [],
-        )?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_vault_notes_tags ON vault_notes(tags)", [])?;
     }
     conn.execute("PRAGMA user_version = 8", [])?;
     Ok(())

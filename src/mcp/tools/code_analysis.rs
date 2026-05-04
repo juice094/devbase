@@ -71,8 +71,10 @@ Returns: JSON array of metric objects per repo: repo_id, total_lines, code_lines
                         let path_str = repo.local_path.to_string_lossy().to_string();
 
                         // Compute live metrics
-                        let metrics = crate::scan::compute_code_metrics(&path_str)
-                            .ok_or_else(|| anyhow::anyhow!("Failed to compute metrics for {}", repo_id))?;
+                        let metrics =
+                            crate::scan::compute_code_metrics(&path_str).ok_or_else(|| {
+                                anyhow::anyhow!("Failed to compute metrics for {}", repo_id)
+                            })?;
 
                         // Persist
                         crate::registry::metrics::save_code_metrics(&conn, &repo_id, &metrics)?;

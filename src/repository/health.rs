@@ -12,9 +12,9 @@ impl<'a> HealthRepository<'a> {
 
     /// Get health status for a repo.
     pub fn get_health(&self, repo_id: &str) -> anyhow::Result<Option<HealthEntry>> {
-        let mut stmt = self
-            .0
-            .prepare("SELECT status, ahead, behind, checked_at FROM repo_health WHERE repo_id = ?1")?;
+        let mut stmt = self.0.prepare(
+            "SELECT status, ahead, behind, checked_at FROM repo_health WHERE repo_id = ?1",
+        )?;
         let result = stmt
             .query_row([repo_id], |row| {
                 Ok(HealthEntry {

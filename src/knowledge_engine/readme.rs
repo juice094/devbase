@@ -323,12 +323,12 @@ fn extract_keywords(content: &str) -> Vec<String> {
 /// 当 README 不存在时，基于项目元数据生成规则摘要
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::io::Write;
     use super::super::ModuleInfo;
     use super::super::fallback::generate_fallback_summary;
     use super::super::llm::{build_llm_prompt, parse_llm_json, try_llm_summary};
     use super::super::module::extract_module_structure;
+    use super::*;
+    use std::io::Write;
 
     #[test]
     fn test_extract_readme_summary_basic() {

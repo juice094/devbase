@@ -18,10 +18,7 @@ pub fn current_head_hash(repo_path: &Path) -> anyhow::Result<Option<String>> {
 
 /// Diff between last indexed commit and current HEAD, plus uncommitted working-directory changes.
 /// If `last_hash` is None, returns all tracked files as "added" (first-time index).
-pub fn diff_since(
-    repo_path: &Path,
-    last_hash: Option<&str>,
-) -> anyhow::Result<ChangedFiles> {
+pub fn diff_since(repo_path: &Path, last_hash: Option<&str>) -> anyhow::Result<ChangedFiles> {
     let repo = git2::Repository::open(repo_path)?;
     let mut changed = ChangedFiles {
         added: Vec::new(),
@@ -66,19 +63,27 @@ fn collect_diff(diff: &git2::Diff, changed: &mut ChangedFiles) {
             let new = delta.new_file().path().and_then(|p| p.to_str());
             match delta.status() {
                 git2::Delta::Added | git2::Delta::Untracked => {
-                    if let Some(p) = new { changed.added.push(p.to_string()); }
+                    if let Some(p) = new {
+                        changed.added.push(p.to_string());
+                    }
                 }
                 git2::Delta::Modified | git2::Delta::Renamed => {
-                    if let Some(p) = new { changed.modified.push(p.to_string()); }
+                    if let Some(p) = new {
+                        changed.modified.push(p.to_string());
+                    }
                 }
                 git2::Delta::Deleted => {
-                    if let Some(p) = old { changed.deleted.push(p.to_string()); }
+                    if let Some(p) = old {
+                        changed.deleted.push(p.to_string());
+                    }
                 }
                 _ => {}
             }
             true
         },
-        None, None, None,
+        None,
+        None,
+        None,
     );
 }
 
@@ -113,16 +118,15 @@ mod tests {
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
         let sig = repo.signature().unwrap();
-        let parent = repo.head().ok().and_then(|h| h.target()).and_then(|oid| repo.find_commit(oid).ok());
+        let parent = repo
+            .head()
+            .ok()
+            .and_then(|h| h.target())
+            .and_then(|oid| repo.find_commit(oid).ok());
         let parents: Vec<&git2::Commit> = parent.as_ref().map(|c| vec![c]).unwrap_or_default();
-        let commit_id = repo.commit(
-            Some("HEAD"),
-            &sig,
-            &sig,
-            &format!("Add {}", path),
-            &tree,
-            &parents,
-        ).unwrap();
+        let commit_id = repo
+            .commit(Some("HEAD"), &sig, &sig, &format!("Add {}", path), &tree, &parents)
+            .unwrap();
         commit_id.to_string()
     }
 
@@ -163,7 +167,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let repo = init_repo(tmp.path());
         let first_hash = commit_file(&repo, "src/main.rs", "fn main() {}");
-        let _second_hash = commit_file(&repo, "src/lib.rs", "pub fn add(a: i32, b: i32) -> i32 { a + b }");
+        let _second_hash =
+            commit_file(&repo, "src/lib.rs", "pub fn add(a: i32, b: i32) -> i32 { a + b }");
 
         let changed = diff_since(tmp.path(), Some(&first_hash)).unwrap();
         assert_eq!(changed.added.len(), 1);
@@ -180,7 +185,8 @@ mod tests {
 
         // Modify file in working directory without committing
         let file_path = tmp.path().join("src/main.rs");
-        let mut file = std::fs::OpenOptions::new().write(true).truncate(true).open(&file_path).unwrap();
+        let mut file =
+            std::fs::OpenOptions::new().write(true).truncate(true).open(&file_path).unwrap();
         file.write_all(b"fn main() { println!(\"hello\"); }").unwrap();
         drop(file);
 
@@ -225,7 +231,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let repo = init_repo(tmp.path());
         let first_hash = commit_file(&repo, "src/main.rs", "fn main() {}");
-        let _second_hash = commit_file(&repo, "src/lib.rs", "pub fn add(a: i32, b: i32) -> i32 { a + b }");
+        let _second_hash =
+            commit_file(&repo, "src/lib.rs", "pub fn add(a: i32, b: i32) -> i32 { a + b }");
 
         // Delete main.rs in a new commit
         let mut index = repo.index().unwrap();
@@ -235,13 +242,8 @@ mod tests {
         let tree = repo.find_tree(tree_id).unwrap();
         let sig = repo.signature().unwrap();
         let parent = repo.find_commit(repo.revparse_single("HEAD").unwrap().id()).unwrap();
-        repo.commit(
-            Some("HEAD"),
-            &sig, &sig,
-            "Remove main.rs",
-            &tree,
-            &[&parent],
-        ).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "Remove main.rs", &tree, &[&parent])
+            .unwrap();
 
         let changed = diff_since(tmp.path(), Some(&first_hash)).unwrap();
         // src/lib.rs was added between first_hash and HEAD (plus possibly other untracked files in workdir)

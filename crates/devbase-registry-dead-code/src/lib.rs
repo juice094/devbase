@@ -39,10 +39,7 @@ pub fn query_dead_code(
     // Exclude main() — entry points are never dead code
     sql.push_str(" AND cs.name != 'main'");
 
-    sql.push_str(&format!(
-        " ORDER BY cs.file_path, cs.line_start LIMIT {}",
-        limit.min(200)
-    ));
+    sql.push_str(&format!(" ORDER BY cs.file_path, cs.line_start LIMIT {}", limit.min(200)));
 
     let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;

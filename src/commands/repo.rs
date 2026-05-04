@@ -238,10 +238,7 @@ pub async fn run_syncthing_push(
     Ok(())
 }
 
-pub async fn run_status(
-    ctx: &mut crate::storage::AppContext,
-    json: bool,
-) -> anyhow::Result<()> {
+pub async fn run_status(ctx: &mut crate::storage::AppContext, json: bool) -> anyhow::Result<()> {
     let conn = ctx.conn()?;
     let repos = crate::registry::repo::list_repos(&conn)?;
 
@@ -274,11 +271,9 @@ pub async fn run_status(
             .flatten();
 
         let symbols_count: usize = conn
-            .query_row(
-                "SELECT COUNT(*) FROM code_symbols WHERE repo_id = ?1",
-                [&repo.id],
-                |row| row.get(0),
-            )
+            .query_row("SELECT COUNT(*) FROM code_symbols WHERE repo_id = ?1", [&repo.id], |row| {
+                row.get(0)
+            })
             .unwrap_or(0);
 
         let embeddings_count: usize = conn
@@ -304,9 +299,14 @@ pub async fn run_status(
     if json {
         let overall = if statuses.iter().all(|s| s.state.is_fresh()) {
             "fresh"
-        } else if statuses.iter().any(|s| matches!(s.state, crate::knowledge_engine::index_state::IndexState::Stale { .. })) {
+        } else if statuses.iter().any(|s| {
+            matches!(s.state, crate::knowledge_engine::index_state::IndexState::Stale { .. })
+        }) {
             "stale"
-        } else if statuses.iter().any(|s| matches!(s.state, crate::knowledge_engine::index_state::IndexState::Missing)) {
+        } else if statuses
+            .iter()
+            .any(|s| matches!(s.state, crate::knowledge_engine::index_state::IndexState::Missing))
+        {
             "missing"
         } else {
             "unknown"
@@ -317,17 +317,26 @@ pub async fn run_status(
         });
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
-        println!("{:<20} {:<10} {:<12} {:<8} {:<8}", "Repo ID", "State", "Last Hash", "Symbols", "Embeddings");
+        println!(
+            "{:<20} {:<10} {:<12} {:<8} {:<8}",
+            "Repo ID", "State", "Last Hash", "Symbols", "Embeddings"
+        );
         println!("{}", "-".repeat(70));
         for s in &statuses {
             let state_str = match &s.state {
                 crate::knowledge_engine::index_state::IndexState::Fresh => "fresh".to_string(),
-                crate::knowledge_engine::index_state::IndexState::Stale { added, modified, deleted } => {
+                crate::knowledge_engine::index_state::IndexState::Stale {
+                    added,
+                    modified,
+                    deleted,
+                } => {
                     let total = added.len() + modified.len() + deleted.len();
                     format!("stale({})", total)
                 }
                 crate::knowledge_engine::index_state::IndexState::Missing => "missing".to_string(),
-                crate::knowledge_engine::index_state::IndexState::Unknown { .. } => "unknown".to_string(),
+                crate::knowledge_engine::index_state::IndexState::Unknown { .. } => {
+                    "unknown".to_string()
+                }
             };
             let hash = s.last_indexed_hash.as_deref().unwrap_or("-");
             println!(
@@ -364,4 +373,3 @@ pub fn run_registry(
     }
     Ok(())
 }
-

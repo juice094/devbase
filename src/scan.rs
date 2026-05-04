@@ -26,7 +26,12 @@ pub async fn run_json(
     }
 
     let config = crate::config::Config::load().unwrap_or_default();
-    let repos = discover_repos(&root, Some(&config.github), &config.scan.exclude_paths, &config.scan.exclude_patterns)?;
+    let repos = discover_repos(
+        &root,
+        Some(&config.github),
+        &config.scan.exclude_paths,
+        &config.scan.exclude_patterns,
+    )?;
     let count = repos.len();
 
     let mut registered = 0usize;
@@ -62,7 +67,11 @@ pub async fn run_json(
             .await
             {
                 Ok(Ok(())) => {}
-                Ok(Err(e)) => tracing::warn!("Background metrics/indexing failed for {}: {}", repo_id_for_log, e),
+                Ok(Err(e)) => tracing::warn!(
+                    "Background metrics/indexing failed for {}: {}",
+                    repo_id_for_log,
+                    e
+                ),
                 Err(e) => tracing::warn!("Background task panicked for {}: {}", repo_id_for_log, e),
             }
         }
@@ -741,7 +750,13 @@ mod tests {
         fs::create_dir_all(&target).unwrap();
         git2::Repository::init(&target).unwrap();
 
-        let repos = discover_repos(dir.path(), None, &[], &["node_modules".to_string(), "target".to_string()]).unwrap();
+        let repos = discover_repos(
+            dir.path(),
+            None,
+            &[],
+            &["node_modules".to_string(), "target".to_string()],
+        )
+        .unwrap();
         assert_eq!(repos.len(), 1);
         assert!(repos[0].local_path.to_string_lossy().contains("included"));
     }

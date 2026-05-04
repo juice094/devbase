@@ -1,8 +1,8 @@
+use crate::mcp::tools::parse_github_repo;
 use anyhow::Context;
 use devbase::*;
 use rusqlite::OptionalExtension;
 use tracing::info;
-use crate::mcp::tools::parse_github_repo;
 
 pub async fn run_tui(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     info!("{}", ctx.i18n.cli.launching_tui);
@@ -100,12 +100,14 @@ pub async fn run_github_info(
     } else {
         println!("GitHub: {}/{}", owner, repo_name);
         println!("  URL: {}", html_url.unwrap_or("N/A"));
-        println!("  Stars: {} | Forks: {} | Issues: {}",
+        println!(
+            "  Stars: {} | Forks: {} | Issues: {}",
             stars.map_or("N/A".to_string(), |s| s.to_string()),
             forks.map_or("N/A".to_string(), |s| s.to_string()),
             open_issues.map_or("N/A".to_string(), |s| s.to_string()),
         );
-        println!("  Language: {} | Updated: {}",
+        println!(
+            "  Language: {} | Updated: {}",
             language.unwrap_or("N/A"),
             updated_at.unwrap_or("N/A"),
         );
@@ -115,4 +117,3 @@ pub async fn run_github_info(
     }
     Ok(())
 }
-

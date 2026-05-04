@@ -148,10 +148,7 @@ pub fn index_repo_full(repo_path: &Path) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| {
-            std::thread::available_parallelism()
-                .map(|n| n.get())
-                .unwrap_or(1)
-                .min(8)
+            std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1).min(8)
         });
 
     if num_threads <= 1 || files.len() < 16 {

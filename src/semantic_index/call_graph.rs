@@ -1,8 +1,8 @@
 use std::path::Path;
 use tracing::warn;
 
-use super::{CodeCall, Lang};
 use super::symbol::{extract_child_by_kind, extract_node_name, node_text};
+use super::{CodeCall, Lang};
 
 // ---------------------------------------------------------------------------
 // Call extraction

@@ -330,7 +330,7 @@ Returns: JSON array of repo objects. Each includes: id, local_path, language, ta
                 let (ahead, behind, dirty) = if repo.workspace_type == "git" {
                     let (st, ah, bh) = match HealthRepository::new(&conn).get_health(&repo.id)? {
                         Some(health) => (health.status.clone(), health.ahead, health.behind),
-                        None => analyze_repo_for_repo(&repo)
+                        None => analyze_repo_for_repo(&repo),
                     };
                     let dirty = st == "dirty" || st == "changed";
                     (ah, bh, dirty)
@@ -525,7 +525,7 @@ fn apply_nl_filters(
     {
         let (st, ah, bh) = match HealthRepository::new(conn).get_health(&repo.id)? {
             Some(h) => (h.status.clone(), h.ahead, h.behind),
-            None => analyze_repo_for_repo(repo)
+            None => analyze_repo_for_repo(repo),
         };
         let dirty = st == "dirty" || st == "changed";
 
@@ -700,5 +700,4 @@ mod tests {
         assert_eq!(extract_tag_from_query("repos with tag python"), Some("python".to_string()));
         assert_eq!(extract_tag_from_query("show all repos"), None);
     }
-
 }

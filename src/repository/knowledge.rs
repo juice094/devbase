@@ -1,6 +1,6 @@
 //! Repository for knowledge base operations (summaries, modules, papers, experiments).
 
-use crate::registry::{ExperimentEntry, PaperEntry, ENTITY_TYPE_PAPER};
+use crate::registry::{ENTITY_TYPE_PAPER, ExperimentEntry, PaperEntry};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
@@ -12,12 +12,7 @@ impl<'a> KnowledgeRepository<'a> {
     }
 
     /// Save or update a repo summary.
-    pub fn save_summary(
-        &self,
-        repo_id: &str,
-        summary: &str,
-        keywords: &str,
-    ) -> anyhow::Result<()> {
+    pub fn save_summary(&self, repo_id: &str, summary: &str, keywords: &str) -> anyhow::Result<()> {
         self.0.execute(
             "INSERT OR REPLACE INTO repo_summaries (repo_id, summary, keywords, generated_at) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![repo_id, summary, keywords, Utc::now().to_rfc3339()],
@@ -26,11 +21,7 @@ impl<'a> KnowledgeRepository<'a> {
     }
 
     /// Save module structure for a repo.
-    pub fn save_modules(
-        &self,
-        repo_id: &str,
-        modules: &[(String, String)],
-    ) -> anyhow::Result<()> {
+    pub fn save_modules(&self, repo_id: &str, modules: &[(String, String)]) -> anyhow::Result<()> {
         let tx = self.0.unchecked_transaction()?;
         tx.execute("DELETE FROM repo_modules WHERE repo_id = ?1", [repo_id])?;
         for (module_name, module_type) in modules {
@@ -67,9 +58,7 @@ impl<'a> KnowledgeRepository<'a> {
         let mut params: Vec<Box<dyn rusqlite::ToSql>> =
             vec![Box::new(ENTITY_TYPE_PAPER.to_string())];
         if let Some(f) = filter {
-            sql.push_str(
-                " AND (e.name LIKE ?2 OR json_extract(e.metadata, '$.authors') LIKE ?2)",
-            );
+            sql.push_str(" AND (e.name LIKE ?2 OR json_extract(e.metadata, '$.authors') LIKE ?2)");
             params.push(Box::new(format!("%{}%", f)));
         }
         sql.push_str(" ORDER BY json_extract(e.metadata, '$.added_at') DESC");
