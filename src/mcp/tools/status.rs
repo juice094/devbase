@@ -119,6 +119,7 @@ hash, current HEAD hash, symbol count, embedding count, and changed files."#,
         };
 
         Ok(serde_json::json!({
+            "success": true,
             "repos": statuses,
             "overall": overall,
         }))
