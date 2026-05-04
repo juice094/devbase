@@ -36,10 +36,17 @@ pub async fn run_query(
     query: &str,
     limit: usize,
     page: usize,
+    json: bool,
 ) -> anyhow::Result<()> {
     info!("{}: {}", ctx.i18n.cli.querying, query);
     let conn = ctx.conn()?;
-    query::run(&conn, query, limit, page, &ctx.config).await
+    if json {
+        let result = query::run_json(&conn, query, limit, page, &ctx.config).await?;
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        query::run(&conn, query, limit, page, &ctx.config).await?;
+    }
+    Ok(())
 }
 
 pub async fn run_index(ctx: &mut crate::storage::AppContext, path: &str) -> anyhow::Result<()> {

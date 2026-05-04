@@ -69,6 +69,9 @@ pub(crate) enum Commands {
         /// Page number (1-based)
         #[arg(long, default_value_t = 1)]
         page: usize,
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Index repository summaries and module structures
     Index {
@@ -591,8 +594,8 @@ async fn main() -> anyhow::Result<()> {
         } => {
             commands::simple::run_sync(&mut ctx, dry_run, filter_tags, exclude, json).await?;
         }
-        Commands::Query { query, limit, page } => {
-            commands::simple::run_query(&mut ctx, &query, limit, page).await?;
+        Commands::Query { query, limit, page, json } => {
+            commands::simple::run_query(&mut ctx, &query, limit, page, json).await?;
         }
         Commands::Index { path } => {
             commands::simple::run_index(&mut ctx, &path).await?;
