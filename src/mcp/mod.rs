@@ -444,7 +444,7 @@ impl McpServer {
                             let is_error = !result
                                 .get("success")
                                 .and_then(|v: &serde_json::Value| v.as_bool())
-                                .unwrap_or(false);
+                                .unwrap_or(true);
                             let content = serde_json::json!({
                                 "type": "text",
                                 "text": text
