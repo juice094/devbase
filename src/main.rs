@@ -34,6 +34,9 @@ pub(crate) enum Commands {
         /// Page number (1-based)
         #[arg(long, default_value_t = 1)]
         page: usize,
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Show index status for registered repositories
     Status {
@@ -571,8 +574,8 @@ async fn main() -> anyhow::Result<()> {
         Commands::Scan { path, register } => {
             commands::simple::run_scan(&mut ctx, &path, register).await?;
         }
-        Commands::Health { detail, limit, page } => {
-            commands::simple::run_health(&mut ctx, detail, limit, page).await?;
+        Commands::Health { detail, limit, page, json } => {
+            commands::simple::run_health(&mut ctx, detail, limit, page, json).await?;
         }
         Commands::Status { json } => {
             commands::simple::run_status(&mut ctx, json).await?;

@@ -665,7 +665,9 @@ mod tests {
         crate::search::commit_writer(&mut writer).unwrap();
         drop(writer);
         drop(index);
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        // Windows releases Tantivy mmap handles asynchronously.
+        // Under parallel test execution this can take >500ms.
+        std::thread::sleep(std::time::Duration::from_millis(800));
 
         // Repair should detect the orphan
         let count = repair_tantivy_consistency(&mut conn).unwrap();

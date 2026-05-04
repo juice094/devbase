@@ -247,36 +247,13 @@ mod tests {
         F: FnOnce(&Index, &Schema, &mut IndexWriter),
     {
         let _guard = super::SEARCH_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let tmp = tempfile::tempdir().unwrap();
-        let old = std::env::var("DEVBASE_DATA_DIR").ok();
-        // SAFETY: Test-only DEVBASE_DATA_DIR override. Guarded by SEARCH_TEST_LOCK,
-        // restored before function returns.
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
-        // Rebuild index path inside temp dir
         let schema = build_schema();
-        let index_dir = tmp.path().join(INDEX_DIR);
-        std::fs::create_dir_all(&index_dir).unwrap();
-        let idx = Index::create_in_dir(&index_dir, schema.clone()).unwrap();
+        // Use RamDirectory to avoid Windows file-lock races with MmapDirectory.
+        let idx = Index::create_in_ram(schema.clone());
         let mut writer = idx.writer(15_000_000).unwrap();
         f(&idx, &schema, &mut writer);
-        // Explicitly drop writer and index before temp dir to avoid Windows file-lock races.
-        // MmapDirectory holds file handles that Windows releases asynchronously.
         drop(writer);
         drop(idx);
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        if let Some(v) = old {
-            // SAFETY: Restoring original DEVBASE_DATA_DIR after test.
-            unsafe {
-                std::env::set_var("DEVBASE_DATA_DIR", v);
-            }
-        } else {
-            // SAFETY: Removing test-only DEVBASE_DATA_DIR override.
-            unsafe {
-                std::env::remove_var("DEVBASE_DATA_DIR");
-            }
-        }
     }
 
     #[test]

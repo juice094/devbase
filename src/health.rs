@@ -65,16 +65,15 @@ pub async fn run_json(
 
         // Auto-fix relative paths from older registrations
         for repo in &mut repos {
-            if !repo.local_path.is_absolute() {
-                if let Ok(canonical) = std::fs::canonicalize(&repo.local_path) {
-                    if canonical != repo.local_path {
-                        let _ = conn.execute(
-                            "UPDATE entities SET local_path = ?1 WHERE id = ?2",
-                            rusqlite::params![canonical.to_str(), &repo.id],
-                        );
-                        repo.local_path = canonical;
-                    }
-                }
+            if !repo.local_path.is_absolute()
+                && let Ok(canonical) = std::fs::canonicalize(&repo.local_path)
+                && canonical != repo.local_path
+            {
+                let _ = conn.execute(
+                    "UPDATE entities SET local_path = ?1 WHERE id = ?2",
+                    rusqlite::params![canonical.to_str(), &repo.id],
+                );
+                repo.local_path = canonical;
             }
         }
 

@@ -16,10 +16,19 @@ pub async fn run_health(
     detail: bool,
     limit: usize,
     page: usize,
+    json: bool,
 ) -> anyhow::Result<()> {
     info!("{}", ctx.i18n.cli.health_check);
     let conn = ctx.conn()?;
-    health::run(&conn, detail, limit, page, ctx.config.cache.ttl_seconds, &ctx.i18n).await
+    if json {
+        let output =
+            health::run_json(&conn, detail, limit, page, ctx.config.cache.ttl_seconds, &ctx.i18n)
+                .await?;
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        health::run(&conn, detail, limit, page, ctx.config.cache.ttl_seconds, &ctx.i18n).await?;
+    }
+    Ok(())
 }
 
 pub async fn run_query(
