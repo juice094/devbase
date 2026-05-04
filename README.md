@@ -1,7 +1,7 @@
 # devbase
 
-[![Version](https://img.shields.io/badge/version-v0.16.1-blue)](https://github.com/juice094/devbase/releases)
-[![Tests](https://img.shields.io/badge/tests-460%20passed-brightgreen)](./AGENTS.md)
+[![Version](https://img.shields.io/badge/version-v0.14.0-blue)](https://github.com/juice094/devbase/releases)
+[![Tests](https://img.shields.io/badge/tests-378%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
 [![License](https://img.shields.io/badge/license-MIT-orange)](./LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-9cf)](https://www.rust-lang.org)
@@ -86,7 +86,7 @@ cd devbase && cargo install --path .
 
 **面板布局**：左侧 35% 仓库列表（状态图标 ● dirty ◆ diverged ▼ behind ✓ 正常），右侧 65% 三标签页详情（Overview / Health / Insights）。
 
-### AI Layer — 45 个 MCP Tools
+### AI Layer — 46 个 MCP Tools
 
 基于 [Model Context Protocol](https://modelcontextprotocol.io) 标准化接口，stdio 本地进程通信。
 
@@ -97,6 +97,7 @@ cd devbase && cargo install --path .
 | 知识检索 | `semantic_search`, `hybrid_search`, `cross_repo_search`, `related_symbols`, `knowledge_report` | 向量语义 + RRF 混合检索 |
 | Skill 运行时 | `skill_list`, `skill_search`, `skill_run`, `skill_top` | 发现 / 搜索 / 执行 / 评分 |
 | Workflow 编排 | `workflow_list`, `workflow_run` | YAML 多步骤自动化 |
+| 知识图谱 | `relation_store`, `relation_query`, `relation_delete` | 实体关系存储与查询 |
 | Vault / 其他 | `vault_search`, `vault_read`, `vault_write`, `arxiv_fetch`, ... | PARA 笔记 + 论文抓取 |
 
 > 完整 Tool 矩阵见下文 [MCP Tool 矩阵](#mcp-tool-矩阵)。
@@ -258,6 +259,9 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | `devkit_workflow_list` | 列出工作流 | "有哪些工作流？" |
 | `devkit_workflow_run` | 执行工作流 | "运行 deploy-staging" |
 | `devkit_skill_top` | Top 评分 Skills | "评分最高的 skill？" |
+| `devkit_relation_store` | 存储实体关系 | "记录 devbase 依赖 clarity" |
+| `devkit_relation_query` | 查询实体关系 | "谁依赖了 devbase？" |
+| `devkit_relation_delete` | 删除实体关系 | "移除已弃用的关系" |
 | `devkit_known_limit_store` | 记录 known limit | "记录系统约束" |
 | `devkit_known_limit_list` | 列出 known limits | "查看当前风险" |
 
@@ -288,7 +292,8 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | **v0.13.0** | **✅ 已发布** | **Registry God Object 拆解：10 子模块提取为 free function；WorkspaceRegistry 退化为纯 facade** |
 | **v0.14.0** | **✅ 已发布** | **Workspace 拆分：6 个零耦合 crate 提取；MCP trait 化：`mcp/tools/repo.rs` `crate::` 引用 68→41** |
 | **v0.15.0** | **✅ 已发布** | **Sprint A/B/C：三维 embedding + Saga 一致性 + Agent 状态接口 + MCP Streaming（45 tools）** |
-| **v0.16.0** | **🚧 开发中** | **Workspace crate 第二批提取 + Windows debug 栈溢出修复** |
+| **v0.16.0** | **✅ 已发布** | **Workspace crate 第二批提取 + Windows debug 栈溢出修复** |
+| **v0.14.1** | **🚧 开发中** | **CLI JSON 输出补全 (`--json`/`--recalc`) + relations MCP 工具加固 + License headers** |
 
 ---
 
