@@ -52,7 +52,47 @@ Returns: JSON array of metric objects per repo: repo_id, total_lines, code_lines
         if repo_id.is_empty() {
             RegistryClient::list_code_metrics(ctx)
         } else {
-            RegistryClient::get_code_metrics(ctx, &repo_id)
+            let result = RegistryClient::get_code_metrics(ctx, &repo_id);
+            match result {
+                Ok(val) if val.get("success").and_then(|v| v.as_bool()) == Some(true) => Ok(val),
+                _ => {
+                    // Fallback: compute live metrics via tokei and persist
+                    let pool = ctx.pool();
+                    let repo_id = repo_id.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let conn = pool.get()?;
+
+                        // Find repo local_path
+                        let repos = crate::registry::repo::list_repos(&conn)?;
+                        let repo = repos
+                            .into_iter()
+                            .find(|r| r.id == repo_id)
+                            .ok_or_else(|| anyhow::anyhow!("Repo not found: {}", repo_id))?;
+                        let path_str = repo.local_path.to_string_lossy().to_string();
+
+                        // Compute live metrics
+                        let metrics = crate::scan::compute_code_metrics(&path_str)
+                            .ok_or_else(|| anyhow::anyhow!("Failed to compute metrics for {}", repo_id))?;
+
+                        // Persist
+                        crate::registry::metrics::save_code_metrics(&conn, &repo_id, &metrics)?;
+
+                        Ok::<_, anyhow::Error>(serde_json::json!({
+                            "success": true,
+                            "repo_id": repo_id,
+                            "total_lines": metrics.total_lines,
+                            "source_lines": metrics.source_lines,
+                            "test_lines": metrics.test_lines,
+                            "comment_lines": metrics.comment_lines,
+                            "file_count": metrics.file_count,
+                            "language_breakdown": metrics.language_breakdown,
+                            "updated_at": metrics.updated_at.to_rfc3339()
+                        }))
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+                }
+            }
         }
     }
 }

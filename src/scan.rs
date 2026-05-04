@@ -42,7 +42,8 @@ pub async fn run_json(
             let path_str = repo.local_path.to_string_lossy().to_string();
             let is_rust = repo.language.as_deref() == Some("Rust");
             let pool = pool.clone();
-            let _ = tokio::task::spawn_blocking(move || {
+            let repo_id_for_log = repo_id.clone();
+            match tokio::task::spawn_blocking(move || {
                 if let Some(metrics) = compute_code_metrics(&path_str) {
                     let conn = pool.get()?;
                     crate::registry::metrics::save_code_metrics(&conn, &repo_id, &metrics)?;
@@ -58,7 +59,12 @@ pub async fn run_json(
                 }
                 Ok::<_, anyhow::Error>(())
             })
-            .await;
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => tracing::warn!("Background metrics/indexing failed for {}: {}", repo_id_for_log, e),
+                Err(e) => tracing::warn!("Background task panicked for {}: {}", repo_id_for_log, e),
+            }
         }
         registered = repos.len();
     }
@@ -462,7 +468,7 @@ fn is_nested_submodule(path: &Path, found: &[RepoEntry]) -> bool {
     found.iter().any(|r| path.starts_with(&r.local_path) && path != r.local_path)
 }
 
-fn compute_code_metrics(path: &str) -> Option<CodeMetrics> {
+pub fn compute_code_metrics(path: &str) -> Option<CodeMetrics> {
     use tokei::{Config, Languages};
     let mut languages = Languages::new();
     let config = Config::default();
