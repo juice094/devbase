@@ -183,6 +183,13 @@ pub(crate) fn is_excluded_path(
     false
 }
 
+fn canonicalize_repo_path(path: &Path) -> PathBuf {
+    match std::fs::canonicalize(path) {
+        Ok(p) => p,
+        Err(_) => path.to_path_buf(),
+    }
+}
+
 fn discover_repos(
     root: &Path,
     github: Option<&crate::config::GithubConfig>,
@@ -380,7 +387,8 @@ pub fn inspect_repo(
     path: &Path,
     github: Option<&crate::config::GithubConfig>,
 ) -> anyhow::Result<RepoEntry> {
-    let repo = Repository::open(path)?;
+    let path = canonicalize_repo_path(path);
+    let repo = Repository::open(&path)?;
 
     let id = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
 
@@ -395,7 +403,7 @@ pub fn inspect_repo(
 
     let default_branch = repo.head().ok().and_then(|head| head.shorthand().map(String::from));
 
-    let language = detect_language(path);
+    let language = detect_language(&path);
 
     let tags = if id.ends_with("-main") || id.ends_with("-master") {
         vec!["zip-snapshot".to_string(), "needs-migration".to_string()]
@@ -412,7 +420,7 @@ pub fn inspect_repo(
 
     Ok(RepoEntry {
         id,
-        local_path: path.to_path_buf(),
+        local_path: path,
         tags,
         discovered_at: Utc::now(),
         language,
@@ -425,9 +433,10 @@ pub fn inspect_repo(
 }
 
 pub fn inspect_non_git_workspace(path: &Path) -> anyhow::Result<RepoEntry> {
+    let path = canonicalize_repo_path(path);
     let id = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
 
-    let language = detect_language(path);
+    let language = detect_language(&path);
 
     let workspace_type = if path.join("SOUL.md").exists() || path.join(".claude").is_dir() {
         "openclaw"
@@ -437,7 +446,7 @@ pub fn inspect_non_git_workspace(path: &Path) -> anyhow::Result<RepoEntry> {
 
     Ok(RepoEntry {
         id,
-        local_path: path.to_path_buf(),
+        local_path: path,
         tags: vec!["discovered".to_string()],
         discovered_at: Utc::now(),
         language,

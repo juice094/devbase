@@ -73,6 +73,15 @@ pub fn get_repo_index_state(
     let changed = match crate::semantic_index::git_diff::diff_since(&repo.local_path, Some(&last_hash)) {
         Ok(c) => c,
         Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("revspec") || msg.contains("not found") {
+                // Stale hash (e.g. after rebase) — clear it to trigger full re-index
+                let _ = conn.execute(
+                    "DELETE FROM repo_index_state WHERE repo_id = ?1",
+                    [&repo.id],
+                );
+                return IndexState::Missing;
+            }
             return IndexState::Unknown {
                 reason: format!("git diff failed: {}", e),
             };

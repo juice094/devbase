@@ -61,7 +61,22 @@ pub async fn run_json(
 ) -> anyhow::Result<serde_json::Value> {
     let start = std::time::Instant::now();
     let (total_repos, dirty_repos, behind_upstream, no_upstream_count, repo_details) = {
-        let repos = repo::list_repos(conn)?;
+        let mut repos = repo::list_repos(conn)?;
+
+        // Auto-fix relative paths from older registrations
+        for repo in &mut repos {
+            if !repo.local_path.is_absolute() {
+                if let Ok(canonical) = std::fs::canonicalize(&repo.local_path) {
+                    if canonical != repo.local_path {
+                        let _ = conn.execute(
+                            "UPDATE entities SET local_path = ?1 WHERE id = ?2",
+                            rusqlite::params![canonical.to_str(), &repo.id],
+                        );
+                        repo.local_path = canonical;
+                    }
+                }
+            }
+        }
 
         let mut total_repos: usize = 0;
         let mut dirty_repos: usize = 0;
