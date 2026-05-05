@@ -91,6 +91,9 @@ impl AppContext {
         if let Err(e) = repair_tantivy_consistency(&mut conn) {
             tracing::warn!("Startup Tantivy consistency check failed: {}", e);
         }
+        if let Err(e) = crate::search::sync_index_to_db(&conn) {
+            tracing::warn!("Startup Tantivy/SQLite orphan sync failed: {}", e);
+        }
         drop(conn);
         let pool = Self::build_pool(&path)?;
         let config = crate::config::Config::load()?;
@@ -104,6 +107,9 @@ impl AppContext {
         let mut conn = crate::registry::WorkspaceRegistry::init_db_with(&*storage)?;
         if let Err(e) = repair_tantivy_consistency(&mut conn) {
             tracing::warn!("Startup Tantivy consistency check failed: {}", e);
+        }
+        if let Err(e) = crate::search::sync_index_to_db(&conn) {
+            tracing::warn!("Startup Tantivy/SQLite orphan sync failed: {}", e);
         }
         drop(conn);
         let pool = Self::build_pool(&path)?;

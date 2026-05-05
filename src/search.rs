@@ -160,6 +160,29 @@ pub fn list_indexed_repo_ids() -> Result<Vec<String>, TantivyError> {
     Ok(ids)
 }
 
+/// Scan Tantivy index against SQLite entities table and remove orphan documents.
+/// Returns the number of deleted orphan documents.
+pub fn sync_index_to_db(conn: &rusqlite::Connection) -> anyhow::Result<usize> {
+    let tantivy_ids = list_indexed_repo_ids()?;
+    let db_ids: Vec<String> = conn
+        .prepare("SELECT id FROM entities WHERE entity_type = ?1")?
+        .query_map([crate::registry::ENTITY_TYPE_REPO], |row| row.get(0))?
+        .filter_map(Result::ok)
+        .collect();
+    let db_set: std::collections::HashSet<String> = db_ids.into_iter().collect();
+    let orphans: Vec<String> = tantivy_ids.into_iter().filter(|id| !db_set.contains(id)).collect();
+    if orphans.is_empty() {
+        return Ok(0);
+    }
+    let (index, schema) = open_index()?;
+    let mut writer = get_writer(&index)?;
+    for repo_id in &orphans {
+        delete_repo_doc(&mut writer, &schema, repo_id)?;
+    }
+    commit_writer(&mut writer)?;
+    Ok(orphans.len())
+}
+
 pub fn search_repos(query_str: &str, limit: usize) -> Result<Vec<(String, f32)>, TantivyError> {
     search_by_doc_type(query_str, limit, None)
 }
@@ -436,6 +459,66 @@ mod tests {
             assert!(ids.contains(&"repo_a".to_string()));
             assert!(ids.contains(&"repo_b".to_string()));
         });
+    }
+
+    #[test]
+    fn test_sync_index_to_db_removes_orphans() {
+        let _guard = super::SEARCH_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let old = std::env::var("DEVBASE_DATA_DIR").ok();
+        // SAFETY: Test-only DEVBASE_DATA_DIR override. Guarded by SEARCH_TEST_LOCK.
+        unsafe {
+            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+        }
+
+        // Initialize DB with full schema
+        let db_path = tmp.path().join("registry.db");
+        let conn = crate::registry::WorkspaceRegistry::init_db_at(&db_path).unwrap();
+
+        // Add 2 repo docs to Tantivy
+        let (index, _reader) = crate::search::init_index().unwrap();
+        let mut writer = crate::search::get_writer(&index).unwrap();
+        let schema = index.schema();
+        crate::search::add_repo_doc(&mut writer, &schema, "foo", "Foo", "foo content", &[])
+            .unwrap();
+        crate::search::add_repo_doc(&mut writer, &schema, "bar", "Bar", "bar content", &[])
+            .unwrap();
+        crate::search::commit_writer(&mut writer).unwrap();
+        drop(writer);
+        drop(index);
+        // Windows releases Tantivy mmap handles asynchronously.
+        std::thread::sleep(std::time::Duration::from_millis(800));
+
+        // Register only repo_a in SQLite
+        conn.execute(
+            "INSERT INTO entities (id, entity_type, name, local_path, metadata, created_at, updated_at)
+             VALUES ('foo', ?1, 'Foo', '/tmp/foo', '{}', datetime('now'), datetime('now'))",
+            [crate::registry::ENTITY_TYPE_REPO],
+        )
+        .unwrap();
+
+        // Sync should delete bar (orphan)
+        let deleted = crate::search::sync_index_to_db(&conn).unwrap();
+        assert_eq!(deleted, 1);
+
+        // Windows may need extra time before reopening the index
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+
+        // Verify only foo remains in index
+        let remaining = crate::search::list_indexed_repo_ids().unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0], "foo");
+
+        // Restore env
+        if let Some(old) = old {
+            unsafe {
+                std::env::set_var("DEVBASE_DATA_DIR", old);
+            }
+        } else {
+            unsafe {
+                std::env::remove_var("DEVBASE_DATA_DIR");
+            }
+        }
     }
 
     // Helper for test_list_indexed_repo_ids that works with an existing reader
