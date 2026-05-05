@@ -33,9 +33,11 @@ pub(crate) fn parse_llm_json(text: &str) -> Option<(String, String)> {
     Some((summary, keywords))
 }
 
-// TODO(veto-audit-2026-04-26): HV-1 数据外泄风险 — 此函数将用户 README 内容发送到外部 LLM API。
-// 缓解: (1) 默认 enabled=false 已在 config 落地; (2) 已增加 ollama 本地分支（2026-04-26 修复）。
-// 剩余: 用户仍需显式 opt-in（enabled=true + provider/api_key 配置）后才启用。
+// HV-1 数据外泄风险 — MITIGATED (2026-05-04).
+// 此函数将用户 README 内容发送到外部 LLM API。
+// 缓解措施: (1) 默认 enabled=false (default_llm_enabled() → false); (2) 所有调用路径经过
+// try_llm_summary() 的 config.enabled 检查; (3) Ollama 本地分支可用; (4) 用户必须显式
+// opt-in（enabled=true + provider/api_key 配置）后才启用。无自动外泄路径。
 async fn call_llm(
     api_key: Option<&str>,
     base_url: &str,
@@ -64,9 +66,10 @@ async fn call_llm(
     Ok(content)
 }
 
-// TODO(veto-audit-2026-04-26): HV-1 自动数据外泄 — index_repo/run_index 自动调用此函数，
-// 将 README (3000 chars) POST 到外部 LLM。虽需配置 api_key，但触发是自动非显式。
-// 修复: 默认返回 None（enabled=false），用户 opt-in 后才启用。
+// HV-1 自动数据外泄 — MITIGATED (2026-05-04).
+// index_repo/run_index 自动调用此函数，将 README (3000 chars) POST 到外部 LLM。
+// 缓解: 默认 enabled=false，try_llm_summary() 入口即返回 None；无 api_key 时同样返回
+// None。用户必须显式 opt-in（config + api_key）后才启用。触发非自动。
 pub fn try_llm_summary(path: &Path, config: &crate::config::LlmConfig) -> Option<(String, String)> {
     if !config.enabled {
         return None;
