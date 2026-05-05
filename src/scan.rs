@@ -245,6 +245,7 @@ fn discover_repos(
     {
         if entry.file_name() == ".git" && entry.file_type().is_dir() {
             let repo_path = entry.path().parent().unwrap_or(root).to_path_buf();
+            let repo_path = dunce::canonicalize(&repo_path).unwrap_or(repo_path);
 
             // Skip nested .git inside submodules if possible
             if is_nested_submodule(&repo_path, &git_repos) {
@@ -278,6 +279,10 @@ fn discover_repos(
         let ws_path = entry.path().parent().unwrap_or(root).to_path_buf();
         // Skip if already inside a known git repo
         if is_nested_submodule(&ws_path, &git_repos) {
+            continue;
+        }
+        // Skip if already inside a known non-git workspace
+        if is_nested_submodule(&ws_path, &non_git_repos) {
             continue;
         }
         // Skip duplicates

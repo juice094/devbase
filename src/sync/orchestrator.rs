@@ -69,14 +69,20 @@ impl SyncOrchestrator {
                             ..Default::default()
                         },
                     );
-                    // TODO(veto-audit-2026-04-26): RF-6 高风险 expect — semaphore 在 shutdown 时会被关闭，此 expect 会导致 panic。
-                    // 修复: 改为 `match` 或 `?` 传播，将 AcquireError 映射为 SyncSummary { action: "ERROR", ... }。
-                    let permit = self
-                        .semaphore
-                        .clone()
-                        .acquire_owned()
-                        .await
-                        .expect("semaphore should not be closed");
+                    let permit = match self.semaphore.clone().acquire_owned().await {
+                        Ok(p) => p,
+                        Err(_) => {
+                            on_progress(
+                                task.id.clone(),
+                                SyncSummary {
+                                    action: "ERROR".to_string(),
+                                    message: "semaphore closed during shutdown".to_string(),
+                                    ..Default::default()
+                                },
+                            );
+                            continue;
+                        }
+                    };
                     let tx = tx.clone();
                     let i18n = self.i18n;
                     tokio::spawn(async move {
@@ -126,13 +132,20 @@ impl SyncOrchestrator {
                     ..Default::default()
                 },
             );
-            // TODO(veto-audit-2026-04-26): RF-6 高风险 expect — 同上，shutdown 场景 panic。
-            let permit = self
-                .semaphore
-                .clone()
-                .acquire_owned()
-                .await
-                .expect("semaphore should not be closed");
+            let permit = match self.semaphore.clone().acquire_owned().await {
+                Ok(p) => p,
+                Err(_) => {
+                    on_progress(
+                        task.id.clone(),
+                        SyncSummary {
+                            action: "ERROR".to_string(),
+                            message: "semaphore closed during shutdown".to_string(),
+                            ..Default::default()
+                        },
+                    );
+                    continue;
+                }
+            };
             let path = task.path.clone();
             let upstream = task.upstream_url.clone();
             let id = task.id.clone();
