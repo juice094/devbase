@@ -92,6 +92,15 @@ Returns: JSON object with:
                     })
                 });
 
+                // Git history: recent commits and hot files
+                let (recent_commits, hot_files) = if let Some(ref r) = matched_repo {
+                    let rc = collect_recent_commits(&r.local_path, 10);
+                    let hf = collect_hot_files(&r.local_path, 30);
+                    (rc, hf)
+                } else {
+                    (Vec::new(), Vec::new())
+                };
+
                 let repo_id = matched_repo.as_ref().map(|r| r.id.clone());
 
                 // 2. Linked vault notes (via vault_repo_links)
@@ -390,7 +399,7 @@ Returns: JSON object with:
                     }
                 }
 
-                anyhow::Ok((repo_json, linked_vaults, modules, symbols, calls, assets, activity, related_symbols, relations, workflows))
+                anyhow::Ok((repo_json, linked_vaults, modules, symbols, calls, assets, activity, related_symbols, relations, workflows, recent_commits, hot_files))
             }
         })
         .await
@@ -407,6 +416,8 @@ Returns: JSON object with:
             related_symbols,
             relations,
             workflows,
+            recent_commits,
+            hot_files,
         ) = result;
 
         Ok(serde_json::json!({
@@ -422,14 +433,140 @@ Returns: JSON object with:
             "relations": relations,
             "workflows": workflows,
             "assets": assets,
+            "recent_commits": recent_commits,
+            "hot_files": hot_files,
         }))
     }
+}
+
+fn collect_recent_commits(repo_path: &std::path::Path, limit: usize) -> Vec<String> {
+    let repo = match git2::Repository::open(repo_path) {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+    let mut revwalk = match repo.revwalk() {
+        Ok(rw) => rw,
+        Err(_) => return Vec::new(),
+    };
+    if revwalk.push_head().is_err() {
+        return Vec::new();
+    }
+    let mut commits = Vec::new();
+    for oid in revwalk.take(limit) {
+        if let Ok(oid) = oid {
+            if let Ok(commit) = repo.find_commit(oid) {
+                if let Some(msg) = commit.message() {
+                    commits.push(msg.trim().to_string());
+                }
+            }
+        }
+    }
+    commits
+}
+
+fn collect_hot_files(repo_path: &std::path::Path, days: i64) -> Vec<serde_json::Value> {
+    let repo = match git2::Repository::open(repo_path) {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(days);
+    let mut revwalk = match repo.revwalk() {
+        Ok(rw) => rw,
+        Err(_) => return Vec::new(),
+    };
+    if revwalk.push_head().is_err() {
+        return Vec::new();
+    }
+    let mut file_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for oid in revwalk {
+        let oid = match oid {
+            Ok(o) => o,
+            Err(_) => continue,
+        };
+        let commit = match repo.find_commit(oid) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let commit_time = commit.time().seconds();
+        let commit_dt = chrono::DateTime::from_timestamp(commit_time, 0)
+            .unwrap_or_else(|| chrono::DateTime::UNIX_EPOCH);
+        if commit_dt < cutoff {
+            continue;
+        }
+        let tree = match commit.tree() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let parent_tree = commit.parents().next().and_then(|p| p.tree().ok());
+        let diff = match repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        let _ = diff.foreach(
+            &mut |delta, _| {
+                if let Some(path) = delta.new_file().path().and_then(|p| p.to_str()) {
+                    if !path.is_empty() {
+                        *file_counts.entry(path.to_string()).or_insert(0) += 1;
+                    }
+                }
+                true
+            },
+            None,
+            None,
+            None,
+        );
+    }
+    let mut sorted: Vec<_> = file_counts.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted.into_iter().take(10).map(|(path, count)| {
+        serde_json::json!({
+            "path": path,
+            "change_count": count,
+        })
+    }).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::mcp::McpTool;
+    use std::io::Write;
+    use std::path::Path;
+
+    fn init_repo(path: &Path) -> git2::Repository {
+        let repo = git2::Repository::init(path).unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "Test User").unwrap();
+        config.set_str("user.email", "test@example.com").unwrap();
+        repo
+    }
+
+    fn commit_file(repo: &git2::Repository, path: &str, content: &str, message: &str) {
+        let repo_path = repo.workdir().unwrap();
+        let file_path = repo_path.join(path);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        let mut file = std::fs::File::create(&file_path).unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+        drop(file);
+
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(path)).unwrap();
+        index.write().unwrap();
+
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = repo.signature().unwrap();
+        let parent = repo
+            .head()
+            .ok()
+            .and_then(|h| h.target())
+            .and_then(|oid| repo.find_commit(oid).ok());
+        let parents: Vec<&git2::Commit> = parent.as_ref().map(|c| vec![c]).unwrap_or_default();
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
+            .unwrap();
+    }
 
     #[test]
     fn test_name() {
@@ -442,5 +579,73 @@ mod tests {
         let t = DevkitProjectContextTool;
         let s = t.schema();
         assert!(s.is_object());
+    }
+
+    #[test]
+    fn test_collect_recent_commits_basic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = init_repo(tmp.path());
+        commit_file(&repo, "a.txt", "hello", "First commit");
+        commit_file(&repo, "b.txt", "world", "Second commit");
+
+        let commits = collect_recent_commits(tmp.path(), 10);
+        assert_eq!(commits.len(), 2);
+        assert_eq!(commits[0], "Second commit");
+        assert_eq!(commits[1], "First commit");
+    }
+
+    #[test]
+    fn test_collect_recent_commits_empty_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let _repo = init_repo(tmp.path());
+        let commits = collect_recent_commits(tmp.path(), 10);
+        assert!(commits.is_empty());
+    }
+
+    #[test]
+    fn test_collect_recent_commits_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = init_repo(tmp.path());
+        for i in 0..15 {
+            commit_file(&repo, &format!("f{}.txt", i), &format!("content {}", i), &format!("Commit {}", i));
+        }
+        let commits = collect_recent_commits(tmp.path(), 10);
+        assert_eq!(commits.len(), 10);
+        assert_eq!(commits[0], "Commit 14");
+        assert_eq!(commits[9], "Commit 5");
+    }
+
+    #[test]
+    fn test_collect_hot_files_basic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = init_repo(tmp.path());
+        commit_file(&repo, "src/main.rs", "fn main() {}", "Add main");
+        commit_file(&repo, "src/lib.rs", "pub fn add() {}", "Add lib");
+        commit_file(&repo, "src/main.rs", "fn main() { println!(); }", "Update main");
+
+        let hot = collect_hot_files(tmp.path(), 30);
+        assert_eq!(hot.len(), 2);
+        let main = hot.iter().find(|v| v.get("path").and_then(|p| p.as_str()) == Some("src/main.rs")).unwrap();
+        let lib = hot.iter().find(|v| v.get("path").and_then(|p| p.as_str()) == Some("src/lib.rs")).unwrap();
+        assert_eq!(main.get("change_count").and_then(|c| c.as_u64()), Some(2));
+        assert_eq!(lib.get("change_count").and_then(|c| c.as_u64()), Some(1));
+    }
+
+    #[test]
+    fn test_collect_hot_files_empty_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let _repo = init_repo(tmp.path());
+        let hot = collect_hot_files(tmp.path(), 30);
+        assert!(hot.is_empty());
+    }
+
+    #[test]
+    fn test_collect_hot_files_no_git() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("foo.txt"), "bar").unwrap();
+        let hot = collect_hot_files(tmp.path(), 30);
+        assert!(hot.is_empty());
+        let commits = collect_recent_commits(tmp.path(), 10);
+        assert!(commits.is_empty());
     }
 }
