@@ -1,7 +1,7 @@
 # devbase
 
 [![Version](https://img.shields.io/badge/version-v0.14.0-blue)](https://github.com/juice094/devbase/releases)
-[![Tests](https://img.shields.io/badge/tests-378%20passed-brightgreen)](./AGENTS.md)
+[![Tests](https://img.shields.io/badge/tests-390%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
 [![License](https://img.shields.io/badge/license-MIT-orange)](./LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-9cf)](https://www.rust-lang.org)
@@ -295,6 +295,7 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | **v0.16.0** | **✅ 已发布** | **Workspace crate 第二批提取 + Windows debug 栈溢出修复** |
 | **v0.14.1** | **✅ 已发布** | **CLI JSON 输出补全 (`--json`/`--recalc`) + relations MCP 工具加固 + License headers + Vault Daily/Graph** |
 | **v0.14.2** | **✅ 已发布** | **health dirty 检测修复（排除 ignored 文件）+ scan 路径规范化 + syncthing-rust 识别修复 + experiment_log/CodeMetrics/ModuleGraph/CallGraph/DeadCode 提升为 Beta（48 tools: Stable 5 / Beta 40 / Experimental 3）** |
+| **v0.14.3** | **✅ 当前** | **Schema v30 code symbol attributes + dead-code 过滤增强 + init_db() 注入式改造（RF-1）+ Tantivy/SQLite 补偿扫描 + Feature flags（mcp / embedding）+ sccache 构建加速文档** |
 
 ---
 
@@ -337,7 +338,9 @@ token = "<YOUR_GITHUB_PAT>"
 > devbase 当前为单人维护项目（Bus Factor = 1），欢迎任何形式的贡献。
 
 - **快速开始**: `cargo build --release` → `cargo test --all-targets`
+- **构建加速**: [sccache 配置指南](CONTRIBUTING.md#构建加速可选) — tree-sitter 重复编译从 20s → <1s
 - **代码规范**: `cargo clippy --all-targets -D warnings` + `cargo fmt --check`
+- **Feature flags**: `cargo build --no-default-features`（最小化 CLI）/ `cargo build --features tui`（纯 TUI）/ `cargo build --features mcp`（纯 MCP Server）
 - **架构文档**: [`ARCHITECTURE.md`](ARCHITECTURE.md)
 - **Agent 约定**: [`AGENTS.md`](AGENTS.md)
 - **贡献指南**: [`CONTRIBUTING.md`](CONTRIBUTING.md) — 如何添加 MCP Tool / Skill、Schema 迁移规范
