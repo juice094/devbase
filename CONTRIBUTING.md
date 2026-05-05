@@ -33,6 +33,89 @@ cargo clippy --all-targets -D warnings
 cargo fmt --check
 ```
 
+### 构建加速（可选）
+
+devbase 依赖 4 个 tree-sitter grammar crate（`tree-sitter-rust`、`tree-sitter-python`、
+`tree-sitter-typescript`、`tree-sitter-go`）。这些 crate 在每次 `cargo build` 时都会通过
+`cc` crate 重新编译 C 代码，耗时约 **15–20 秒**。
+
+安装 [sccache](https://github.com/mozilla/sccache) 可将这段编译时间降至 **1–2 秒**（缓存命中时）。
+
+> **为什么选 sccache 而不是 ccache？**
+> - sccache 由 Mozilla 维护，原生支持 **Windows + MSVC + Rust**  triple。
+> - ccache 在 Windows 上主要通过 Chocolatey 分发，对 MSVC 的支持相对有限。
+> - Rust 的 `cc` crate [官方文档](https://docs.rs/cc) 明确将 sccache 列为已知 wrapper。
+
+#### 安装 sccache
+
+```powershell
+# 方式 1：winget（推荐，预编译二进制）
+winget install Mozilla.sccache
+
+# 方式 2：scoop
+scoop install sccache
+
+# 方式 3：cargo（从源码编译，较慢）
+cargo install sccache --locked
+```
+
+安装完成后，**重启终端** 或刷新 `PATH`：
+
+```powershell
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+```
+
+#### 配置环境变量
+
+在当前会话中启用（PowerShell）：
+
+```powershell
+# 加速 C/C++ 编译（tree-sitter  grammar）
+$env:CC = "sccache cl"
+
+# 同时加速 Rust 编译（可选）
+$env:RUSTC_WRAPPER = "sccache"
+```
+
+若要永久生效，写入用户级 `~/.cargo/config.toml`：
+
+```toml
+[env]
+CC = "sccache cl"
+
+[build]
+rustc-wrapper = "sccache"
+```
+
+> **注意**：项目仓库的 `.cargo/config.toml` **不强制写入** sccache 配置，
+> 以免未安装 sccache 的开发者遇到构建失败。
+
+#### 验证缓存生效
+
+```powershell
+# 清空 sccache 统计
+sccache --zero-stats
+
+# 触发 tree-sitter 重新编译（例如删除 build 缓存后重新 build）
+cargo clean
+cargo build
+
+# 查看命中统计
+sccache --show-stats
+```
+
+预期输出示例：
+
+```
+Compile requests                      45
+Compile requests executed             30
+Cache hits                            28
+Cache hits (C/C++)                    12
+Cache hits (Rust)                     16
+```
+
+---
+
 ### 首次体验
 
 ```powershell
