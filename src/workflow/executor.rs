@@ -492,6 +492,7 @@ mod tests {
     use super::*;
     use crate::skill_runtime::registry::install_skill;
     use crate::skill_runtime::{SkillMeta, SkillType};
+    use crate::storage::StorageBackend;
     use crate::workflow::model::{ErrorPolicy, StepDefinition, StepType, WorkflowDefinition};
     use std::collections::HashMap;
 
@@ -504,8 +505,9 @@ mod tests {
         unsafe {
             std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
         }
-        let conn = crate::registry::WorkspaceRegistry::init_db().unwrap();
-        let path = crate::registry::WorkspaceRegistry::db_path().unwrap();
+        let backend = crate::storage::DefaultStorageBackend {};
+        let path = backend.db_path().unwrap();
+        let conn = crate::registry::WorkspaceRegistry::init_db_at(&path).unwrap();
         let manager = r2d2_sqlite::SqliteConnectionManager::file(&path).with_init(|c| {
             c.execute("PRAGMA foreign_keys = ON", [])?;
             Ok(())

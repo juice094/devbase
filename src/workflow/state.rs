@@ -132,6 +132,7 @@ fn parse_status(s: &str) -> ExecutionStatus {
 mod tests {
     use super::*;
     use crate::registry::WorkspaceRegistry;
+    use crate::storage::StorageBackend;
     use std::collections::HashMap;
 
     fn dummy_wf() -> WorkflowDefinition {
@@ -178,8 +179,9 @@ mod tests {
         unsafe {
             std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
         }
-        let conn = WorkspaceRegistry::init_db().unwrap();
-        let path = WorkspaceRegistry::db_path().unwrap();
+        let backend = crate::storage::DefaultStorageBackend {};
+        let path = backend.db_path().unwrap();
+        let conn = crate::registry::WorkspaceRegistry::init_db_at(&path).unwrap();
         let manager = r2d2_sqlite::SqliteConnectionManager::file(&path).with_init(|c| {
             c.execute("PRAGMA foreign_keys = ON", [])?;
             Ok(())

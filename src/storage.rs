@@ -86,8 +86,8 @@ impl AppContext {
     pub fn with_defaults() -> anyhow::Result<Self> {
         let storage: Arc<dyn StorageBackend> = Arc::new(DefaultStorageBackend);
         let path = storage.db_path()?;
-        // 先执行 init_db() 确保数据库已初始化并迁移
-        let mut conn = crate::registry::WorkspaceRegistry::init_db_at(&path)?;
+        // 先执行 init_db_with 确保数据库已初始化并迁移
+        let mut conn = crate::registry::WorkspaceRegistry::init_db_with(&*storage)?;
         if let Err(e) = repair_tantivy_consistency(&mut conn) {
             tracing::warn!("Startup Tantivy consistency check failed: {}", e);
         }
@@ -101,7 +101,7 @@ impl AppContext {
     /// 使用自定义存储后端创建上下文（主要用于测试）。
     pub fn with_storage(storage: Arc<dyn StorageBackend>) -> anyhow::Result<Self> {
         let path = storage.db_path()?;
-        let mut conn = crate::registry::WorkspaceRegistry::init_db_at(&path)?;
+        let mut conn = crate::registry::WorkspaceRegistry::init_db_with(&*storage)?;
         if let Err(e) = repair_tantivy_consistency(&mut conn) {
             tracing::warn!("Startup Tantivy consistency check failed: {}", e);
         }

@@ -4,11 +4,14 @@
 //! Run: cargo run --example ai_first_user
 
 use devbase::registry::WorkspaceRegistry;
+use devbase::storage::{DefaultStorageBackend, StorageBackend};
 
 fn main() -> anyhow::Result<()> {
     println!("AI First-User Validation: devbase v0.14.0\n");
 
-    let conn = WorkspaceRegistry::init_db()?;
+    let backend = DefaultStorageBackend {};
+    let path = backend.db_path()?;
+    let conn = WorkspaceRegistry::init_db_at(&path)?;
 
     // 1. Knowledge Report
     println!("1. Knowledge Coverage Report (workspace-wide)");
@@ -75,7 +78,7 @@ fn main() -> anyhow::Result<()> {
 
     // 5. Symbol Links (limited scope to avoid timeout on large repos)
     println!("5. Generating explicit symbol links for devbase (limit 500 symbols)...");
-    let mut conn_mut = WorkspaceRegistry::init_db()?;
+    let mut conn_mut = WorkspaceRegistry::init_db_at(&path)?;
     let count = devbase::symbol_links::generate_and_save_links(&mut conn_mut, "devbase")?;
     println!("   Generated {} symbol links\n", count);
 

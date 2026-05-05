@@ -33,8 +33,18 @@ impl WorkspaceRegistry {
         Ok(ws)
     }
 
+    #[deprecated(
+        since = "0.15.0",
+        note = "Use init_db_with(backend) or AppContext::connection()"
+    )]
     pub fn init_db() -> anyhow::Result<rusqlite::Connection> {
-        Self::init_db_at(&Self::db_path()?)
+        Self::init_db_with(&crate::storage::DefaultStorageBackend {})
+    }
+
+    pub fn init_db_with(
+        backend: &dyn crate::storage::StorageBackend,
+    ) -> anyhow::Result<rusqlite::Connection> {
+        Self::init_db_at(&backend.db_path()?)
     }
 
     pub fn init_db_at(path: &std::path::Path) -> anyhow::Result<rusqlite::Connection> {

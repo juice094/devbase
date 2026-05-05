@@ -1,6 +1,7 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use devbase::registry::repo;
 use devbase::registry::{RepoEntry, WorkspaceRegistry};
+use devbase::storage::{DefaultStorageBackend, StorageBackend};
 use std::cell::Cell;
 use std::path::PathBuf;
 
@@ -42,7 +43,9 @@ fn bench_save_repo(c: &mut Criterion) {
     unsafe {
         std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
     }
-    let mut conn = WorkspaceRegistry::init_db().unwrap();
+    let backend = DefaultStorageBackend {};
+    let path = backend.db_path().unwrap();
+    let mut conn = WorkspaceRegistry::init_db_at(&path).unwrap();
 
     let counter = Cell::new(0usize);
     c.bench_function("save_repo", |b| {
@@ -61,7 +64,9 @@ fn bench_list_repos(c: &mut Criterion) {
     unsafe {
         std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
     }
-    let mut conn = WorkspaceRegistry::init_db().unwrap();
+    let backend = DefaultStorageBackend {};
+    let path = backend.db_path().unwrap();
+    let mut conn = WorkspaceRegistry::init_db_at(&path).unwrap();
 
     for i in 0..500 {
         let repo = sample_repo(&format!("prefill-{}", i));
@@ -82,7 +87,9 @@ fn bench_get_health(c: &mut Criterion) {
     unsafe {
         std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
     }
-    let mut conn = WorkspaceRegistry::init_db().unwrap();
+    let backend = DefaultStorageBackend {};
+    let path = backend.db_path().unwrap();
+    let mut conn = WorkspaceRegistry::init_db_at(&path).unwrap();
 
     let repo = sample_repo("health-bench");
     repo::save_repo(&mut conn, &repo).unwrap();
