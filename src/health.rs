@@ -357,7 +357,9 @@ pub fn analyze_repo(
         Err(_) => return ("error".to_string(), 0, 0),
     };
 
-    let dirty = match repo.statuses(None) {
+    let mut opts = git2::StatusOptions::new();
+    opts.include_ignored(false);
+    let dirty = match repo.statuses(Some(&mut opts)) {
         Ok(statuses) => statuses.iter().count() > 0,
         Err(_) => false,
     };
