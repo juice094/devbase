@@ -134,7 +134,15 @@ pub fn should_skip_dir(path: &Path, exclude: &[String]) -> bool {
 /// Supports Rust, Python, JavaScript/TypeScript, and Go.
 pub fn index_repo_full(repo_path: &Path) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
     let exts: &[&str] = &["rs", "py", "js", "ts", "jsx", "tsx", "go"];
-    let exclude = crate::config::default_exclude_patterns();
+    let cfg = crate::config::Config::load().unwrap_or_default();
+    let mut exclude = cfg.scan.exclude_patterns;
+    // Merge user config with defaults to avoid accidentally including
+    // directories like node_modules when user provides a custom list.
+    for pat in crate::config::default_exclude_patterns() {
+        if !exclude.contains(&pat) {
+            exclude.push(pat);
+        }
+    }
 
     let files: Vec<std::path::PathBuf> = walkdir::WalkDir::new(repo_path)
         .into_iter()

@@ -453,12 +453,11 @@ fn collect_recent_commits(repo_path: &std::path::Path, limit: usize) -> Vec<Stri
     }
     let mut commits = Vec::new();
     for oid in revwalk.take(limit) {
-        if let Ok(oid) = oid {
-            if let Ok(commit) = repo.find_commit(oid) {
-                if let Some(msg) = commit.message() {
-                    commits.push(msg.trim().to_string());
-                }
-            }
+        if let Ok(oid) = oid
+            && let Ok(commit) = repo.find_commit(oid)
+            && let Some(msg) = commit.message()
+        {
+            commits.push(msg.trim().to_string());
         }
     }
     commits
@@ -477,7 +476,8 @@ fn collect_hot_files(repo_path: &std::path::Path, days: i64) -> Vec<serde_json::
     if revwalk.push_head().is_err() {
         return Vec::new();
     }
-    let mut file_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut file_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
     for oid in revwalk {
         let oid = match oid {
             Ok(o) => o,
@@ -489,7 +489,7 @@ fn collect_hot_files(repo_path: &std::path::Path, days: i64) -> Vec<serde_json::
         };
         let commit_time = commit.time().seconds();
         let commit_dt = chrono::DateTime::from_timestamp(commit_time, 0)
-            .unwrap_or_else(|| chrono::DateTime::UNIX_EPOCH);
+            .unwrap_or(chrono::DateTime::UNIX_EPOCH);
         if commit_dt < cutoff {
             continue;
         }
@@ -504,10 +504,10 @@ fn collect_hot_files(repo_path: &std::path::Path, days: i64) -> Vec<serde_json::
         };
         let _ = diff.foreach(
             &mut |delta, _| {
-                if let Some(path) = delta.new_file().path().and_then(|p| p.to_str()) {
-                    if !path.is_empty() {
-                        *file_counts.entry(path.to_string()).or_insert(0) += 1;
-                    }
+                if let Some(path) = delta.new_file().path().and_then(|p| p.to_str())
+                    && !path.is_empty()
+                {
+                    *file_counts.entry(path.to_string()).or_insert(0) += 1;
                 }
                 true
             },
@@ -518,12 +518,16 @@ fn collect_hot_files(repo_path: &std::path::Path, days: i64) -> Vec<serde_json::
     }
     let mut sorted: Vec<_> = file_counts.into_iter().collect();
     sorted.sort_by(|a, b| b.1.cmp(&a.1));
-    sorted.into_iter().take(10).map(|(path, count)| {
-        serde_json::json!({
-            "path": path,
-            "change_count": count,
+    sorted
+        .into_iter()
+        .take(10)
+        .map(|(path, count)| {
+            serde_json::json!({
+                "path": path,
+                "change_count": count,
+            })
         })
-    }).collect()
+        .collect()
 }
 
 #[cfg(test)]
@@ -564,8 +568,7 @@ mod tests {
             .and_then(|h| h.target())
             .and_then(|oid| repo.find_commit(oid).ok());
         let parents: Vec<&git2::Commit> = parent.as_ref().map(|c| vec![c]).unwrap_or_default();
-        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
-            .unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents).unwrap();
     }
 
     #[test]
@@ -607,7 +610,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let repo = init_repo(tmp.path());
         for i in 0..15 {
-            commit_file(&repo, &format!("f{}.txt", i), &format!("content {}", i), &format!("Commit {}", i));
+            commit_file(
+                &repo,
+                &format!("f{}.txt", i),
+                &format!("content {}", i),
+                &format!("Commit {}", i),
+            );
         }
         let commits = collect_recent_commits(tmp.path(), 10);
         assert_eq!(commits.len(), 10);
@@ -625,8 +633,14 @@ mod tests {
 
         let hot = collect_hot_files(tmp.path(), 30);
         assert_eq!(hot.len(), 2);
-        let main = hot.iter().find(|v| v.get("path").and_then(|p| p.as_str()) == Some("src/main.rs")).unwrap();
-        let lib = hot.iter().find(|v| v.get("path").and_then(|p| p.as_str()) == Some("src/lib.rs")).unwrap();
+        let main = hot
+            .iter()
+            .find(|v| v.get("path").and_then(|p| p.as_str()) == Some("src/main.rs"))
+            .unwrap();
+        let lib = hot
+            .iter()
+            .find(|v| v.get("path").and_then(|p| p.as_str()) == Some("src/lib.rs"))
+            .unwrap();
         assert_eq!(main.get("change_count").and_then(|c| c.as_u64()), Some(2));
         assert_eq!(lib.get("change_count").and_then(|c| c.as_u64()), Some(1));
     }

@@ -559,7 +559,9 @@ impl crate::mcp::clients::RegistryClient for AppContext {
         // Exclude test functions — heuristic: name starts with 'test_' (Rust convention)
         sql.push_str(" AND cs.name NOT LIKE 'test_%'");
         // Exclude functions in tests.rs files (Rust unit-test modules)
-        sql.push_str(" AND cs.file_path NOT LIKE '%/tests.rs' AND cs.file_path NOT LIKE '%\\tests.rs'");
+        sql.push_str(
+            " AND cs.file_path NOT LIKE '%/tests.rs' AND cs.file_path NOT LIKE '%\\tests.rs'",
+        );
         // Exclude functions with #[test] or #[tokio::test] attributes (tree-sitter extracted)
         sql.push_str(" AND (cs.attributes IS NULL OR cs.attributes NOT LIKE '%#[test]%')");
         sql.push_str(&format!(" ORDER BY cs.file_path, cs.line_start LIMIT {}", limit.min(200)));

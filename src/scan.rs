@@ -216,7 +216,8 @@ fn discover_repos(
     let mut ignored_dirs: Vec<PathBuf> = Vec::new();
 
     // Scanning must NOT skip .git directories, otherwise no git repos can be discovered.
-    let scan_exclude_patterns: Vec<String> = exclude_patterns.iter().cloned().filter(|p| p != ".git").collect();
+    let scan_exclude_patterns: Vec<String> =
+        exclude_patterns.iter().filter(|&p| p != ".git").cloned().collect();
 
     // First pass: collect all directories containing .devbase-ignore
     for entry in WalkDir::new(root)

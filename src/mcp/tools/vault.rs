@@ -387,7 +387,7 @@ Returns: JSON with success status and the generated file path."#,
 
         let pool = ctx.pool();
         let config = ctx.config.clone();
-        let i18n = ctx.i18n.clone();
+        let i18n = ctx.i18n;
 
         let file_path = tokio::task::spawn_blocking({
             let rel_path = rel_path.clone();
@@ -409,10 +409,7 @@ Returns: JSON with success status and the generated file path."#,
                     let existing = std::fs::read_to_string(&target)?;
                     format!("{}\n\n{}", existing, digest)
                 } else {
-                    format!(
-                        "---\ndate: {}\ntags: [\"daily\"]\n---\n\n{}",
-                        today, digest
-                    )
+                    format!("---\ndate: {}\ntags: [\"daily\"]\n---\n\n{}", today, digest)
                 };
 
                 std::fs::write(&target, content)?;
@@ -508,8 +505,7 @@ Returns: JSON with nodes (id, title) and edges (source, target)."#,
 
                     if let Some((fm, _)) = crate::vault::frontmatter::extract_frontmatter(&content)
                     {
-                        id_to_title
-                            .insert(id.clone(), fm.title.unwrap_or_else(|| id.clone()));
+                        id_to_title.insert(id.clone(), fm.title.unwrap_or_else(|| id.clone()));
                         if let Some(repo) = fm.repo {
                             id_to_repo.insert(id, repo);
                         }
@@ -518,16 +514,12 @@ Returns: JSON with nodes (id, title) and edges (source, target)."#,
                     }
                 }
 
-                let allowed_ids: std::collections::HashSet<String> =
-                    if let Some(ref rid) = repo_id {
-                        id_to_repo
-                            .iter()
-                            .filter(|(_, r)| *r == rid)
-                            .map(|(id, _)| id.clone())
-                            .collect()
-                    } else {
-                        id_to_title.keys().cloned().collect()
-                    };
+                let allowed_ids: std::collections::HashSet<String> = if let Some(ref rid) = repo_id
+                {
+                    id_to_repo.iter().filter(|(_, r)| *r == rid).map(|(id, _)| id.clone()).collect()
+                } else {
+                    id_to_title.keys().cloned().collect()
+                };
 
                 // Normalize wikilink targets (e.g. "b" -> "b.md") to vault file ids.
                 let mut id_lookup: std::collections::HashMap<String, String> =
@@ -551,7 +543,8 @@ Returns: JSON with nodes (id, title) and edges (source, target)."#,
 
                 let mut edges = Vec::new();
                 for (target, sources) in &index {
-                    let normalized = id_lookup.get(target).cloned().unwrap_or_else(|| target.clone());
+                    let normalized =
+                        id_lookup.get(target).cloned().unwrap_or_else(|| target.clone());
                     if !allowed_ids.contains(&normalized) {
                         continue;
                     }
@@ -717,16 +710,9 @@ mod tests {
             "---\ntitle: Note A\n---\n\nLinks to [[b]] and [[c]].\n",
         )
         .unwrap();
-        std::fs::write(
-            vault_dir.join("b.md"),
-            "---\ntitle: Note B\n---\n\nLinks to [[c]].\n",
-        )
-        .unwrap();
-        std::fs::write(
-            vault_dir.join("c.md"),
-            "---\ntitle: Note C\n---\n\nNo links.\n",
-        )
-        .unwrap();
+        std::fs::write(vault_dir.join("b.md"), "---\ntitle: Note B\n---\n\nLinks to [[c]].\n")
+            .unwrap();
+        std::fs::write(vault_dir.join("c.md"), "---\ntitle: Note C\n---\n\nNo links.\n").unwrap();
 
         let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
         let tool = DevkitVaultGraphTool;
@@ -737,10 +723,8 @@ mod tests {
         let edges = result.get("edges").unwrap().as_array().unwrap();
 
         assert_eq!(nodes.len(), 3);
-        let titles: Vec<&str> = nodes
-            .iter()
-            .map(|n| n.get("title").unwrap().as_str().unwrap())
-            .collect();
+        let titles: Vec<&str> =
+            nodes.iter().map(|n| n.get("title").unwrap().as_str().unwrap()).collect();
         assert!(titles.contains(&"Note A"));
         assert!(titles.contains(&"Note B"));
         assert!(titles.contains(&"Note C"));
@@ -771,10 +755,8 @@ mod tests {
 
         let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
         let tool = DevkitVaultGraphTool;
-        let result = tool
-            .invoke(serde_json::json!({ "repo_id": "repo-a" }), &mut ctx)
-            .await
-            .unwrap();
+        let result =
+            tool.invoke(serde_json::json!({ "repo_id": "repo-a" }), &mut ctx).await.unwrap();
 
         assert_eq!(result.get("success").unwrap(), true);
         let nodes = result.get("nodes").unwrap().as_array().unwrap();

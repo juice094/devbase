@@ -117,10 +117,7 @@ fn rust_node_to_symbol(
 
 /// Extract `attribute_item` nodes that are immediate preceding siblings of `node`.
 /// In tree-sitter-rust 0.24, attributes are siblings, not children, of the item node.
-fn extract_preceding_attributes(
-    node: &tree_sitter::Node,
-    source_bytes: &[u8],
-) -> Option<String> {
+fn extract_preceding_attributes(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
     let mut attrs = Vec::new();
     let mut sibling = node.prev_sibling();
     while let Some(sib) = sibling {
@@ -381,7 +378,7 @@ struct MyStruct {
         parser.set_language(&tree_sitter_rust::LANGUAGE.into()).unwrap();
         let tree = parser.parse(source, None).unwrap();
         let root = tree.root_node();
-        
+
         // Find function_item and assert attributes via preceding-sibling extraction
         let func = (0..root.child_count())
             .map(|i| root.child(i as u32).unwrap())
@@ -389,7 +386,11 @@ struct MyStruct {
             .unwrap();
         let attrs = extract_preceding_attributes(&func, source.as_bytes());
         assert!(attrs.is_some(), "Expected attributes to be extracted");
-        assert!(attrs.as_ref().unwrap().contains("test"), "Expected #[tokio::test] in attributes: {:?}", attrs);
+        assert!(
+            attrs.as_ref().unwrap().contains("test"),
+            "Expected #[tokio::test] in attributes: {:?}",
+            attrs
+        );
 
         // Find struct_item and assert derive
         let st = (0..root.child_count())
@@ -398,6 +399,10 @@ struct MyStruct {
             .unwrap();
         let attrs = extract_preceding_attributes(&st, source.as_bytes());
         assert!(attrs.is_some(), "Expected derive attribute");
-        assert!(attrs.as_ref().unwrap().contains("derive"), "Expected #[derive(Debug)] in attributes: {:?}", attrs);
+        assert!(
+            attrs.as_ref().unwrap().contains("derive"),
+            "Expected #[derive(Debug)] in attributes: {:?}",
+            attrs
+        );
     }
 }

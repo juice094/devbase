@@ -220,28 +220,23 @@ mod tests {
         );
 
         let sim = cosine_similarity(&candle_emb, &python_emb);
-        assert!(
-            sim > 0.999,
-            "candle vs python cosine similarity = {} (expected > 0.999)",
-            sim
-        );
+        assert!(sim > 0.999, "candle vs python cosine similarity = {} (expected > 0.999)", sim);
     }
 
     /// Helper: call Python sentence-transformers for a single text.
     fn generate_python_embedding(text: &str) -> anyhow::Result<Vec<f32>> {
-        let candidates: Vec<std::path::PathBuf> =
-            ["python", "python3"]
-                .iter()
-                .map(|c| std::path::PathBuf::from(c))
-                .filter(|p| {
-                    std::process::Command::new(p)
-                        .arg("-c")
-                        .arg("import sentence_transformers")
-                        .output()
-                        .map(|o| o.status.success())
-                        .unwrap_or(false)
-                })
-                .collect();
+        let candidates: Vec<std::path::PathBuf> = ["python", "python3"]
+            .iter()
+            .map(|c| std::path::PathBuf::from(c))
+            .filter(|p| {
+                std::process::Command::new(p)
+                    .arg("-c")
+                    .arg("import sentence_transformers")
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false)
+            })
+            .collect();
 
         let script = format!(
             r#"import os; os.environ['HF_HUB_OFFLINE']='1'; from sentence_transformers import SentenceTransformer; import struct; model = SentenceTransformer('all-MiniLM-L6-v2'); emb = model.encode('{}', convert_to_numpy=True); print(''.join(struct.pack('<f', float(x)).hex() for x in emb.tolist()))"#,
@@ -250,9 +245,7 @@ mod tests {
 
         let mut last_err = String::new();
         for python in &candidates {
-            let output = std::process::Command::new(python)
-                .args(["-c", &script])
-                .output();
+            let output = std::process::Command::new(python).args(["-c", &script]).output();
             match output {
                 Ok(out) if out.status.success() => {
                     let hex_str = String::from_utf8(out.stdout)?.trim().to_string();
