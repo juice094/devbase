@@ -31,7 +31,7 @@ devbase 将 GitHub 项目自动封装为**标准化、可发现、可组合的 S
 │       Human Layer           │         AI Layer              │
 │  ┌─────────────────────┐    │    ┌─────────────────────┐    │
 │  │   TUI Dashboard     │    │    │   MCP Server        │    │
-│  │   终端交互仪表盘     │    │    │   45 Tools          │    │
+│  │   终端交互仪表盘     │    │    │   48 Tools          │    │
 │  │   • 多仓库健康总览   │    │    │   stdio + streaming  │    │
 │  │   • 跨仓库代码搜索   │    │    │                     │    │
 │  │   • 一键启动 gitui   │    │    │   • devkit_scan     │    │
@@ -86,7 +86,7 @@ cd devbase && cargo install --path .
 
 **面板布局**：左侧 35% 仓库列表（状态图标 ● dirty ◆ diverged ▼ behind ✓ 正常），右侧 65% 三标签页详情（Overview / Health / Insights）。
 
-### AI Layer — 46 个 MCP Tools
+### AI Layer — 48 个 MCP Tools
 
 基于 [Model Context Protocol](https://modelcontextprotocol.io) 标准化接口，stdio 本地进程通信。
 
@@ -293,7 +293,8 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | **v0.14.0** | **✅ 已发布** | **Workspace 拆分：6 个零耦合 crate 提取；MCP trait 化：`mcp/tools/repo.rs` `crate::` 引用 68→41** |
 | **v0.15.0** | **✅ 已发布** | **Sprint A/B/C：三维 embedding + Saga 一致性 + Agent 状态接口 + MCP Streaming（45 tools）** |
 | **v0.16.0** | **✅ 已发布** | **Workspace crate 第二批提取 + Windows debug 栈溢出修复** |
-| **v0.14.1** | **🚧 开发中** | **CLI JSON 输出补全 (`--json`/`--recalc`) + relations MCP 工具加固 + License headers** |
+| **v0.14.1** | **✅ 已发布** | **CLI JSON 输出补全 (`--json`/`--recalc`) + relations MCP 工具加固 + License headers + Vault Daily/Graph** |
+| **v0.14.2** | **✅ 已发布** | **health dirty 检测修复（排除 ignored 文件）+ scan 路径规范化 + syncthing-rust 识别修复 + experiment_log/CodeMetrics/ModuleGraph/CallGraph/DeadCode 提升为 Beta（48 tools: Stable 5 / Beta 40 / Experimental 3）** |
 
 ---
 
