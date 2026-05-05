@@ -14,7 +14,7 @@
 | 测试 | 389 passed / 0 failed / 4 ignored |
 | Clippy | 0 warnings |
 | Schema | v23 |
-| MCP Tools | 38 个（Stable 5 / Beta 28 / Experimental 5） |
+| MCP Tools | 38 个（Stable 5 / Beta 29 / Experimental 4） |
 | 代码行数 | ~30 KLOC |
 
 ---

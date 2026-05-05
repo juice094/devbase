@@ -74,7 +74,7 @@ devbase MCP Server 提供 **38 个 tools**，通过 stdio 传输与 AI Agent 通
 | `devkit_note` | Beta | 为仓库添加 AI 发现笔记 | `repo_id`, `text`, `author` |
 | `devkit_digest` | Experimental | 生成每日知识摘要 | — |
 | `devkit_paper_index` | Experimental | 索引学术论文 | `title`, `authors`, `venue` |
-| `devkit_experiment_log` | Experimental | 记录实验结果 | `repo_id`, `paper_id`, `status` |
+| `devkit_experiment_log` | Beta | 记录实验结果 | `repo_id`, `paper_id`, `status` |
 | `devkit_github_info` | Beta | 查询 GitHub 仓库信息 | `owner`, `repo` |
 | `devkit_arxiv_fetch` | Beta | 从 arXiv 获取论文元数据 | `query`, `max_results` |
 | `devkit_known_limit_store` | Beta | 记录已知限制（Hard Veto / Known Bug） | `id`, `category`, `description` |

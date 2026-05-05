@@ -152,7 +152,7 @@ impl McpToolEnum {
             // Experimental: new, behavior may change, pending prod validation
             McpToolEnum::Digest(_) => ToolTier::Experimental,
             McpToolEnum::Paper(_) => ToolTier::Experimental,
-            McpToolEnum::Experiment(_) => ToolTier::Experimental,
+            McpToolEnum::Experiment(_) => ToolTier::Beta,
             McpToolEnum::CodeMetrics(_) => ToolTier::Experimental,
             McpToolEnum::ModuleGraph(_) => ToolTier::Experimental,
             McpToolEnum::CodeSymbols(_) => ToolTier::Beta,
