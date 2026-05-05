@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+use crate::clients::{DigestClient, KnowledgeClient};
 use crate::mcp::McpTool;
-use crate::mcp::clients::{DigestClient, KnowledgeClient};
 use crate::registry::{ExperimentEntry, PaperEntry};
 use crate::repository::knowledge::KnowledgeRepository;
 use crate::storage::AppContext;

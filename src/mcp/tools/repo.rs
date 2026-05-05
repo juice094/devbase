@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
 use super::super::McpTool;
-use super::super::clients::{HealthClient, KnowledgeClient, ScanClient, SyncClient};
+use crate::clients::{HealthClient, KnowledgeClient, ScanClient, SyncClient};
 use crate::registry::RepoEntry;
 use crate::repository::health::HealthRepository;
 use crate::repository::repo::RepoRepository;

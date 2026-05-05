@@ -830,7 +830,7 @@ pub async fn run_stdio() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub mod clients;
+pub use crate::clients::*;
 #[cfg(test)]
 pub mod tests;
 pub mod tools;

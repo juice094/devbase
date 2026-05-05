@@ -5,14 +5,22 @@ pub use crate::commands::analysis::{
     run_call_graph, run_code_symbols, run_dead_code, run_dependency_graph, run_metrics,
     run_module_graph,
 };
+#[cfg(feature = "watch")]
+pub use crate::commands::knowledge::run_watch;
 pub use crate::commands::knowledge::{
-    run_clean, run_digest, run_meta, run_oplog, run_skill_sync, run_tag, run_vault, run_watch,
+    run_clean, run_digest, run_meta, run_oplog, run_skill_sync, run_tag, run_vault,
 };
+#[cfg(feature = "tui")]
+pub use crate::commands::repo::run_discover;
 pub use crate::commands::repo::{
-    run_discover, run_health, run_index, run_query, run_registry, run_scan, run_status, run_sync,
+    run_health, run_index, run_query, run_registry, run_scan, run_status, run_sync,
     run_syncthing_push,
 };
-pub use crate::commands::system::{run_daemon, run_github_info, run_mcp, run_tui};
+#[cfg(feature = "mcp")]
+pub use crate::commands::system::run_mcp;
+#[cfg(feature = "tui")]
+pub use crate::commands::system::run_tui;
+pub use crate::commands::system::{run_daemon, run_github_info};
 
 #[cfg(test)]
 mod tests {

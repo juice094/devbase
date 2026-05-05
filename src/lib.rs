@@ -3,6 +3,7 @@
 pub mod arxiv;
 pub mod asyncgit;
 pub mod backup;
+pub mod clients;
 pub mod config;
 pub mod core;
 pub mod daemon;
@@ -13,6 +14,7 @@ pub mod embedding;
 pub mod health;
 pub mod i18n;
 pub mod knowledge_engine;
+#[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod oplog_analytics;
 pub mod query;

@@ -105,6 +105,7 @@ pub(crate) enum Commands {
     #[cfg(feature = "tui")]
     Tui,
     /// Run as an MCP server (stdio transport)
+    #[cfg(feature = "mcp")]
     Mcp {
         /// Comma-separated tool tiers to expose (stable,beta,experimental).
         /// Defaults to all tiers if omitted.
@@ -155,6 +156,7 @@ pub(crate) enum Commands {
         experiment: Option<String>,
     },
     /// Auto-discover relationships between registered repositories
+    #[cfg(feature = "tui")]
     Discover,
     /// Generate daily knowledge digest
     Digest,
@@ -617,6 +619,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Tui => {
             commands::simple::run_tui(&mut ctx).await?;
         }
+        #[cfg(feature = "mcp")]
         Commands::Mcp { tools } => {
             commands::simple::run_mcp(&mut ctx, tools).await?;
         }
@@ -712,6 +715,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::GithubInfo { repo_id, write_summary, json } => {
             commands::simple::run_github_info(&mut ctx, &repo_id, write_summary, json).await?;
         }
+        #[cfg(feature = "tui")]
         Commands::Discover => {
             commands::simple::run_discover(&mut ctx)?;
         }

@@ -1,16 +1,41 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
-use crate::mcp::tools::parse_github_repo;
 use anyhow::Context;
+
+fn parse_github_repo(url: &str) -> Option<(String, String)> {
+    let url = url.trim_end_matches(".git");
+    if let Some(rest) = url.strip_prefix("https://github.com/") {
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            return Some((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+    if let Some(rest) = url.strip_prefix("http://github.com/") {
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            return Some((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+    if let Some(rest) = url.strip_prefix("git@github.com:") {
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            return Some((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+    None
+}
 use devbase::*;
 use rusqlite::OptionalExtension;
+#[cfg(feature = "tui")]
 use tracing::info;
 
+#[cfg(feature = "tui")]
 pub async fn run_tui(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> {
     info!("{}", ctx.i18n.cli.launching_tui);
-    tui::run().await
+    crate::tui::run().await
 }
 
+#[cfg(feature = "mcp")]
 pub async fn run_mcp(
     _ctx: &mut crate::storage::AppContext,
     tools: Option<String>,
@@ -23,7 +48,7 @@ pub async fn run_mcp(
             std::env::set_var("DEVBASE_MCP_TOOL_TIERS", tiers);
         }
     }
-    mcp::run_stdio().await
+    crate::mcp::run_stdio().await
 }
 
 pub async fn run_daemon(

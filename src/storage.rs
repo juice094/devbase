@@ -189,7 +189,7 @@ pub(crate) fn repair_tantivy_consistency(conn: &mut rusqlite::Connection) -> any
     Ok(orphaned)
 }
 
-impl crate::mcp::clients::ScanClient for AppContext {
+impl crate::clients::ScanClient for AppContext {
     async fn scan_directory(
         &self,
         path: &str,
@@ -199,7 +199,7 @@ impl crate::mcp::clients::ScanClient for AppContext {
     }
 }
 
-impl crate::mcp::clients::HealthClient for AppContext {
+impl crate::clients::HealthClient for AppContext {
     async fn check_health(&self, detail: bool) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
         crate::health::run_json(&conn, detail, 0, 1, self.config.cache.ttl_seconds, &self.i18n)
@@ -207,7 +207,7 @@ impl crate::mcp::clients::HealthClient for AppContext {
     }
 }
 
-impl crate::mcp::clients::SyncClient for AppContext {
+impl crate::clients::SyncClient for AppContext {
     async fn sync_repos(
         &self,
         dry_run: bool,
@@ -219,7 +219,7 @@ impl crate::mcp::clients::SyncClient for AppContext {
     }
 }
 
-impl crate::mcp::clients::DigestClient for AppContext {
+impl crate::clients::DigestClient for AppContext {
     fn generate_daily_digest(&self) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
         let text = crate::digest::generate_daily_digest(&conn, &self.config, &self.i18n)?;
@@ -227,7 +227,7 @@ impl crate::mcp::clients::DigestClient for AppContext {
     }
 }
 
-impl crate::mcp::clients::KnowledgeClient for AppContext {
+impl crate::clients::KnowledgeClient for AppContext {
     fn run_index(&self, path: &str) -> anyhow::Result<serde_json::Value> {
         let mut conn = self.conn()?;
         let count = crate::knowledge_engine::run_index(&mut conn, path)?;
@@ -274,7 +274,7 @@ impl crate::mcp::clients::KnowledgeClient for AppContext {
     }
 }
 
-impl crate::mcp::clients::RegistryClient for AppContext {
+impl crate::clients::RegistryClient for AppContext {
     fn list_repos(&self, _filter: Option<&str>) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
         let repos = crate::registry::repo::list_repos(&conn)?;

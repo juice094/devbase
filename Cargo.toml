@@ -14,9 +14,11 @@ name = "registry_bench"
 harness = false
 
 [features]
-default = ["tui"]
+default = ["tui", "mcp", "embedding"]
 tui = ["ratatui", "crossterm", "watch"]
 watch = ["notify"]
+mcp = []
+embedding = ["dep:devbase-embedding"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -64,7 +66,7 @@ devbase-workflow-model = { path = "crates/devbase-workflow-model" }
 devbase-registry-health = { path = "crates/devbase-registry-health" }
 devbase-registry-metrics = { path = "crates/devbase-registry-metrics" }
 devbase-registry-workspace = { path = "crates/devbase-registry-workspace" }
-devbase-embedding = { path = "crates/devbase-embedding" }
+devbase-embedding = { path = "crates/devbase-embedding", optional = true }
 devbase-skill-runtime-types = { path = "crates/devbase-skill-runtime-types" }
 devbase-skill-runtime-parser = { path = "crates/devbase-skill-runtime-parser" }
 devbase-registry-entity = { path = "crates/devbase-registry-entity" }
