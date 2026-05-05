@@ -24,7 +24,7 @@ impl<'a> SymbolRepository<'a> {
         limit: usize,
     ) -> anyhow::Result<Vec<CodeSymbol>> {
         let mut sql = String::from(
-            "SELECT file_path, symbol_type, name, line_start, line_end, signature \
+            "SELECT file_path, symbol_type, name, line_start, line_end, signature, attributes \
              FROM code_symbols WHERE repo_id = ?1",
         );
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(repo_id.to_string())];
@@ -57,6 +57,7 @@ impl<'a> SymbolRepository<'a> {
                     line_start: row.get::<_, i64>(3)?,
                     line_end: row.get::<_, i64>(4)?,
                     signature: row.get::<_, Option<String>>(5)?,
+                    attributes: row.get::<_, Option<String>>(6)?,
                 })
             })?;
 
@@ -139,6 +140,8 @@ impl<'a> SymbolRepository<'a> {
         sql.push_str(" AND cs.name NOT LIKE 'test_%'");
         // Exclude functions in tests.rs files (Rust unit-test modules)
         sql.push_str(" AND cs.file_path NOT LIKE '%/tests.rs' AND cs.file_path NOT LIKE '%\\tests.rs'");
+        // Exclude functions with #[test] or #[tokio::test] attributes (tree-sitter extracted)
+        sql.push_str(" AND (cs.attributes IS NULL OR cs.attributes NOT LIKE '%#[test]%')");
 
         sql.push_str(&format!(" ORDER BY cs.file_path, cs.line_start LIMIT {}", limit.min(200)));
 

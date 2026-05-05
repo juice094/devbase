@@ -11,6 +11,7 @@ pub struct CodeSymbol {
     pub line_start: i64,
     pub line_end: i64,
     pub signature: Option<String>,
+    pub attributes: Option<String>,
 }
 
 /// Query code symbols for a specific repository.
@@ -23,7 +24,7 @@ pub fn query_code_symbols(
     limit: usize,
 ) -> anyhow::Result<Vec<CodeSymbol>> {
     let mut sql = String::from(
-        "SELECT file_path, symbol_type, name, line_start, line_end, signature \
+        "SELECT file_path, symbol_type, name, line_start, line_end, signature, attributes \
          FROM code_symbols WHERE repo_id = ?1",
     );
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(repo_id.to_string())];
@@ -55,6 +56,7 @@ pub fn query_code_symbols(
             line_start: row.get::<_, i64>(3)?,
             line_end: row.get::<_, i64>(4)?,
             signature: row.get::<_, Option<String>>(5)?,
+            attributes: row.get::<_, Option<String>>(6)?,
         })
     })?;
 

@@ -311,6 +311,7 @@ CREATE TABLE IF NOT EXISTS code_symbols (
     line_start INTEGER,
     line_end INTEGER,
     signature TEXT,
+    attributes TEXT,
     PRIMARY KEY (repo_id, file_path, name)
 );
 CREATE INDEX IF NOT EXISTS idx_code_symbols_repo ON code_symbols(repo_id);

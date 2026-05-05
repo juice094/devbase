@@ -17,13 +17,14 @@ pub fn save_symbols(
     for sym in symbols {
         tx.execute(
             "INSERT INTO code_symbols
-             (repo_id, file_path, symbol_type, name, line_start, line_end, signature)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             (repo_id, file_path, symbol_type, name, line_start, line_end, signature, attributes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(repo_id, file_path, name) DO UPDATE SET
              symbol_type = excluded.symbol_type,
              line_start = excluded.line_start,
              line_end = excluded.line_end,
-             signature = excluded.signature",
+             signature = excluded.signature,
+             attributes = excluded.attributes",
             (
                 repo_id,
                 sym.file_path.to_string_lossy().as_ref(),
@@ -32,6 +33,7 @@ pub fn save_symbols(
                 sym.line_start as i64,
                 sym.line_end as i64,
                 sym.signature.as_deref(),
+                sym.attributes.as_deref(),
             ),
         )?;
         inserted += 1;
@@ -74,13 +76,14 @@ pub fn save_symbols_incremental(
     for sym in symbols {
         tx.execute(
             "INSERT INTO code_symbols
-             (repo_id, file_path, symbol_type, name, line_start, line_end, signature)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             (repo_id, file_path, symbol_type, name, line_start, line_end, signature, attributes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(repo_id, file_path, name) DO UPDATE SET
              symbol_type = excluded.symbol_type,
              line_start = excluded.line_start,
              line_end = excluded.line_end,
-             signature = excluded.signature",
+             signature = excluded.signature,
+             attributes = excluded.attributes",
             (
                 repo_id,
                 sym.file_path.to_string_lossy().as_ref(),
@@ -89,6 +92,7 @@ pub fn save_symbols_incremental(
                 sym.line_start as i64,
                 sym.line_end as i64,
                 sym.signature.as_deref(),
+                sym.attributes.as_deref(),
             ),
         )?;
         inserted += 1;

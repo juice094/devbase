@@ -30,6 +30,8 @@ pub struct CodeSymbol {
     pub line_start: usize,
     pub line_end: usize,
     pub signature: Option<String>,
+    /// Raw attributes (e.g., `#[test]`, `#[tokio::test]`) extracted from tree-sitter.
+    pub attributes: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -476,6 +478,7 @@ func (s *MyStruct) Method() string {
                 line_start: 1,
                 line_end: 3,
                 signature: Some("fn hello()".to_string()),
+                attributes: None,
             },
             CodeSymbol {
                 symbol_type: SymbolType::Struct,
@@ -484,6 +487,7 @@ func (s *MyStruct) Method() string {
                 line_start: 5,
                 line_end: 8,
                 signature: None,
+                attributes: None,
             },
         ];
 

@@ -51,7 +51,8 @@ fn collect_symbols_from_node(
     lang: Lang,
     symbols: &mut Vec<CodeSymbol>,
 ) {
-    if let Some(sym) = node_to_symbol(node, file_path, source_bytes, lang) {
+    if let Some(mut sym) = node_to_symbol(node, file_path, source_bytes, lang) {
+        sym.attributes = extract_preceding_attributes(node, source_bytes);
         symbols.push(sym);
         // Don't recurse into this node — we don't want inner methods of a
         // class to also be extracted as top-level symbols.
@@ -110,7 +111,37 @@ fn rust_node_to_symbol(
         line_start,
         line_end,
         signature,
+        attributes: None,
     })
+}
+
+/// Extract `attribute_item` nodes that are immediate preceding siblings of `node`.
+/// In tree-sitter-rust 0.24, attributes are siblings, not children, of the item node.
+fn extract_preceding_attributes(
+    node: &tree_sitter::Node,
+    source_bytes: &[u8],
+) -> Option<String> {
+    let mut attrs = Vec::new();
+    let mut sibling = node.prev_sibling();
+    while let Some(sib) = sibling {
+        match sib.kind() {
+            "attribute_item" => {
+                attrs.push(node_text(&sib, source_bytes).to_string());
+                sibling = sib.prev_sibling();
+            }
+            "line_comment" | "block_comment" => {
+                // Skip comments that may appear between attributes and the item.
+                sibling = sib.prev_sibling();
+            }
+            _ => break,
+        }
+    }
+    attrs.reverse();
+    if attrs.is_empty() {
+        None
+    } else {
+        Some(attrs.join("\n"))
+    }
 }
 
 // ---- Python ---------------------------------------------------------------
@@ -138,6 +169,7 @@ fn python_node_to_symbol(
         line_start,
         line_end,
         signature,
+        attributes: None,
     })
 }
 
@@ -175,6 +207,7 @@ fn js_node_to_symbol(
         line_start,
         line_end,
         signature,
+        attributes: None,
     })
 }
 
@@ -198,6 +231,7 @@ fn go_node_to_symbol(
                 line_start,
                 line_end,
                 signature,
+                attributes: None,
             })
         }
         "method_declaration" => {
@@ -212,6 +246,7 @@ fn go_node_to_symbol(
                 line_start,
                 line_end,
                 signature,
+                attributes: None,
             })
         }
         "type_spec" => {
@@ -233,6 +268,7 @@ fn go_node_to_symbol(
                 line_start,
                 line_end,
                 signature,
+                attributes: None,
             })
         }
         "const_spec" => {
@@ -247,6 +283,7 @@ fn go_node_to_symbol(
                 line_start,
                 line_end,
                 signature,
+                attributes: None,
             })
         }
         _ => None,
@@ -322,3 +359,45 @@ pub(crate) fn node_text<'a>(node: &tree_sitter::Node, source: &'a [u8]) -> &'a s
 // ---------------------------------------------------------------------------
 // Repository-wide indexing
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_rust_attributes() {
+        let source = r#"
+#[tokio::test]
+async fn my_test() {
+    assert_eq!(1, 1);
+}
+
+#[derive(Debug)]
+struct MyStruct {
+    x: i32,
+}
+"#;
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&tree_sitter_rust::LANGUAGE.into()).unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let root = tree.root_node();
+        
+        // Find function_item and assert attributes via preceding-sibling extraction
+        let func = (0..root.child_count())
+            .map(|i| root.child(i as u32).unwrap())
+            .find(|n| n.kind() == "function_item")
+            .unwrap();
+        let attrs = extract_preceding_attributes(&func, source.as_bytes());
+        assert!(attrs.is_some(), "Expected attributes to be extracted");
+        assert!(attrs.as_ref().unwrap().contains("test"), "Expected #[tokio::test] in attributes: {:?}", attrs);
+
+        // Find struct_item and assert derive
+        let st = (0..root.child_count())
+            .map(|i| root.child(i as u32).unwrap())
+            .find(|n| n.kind() == "struct_item")
+            .unwrap();
+        let attrs = extract_preceding_attributes(&st, source.as_bytes());
+        assert!(attrs.is_some(), "Expected derive attribute");
+        assert!(attrs.as_ref().unwrap().contains("derive"), "Expected #[derive(Debug)] in attributes: {:?}", attrs);
+    }
+}

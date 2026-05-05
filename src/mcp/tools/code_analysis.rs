@@ -259,6 +259,7 @@ Returns: JSON array of symbols with file_path, name, symbol_type, line_start, li
                         "line_start": s.line_start,
                         "line_end": s.line_end,
                         "signature": s.signature,
+                        "attributes": s.attributes,
                     })
                 })
                 .collect();
