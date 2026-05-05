@@ -201,7 +201,7 @@ pub(crate) fn is_excluded_path(
 }
 
 fn canonicalize_repo_path(path: &Path) -> PathBuf {
-    match std::fs::canonicalize(path) {
+    match dunce::canonicalize(path) {
         Ok(p) => p,
         Err(_) => path.to_path_buf(),
     }
@@ -215,11 +215,14 @@ fn discover_repos(
 ) -> anyhow::Result<Vec<RepoEntry>> {
     let mut ignored_dirs: Vec<PathBuf> = Vec::new();
 
+    // Scanning must NOT skip .git directories, otherwise no git repos can be discovered.
+    let scan_exclude_patterns: Vec<String> = exclude_patterns.iter().cloned().filter(|p| p != ".git").collect();
+
     // First pass: collect all directories containing .devbase-ignore
     for entry in WalkDir::new(root)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), exclude_patterns))
+        .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), &scan_exclude_patterns))
         .filter_map(|e| e.ok())
     {
         if entry.file_type().is_dir() && entry.path().join(".devbase-ignore").exists() {
@@ -237,7 +240,7 @@ fn discover_repos(
     for entry in WalkDir::new(root)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), exclude_patterns))
+        .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), &scan_exclude_patterns))
         .filter_map(|e| e.ok())
     {
         if entry.file_name() == ".git" && entry.file_type().is_dir() {
@@ -263,7 +266,7 @@ fn discover_repos(
     for entry in WalkDir::new(root)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), exclude_patterns))
+        .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), &scan_exclude_patterns))
         .filter_map(|e| e.ok())
     {
         let name = entry.file_name().to_string_lossy();
@@ -405,7 +408,17 @@ pub fn inspect_repo(
     github: Option<&crate::config::GithubConfig>,
 ) -> anyhow::Result<RepoEntry> {
     let path = canonicalize_repo_path(path);
-    let repo = Repository::open(&path)?;
+    let repo = match Repository::open(&path) {
+        Ok(r) => r,
+        Err(e) if e.code() == git2::ErrorCode::Owner => {
+            let path_str = path.to_string_lossy().to_string();
+            let _ = std::process::Command::new("git")
+                .args(["config", "--global", "--add", "safe.directory", &path_str])
+                .output();
+            Repository::open(&path)?
+        }
+        Err(e) => return Err(e.into()),
+    };
 
     let id = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
 
