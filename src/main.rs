@@ -292,6 +292,8 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         cmd: LimitCommands,
     },
+    /// Show version information
+    Version,
 }
 
 #[derive(Subcommand)]
@@ -727,6 +729,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Limit { cmd } => {
             commands::limit::run_limit(&mut ctx, cmd)?;
+        }
+        Commands::Version => {
+            println!("devbase {}", env!("CARGO_PKG_VERSION"));
         }
     }
 

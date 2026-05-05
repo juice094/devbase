@@ -135,6 +135,10 @@ impl<'a> SymbolRepository<'a> {
         }
         // Exclude main() — entry points are never dead code
         sql.push_str(" AND cs.name != 'main'");
+        // Exclude test functions — heuristic: name starts with 'test_' (Rust convention)
+        sql.push_str(" AND cs.name NOT LIKE 'test_%'");
+        // Exclude functions in tests.rs files (Rust unit-test modules)
+        sql.push_str(" AND cs.file_path NOT LIKE '%/tests.rs' AND cs.file_path NOT LIKE '%\\tests.rs'");
 
         sql.push_str(&format!(" ORDER BY cs.file_path, cs.line_start LIMIT {}", limit.min(200)));
 
