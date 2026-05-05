@@ -45,6 +45,8 @@ mod tests {
         let _ = super::status::DevkitStatusTool;
         let _ = super::skill::DevkitSkillListTool;
         let _ = super::vault::DevkitVaultSearchTool;
+        let _ = super::vault::DevkitVaultDailyTool;
+        let _ = super::vault::DevkitVaultGraphTool;
         let _ = super::workflow::DevkitWorkflowListTool;
     }
 }

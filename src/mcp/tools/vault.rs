@@ -351,6 +351,236 @@ Returns: JSON array of backlinking notes, each with id, title, and path."#,
     }
 }
 
+#[derive(Clone)]
+pub struct DevkitVaultDailyTool;
+
+impl McpTool for DevkitVaultDailyTool {
+    fn name(&self) -> &'static str {
+        "devkit_vault_daily"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Generate a daily note in the vault under 99-Meta/Daily/YYYY-MM-DD.md. The note includes YAML frontmatter (date, tags: ["daily"]) and the day's devbase digest. If the file already exists, the digest is appended instead of overwriting.
+
+Use this when the user wants to:
+- Create a daily log entry summarizing devbase activity
+- Persist the daily digest as a vault note for long-term reference
+
+Parameters: none.
+
+Returns: JSON with success status and the generated file path."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        _args: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let rel_path = format!("99-Meta/Daily/{}.md", today);
+
+        let pool = ctx.pool();
+        let config = ctx.config.clone();
+        let i18n = ctx.i18n.clone();
+
+        let file_path = tokio::task::spawn_blocking({
+            let rel_path = rel_path.clone();
+            let today = today.clone();
+            move || {
+                let conn = pool.get()?;
+                let digest = crate::digest::generate_daily_digest(&conn, &config, &i18n)?;
+
+                let vault_root = crate::registry::WorkspaceRegistry::workspace_dir()
+                    .map(|ws| ws.join("vault"))
+                    .unwrap_or_else(|_| std::path::PathBuf::from("vault"));
+                let target = resolve_vault_path(&rel_path, &vault_root)?;
+
+                if let Some(parent) = target.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+
+                let content = if target.exists() {
+                    let existing = std::fs::read_to_string(&target)?;
+                    format!("{}\n\n{}", existing, digest)
+                } else {
+                    format!(
+                        "---\ndate: {}\ntags: [\"daily\"]\n---\n\n{}",
+                        today, digest
+                    )
+                };
+
+                std::fs::write(&target, content)?;
+                anyhow::Ok(target.to_string_lossy().to_string())
+            }
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+
+        Ok(serde_json::json!({
+            "success": true,
+            "path": file_path,
+            "date": today,
+        }))
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitVaultGraphTool;
+
+impl McpTool for DevkitVaultGraphTool {
+    fn name(&self) -> &'static str {
+        "devkit_vault_graph"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Export the vault knowledge graph as a JSON structure of nodes (notes) and edges (wikilink relationships).
+
+Use this when the user wants to:
+- Visualize or analyze the structure of the knowledge base
+- Export vault connections for external graph tools
+- Understand the connectivity between topics and projects
+
+Parameters:
+- repo_id: Optional — if provided, only return notes linked to this repo and their mutual relationships.
+
+Returns: JSON with nodes (id, title) and edges (source, target)."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": { "type": "string", "description": "Optional repo ID to filter notes" }
+                }
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        _ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+        let graph = tokio::task::spawn_blocking({
+            let repo_id = repo_id.clone();
+            move || {
+                let vault_dir = crate::registry::WorkspaceRegistry::workspace_dir()
+                    .ok()
+                    .map(|ws| ws.join("vault"));
+                let Some(vd) = vault_dir else {
+                    return anyhow::Ok(serde_json::json!({
+                        "success": true,
+                        "count": 0,
+                        "edge_count": 0,
+                        "nodes": [],
+                        "edges": [],
+                    }));
+                };
+
+                let index = crate::vault::backlinks::build_backlink_index(&vd)?;
+
+                let mut id_to_title: std::collections::HashMap<String, String> =
+                    std::collections::HashMap::new();
+                let mut id_to_repo: std::collections::HashMap<String, String> =
+                    std::collections::HashMap::new();
+
+                for entry in walkdir::WalkDir::new(&vd)
+                    .follow_links(false)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.file_type().is_file())
+                    .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
+                {
+                    let path = entry.path();
+                    let rel_path = path.strip_prefix(&vd).unwrap_or(path);
+                    let id = rel_path.to_string_lossy().replace('\\', "/");
+
+                    let content = match std::fs::read_to_string(path) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+
+                    if let Some((fm, _)) = crate::vault::frontmatter::extract_frontmatter(&content)
+                    {
+                        id_to_title
+                            .insert(id.clone(), fm.title.unwrap_or_else(|| id.clone()));
+                        if let Some(repo) = fm.repo {
+                            id_to_repo.insert(id, repo);
+                        }
+                    } else {
+                        id_to_title.insert(id.clone(), id.clone());
+                    }
+                }
+
+                let allowed_ids: std::collections::HashSet<String> =
+                    if let Some(ref rid) = repo_id {
+                        id_to_repo
+                            .iter()
+                            .filter(|(_, r)| *r == rid)
+                            .map(|(id, _)| id.clone())
+                            .collect()
+                    } else {
+                        id_to_title.keys().cloned().collect()
+                    };
+
+                // Normalize wikilink targets (e.g. "b" -> "b.md") to vault file ids.
+                let mut id_lookup: std::collections::HashMap<String, String> =
+                    std::collections::HashMap::new();
+                for id in id_to_title.keys() {
+                    id_lookup.insert(id.clone(), id.clone());
+                    if let Some(stem) = id.strip_suffix(".md") {
+                        id_lookup.insert(stem.to_string(), id.clone());
+                    }
+                }
+
+                let nodes: Vec<_> = allowed_ids
+                    .iter()
+                    .map(|id| {
+                        serde_json::json!({
+                            "id": id,
+                            "title": id_to_title.get(id).unwrap_or(id),
+                        })
+                    })
+                    .collect();
+
+                let mut edges = Vec::new();
+                for (target, sources) in &index {
+                    let normalized = id_lookup.get(target).cloned().unwrap_or_else(|| target.clone());
+                    if !allowed_ids.contains(&normalized) {
+                        continue;
+                    }
+                    for source in sources {
+                        if allowed_ids.contains(source) {
+                            edges.push(serde_json::json!({
+                                "source": source,
+                                "target": &normalized,
+                            }));
+                        }
+                    }
+                }
+
+                anyhow::Ok(serde_json::json!({
+                    "success": true,
+                    "count": nodes.len(),
+                    "edge_count": edges.len(),
+                    "nodes": nodes,
+                    "edges": edges,
+                }))
+            }
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+
+        Ok(graph)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -427,5 +657,131 @@ mod tests {
         );
         // Guard: must complete within reasonable time (< 1s for 100k ops)
         assert!(elapsed.as_secs() < 1, "resolve_vault_path too slow: {:?}", elapsed);
+    }
+
+    #[tokio::test]
+    async fn test_vault_daily_creates_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+        }
+        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let tool = DevkitVaultDailyTool;
+        let result = tool.invoke(serde_json::json!({}), &mut ctx).await.unwrap();
+
+        assert_eq!(result.get("success").unwrap(), true);
+        let path = result.get("path").unwrap().as_str().unwrap();
+        assert!(path.contains("99-Meta"));
+        assert!(path.contains("Daily"));
+
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(content.contains("---"));
+        assert!(content.contains("tags: [\"daily\"]"));
+        // Digest contains repo count regardless of language
+        assert!(content.contains("repos in db"));
+    }
+
+    #[tokio::test]
+    async fn test_vault_daily_appends_to_existing() {
+        let tmp = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+        }
+        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let tool = DevkitVaultDailyTool;
+
+        // First call creates the file
+        let _ = tool.invoke(serde_json::json!({}), &mut ctx).await.unwrap();
+
+        // Second call appends
+        let result = tool.invoke(serde_json::json!({}), &mut ctx).await.unwrap();
+        assert_eq!(result.get("success").unwrap(), true);
+
+        let path = result.get("path").unwrap().as_str().unwrap();
+        let content = std::fs::read_to_string(path).unwrap();
+        let count = content.matches("repos in db").count();
+        assert!(count >= 2, "Expected at least 2 digest occurrences, found {}", count);
+    }
+
+    #[tokio::test]
+    async fn test_vault_graph_basic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault_dir = tmp.path().join("devbase").join("workspace").join("vault");
+        std::fs::create_dir_all(&vault_dir).unwrap();
+        unsafe {
+            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+        }
+
+        std::fs::write(
+            vault_dir.join("a.md"),
+            "---\ntitle: Note A\n---\n\nLinks to [[b]] and [[c]].\n",
+        )
+        .unwrap();
+        std::fs::write(
+            vault_dir.join("b.md"),
+            "---\ntitle: Note B\n---\n\nLinks to [[c]].\n",
+        )
+        .unwrap();
+        std::fs::write(
+            vault_dir.join("c.md"),
+            "---\ntitle: Note C\n---\n\nNo links.\n",
+        )
+        .unwrap();
+
+        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let tool = DevkitVaultGraphTool;
+        let result = tool.invoke(serde_json::json!({}), &mut ctx).await.unwrap();
+
+        assert_eq!(result.get("success").unwrap(), true);
+        let nodes = result.get("nodes").unwrap().as_array().unwrap();
+        let edges = result.get("edges").unwrap().as_array().unwrap();
+
+        assert_eq!(nodes.len(), 3);
+        let titles: Vec<&str> = nodes
+            .iter()
+            .map(|n| n.get("title").unwrap().as_str().unwrap())
+            .collect();
+        assert!(titles.contains(&"Note A"));
+        assert!(titles.contains(&"Note B"));
+        assert!(titles.contains(&"Note C"));
+
+        // Edges: a->b, a->c, b->c
+        assert_eq!(edges.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_vault_graph_filtered_by_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault_dir = tmp.path().join("devbase").join("workspace").join("vault");
+        std::fs::create_dir_all(&vault_dir).unwrap();
+        unsafe {
+            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
+        }
+
+        std::fs::write(
+            vault_dir.join("repo-a-note.md"),
+            "---\ntitle: Repo A Note\nrepo: repo-a\n---\n\nLinks to [[repo-b-note]].\n",
+        )
+        .unwrap();
+        std::fs::write(
+            vault_dir.join("repo-b-note.md"),
+            "---\ntitle: Repo B Note\nrepo: repo-b\n---\n\nNo links.\n",
+        )
+        .unwrap();
+
+        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let tool = DevkitVaultGraphTool;
+        let result = tool
+            .invoke(serde_json::json!({ "repo_id": "repo-a" }), &mut ctx)
+            .await
+            .unwrap();
+
+        assert_eq!(result.get("success").unwrap(), true);
+        let nodes = result.get("nodes").unwrap().as_array().unwrap();
+        let edges = result.get("edges").unwrap().as_array().unwrap();
+
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].get("id").unwrap().as_str().unwrap(), "repo-a-note.md");
+        assert_eq!(edges.len(), 0);
     }
 }
