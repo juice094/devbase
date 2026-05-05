@@ -4,15 +4,13 @@
 //!
 //! Devbase handles storage (SQLite BLOB), serialization, query-time
 //! similarity computation, and local query embedding generation via
-//! sentence-transformers (when available).
+//! candle (all-MiniLM-L6-v2, pure Rust).
 //!
-//! ## Provider architecture (v0.14预留)
+//! ## Provider architecture
 //! `EmbeddingProvider` trait abstracts the generation backend.
-//! Current: `PythonProvider` (local Python + sentence-transformers).
-//! Future: `CandleProvider` (pure-Rust, feature-gated, Sprint 14).
+//! Current: `CandleProvider` (pure-Rust local inference).
 
 /// Provider trait for text-to-embedding generation.
-/// Implemented by Python backend now; candle backend in v0.14.
 pub trait EmbeddingProvider: Send + Sync {
     /// Generate an embedding for a single query string.
     fn encode(&self, text: &str) -> anyhow::Result<Vec<f32>>;
@@ -24,24 +22,15 @@ pub trait EmbeddingProvider: Send + Sync {
 /// Production provider selector.
 /// Returns the best available provider at runtime.
 pub fn default_provider() -> Box<dyn EmbeddingProvider> {
-    #[cfg(feature = "local-embedding")]
-    {
-        Box::new(CandleProvider)
-    }
-    #[cfg(not(feature = "local-embedding"))]
-    {
-        Box::new(PythonProvider)
-    }
+    Box::new(CandleProvider)
 }
 
 // ---------------------------------------------------------------------------
 // CandleProvider — pure-Rust local embedding via all-MiniLM-L6-v2
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "local-embedding")]
 pub struct CandleProvider;
 
-#[cfg(feature = "local-embedding")]
 impl EmbeddingProvider for CandleProvider {
     fn encode(&self, text: &str) -> anyhow::Result<Vec<f32>> {
         let (model, tokenizer) = get_candle_resources()?;
@@ -52,7 +41,6 @@ impl EmbeddingProvider for CandleProvider {
     }
 }
 
-#[cfg(feature = "local-embedding")]
 fn get_candle_resources()
 -> anyhow::Result<&'static (candle_transformers::models::bert::BertModel, tokenizers::Tokenizer)> {
     use std::sync::OnceLock;
@@ -65,7 +53,6 @@ fn get_candle_resources()
     }
 }
 
-#[cfg(feature = "local-embedding")]
 fn init_candle_resources()
 -> anyhow::Result<(candle_transformers::models::bert::BertModel, tokenizers::Tokenizer)> {
     use candle_core::Device;
@@ -95,7 +82,6 @@ fn init_candle_resources()
     Ok((model, tokenizer))
 }
 
-#[cfg(feature = "local-embedding")]
 fn encode_with_candle(
     model: &candle_transformers::models::bert::BertModel,
     tokenizer: &tokenizers::Tokenizer,
@@ -124,18 +110,6 @@ fn encode_with_candle(
     let normalized = mean_pooled.broadcast_div(&norm)?;
 
     Ok(normalized.squeeze(0)?.to_vec1()?)
-}
-
-/// Python-based provider using local sentence-transformers.
-pub struct PythonProvider;
-
-impl EmbeddingProvider for PythonProvider {
-    fn encode(&self, text: &str) -> anyhow::Result<Vec<f32>> {
-        generate_query_embedding_python(text)
-    }
-    fn name(&self) -> &'static str {
-        "python-sentence-transformers"
-    }
 }
 
 /// Cosine similarity between two f32 vectors.
@@ -175,66 +149,6 @@ pub fn generate_query_embedding(query: &str) -> anyhow::Result<Vec<f32>> {
     default_provider().encode(query)
 }
 
-fn generate_query_embedding_python(query: &str) -> anyhow::Result<Vec<f32>> {
-    // TODO(veto-audit-2026-04-26): RF-7 路径隐私 + 可移植性 — 硬编码开发者个人环境路径，生产环境不可用。
-    // 修复: 移除硬编码路径，仅保留 PATH 探测（python/python3/py）。v0.14 candle 本地 embedding 落地后删除此函数。
-    let candidates: Vec<std::path::PathBuf> = [
-        std::path::PathBuf::from(
-            "C:\\Users\\22414\\AppData\\Roaming\\uv\\tools\\pip\\Scripts\\python.exe",
-        ),
-        std::path::PathBuf::from("python"),
-        std::path::PathBuf::from("python3"),
-        std::path::PathBuf::from("py"),
-    ]
-    .into_iter()
-    .filter(|p| {
-        if p == &std::path::PathBuf::from("python")
-            || p == &std::path::PathBuf::from("python3")
-            || p == &std::path::PathBuf::from("py")
-        {
-            std::process::Command::new(p)
-                .arg("--version")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-        } else {
-            p.exists()
-        }
-    })
-    .collect();
-
-    let script = format!(
-        r#"import os; os.environ['HF_HUB_OFFLINE']='1'; from sentence_transformers import SentenceTransformer; import struct; model = SentenceTransformer('all-MiniLM-L6-v2'); emb = model.encode('{}', convert_to_numpy=True); print(''.join(struct.pack('<f', float(x)).hex() for x in emb.tolist()))"#,
-        query.replace('\\', "\\\\").replace('\'', "\\'")
-    );
-
-    let mut last_err = String::new();
-    for python in &candidates {
-        let output = std::process::Command::new(python).args(["-c", &script]).output();
-        match output {
-            Ok(out) if out.status.success() => {
-                let hex_str = String::from_utf8(out.stdout)?.trim().to_string();
-                let mut embedding = Vec::new();
-                for chunk in hex_str.as_bytes().chunks(8) {
-                    let bytes = u32::from_str_radix(std::str::from_utf8(chunk)?, 16)?;
-                    embedding.push(f32::from_le_bytes(bytes.to_le_bytes()));
-                }
-                return Ok(embedding);
-            }
-            Ok(out) => {
-                last_err =
-                    format!("{} failed: {}", python.display(), String::from_utf8_lossy(&out.stderr))
-            }
-            Err(e) => last_err = format!("{} error: {}", python.display(), e),
-        }
-    }
-    Err(anyhow::anyhow!(
-        "Embedding provider failed (tried {} candidates). Last: {}",
-        candidates.len(),
-        last_err
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,24 +176,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires local Python with sentence-transformers"]
-    fn test_generate_query_embedding_smoke() {
-        let provider = PythonProvider;
-        let emb = provider.encode("hello world").unwrap();
-        assert_eq!(emb.len(), 384);
-    }
-
-    #[test]
     fn test_default_provider_routes_correctly() {
         let provider = default_provider();
-        #[cfg(feature = "local-embedding")]
         assert_eq!(provider.name(), "candle-all-MiniLM-L6-v2");
-        #[cfg(not(feature = "local-embedding"))]
-        assert_eq!(provider.name(), "python-sentence-transformers");
     }
 
     #[test]
-    #[cfg(feature = "local-embedding")]
     fn test_candle_provider_encode() {
         let provider = CandleProvider;
         let emb = provider.encode("hello world").unwrap();
@@ -290,12 +192,92 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires local Python with sentence-transformers"]
     fn test_provider_trait_consistency() {
         let provider = default_provider();
         let emb = provider.encode("hello world").unwrap();
         assert!(!emb.is_empty());
         // all-MiniLM-L6-v2 produces 384-dim vectors
         assert_eq!(emb.len(), 384);
+    }
+
+    /// Run Python sentence-transformers and compare against candle output.
+    /// Ignored by default because it requires a Python environment with
+    /// `sentence-transformers` installed.
+    #[test]
+    #[ignore = "requires Python with sentence-transformers installed"]
+    fn test_candle_python_cosine_similarity() {
+        let text = "The quick brown fox jumps over the lazy dog.";
+
+        let candle_emb = CandleProvider.encode(text).unwrap();
+        let python_emb = generate_python_embedding(text).unwrap();
+
+        assert_eq!(
+            candle_emb.len(),
+            python_emb.len(),
+            "dimension mismatch: candle={}, python={}",
+            candle_emb.len(),
+            python_emb.len()
+        );
+
+        let sim = cosine_similarity(&candle_emb, &python_emb);
+        assert!(
+            sim > 0.999,
+            "candle vs python cosine similarity = {} (expected > 0.999)",
+            sim
+        );
+    }
+
+    /// Helper: call Python sentence-transformers for a single text.
+    fn generate_python_embedding(text: &str) -> anyhow::Result<Vec<f32>> {
+        let candidates: Vec<std::path::PathBuf> =
+            ["python", "python3"]
+                .iter()
+                .map(|c| std::path::PathBuf::from(c))
+                .filter(|p| {
+                    std::process::Command::new(p)
+                        .arg("-c")
+                        .arg("import sentence_transformers")
+                        .output()
+                        .map(|o| o.status.success())
+                        .unwrap_or(false)
+                })
+                .collect();
+
+        let script = format!(
+            r#"import os; os.environ['HF_HUB_OFFLINE']='1'; from sentence_transformers import SentenceTransformer; import struct; model = SentenceTransformer('all-MiniLM-L6-v2'); emb = model.encode('{}', convert_to_numpy=True); print(''.join(struct.pack('<f', float(x)).hex() for x in emb.tolist()))"#,
+            text.replace('\\', "\\\\").replace('\'', "\\'")
+        );
+
+        let mut last_err = String::new();
+        for python in &candidates {
+            let output = std::process::Command::new(python)
+                .args(["-c", &script])
+                .output();
+            match output {
+                Ok(out) if out.status.success() => {
+                    let hex_str = String::from_utf8(out.stdout)?.trim().to_string();
+                    let mut embedding = Vec::new();
+                    for chunk in hex_str.as_bytes().chunks_exact(8) {
+                        let chunk_str = std::str::from_utf8(chunk)?;
+                        let bytes = u32::from_str_radix(chunk_str, 16)?;
+                        embedding.push(f32::from_le_bytes(bytes.to_le_bytes()));
+                    }
+                    return Ok(embedding);
+                }
+                Ok(out) => {
+                    last_err = format!(
+                        "{} failed: {}",
+                        python.display(),
+                        String::from_utf8_lossy(&out.stderr)
+                    )
+                }
+                Err(e) => last_err = format!("{} error: {}", python.display(), e),
+            }
+        }
+        Err(anyhow::anyhow!(
+            "Python sentence-transformers not available (tried {} candidates). Last: {}",
+            candidates.len(),
+            last_err
+        ))
     }
 }

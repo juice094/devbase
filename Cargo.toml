@@ -14,12 +14,9 @@ name = "registry_bench"
 harness = false
 
 [features]
-default = ["tui", "local-embedding"]
+default = ["tui"]
 tui = ["ratatui", "crossterm", "watch"]
 watch = ["notify"]
-# Sprint 14: local embedding via candle + all-MiniLM-L6-v2 (delegated to devbase-embedding crate)
-local-embedding = ["devbase-embedding/local-embedding"]
-
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
