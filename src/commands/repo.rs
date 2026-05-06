@@ -77,7 +77,7 @@ pub fn run_discover(ctx: &mut crate::storage::AppContext) -> anyhow::Result<()> 
     let sims = discover_similar_projects(&conn)?;
 
     let mut merged: HashMap<(String, String, String), Discovery> = HashMap::new();
-    for d in deps.into_iter().chain(sims.into_iter()) {
+    for d in deps.into_iter().chain(sims) {
         let key = (d.from.clone(), d.to.clone(), d.relation_type.clone());
         if let Some(existing) = merged.get(&key) {
             if d.confidence > existing.confidence {
