@@ -200,12 +200,6 @@ impl<'a> KnowledgeRepository<'a> {
         tx.commit()?;
         Ok(inserted)
     }
-
-    /// Generate a knowledge report for a repo.
-    pub fn generate_report(&self, _repo_id: &str) -> anyhow::Result<Value> {
-        // TODO: migrate from mcp/tools/repo.rs DevkitKnowledgeReportTool
-        todo!()
-    }
 }
 
 impl<'a> super::Repository for KnowledgeRepository<'a> {
