@@ -4,11 +4,10 @@ use super::*;
 use crate::storage::StorageBackend;
 
 fn test_ctx() -> (crate::storage::AppContext, tempfile::TempDir) {
+    let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+    let ctx = crate::storage::AppContext::with_storage(backend).unwrap();
+    // Return a dummy TempDir to keep call-site destructuring compatible.
     let tmp = tempfile::tempdir().unwrap();
-    unsafe {
-        std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-    }
-    let ctx = crate::storage::AppContext::with_defaults().unwrap();
     (ctx, tmp)
 }
 

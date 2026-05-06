@@ -79,10 +79,11 @@ fn test_scan_git_repo() {
     let repo_dir = tmp.path().join("test-repo");
     fs::create_dir(&repo_dir).unwrap();
     let repo = git2::Repository::init(&repo_dir).unwrap();
-    let sig = repo.signature().unwrap();
+    let sig = git2::Signature::now("Test", "test@example.com").unwrap();
     let tree_id = repo.index().unwrap().write_tree().unwrap();
     let tree = repo.find_tree(tree_id).unwrap();
-    repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
+    repo.commit(Some("refs/heads/main"), &sig, &sig, "init", &tree, &[]).unwrap();
+    repo.set_head("refs/heads/main").unwrap();
 
     cmd.args(["scan", repo_dir.to_str().unwrap(), "--register"]);
     cmd.assert().success().stdout(predicate::str::contains("test-repo"));
@@ -140,10 +141,11 @@ fn test_backup_export() {
 /// Helper: create a minimal git repo with one commit.
 fn init_git_repo(path: &std::path::Path) {
     let repo = git2::Repository::init(path).unwrap();
-    let sig = repo.signature().unwrap();
+    let sig = git2::Signature::now("Test", "test@example.com").unwrap();
     let tree_id = repo.index().unwrap().write_tree().unwrap();
     let tree = repo.find_tree(tree_id).unwrap();
-    repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
+    repo.commit(Some("refs/heads/main"), &sig, &sig, "init", &tree, &[]).unwrap();
+    repo.set_head("refs/heads/main").unwrap();
 }
 
 #[test]

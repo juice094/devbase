@@ -213,6 +213,10 @@ fn discover_repos(
     exclude_paths: &[String],
     exclude_patterns: &[String],
 ) -> anyhow::Result<Vec<RepoEntry>> {
+    // Canonicalize root to ensure consistent path comparison on Windows,
+    // where TempDir may return short (8.3) filenames while canonicalize expands them.
+    let root = dunce::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+
     let mut ignored_dirs: Vec<PathBuf> = Vec::new();
 
     // Scanning must NOT skip .git directories, otherwise no git repos can be discovered.
@@ -220,32 +224,34 @@ fn discover_repos(
         exclude_patterns.iter().filter(|&p| p != ".git").cloned().collect();
 
     // First pass: collect all directories containing .devbase-ignore
-    for entry in WalkDir::new(root)
+    for entry in WalkDir::new(&root)
         .follow_links(false)
         .into_iter()
         .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), &scan_exclude_patterns))
         .filter_map(|e| e.ok())
     {
         if entry.file_type().is_dir() && entry.path().join(".devbase-ignore").exists() {
-            ignored_dirs.push(entry.path().to_path_buf());
+            let ig =
+                dunce::canonicalize(entry.path()).unwrap_or_else(|_| entry.path().to_path_buf());
+            ignored_dirs.push(ig);
         }
     }
 
     let is_ignored = |path: &Path| {
         ignored_dirs.iter().any(|ig| path.starts_with(ig))
-            || is_excluded_path(path, exclude_paths, Some(root))
+            || is_excluded_path(path, exclude_paths, Some(&root))
     };
 
     let mut git_repos = Vec::new();
 
-    for entry in WalkDir::new(root)
+    for entry in WalkDir::new(&root)
         .follow_links(false)
         .into_iter()
         .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), &scan_exclude_patterns))
         .filter_map(|e| e.ok())
     {
         if entry.file_name() == ".git" && entry.file_type().is_dir() {
-            let repo_path = entry.path().parent().unwrap_or(root).to_path_buf();
+            let repo_path = entry.path().parent().unwrap_or(&root).to_path_buf();
             let repo_path = dunce::canonicalize(&repo_path).unwrap_or(repo_path);
 
             // Skip nested .git inside submodules if possible
@@ -265,7 +271,7 @@ fn discover_repos(
 
     // Discover non-git workspaces by marker files
     let mut non_git_repos = Vec::new();
-    for entry in WalkDir::new(root)
+    for entry in WalkDir::new(&root)
         .follow_links(false)
         .into_iter()
         .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), &scan_exclude_patterns))
@@ -277,7 +283,7 @@ fn discover_repos(
         if !is_marker {
             continue;
         }
-        let ws_path = entry.path().parent().unwrap_or(root).to_path_buf();
+        let ws_path = entry.path().parent().unwrap_or(&root).to_path_buf();
         // Skip if already inside a known git repo
         if is_nested_submodule(&ws_path, &git_repos) {
             continue;

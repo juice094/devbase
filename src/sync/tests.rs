@@ -7,7 +7,7 @@ use std::fs;
 use tempfile::TempDir;
 
 fn create_commit(repo: &Repository, message: &str) -> git2::Oid {
-    let sig = repo.signature().unwrap();
+    let sig = git2::Signature::now("Test", "test@example.com").unwrap();
     let tree_id = {
         let mut index = repo.index().unwrap();
         index.write_tree().unwrap()
@@ -19,8 +19,10 @@ fn create_commit(repo: &Repository, message: &str) -> git2::Oid {
         .and_then(|h| h.target())
         .and_then(|oid| repo.find_commit(oid).ok());
     match parent {
-        Some(ref p) => repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[p]).unwrap(),
-        None => repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[]).unwrap(),
+        Some(ref p) => {
+            repo.commit(Some("refs/heads/main"), &sig, &sig, message, &tree, &[p]).unwrap()
+        }
+        None => repo.commit(Some("refs/heads/main"), &sig, &sig, message, &tree, &[]).unwrap(),
     }
 }
 
@@ -30,22 +32,24 @@ fn setup_repo_with_remote_commits(
 ) -> (TempDir, Repository) {
     let dir = TempDir::new().unwrap();
     let repo = Repository::init(&dir).unwrap();
+    repo.set_head("refs/heads/main").unwrap();
 
     // Initial commit on main
     fs::write(dir.path().join("file.txt"), "base").unwrap();
     let mut index = repo.index().unwrap();
     index.add_path(std::path::Path::new("file.txt")).unwrap();
     index.write().unwrap();
-    let sig = repo.signature().unwrap();
+    let sig = git2::Signature::now("Test", "test@example.com").unwrap();
     let tree_id = index.write_tree().unwrap();
     {
         let tree = repo.find_tree(tree_id).unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "base", &tree, &[]).unwrap();
+        repo.commit(Some("refs/heads/main"), &sig, &sig, "base", &tree, &[]).unwrap();
     }
 
     // Create origin remote pointing to a bare repo
     let bare_dir = TempDir::new().unwrap();
-    let _bare_repo = Repository::init_bare(&bare_dir).unwrap();
+    let bare_repo = Repository::init_bare(&bare_dir).unwrap();
+    bare_repo.set_head("refs/heads/main").unwrap();
     repo.remote("origin", bare_dir.path().to_str().unwrap()).unwrap();
 
     // Push base to origin/main
@@ -62,13 +66,20 @@ fn setup_repo_with_remote_commits(
         let mut hindex = helper.index().unwrap();
         hindex.add_path(std::path::Path::new("file.txt")).unwrap();
         hindex.write().unwrap();
-        let hsig = helper.signature().unwrap();
+        let hsig = git2::Signature::now("Test", "test@example.com").unwrap();
         let htree_id = hindex.write_tree().unwrap();
         {
             let htree = helper.find_tree(htree_id).unwrap();
             let hparent = helper.head().unwrap().peel_to_commit().unwrap();
             helper
-                .commit(Some("HEAD"), &hsig, &hsig, &format!("remote{}", i), &htree, &[&hparent])
+                .commit(
+                    Some("refs/heads/main"),
+                    &hsig,
+                    &hsig,
+                    &format!("remote{}", i),
+                    &htree,
+                    &[&hparent],
+                )
                 .unwrap();
         }
     }
@@ -145,10 +156,11 @@ fn test_assess_safety_up_to_date() {
 fn test_assess_safety_no_upstream() {
     let dir = TempDir::new().unwrap();
     let _repo = Repository::init(&dir).unwrap();
-    let sig = _repo.signature().unwrap();
+    let sig = git2::Signature::now("Test", "test@example.com").unwrap();
     let tree_id = _repo.index().unwrap().write_tree().unwrap();
     let tree = _repo.find_tree(tree_id).unwrap();
-    _repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
+    _repo.commit(Some("refs/heads/main"), &sig, &sig, "init", &tree, &[]).unwrap();
+    _repo.set_head("refs/heads/main").unwrap();
     let (safety, _, _) = assess_safety(dir.path().to_str().unwrap(), SyncPolicy::from_tags(""));
     assert_eq!(safety, SyncSafety::NoUpstream);
 }
@@ -187,10 +199,10 @@ fn test_write_syncdone_marker() {
 fn test_sync_repo_skip_no_syncdone() {
     let dir = TempDir::new().unwrap();
     let repo = Repository::init(&dir).unwrap();
-    let sig = repo.signature().unwrap();
+    let sig = git2::Signature::now("Test", "test@example.com").unwrap();
     let tree_id = repo.index().unwrap().write_tree().unwrap();
     let tree = repo.find_tree(tree_id).unwrap();
-    repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
+    repo.commit(Some("refs/heads/main"), &sig, &sig, "init", &tree, &[]).unwrap();
 
     // Simulate a SKIP summary: write_syncdone_marker should NOT be called
     let syncdone_path = dir.path().join(".devbase").join("syncdone");

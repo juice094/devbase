@@ -325,11 +325,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_relation_store_and_query_roundtrip() {
-        let tmp = tempfile::tempdir().unwrap();
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
-        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+        let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
 
         // Pre-seed entities to satisfy FK constraint
         let conn = ctx.conn().unwrap();
@@ -394,11 +391,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_relation_store_missing_required_fields() {
-        let tmp = tempfile::tempdir().unwrap();
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
-        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+        let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
 
         let tool = DevkitRelationStoreTool;
         let result = tool
@@ -413,11 +407,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_relation_query_bidirectional() {
-        let tmp = tempfile::tempdir().unwrap();
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
-        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+        let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
 
         let conn = ctx.conn().unwrap();
         let now = chrono::Utc::now().to_rfc3339();
