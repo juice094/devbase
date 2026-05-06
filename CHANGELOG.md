@@ -5,6 +5,69 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.3] - 2026-05-05
+
+### Added
+
+- **Schema v30** — `code_symbols.attributes` 列，tree-sitter 提取 `#[test]`/`#[tokio::test]` 等属性
+  - `devkit_dead_code` 自动过滤测试函数，消除假阳性
+  - `rust_node_to_symbol` 支持 `prev_sibling()` 回溯收集属性节点
+- **Tantivy/SQLite 补偿扫描** — 启动时自动检测并清理 orphan 文档
+  - 新增 `search::sync_index_to_db(conn)`，对比 Tantivy `list_indexed_repo_ids()` 与 SQLite `entities`
+  - `AppContext` 初始化后自动调用，失败仅 warn 不阻塞启动
+- **Feature flags** — `mcp` + `embedding`，支持 `--no-default-features` 最小化编译
+  - `default = ["tui", "mcp", "embedding"]`
+  - `devbase-embedding` 设为 `optional = true`
+  - 新增 `src/clients.rs` 提取 MCP client traits，避免 mcp feature 关闭时 trait 不可用
+- **Kimi CLI MCP 集成文档** — AGENTS.md 新增 Kimi CLI 集成状态，项目级 skill 位于 `.kimi/skills/devbase-project/`
+
+### Changed
+
+- **RF-1 架构红线** — `init_db()` 全局路径残留清零
+  - `init_db()` 标记 `#[deprecated]`，新增 `init_db_with(backend: &dyn StorageBackend)`
+  - `workflow/executor.rs`、`workflow/state.rs`、`storage.rs` 全部改为注入式
+  - `examples/` + `benches/` 中额外 5 处残留同步修复
+- `index_repo_full` 合并用户 `scan.exclude_patterns` 与默认排除模式
+- `cargo fmt` + `cargo clippy --fix` 全量格式化（8 文件，6 处 warning 修复）
+- `CONTRIBUTING.md` 新增 sccache 构建加速指南
+
+### Fixed
+
+- `cargo clippy --all-targets -D warnings` — 7 warnings → 0
+- `cargo fmt --check` — 全量通过
+
+## [0.14.2] - 2026-05-02
+
+### Changed
+
+- health dirty 检测修复（排除 ignored 文件）
+- scan 路径规范化 + syncthing-rust 识别修复
+- experiment_log / CodeMetrics / ModuleGraph / CallGraph / DeadCode 提升为 Beta tier
+- 48 tools: Stable 5 / Beta 40 / Experimental 3
+
+## [0.14.1] - 2026-05-01
+
+### Added
+
+- CLI JSON 输出补全 (`--json` / `--recalc`)
+- relations MCP 工具加固
+- License headers 全量补录
+- Vault Daily / Vault Graph MCP tools
+
+## [0.14.0] - 2026-04-28
+
+### Added
+
+- Workspace 拆分：6 个零耦合 crate 提取
+- MCP trait 化：`mcp/tools/repo.rs` `crate::` 引用 68→41
+
+## [0.13.0] - 2026-04-26
+
+### Added
+
+- Registry God Object 拆解：10 子模块提取为 free function
+- `WorkspaceRegistry` 退化为纯 facade
+
 ## [0.12.0] - 2026-04-30
 
 ### Added
