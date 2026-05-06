@@ -658,11 +658,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_vault_daily_creates_file() {
-        let tmp = tempfile::tempdir().unwrap();
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
-        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+        let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
         let tool = DevkitVaultDailyTool;
         let result = tool.invoke(serde_json::json!({}), &mut ctx).await.unwrap();
 
@@ -680,11 +677,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_vault_daily_appends_to_existing() {
-        let tmp = tempfile::tempdir().unwrap();
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
-        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+        let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
         let tool = DevkitVaultDailyTool;
 
         // First call creates the file

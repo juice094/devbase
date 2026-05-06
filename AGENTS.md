@@ -103,6 +103,13 @@ grep -rn "dirs::data_local_dir\|std::env::var_os\|std::env::var(\"LOCALAPPDATA\"
 - 文件系统测试必须使用 `tempfile` + 注入式路径，禁止直接操作 `%LOCALAPPDATA%` 或 `~/.config`。
 - Tantivy / SQLite 文件系统测试必须获取 `SEARCH_TEST_LOCK`（或同等级串行化机制）。
 
+**子规则（来自 PR #4 教训）**：
+- **R2.1 禁止 `DEVBASE_DATA_DIR` 全局注入**：并行测试中 `std::env::set_var("DEVBASE_DATA_DIR", ...)` 导致竞态；必须使用 `TempStorageBackend` 注入式替代。
+- **R2.2 Windows 路径双端规范化**：`TempDir` 可能返回短文件名（`TEMP~1`），而 `dunce::canonicalize` 返回长文件名；路径比较前必须对**双方**调用 `dunce::canonicalize`。
+- **R2.3 `git2` 测试显式身份 + 显式分支**：
+  - CI runner 无全局 `user.name`/`user.email` → `repo.signature()` 会 panic；必须改用 `git2::Signature::now("Test", "test@example.com")`。
+  - `git2::Repository::init` 的默认分支在不同平台可能为 `master` 或 `main`；必须显式 `repo.set_head("refs/heads/main")` 并 commit 到 `"refs/heads/main"`。
+
 **Fitness Function**：
 ```bash
 # 高并发下 100% 通过，无 flaky

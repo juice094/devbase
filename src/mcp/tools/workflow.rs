@@ -254,11 +254,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_workflow_list_empty_registry() {
-        let tmp = tempfile::tempdir().unwrap();
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
-        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+        let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
 
         let tool = DevkitWorkflowListTool;
         let result = tool.invoke(serde_json::json!({}), &mut ctx).await.unwrap();
@@ -281,11 +278,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_workflow_status_invalid_id() {
-        let tmp = tempfile::tempdir().unwrap();
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
-        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+        let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
 
         let tool = DevkitWorkflowStatusTool;
         let result = tool.invoke(serde_json::json!({"execution_id": -1}), &mut ctx).await.unwrap();
