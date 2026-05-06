@@ -28,7 +28,7 @@ pub fn generate_fallback_summary(path: &Path) -> (String, String) {
         }
     }
     let mut pairs: Vec<(String, usize)> = counts.into_iter().collect();
-    pairs.sort_by(|a, b| b.1.cmp(&a.1));
+    pairs.sort_by_key(|b| std::cmp::Reverse(b.1));
     let top: Vec<String> =
         pairs.into_iter().take(3).map(|(e, c)| format!("{}({})", e, c)).collect();
     if top.is_empty() {

@@ -202,15 +202,11 @@ pub(crate) async fn run_app<B: Backend>(
                             app.nlp_results.clear();
                             app.nlp_selected = 0;
                         }
-                        KeyCode::Down => {
-                            if app.nlp_selected + 1 < app.nlp_results.len() {
-                                app.nlp_selected += 1;
-                            }
+                        KeyCode::Down if app.nlp_selected + 1 < app.nlp_results.len() => {
+                            app.nlp_selected += 1;
                         }
-                        KeyCode::Up => {
-                            if app.nlp_selected > 0 {
-                                app.nlp_selected -= 1;
-                            }
+                        KeyCode::Up if app.nlp_selected > 0 => {
+                            app.nlp_selected -= 1;
                         }
                         _ => {}
                     }
@@ -240,15 +236,11 @@ pub(crate) async fn run_app<B: Backend>(
                         app.search_results.clear();
                         app.search_selected = 0;
                     }
-                    KeyCode::Down => {
-                        if app.search_selected + 1 < app.search_results.len() {
-                            app.search_selected += 1;
-                        }
+                    KeyCode::Down if app.search_selected + 1 < app.search_results.len() => {
+                        app.search_selected += 1;
                     }
-                    KeyCode::Up => {
-                        if app.search_selected > 0 {
-                            app.search_selected -= 1;
-                        }
+                    KeyCode::Up if app.search_selected > 0 => {
+                        app.search_selected -= 1;
                     }
                     KeyCode::Enter => {
                         if let Some(result) = app.search_results.get(app.search_selected) {
