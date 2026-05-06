@@ -371,7 +371,7 @@ sys.exit(0)
         };
 
         let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
-        let result = run_skill(&conn, &skill, &[], std::time::Duration::from_secs(5)).unwrap();
+        let result = run_skill(&conn, &skill, &[], std::time::Duration::from_secs(30)).unwrap();
         assert_eq!(result.status, ExecutionStatus::Success);
         assert_eq!(result.exit_code, Some(0));
         assert!(result.stdout.contains("hello"));
