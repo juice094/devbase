@@ -8,6 +8,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     name: Build Windows Release
@@ -45,9 +48,10 @@ jobs:
           Compress-Archive -Path $outDir -DestinationPath "$outDir.zip" -Force
           Write-Host "Created $outDir.zip"
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: devbase-*-windows-x64.zip
-          generate_release_notes: true
+        shell: powershell
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ github.ref_name }}"
+          $archive = "devbase-$version-windows-x64.zip"
+          gh release create $version $archive --generate-notes --repo ${{ github.repository }}
