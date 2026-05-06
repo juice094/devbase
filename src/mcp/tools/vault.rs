@@ -203,7 +203,7 @@ Returns: JSON with success status and the written file path."#,
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let path = args
             .get("path")
@@ -215,7 +215,9 @@ Returns: JSON with success status and the written file path."#,
             .context("Missing required argument: content")?;
         let append = args.get("append").and_then(|v| v.as_bool()).unwrap_or(false);
 
-        let vault_root = crate::registry::WorkspaceRegistry::workspace_dir()
+        let vault_root = ctx
+            .storage
+            .workspace_dir()
             .map(|ws| ws.join("vault"))
             .unwrap_or_else(|_| std::path::PathBuf::from("vault"));
         let target = resolve_vault_path(path, &vault_root)?;
@@ -316,19 +318,18 @@ Returns: JSON array of backlinking notes, each with id, title, and path."#,
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let note_id = args
             .get("note_id")
             .and_then(|v| v.as_str())
             .context("Missing required argument: note_id")?;
 
+        let vault_dir = ctx.storage.workspace_dir().ok().map(|ws| ws.join("vault"));
         let backlinks = tokio::task::spawn_blocking({
             let note_id = note_id.to_string();
+            let vault_dir = vault_dir.clone();
             move || {
-                let vault_dir = crate::registry::WorkspaceRegistry::workspace_dir()
-                    .ok()
-                    .map(|ws| ws.join("vault"));
                 if let Some(vd) = vault_dir {
                     match crate::vault::backlinks::build_backlink_index(&vd) {
                         Ok(index) => crate::vault::backlinks::get_backlinks(&index, &note_id),
@@ -389,16 +390,19 @@ Returns: JSON with success status and the generated file path."#,
         let config = ctx.config.clone();
         let i18n = ctx.i18n;
 
+        let vault_root = ctx
+            .storage
+            .workspace_dir()
+            .map(|ws| ws.join("vault"))
+            .unwrap_or_else(|_| std::path::PathBuf::from("vault"));
         let file_path = tokio::task::spawn_blocking({
             let rel_path = rel_path.clone();
             let today = today.clone();
+            let vault_root = vault_root.clone();
             move || {
                 let conn = pool.get()?;
                 let digest = crate::digest::generate_daily_digest(&conn, &config, &i18n)?;
 
-                let vault_root = crate::registry::WorkspaceRegistry::workspace_dir()
-                    .map(|ws| ws.join("vault"))
-                    .unwrap_or_else(|_| std::path::PathBuf::from("vault"));
                 let target = resolve_vault_path(&rel_path, &vault_root)?;
 
                 if let Some(parent) = target.parent() {
@@ -460,16 +464,15 @@ Returns: JSON with nodes (id, title) and edges (source, target)."#,
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).map(|s| s.to_string());
 
+        let vault_dir = ctx.storage.workspace_dir().ok().map(|ws| ws.join("vault"));
         let graph = tokio::task::spawn_blocking({
             let repo_id = repo_id.clone();
+            let vault_dir = vault_dir.clone();
             move || {
-                let vault_dir = crate::registry::WorkspaceRegistry::workspace_dir()
-                    .ok()
-                    .map(|ws| ws.join("vault"));
                 let Some(vd) = vault_dir else {
                     return anyhow::Ok(serde_json::json!({
                         "success": true,
@@ -577,6 +580,7 @@ Returns: JSON with nodes (id, title) and edges (source, target)."#,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::StorageBackend;
     use std::time::Instant;
 
     fn vault_root() -> std::path::PathBuf {
@@ -654,11 +658,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_vault_daily_creates_file() {
-        let tmp = tempfile::tempdir().unwrap();
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
-        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+        let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
         let tool = DevkitVaultDailyTool;
         let result = tool.invoke(serde_json::json!({}), &mut ctx).await.unwrap();
 
@@ -676,11 +677,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_vault_daily_appends_to_existing() {
-        let tmp = tempfile::tempdir().unwrap();
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
-        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+        let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
         let tool = DevkitVaultDailyTool;
 
         // First call creates the file
@@ -698,12 +696,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_vault_graph_basic() {
-        let tmp = tempfile::tempdir().unwrap();
-        let vault_dir = tmp.path().join("devbase").join("workspace").join("vault");
+        let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+        let vault_dir = backend.workspace_dir().unwrap().join("vault");
         std::fs::create_dir_all(&vault_dir).unwrap();
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
 
         std::fs::write(
             vault_dir.join("a.md"),
@@ -714,7 +709,7 @@ mod tests {
             .unwrap();
         std::fs::write(vault_dir.join("c.md"), "---\ntitle: Note C\n---\n\nNo links.\n").unwrap();
 
-        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
         let tool = DevkitVaultGraphTool;
         let result = tool.invoke(serde_json::json!({}), &mut ctx).await.unwrap();
 
@@ -735,12 +730,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_vault_graph_filtered_by_repo() {
-        let tmp = tempfile::tempdir().unwrap();
-        let vault_dir = tmp.path().join("devbase").join("workspace").join("vault");
+        let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+        let vault_dir = backend.workspace_dir().unwrap().join("vault");
         std::fs::create_dir_all(&vault_dir).unwrap();
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
 
         std::fs::write(
             vault_dir.join("repo-a-note.md"),
@@ -753,7 +745,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
         let tool = DevkitVaultGraphTool;
         let result =
             tool.invoke(serde_json::json!({ "repo_id": "repo-a" }), &mut ctx).await.unwrap();

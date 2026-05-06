@@ -60,6 +60,13 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 - Schema 迁移前自动生成 `backup-YYYYMMDD-HHMMSS.db` 快照
 - Registry 支持 `export`/`import` 用于用户自主备份
 
+## 许可证策略
+
+- **主许可证**: AGPL-3.0-or-later (`LICENSE`)
+- **商业授权**: 双许可模式，闭源/专有 SaaS 使用需联系作者 (`LICENSE-COMMERCIAL.md`)
+- **Cargo.toml**: `license = "AGPL-3.0-or-later"`
+- **SPDX 头**: 新增源文件应在顶部包含 AGPL-3.0 声明（见 `LICENSE` 末尾 "How to Apply" 部分）
+
 ## 架构状态（Wave 15b 完成）
 
 | 维度 | 状态 |
@@ -102,6 +109,13 @@ grep -rn "dirs::data_local_dir\|std::env::var_os\|std::env::var(\"LOCALAPPDATA\"
 - 所有测试禁止修改全局进程状态（`std::env::set_var`、`static mut`、全局文件系统句柄）。
 - 文件系统测试必须使用 `tempfile` + 注入式路径，禁止直接操作 `%LOCALAPPDATA%` 或 `~/.config`。
 - Tantivy / SQLite 文件系统测试必须获取 `SEARCH_TEST_LOCK`（或同等级串行化机制）。
+
+**子规则（来自 PR #4 教训）**：
+- **R2.1 禁止 `DEVBASE_DATA_DIR` 全局注入**：并行测试中 `std::env::set_var("DEVBASE_DATA_DIR", ...)` 导致竞态；必须使用 `TempStorageBackend` 注入式替代。
+- **R2.2 Windows 路径双端规范化**：`TempDir` 可能返回短文件名（`TEMP~1`），而 `dunce::canonicalize` 返回长文件名；路径比较前必须对**双方**调用 `dunce::canonicalize`。
+- **R2.3 `git2` 测试显式身份 + 显式分支**：
+  - CI runner 无全局 `user.name`/`user.email` → `repo.signature()` 会 panic；必须改用 `git2::Signature::now("Test", "test@example.com")`。
+  - `git2::Repository::init` 的默认分支在不同平台可能为 `master` 或 `main`；必须显式 `repo.set_head("refs/heads/main")` 并 commit 到 `"refs/heads/main"`。
 
 **Fitness Function**：
 ```bash

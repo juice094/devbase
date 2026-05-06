@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
 use super::*;
+use crate::storage::StorageBackend;
 
 fn test_ctx() -> (crate::storage::AppContext, tempfile::TempDir) {
+    let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+    let ctx = crate::storage::AppContext::with_storage(backend).unwrap();
+    // Return a dummy TempDir to keep call-site destructuring compatible.
     let tmp = tempfile::tempdir().unwrap();
-    unsafe {
-        std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-    }
-    let ctx = crate::storage::AppContext::with_defaults().unwrap();
     (ctx, tmp)
 }
 
@@ -421,20 +421,14 @@ fn test_nl_filter_repos_fallback_finds_by_language() {
 
 #[test]
 fn test_nl_filter_repos_tantivy_finds_devbase() {
-    let _guard = NL_FILTER_TEST_LOCK.lock().unwrap();
-    let _search_guard = crate::search::SEARCH_TEST_LOCK.lock().unwrap();
+    let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+    let index_path = backend.index_path().unwrap();
 
-    let tmp = tempfile::tempdir().unwrap();
-    let old = std::env::var("DEVBASE_DATA_DIR").ok();
-    unsafe {
-        std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-    }
-
-    // Ensure DB schema exists in temp dir
-    let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
+    // Ensure DB schema exists
+    let conn = crate::registry::WorkspaceRegistry::init_db_with(&*backend).unwrap();
 
     // Populate Tantivy index with devbase doc
-    let (index, _reader) = crate::search::init_index().unwrap();
+    let (index, _reader) = crate::search::init_index_at(&index_path).unwrap();
     let mut writer = crate::search::get_writer(&index).unwrap();
     let schema = index.schema();
     crate::search::add_repo_doc(
@@ -461,20 +455,15 @@ fn test_nl_filter_repos_tantivy_finds_devbase() {
         remotes: vec![],
     }];
 
-    let results =
-        crate::mcp::tools::repo::nl_filter_repos("developer workspace", &repos, &conn).unwrap();
+    let results = crate::mcp::tools::repo::nl_filter_repos_at(
+        &index_path,
+        "developer workspace",
+        &repos,
+        &conn,
+    )
+    .unwrap();
     assert!(!results.is_empty(), "tantivy path should find devbase");
     assert_eq!(results[0].id, "devbase");
-
-    if let Some(v) = old {
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", v);
-        }
-    } else {
-        unsafe {
-            std::env::remove_var("DEVBASE_DATA_DIR");
-        }
-    }
 }
 
 #[test]

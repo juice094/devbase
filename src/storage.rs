@@ -145,7 +145,23 @@ impl AppContext {
 /// Startup consistency scan: detect Tantivy documents whose repo no longer exists in SQLite.
 /// Inserts orphan records into `orphan_tantivy_docs` for lazy cleanup during next index.
 pub(crate) fn repair_tantivy_consistency(conn: &mut rusqlite::Connection) -> anyhow::Result<usize> {
-    let tantivy_ids = match crate::search::list_indexed_repo_ids() {
+    let backend = crate::storage::DefaultStorageBackend {};
+    let index_path = match backend.index_path() {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Failed to resolve index path: {}", e);
+            return Ok(0);
+        }
+    };
+    repair_tantivy_consistency_at(&index_path, conn)
+}
+
+/// Repair Tantivy consistency at an explicit index path, bypassing global storage backend.
+pub(crate) fn repair_tantivy_consistency_at(
+    index_path: &std::path::Path,
+    conn: &mut rusqlite::Connection,
+) -> anyhow::Result<usize> {
+    let tantivy_ids = match crate::search::list_indexed_repo_ids_at(index_path) {
         Ok(ids) => ids,
         Err(e) => {
             tracing::warn!("Failed to list Tantivy repo IDs: {}", e);
@@ -607,39 +623,47 @@ impl crate::clients::RegistryClient for AppContext {
     }
 }
 
+/// Test-only storage backend that uses an independent temporary directory.
+/// Eliminates `DEVBASE_DATA_DIR` environment-variable races during parallel tests.
+#[cfg(test)]
+pub(crate) struct TempStorageBackend {
+    dir: tempfile::TempDir,
+}
+
+#[cfg(test)]
+impl TempStorageBackend {
+    pub fn new() -> Self {
+        Self {
+            dir: tempfile::tempdir().unwrap(),
+        }
+    }
+}
+
+#[cfg(test)]
+impl StorageBackend for TempStorageBackend {
+    fn db_path(&self) -> anyhow::Result<PathBuf> {
+        Ok(self.dir.path().join("registry.db"))
+    }
+    fn workspace_dir(&self) -> anyhow::Result<PathBuf> {
+        let ws = self.dir.path().join("workspace");
+        std::fs::create_dir_all(&ws)?;
+        std::fs::create_dir_all(ws.join("vault"))?;
+        std::fs::create_dir_all(ws.join("assets"))?;
+        Ok(ws)
+    }
+    fn index_path(&self) -> anyhow::Result<PathBuf> {
+        let dir = self.dir.path();
+        std::fs::create_dir_all(dir)?;
+        Ok(dir.join("search_index"))
+    }
+    fn backup_dir(&self) -> anyhow::Result<PathBuf> {
+        Ok(self.dir.path().join("backups"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-
-    struct TempStorageBackend {
-        dir: tempfile::TempDir,
-    }
-
-    impl TempStorageBackend {
-        fn new() -> Self {
-            Self {
-                dir: tempfile::tempdir().unwrap(),
-            }
-        }
-    }
-
-    impl StorageBackend for TempStorageBackend {
-        fn db_path(&self) -> anyhow::Result<PathBuf> {
-            Ok(self.dir.path().join("registry.db"))
-        }
-        fn workspace_dir(&self) -> anyhow::Result<PathBuf> {
-            let ws = self.dir.path().join("workspace");
-            std::fs::create_dir_all(&ws)?;
-            Ok(ws)
-        }
-        fn index_path(&self) -> anyhow::Result<PathBuf> {
-            Ok(self.dir.path().join("search_index"))
-        }
-        fn backup_dir(&self) -> anyhow::Result<PathBuf> {
-            Ok(self.dir.path().join("backups"))
-        }
-    }
 
     #[test]
     fn test_app_context_with_temp_storage() {
@@ -653,20 +677,15 @@ mod tests {
 
     #[test]
     fn test_repair_tantivy_consistency_detects_orphan() {
-        let _guard = crate::search::SEARCH_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let tmp = tempfile::tempdir().unwrap();
-        let old = std::env::var("DEVBASE_DATA_DIR").ok();
-        // SAFETY: Test-only DEVBASE_DATA_DIR override. Guarded by SEARCH_TEST_LOCK.
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
+        let backend = crate::storage::TempStorageBackend::new();
+        let index_path = backend.index_path().unwrap();
+        let db_path = backend.db_path().unwrap();
 
         // Initialize DB with full schema
-        let db_path = tmp.path().join("registry.db");
         let mut conn = crate::registry::WorkspaceRegistry::init_db_at(&db_path).unwrap();
 
         // Add a Tantivy doc for a repo that does NOT exist in SQLite
-        let (index, _reader) = crate::search::init_index().unwrap();
+        let (index, _reader) = crate::search::init_index_at(&index_path).unwrap();
         let mut writer = crate::search::get_writer(&index).unwrap();
         let schema = index.schema();
         crate::search::add_repo_doc(
@@ -686,7 +705,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(800));
 
         // Repair should detect the orphan
-        let count = repair_tantivy_consistency(&mut conn).unwrap();
+        let count = repair_tantivy_consistency_at(&index_path, &mut conn).unwrap();
         assert_eq!(count, 1);
 
         let orphan_exists: bool = conn
@@ -704,7 +723,7 @@ mod tests {
         ).unwrap();
 
         // Repair should now find zero orphans and clear the record
-        let count2 = repair_tantivy_consistency(&mut conn).unwrap();
+        let count2 = repair_tantivy_consistency_at(&index_path, &mut conn).unwrap();
         assert_eq!(count2, 0);
 
         let orphan_still_exists: bool = conn
@@ -713,16 +732,5 @@ mod tests {
             })
             .unwrap_or(false);
         assert!(!orphan_still_exists);
-
-        // Restore env
-        if let Some(old) = old {
-            unsafe {
-                std::env::set_var("DEVBASE_DATA_DIR", old);
-            }
-        } else {
-            unsafe {
-                std::env::remove_var("DEVBASE_DATA_DIR");
-            }
-        }
     }
 }

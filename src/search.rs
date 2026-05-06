@@ -33,20 +33,26 @@ fn build_schema() -> Schema {
 
 pub fn init_index() -> Result<(Index, IndexReader), TantivyError> {
     let path = index_path()?;
-    std::fs::create_dir_all(&path)?;
+    init_index_at(&path)
+}
+
+/// Initialize a Tantivy index at an explicit path, bypassing the global storage backend.
+/// Used by tests and any code that needs hermetic index isolation.
+pub fn init_index_at(path: &std::path::Path) -> Result<(Index, IndexReader), TantivyError> {
+    std::fs::create_dir_all(path)?;
     let schema = build_schema();
-    let index = match Index::open_in_dir(&path) {
+    let index = match Index::open_in_dir(path) {
         Ok(idx) => {
             if idx.schema() == schema {
                 idx
             } else {
                 drop(idx);
-                let _ = std::fs::remove_dir_all(&path);
-                std::fs::create_dir_all(&path)?;
-                Index::create_in_dir(&path, schema)?
+                let _ = std::fs::remove_dir_all(path);
+                std::fs::create_dir_all(path)?;
+                Index::create_in_dir(path, schema)?
             }
         }
-        Err(_) => Index::create_in_dir(&path, schema)?,
+        Err(_) => Index::create_in_dir(path, schema)?,
     };
     let reader = index.reader_builder().reload_policy(ReloadPolicy::Manual).try_into()?;
     Ok((index, reader))
@@ -131,7 +137,12 @@ pub fn commit_writer(writer: &mut IndexWriter) -> Result<(), TantivyError> {
 }
 
 pub fn index_is_empty() -> Result<bool, TantivyError> {
-    let (_index, reader) = init_index()?;
+    let path = index_path()?;
+    index_is_empty_at(&path)
+}
+
+pub fn index_is_empty_at(path: &std::path::Path) -> Result<bool, TantivyError> {
+    let (_index, reader) = init_index_at(path)?;
     let searcher = reader.searcher();
     Ok(searcher.num_docs() == 0)
 }
@@ -140,6 +151,14 @@ pub fn index_is_empty() -> Result<bool, TantivyError> {
 /// Used by startup consistency scan to detect orphan documents.
 pub fn list_indexed_repo_ids() -> Result<Vec<String>, TantivyError> {
     let (index, reader) = init_index()?;
+    list_indexed_repo_ids_with_reader(&reader, &index)
+}
+
+/// List indexed repo IDs using an already-opened index reader.
+fn list_indexed_repo_ids_with_reader(
+    reader: &IndexReader,
+    index: &Index,
+) -> Result<Vec<String>, TantivyError> {
     let searcher = reader.searcher();
     let schema = index.schema();
     let id_field = schema.get_field("id").expect("schema field 'id' defined in init_index");
@@ -160,10 +179,26 @@ pub fn list_indexed_repo_ids() -> Result<Vec<String>, TantivyError> {
     Ok(ids)
 }
 
+/// List indexed repo IDs from an index at an explicit path.
+pub fn list_indexed_repo_ids_at(path: &std::path::Path) -> Result<Vec<String>, TantivyError> {
+    let (index, reader) = init_index_at(path)?;
+    list_indexed_repo_ids_with_reader(&reader, &index)
+}
+
 /// Scan Tantivy index against SQLite entities table and remove orphan documents.
 /// Returns the number of deleted orphan documents.
 pub fn sync_index_to_db(conn: &rusqlite::Connection) -> anyhow::Result<usize> {
-    let tantivy_ids = list_indexed_repo_ids()?;
+    let index_path = index_path()?;
+    sync_index_to_db_at(&index_path, conn)
+}
+
+/// Sync Tantivy index to DB at an explicit index path, bypassing global storage backend.
+pub fn sync_index_to_db_at(
+    index_path: &std::path::Path,
+    conn: &rusqlite::Connection,
+) -> anyhow::Result<usize> {
+    let (index, reader) = init_index_at(index_path)?;
+    let tantivy_ids = list_indexed_repo_ids_with_reader(&reader, &index)?;
     let db_ids: Vec<String> = conn
         .prepare("SELECT id FROM entities WHERE entity_type = ?1")?
         .query_map([crate::registry::ENTITY_TYPE_REPO], |row| row.get(0))?
@@ -174,7 +209,7 @@ pub fn sync_index_to_db(conn: &rusqlite::Connection) -> anyhow::Result<usize> {
     if orphans.is_empty() {
         return Ok(0);
     }
-    let (index, schema) = open_index()?;
+    let (index, schema) = open_index_at(index_path)?;
     let mut writer = get_writer(&index)?;
     for repo_id in &orphans {
         delete_repo_doc(&mut writer, &schema, repo_id)?;
@@ -184,7 +219,16 @@ pub fn sync_index_to_db(conn: &rusqlite::Connection) -> anyhow::Result<usize> {
 }
 
 pub fn search_repos(query_str: &str, limit: usize) -> Result<Vec<(String, f32)>, TantivyError> {
-    search_by_doc_type(query_str, limit, None)
+    let path = index_path()?;
+    search_repos_at(&path, query_str, limit)
+}
+
+pub fn search_repos_at(
+    path: &std::path::Path,
+    query_str: &str,
+    limit: usize,
+) -> Result<Vec<(String, f32)>, TantivyError> {
+    search_by_doc_type_at(path, query_str, limit, None)
 }
 
 pub fn search_vault(query_str: &str, limit: usize) -> Result<Vec<(String, f32)>, TantivyError> {
@@ -196,7 +240,17 @@ fn search_by_doc_type(
     limit: usize,
     doc_type_filter: Option<&str>,
 ) -> Result<Vec<(String, f32)>, TantivyError> {
-    let (index, reader) = init_index()?;
+    let path = index_path()?;
+    search_by_doc_type_at(&path, query_str, limit, doc_type_filter)
+}
+
+fn search_by_doc_type_at(
+    path: &std::path::Path,
+    query_str: &str,
+    limit: usize,
+    doc_type_filter: Option<&str>,
+) -> Result<Vec<(String, f32)>, TantivyError> {
+    let (index, reader) = init_index_at(path)?;
     search_with_reader(&index, &reader, query_str, limit, doc_type_filter)
 }
 
@@ -254,8 +308,12 @@ fn search_with_reader(
 
 fn open_index() -> Result<(Index, Schema), TantivyError> {
     let path = index_path()?;
+    open_index_at(&path)
+}
+
+fn open_index_at(path: &std::path::Path) -> Result<(Index, Schema), TantivyError> {
     let schema = build_schema();
-    let dir = tantivy::directory::MmapDirectory::open(&path)?;
+    let dir = tantivy::directory::MmapDirectory::open(path)?;
     let idx = Index::open_or_create(dir, schema.clone())?;
     Ok((idx, schema))
 }
@@ -463,20 +521,15 @@ mod tests {
 
     #[test]
     fn test_sync_index_to_db_removes_orphans() {
-        let _guard = super::SEARCH_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let tmp = tempfile::tempdir().unwrap();
-        let old = std::env::var("DEVBASE_DATA_DIR").ok();
-        // SAFETY: Test-only DEVBASE_DATA_DIR override. Guarded by SEARCH_TEST_LOCK.
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
+        let backend = crate::storage::TempStorageBackend::new();
+        let index_path = backend.index_path().unwrap();
+        let db_path = backend.db_path().unwrap();
 
         // Initialize DB with full schema
-        let db_path = tmp.path().join("registry.db");
         let conn = crate::registry::WorkspaceRegistry::init_db_at(&db_path).unwrap();
 
         // Add 2 repo docs to Tantivy
-        let (index, _reader) = crate::search::init_index().unwrap();
+        let (index, _reader) = crate::search::init_index_at(&index_path).unwrap();
         let mut writer = crate::search::get_writer(&index).unwrap();
         let schema = index.schema();
         crate::search::add_repo_doc(&mut writer, &schema, "foo", "Foo", "foo content", &[])
@@ -498,27 +551,16 @@ mod tests {
         .unwrap();
 
         // Sync should delete bar (orphan)
-        let deleted = crate::search::sync_index_to_db(&conn).unwrap();
+        let deleted = crate::search::sync_index_to_db_at(&index_path, &conn).unwrap();
         assert_eq!(deleted, 1);
 
         // Windows may need extra time before reopening the index
         std::thread::sleep(std::time::Duration::from_millis(1500));
 
         // Verify only foo remains in index
-        let remaining = crate::search::list_indexed_repo_ids().unwrap();
+        let remaining = crate::search::list_indexed_repo_ids_at(&index_path).unwrap();
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0], "foo");
-
-        // Restore env
-        if let Some(old) = old {
-            unsafe {
-                std::env::set_var("DEVBASE_DATA_DIR", old);
-            }
-        } else {
-            unsafe {
-                std::env::remove_var("DEVBASE_DATA_DIR");
-            }
-        }
     }
 
     // Helper for test_list_indexed_repo_ids that works with an existing reader
