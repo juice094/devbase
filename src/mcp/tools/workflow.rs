@@ -268,11 +268,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_workflow_run_not_found() {
-        let tmp = tempfile::tempdir().unwrap();
-        unsafe {
-            std::env::set_var("DEVBASE_DATA_DIR", tmp.path());
-        }
-        let mut ctx = crate::storage::AppContext::with_defaults().unwrap();
+        let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+        let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
 
         let tool = DevkitWorkflowRunTool;
         let result = tool

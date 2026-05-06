@@ -6,7 +6,7 @@ use crate::registry::RepoEntry;
 use crate::repository::health::HealthRepository;
 use crate::repository::repo::RepoRepository;
 use crate::repository::workspace::WorkspaceRepository;
-use crate::storage::AppContext;
+use crate::storage::{AppContext, StorageBackend};
 use anyhow::Context;
 
 #[derive(Clone)]
@@ -555,6 +555,34 @@ pub(crate) fn nl_filter_repos(
     repos: &[RepoEntry],
     conn: &rusqlite::Connection,
 ) -> anyhow::Result<Vec<RepoEntry>> {
+    let backend = crate::storage::DefaultStorageBackend {};
+    let index_path = match backend.index_path() {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Failed to resolve index path: {}", e);
+            // Fallback to non-Tantivy path
+            let q = query.to_lowercase();
+            let stars_cond = parse_stars_condition(&q);
+            let explicit_tag = extract_tag_from_query(&q);
+            let mut results = Vec::new();
+            for repo in repos {
+                if apply_nl_filters(repo, &q, stars_cond, explicit_tag.as_deref(), conn)? {
+                    results.push(repo.clone());
+                }
+            }
+            return Ok(results);
+        }
+    };
+    nl_filter_repos_at(&index_path, query, repos, conn)
+}
+
+/// Filter repos using an explicit Tantivy index path, bypassing global storage backend.
+pub(crate) fn nl_filter_repos_at(
+    index_path: &std::path::Path,
+    query: &str,
+    repos: &[RepoEntry],
+    conn: &rusqlite::Connection,
+) -> anyhow::Result<Vec<RepoEntry>> {
     let q = query.to_lowercase();
     let stars_cond = parse_stars_condition(&q);
     let explicit_tag = extract_tag_from_query(&q);
@@ -569,7 +597,7 @@ pub(crate) fn nl_filter_repos(
         || q.contains("uptodate");
 
     // Try Tantivy search first if index is not empty
-    let use_tantivy = match crate::search::index_is_empty() {
+    let use_tantivy = match crate::search::index_is_empty_at(index_path) {
         Ok(empty) => !empty,
         Err(e) => {
             tracing::warn!("Failed to check search index: {}", e);
@@ -579,7 +607,7 @@ pub(crate) fn nl_filter_repos(
 
     if use_tantivy && !query.trim().is_empty() {
         let limit = repos.len().max(1000);
-        match crate::search::search_repos(query, limit) {
+        match crate::search::search_repos_at(index_path, query, limit) {
             Ok(search_results) => {
                 let repo_map: std::collections::HashMap<_, _> =
                     repos.iter().map(|r| (r.id.clone(), r)).collect();
