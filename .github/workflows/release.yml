@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    name: Build Windows Release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+      - name: Windows environment setup
+        shell: powershell
+        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+          Write-Host "rustc: $(rustc --version)"
+          Write-Host "cargo: $(cargo --version)"
+      - name: Build release binary
+        run: cargo build --release --locked
+      - name: Run tests
+        run: cargo test --workspace -- --test-threads=4
+      - name: Verify clippy clean
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Verify fmt clean
+        run: cargo fmt --check
+      - name: Package binary
+        shell: powershell
+        run: |
+          $version = "${{ github.ref_name }}"
+          $outDir = "devbase-$version-windows-x64"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          Copy-Item "target\release\devbase.exe" "$outDir\"
+          Copy-Item "README.md" "$outDir\"
+          Copy-Item "LICENSE" "$outDir\"
+          Copy-Item "CHANGELOG.md" "$outDir\"
+          Compress-Archive -Path $outDir -DestinationPath "$outDir.zip" -Force
+          Write-Host "Created $outDir.zip"
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: devbase-*-windows-x64.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
