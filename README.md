@@ -3,7 +3,7 @@
 [![Version](https://img.shields.io/badge/version-v0.14.3-blue)](https://github.com/juice094/devbase/releases)
 [![Tests](https://img.shields.io/badge/tests-390%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
-[![License](https://img.shields.io/badge/license-MIT-orange)](./LICENSE)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-orange)](./LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-9cf)](https://www.rust-lang.org)
 
 **本地优先的 AI Skill 编排基础设施**
@@ -349,4 +349,12 @@ token = "<YOUR_GITHUB_PAT>"
 
 ## 许可证
 
-[MIT](./LICENSE)
+本软件采用 **双许可证 (Dual License)** 模式：
+
+- **开源使用**: [GNU Affero General Public License v3.0 or later (AGPL-3.0+)](./LICENSE)
+  - 适用于个人、学术、及遵守 AGPL-3.0 义务的开源项目
+  - **核心约束**: 若将修改版部署为网络服务（SaaS、托管 MCP Server 等），必须向用户公开完整源代码
+
+- **商业使用**: 如需在闭源产品、专有 SaaS 或无法遵守 AGPL-3.0 的场景中使用，可联系作者获取商业授权
+  - 详见 [`LICENSE-COMMERCIAL.md`](./LICENSE-COMMERCIAL.md)
+  - 联系方式: `juice094@protonmail.com`

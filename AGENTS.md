@@ -60,6 +60,13 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 - Schema 迁移前自动生成 `backup-YYYYMMDD-HHMMSS.db` 快照
 - Registry 支持 `export`/`import` 用于用户自主备份
 
+## 许可证策略
+
+- **主许可证**: AGPL-3.0-or-later (`LICENSE`)
+- **商业授权**: 双许可模式，闭源/专有 SaaS 使用需联系作者 (`LICENSE-COMMERCIAL.md`)
+- **Cargo.toml**: `license = "AGPL-3.0-or-later"`
+- **SPDX 头**: 新增源文件应在顶部包含 AGPL-3.0 声明（见 `LICENSE` 末尾 "How to Apply" 部分）
+
 ## 架构状态（Wave 15b 完成）
 
 | 维度 | 状态 |
