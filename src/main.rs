@@ -24,6 +24,9 @@ pub(crate) enum Commands {
         /// Register discovered repos into the database
         #[arg(long)]
         register: bool,
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Check the health of registered repositories and the environment
     Health {
@@ -160,6 +163,18 @@ pub(crate) enum Commands {
     Discover,
     /// Generate daily knowledge digest
     Digest,
+    /// Generate knowledge coverage report for the workspace or a repo
+    KnowledgeReport {
+        /// Specific repo ID; if omitted, reports on the entire workspace
+        #[arg(default_value = "")]
+        repo_id: String,
+        /// Number of recent activity events to include
+        #[arg(long, default_value_t = 20)]
+        activity_limit: usize,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// View the operation log
     Oplog {
         /// Limit number of entries (default: 20)
@@ -420,7 +435,11 @@ pub(crate) enum SkillCommands {
 #[derive(Subcommand)]
 pub(crate) enum WorkflowCommands {
     /// List registered workflows
-    List,
+    List {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Show workflow definition
     Show {
         /// Workflow ID
@@ -583,8 +602,8 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Scan { path, register } => {
-            commands::simple::run_scan(&mut ctx, &path, register).await?;
+        Commands::Scan { path, register, json } => {
+            commands::simple::run_scan(&mut ctx, &path, register, json).await?;
         }
         Commands::Health { detail, limit, page, json } => {
             commands::simple::run_health(&mut ctx, detail, limit, page, json).await?;
@@ -730,6 +749,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Workflow { cmd } => {
             commands::workflow::run_workflow(&mut ctx, cmd)?;
+        }
+        Commands::KnowledgeReport { repo_id, activity_limit, json } => {
+            commands::simple::run_knowledge_report(&mut ctx, &repo_id, activity_limit, json)?;
         }
         Commands::Limit { cmd } => {
             commands::limit::run_limit(&mut ctx, cmd)?;

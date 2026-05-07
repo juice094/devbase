@@ -60,6 +60,7 @@ pub async fn run_json(
     page: usize,
     ttl_seconds: i64,
     i18n: &crate::i18n::I18n,
+    env_cache: &crate::storage::EnvVersionCache,
 ) -> anyhow::Result<serde_json::Value> {
     let start = std::time::Instant::now();
     let (total_repos, dirty_repos, behind_upstream, no_upstream_count, repo_details) = {
@@ -85,6 +86,10 @@ pub async fn run_json(
         let mut no_upstream_count: usize = 0;
         let mut repo_details: Vec<serde_json::Value> = Vec::new();
 
+        // Batch load health cache for all git repos
+        let repo_ids: Vec<&str> = repos.iter().filter(|r| r.workspace_type == "git").map(|r| r.id.as_str()).collect();
+        let health_batch = crate::registry::health::get_health_batch(conn, &repo_ids).unwrap_or_default();
+
         for repo in repos {
             total_repos += 1;
             let primary = repo.primary_remote();
@@ -92,8 +97,8 @@ pub async fn run_json(
             let default_branch = primary.and_then(|r| r.default_branch.clone());
 
             let (status, ahead, behind) = if repo.workspace_type == "git" {
-                match crate::registry::health::get_health(conn, &repo.id) {
-                    Ok(Some(health)) => {
+                match health_batch.get(&repo.id).cloned() {
+                    Some(health) => {
                         let elapsed =
                             Utc::now().signed_duration_since(health.checked_at).num_seconds();
                         if elapsed < ttl_seconds {
@@ -118,7 +123,7 @@ pub async fn run_json(
                             (status, ahead, behind)
                         }
                     }
-                    _ => {
+                    None => {
                         let (status, ahead, behind) = analyze_repo(
                             repo.local_path.to_string_lossy().as_ref(),
                             upstream_url.as_deref(),
@@ -206,11 +211,11 @@ pub async fn run_json(
     };
 
     let environment = serde_json::json!({
-        "rustc": get_tool_version("rustc", &["--version"]).await.map(|s| fmt_version(Some(s), i18n)),
-        "cargo": get_tool_version("cargo", &["--version"]).await.map(|s| fmt_version(Some(s), i18n)),
-        "node": get_tool_version("node", &["--version"]).await.map(|s| fmt_version(Some(s), i18n)),
-        "go": get_tool_version("go", &["version"]).await.map(|s| fmt_version(Some(s), i18n)),
-        "cmake": get_tool_version("cmake", &["--version"]).await.map(|s| fmt_version(Some(s), i18n)),
+        "rustc": fmt_version(env_cache.rustc.clone(), i18n),
+        "cargo": fmt_version(env_cache.cargo.clone(), i18n),
+        "node": fmt_version(env_cache.node.clone(), i18n),
+        "go": fmt_version(env_cache.go.clone(), i18n),
+        "cmake": fmt_version(env_cache.cmake.clone(), i18n),
     });
 
     let summary = serde_json::json!({
@@ -277,8 +282,9 @@ pub async fn run(
     page: usize,
     ttl_seconds: i64,
     i18n: &crate::i18n::I18n,
+    env_cache: &crate::storage::EnvVersionCache,
 ) -> anyhow::Result<()> {
-    let result = run_json(conn, detail, limit, page, ttl_seconds, i18n).await?;
+    let result = run_json(conn, detail, limit, page, ttl_seconds, i18n, env_cache).await?;
 
     let summary = result["summary"]
         .as_object()
@@ -372,16 +378,16 @@ pub fn analyze_repo(
     }
 
     // Check for detached HEAD
-    let is_detached = match repo.head() {
-        Ok(head) => head.target().is_none(),
-        Err(_) => true,
+    let head = match repo.head() {
+        Ok(h) => h,
+        Err(_) => return ("detached".to_string(), 0, 0),
     };
 
-    if is_detached {
+    if head.target().is_none() {
         return ("detached".to_string(), 0, 0);
     }
 
-    let (ahead, behind) = match calc_ahead_behind(&repo, default_branch) {
+    let (ahead, behind) = match calc_ahead_behind(&repo, head, default_branch) {
         Ok(ab) => ab,
         Err(_) => return ("ok".to_string(), 0, 0),
     };
@@ -403,13 +409,9 @@ pub fn analyze_repo(
 
 fn calc_ahead_behind(
     repo: &Repository,
+    head: git2::Reference,
     default_branch: Option<&str>,
 ) -> anyhow::Result<(usize, usize)> {
-    let head = match repo.head() {
-        Ok(h) => h,
-        Err(_) => return Ok((0, 0)),
-    };
-
     let local_oid = match head.target() {
         Some(oid) => oid,
         None => return Ok((0, 0)),
@@ -439,6 +441,25 @@ fn calc_ahead_behind(
     };
 
     repo.graph_ahead_behind(local_oid, remote_oid).map_err(|e| anyhow::anyhow!(e))
+}
+
+/// Refresh environment version cache by spawning all tool subprocesses in parallel.
+pub async fn refresh_env_cache() -> crate::storage::EnvVersionCache {
+    let (rustc, cargo, node, go, cmake) = tokio::join!(
+        get_tool_version("rustc", &["--version"]),
+        get_tool_version("cargo", &["--version"]),
+        get_tool_version("node", &["--version"]),
+        get_tool_version("go", &["version"]),
+        get_tool_version("cmake", &["--version"]),
+    );
+    crate::storage::EnvVersionCache {
+        rustc,
+        cargo,
+        node,
+        go,
+        cmake,
+        fetched_at: Some(std::time::Instant::now()),
+    }
 }
 
 async fn get_tool_version(cmd: &str, args: &[&str]) -> Option<String> {

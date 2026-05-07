@@ -4,6 +4,31 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+/// Session-level cache for environment tool versions.
+/// Avoids spawning subprocesses on every health check.
+#[derive(Debug, Clone, Default)]
+pub struct EnvVersionCache {
+    pub rustc: Option<String>,
+    pub cargo: Option<String>,
+    pub node: Option<String>,
+    pub go: Option<String>,
+    pub cmake: Option<String>,
+    pub fetched_at: Option<Instant>,
+}
+
+impl EnvVersionCache {
+    const TTL: Duration = Duration::from_secs(30);
+
+    pub fn is_fresh(&self) -> bool {
+        self.fetched_at.map(|t| t.elapsed() < Self::TTL).unwrap_or(false)
+    }
+
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+}
 
 /// 抽象数据存储后端，解耦具体路径实现。
 ///
@@ -79,6 +104,7 @@ pub struct AppContext {
     pub config: crate::config::Config,
     pub i18n: crate::i18n::I18n,
     pool: Pool<SqliteConnectionManager>,
+    env_cache: std::sync::Mutex<EnvVersionCache>,
 }
 
 impl AppContext {
@@ -98,7 +124,7 @@ impl AppContext {
         let pool = Self::build_pool(&path)?;
         let config = crate::config::Config::load()?;
         let i18n = crate::i18n::from_language(&config.general.language);
-        Ok(Self { storage, config, i18n, pool })
+        Ok(Self { storage, config, i18n, pool, env_cache: std::sync::Mutex::new(EnvVersionCache::default()) })
     }
 
     /// 使用自定义存储后端创建上下文（主要用于测试）。
@@ -115,7 +141,7 @@ impl AppContext {
         let pool = Self::build_pool(&path)?;
         let config = crate::config::Config::load()?;
         let i18n = crate::i18n::from_language(&config.general.language);
-        Ok(Self { storage, config, i18n, pool })
+        Ok(Self { storage, config, i18n, pool, env_cache: std::sync::Mutex::new(EnvVersionCache::default()) })
     }
 
     fn build_pool(path: &std::path::Path) -> anyhow::Result<Pool<SqliteConnectionManager>> {
@@ -139,6 +165,19 @@ impl AppContext {
     /// 获取连接池的克隆，用于 spawn_blocking / thread::spawn 闭包。
     pub fn pool(&self) -> Pool<SqliteConnectionManager> {
         self.pool.clone()
+    }
+
+    /// 获取环境版本缓存的只读快照。
+    pub fn env_cache(&self) -> anyhow::Result<EnvVersionCache> {
+        let guard = self.env_cache.lock().map_err(|e| anyhow::anyhow!("env_cache poisoned: {}", e))?;
+        Ok(guard.clone())
+    }
+
+    /// 更新环境版本缓存。
+    pub fn set_env_cache(&self, cache: EnvVersionCache) -> anyhow::Result<()> {
+        let mut guard = self.env_cache.lock().map_err(|e| anyhow::anyhow!("env_cache poisoned: {}", e))?;
+        *guard = cache;
+        Ok(())
     }
 }
 
@@ -218,7 +257,15 @@ impl crate::clients::ScanClient for AppContext {
 impl crate::clients::HealthClient for AppContext {
     async fn check_health(&self, detail: bool) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        crate::health::run_json(&conn, detail, 0, 1, self.config.cache.ttl_seconds, &self.i18n)
+        let cache = self.env_cache()?;
+        let env_cache = if cache.is_fresh() {
+            cache
+        } else {
+            let fresh = crate::health::refresh_env_cache().await;
+            self.set_env_cache(fresh.clone())?;
+            fresh
+        };
+        crate::health::run_json(&conn, detail, 0, 1, self.config.cache.ttl_seconds, &self.i18n, &env_cache)
             .await
     }
 }
