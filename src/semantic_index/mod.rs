@@ -85,7 +85,7 @@ pub type SemanticSearchRow = (String, String, String, i64, f32);
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy)]
-enum Lang {
+pub(crate) enum Lang {
     Rust,
     Python,
     JsTs,
@@ -233,10 +233,34 @@ fn process_file(
     match std::fs::read_to_string(path) {
         Ok(source) => {
             let rel_path = path.strip_prefix(repo_path).unwrap_or(path);
-            let symbols = extract_symbols(rel_path, &source);
-            all_symbols.extend(symbols);
 
-            let calls = extract_calls_from_file(rel_path, &source);
+            let ext = rel_path.extension().and_then(|e| e.to_str());
+            let lang = match ext {
+                Some(ext) => match Lang::from_ext(ext) {
+                    Some(l) => l,
+                    None => return,
+                },
+                None => return,
+            };
+
+            let mut parser = tree_sitter::Parser::new();
+            let ts_lang = lang.parser_language();
+            if let Err(e) = parser.set_language(&ts_lang) {
+                warn!("Failed to set tree-sitter language: {}", e);
+                return;
+            }
+            let tree = match parser.parse(&source, None) {
+                Some(t) => t,
+                None => {
+                    warn!("Failed to parse {:?}", rel_path);
+                    return;
+                }
+            };
+
+            let source_bytes = source.as_bytes();
+            let symbols = extract_symbols_from_tree(&tree, rel_path, source_bytes, lang);
+            all_symbols.extend(symbols);
+            let calls = extract_calls_from_tree(&tree, rel_path, source_bytes, lang);
             all_calls.extend(calls);
         }
         Err(e) => {

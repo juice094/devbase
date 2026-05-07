@@ -171,7 +171,7 @@ returns a JSON array of progress events."#,
         let pool = ctx.pool();
         let count = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get()?;
-            crate::knowledge_engine::run_index(&mut conn, &path)
+            crate::knowledge_engine::run_index(&mut conn, &path, false)
         })
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
@@ -199,7 +199,7 @@ returns a JSON array of progress events."#,
         let path_clone = path.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get()?;
-            crate::knowledge_engine::run_index_with_progress(&mut conn, &path_clone, Some(tx))
+            crate::knowledge_engine::run_index_with_progress(&mut conn, &path_clone, Some(tx), false)
         });
 
         // Collect progress events as they arrive from the blocking thread.

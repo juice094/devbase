@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
 use crate::registry::RepoEntry;
-use rayon::prelude::*;
 use std::path::PathBuf;
 
 fn index_repo_in_search(
@@ -59,8 +58,8 @@ pub fn index_repo(
 }
 
 /// 兼容旧调用的包装层：执行索引逻辑
-pub fn run_index(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<usize> {
-    run_index_with_progress(conn, path, None)
+pub fn run_index(conn: &mut rusqlite::Connection, path: &str, skip_embeddings: bool) -> anyhow::Result<usize> {
+    run_index_with_progress(conn, path, None, skip_embeddings)
 }
 
 /// 带进度上报的索引逻辑。
@@ -69,6 +68,7 @@ pub fn run_index_with_progress(
     conn: &mut rusqlite::Connection,
     path: &str,
     progress_tx: Option<crossbeam_channel::Sender<String>>,
+    skip_embeddings: bool,
 ) -> anyhow::Result<usize> {
     use tracing::{info, warn};
 
@@ -110,6 +110,7 @@ pub fn run_index_with_progress(
 
     let mut count = 0;
     for repo in &repos {
+        let t0 = std::time::Instant::now();
         let config = crate::config::Config::load().ok();
         let (summary, keywords) = config
             .as_ref()
@@ -121,8 +122,10 @@ pub fn run_index_with_progress(
                 warn!("No README found for {}, generating fallback summary", repo.id);
                 super::generate_fallback_summary(&repo.local_path)
             });
+        let t1 = std::time::Instant::now();
 
         let modules = super::extract_module_structure(&repo.local_path);
+        let t2 = std::time::Instant::now();
 
         crate::registry::knowledge::save_summary(conn, &repo.id, &summary, &keywords)?;
 
@@ -136,6 +139,7 @@ pub fn run_index_with_progress(
             &keywords,
             &repo.tags,
         )?;
+        let t3 = std::time::Instant::now();
 
         let modules_tuple: Vec<(String, String)> =
             modules.into_iter().map(|m| (m.name, m.kind)).collect();
@@ -177,6 +181,7 @@ pub fn run_index_with_progress(
             // Full index
             crate::semantic_index::index_repo_full(&repo.local_path)
         };
+        let t4 = std::time::Instant::now();
 
         if !symbols.is_empty() {
             let result = if is_incremental {
@@ -206,9 +211,10 @@ pub fn run_index_with_progress(
                 Err(e) => warn!("Failed to save call graph for {}: {}", repo.id, e),
             }
         }
+        let t5 = std::time::Instant::now();
 
         // Generate embeddings for code symbols (local candle, Sprint 14)
-        if !symbols.is_empty() {
+        if !skip_embeddings && !symbols.is_empty() {
             let result = if is_incremental {
                 save_symbol_embeddings_incremental(conn, &repo.id, &symbols)
             } else {
@@ -222,6 +228,7 @@ pub fn run_index_with_progress(
                 Err(e) => warn!("Failed to save symbol embeddings for {}: {}", repo.id, e),
             }
         }
+        let t6 = std::time::Instant::now();
 
         // Save repo_index_state for next incremental run
         if let Ok(Some(hash)) = crate::semantic_index::git_diff::current_head_hash(&repo.local_path)
@@ -239,6 +246,7 @@ pub fn run_index_with_progress(
             }
             Err(e) => warn!("Failed to build dependency graph for {}: {}", repo.id, e),
         }
+        let t7 = std::time::Instant::now();
 
         println!(
             "Indexed [{}] -> \"{}\" (keywords: {}) language={:?} symbols={} calls={}",
@@ -248,6 +256,17 @@ pub fn run_index_with_progress(
             detected_lang,
             symbols.len(),
             calls.len(),
+        );
+        println!(
+            "  timings: readme={:.0}ms module={:.0}ms tantivy={:.0}ms semantic={:.0}ms save={:.0}ms embed={:.0}ms deps={:.0}ms total={:.0}ms",
+            (t1 - t0).as_millis(),
+            (t2 - t1).as_millis(),
+            (t3 - t2).as_millis(),
+            (t4 - t3).as_millis(),
+            (t5 - t4).as_millis(),
+            (t6 - t5).as_millis(),
+            (t7 - t6).as_millis(),
+            (t7 - t0).as_millis(),
         );
         count += 1;
     }
@@ -280,9 +299,13 @@ fn generate_and_save_embeddings(
     symbols: &[crate::semantic_index::CodeSymbol],
     clear_existing: bool,
 ) -> anyhow::Result<usize> {
+    use rayon::prelude::*;
     use tracing::{info, warn};
 
-    // Phase 1: parallel encoding
+    // Phase 1: parallel encoding (rayon par_iter gives best throughput for
+    // Candle CPU BERT because per-symbol sequences are short and variable;
+    // batching causes excessive padding and Candle's CPU matmul is slower
+    // for large padded batches than many small single inferences).
     let items: Vec<(String, String, Vec<f32>)> = symbols
         .par_iter()
         .filter_map(|sym| {

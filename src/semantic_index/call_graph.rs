@@ -35,8 +35,18 @@ pub fn extract_calls_from_file(file_path: &Path, source: &str) -> Vec<CodeCall> 
         }
     };
 
+    extract_calls_from_tree(&tree, file_path, source.as_bytes(), lang)
+}
+
+/// Extract calls from an already-parsed tree-sitter tree.
+/// This avoids re-parsing when both symbols and calls are needed.
+pub(crate) fn extract_calls_from_tree(
+    tree: &tree_sitter::Tree,
+    file_path: &Path,
+    source_bytes: &[u8],
+    lang: Lang,
+) -> Vec<CodeCall> {
     let mut calls = Vec::new();
-    let source_bytes = source.as_bytes();
     let root = tree.root_node();
     let mut cursor = root.walk();
     walk_tree_for_calls(&mut cursor, file_path, source_bytes, lang, &mut calls, None);

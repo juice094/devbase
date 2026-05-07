@@ -293,7 +293,7 @@ impl crate::clients::DigestClient for AppContext {
 impl crate::clients::KnowledgeClient for AppContext {
     fn run_index(&self, path: &str) -> anyhow::Result<serde_json::Value> {
         let mut conn = self.conn()?;
-        let count = crate::knowledge_engine::run_index(&mut conn, path)?;
+        let count = crate::knowledge_engine::run_index(&mut conn, path, false)?;
         Ok(serde_json::json!({ "success": true, "indexed": count, "errors": 0 }))
     }
 

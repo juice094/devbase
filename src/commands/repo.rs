@@ -69,13 +69,13 @@ pub async fn run_query(
     Ok(())
 }
 
-pub async fn run_index(ctx: &mut crate::storage::AppContext, path: &str) -> anyhow::Result<()> {
-    info!("{}: path='{}'", ctx.i18n.cli.indexing, path);
+pub async fn run_index(ctx: &mut crate::storage::AppContext, path: &str, skip_embeddings: bool) -> anyhow::Result<()> {
+    info!("{}: path='{}' skip_embeddings={}", ctx.i18n.cli.indexing, path, skip_embeddings);
     let path = path.to_string();
     let pool = ctx.pool();
     let count = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get()?;
-        knowledge_engine::run_index(&mut conn, &path)
+        knowledge_engine::run_index(&mut conn, &path, skip_embeddings)
     })
     .await
     .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;

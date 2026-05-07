@@ -83,6 +83,9 @@ pub(crate) enum Commands {
         /// Specific path to index; if omitted, index all registered repos
         #[arg(default_value = "")]
         path: String,
+        /// Skip semantic embedding generation (symbols/calls still indexed)
+        #[arg(long)]
+        skip_embeddings: bool,
     },
     /// Remove archive/backup entries from registry
     Clean,
@@ -622,8 +625,8 @@ async fn main() -> anyhow::Result<()> {
         Commands::Query { query, limit, page, json } => {
             commands::simple::run_query(&mut ctx, &query, limit, page, json).await?;
         }
-        Commands::Index { path } => {
-            commands::simple::run_index(&mut ctx, &path).await?;
+        Commands::Index { path, skip_embeddings } => {
+            commands::simple::run_index(&mut ctx, &path, skip_embeddings).await?;
         }
         Commands::Clean => {
             commands::simple::run_clean(&mut ctx)?;
