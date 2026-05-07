@@ -199,7 +199,12 @@ returns a JSON array of progress events."#,
         let path_clone = path.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get()?;
-            crate::knowledge_engine::run_index_with_progress(&mut conn, &path_clone, Some(tx), false)
+            crate::knowledge_engine::run_index_with_progress(
+                &mut conn,
+                &path_clone,
+                Some(tx),
+                false,
+            )
         });
 
         // Collect progress events as they arrive from the blocking thread.

@@ -124,7 +124,13 @@ impl AppContext {
         let pool = Self::build_pool(&path)?;
         let config = crate::config::Config::load()?;
         let i18n = crate::i18n::from_language(&config.general.language);
-        Ok(Self { storage, config, i18n, pool, env_cache: std::sync::Mutex::new(EnvVersionCache::default()) })
+        Ok(Self {
+            storage,
+            config,
+            i18n,
+            pool,
+            env_cache: std::sync::Mutex::new(EnvVersionCache::default()),
+        })
     }
 
     /// 使用自定义存储后端创建上下文（主要用于测试）。
@@ -141,7 +147,13 @@ impl AppContext {
         let pool = Self::build_pool(&path)?;
         let config = crate::config::Config::load()?;
         let i18n = crate::i18n::from_language(&config.general.language);
-        Ok(Self { storage, config, i18n, pool, env_cache: std::sync::Mutex::new(EnvVersionCache::default()) })
+        Ok(Self {
+            storage,
+            config,
+            i18n,
+            pool,
+            env_cache: std::sync::Mutex::new(EnvVersionCache::default()),
+        })
     }
 
     fn build_pool(path: &std::path::Path) -> anyhow::Result<Pool<SqliteConnectionManager>> {
@@ -169,13 +181,19 @@ impl AppContext {
 
     /// 获取环境版本缓存的只读快照。
     pub fn env_cache(&self) -> anyhow::Result<EnvVersionCache> {
-        let guard = self.env_cache.lock().map_err(|e| anyhow::anyhow!("env_cache poisoned: {}", e))?;
+        let guard = self
+            .env_cache
+            .lock()
+            .map_err(|e| anyhow::anyhow!("env_cache poisoned: {}", e))?;
         Ok(guard.clone())
     }
 
     /// 更新环境版本缓存。
     pub fn set_env_cache(&self, cache: EnvVersionCache) -> anyhow::Result<()> {
-        let mut guard = self.env_cache.lock().map_err(|e| anyhow::anyhow!("env_cache poisoned: {}", e))?;
+        let mut guard = self
+            .env_cache
+            .lock()
+            .map_err(|e| anyhow::anyhow!("env_cache poisoned: {}", e))?;
         *guard = cache;
         Ok(())
     }
@@ -265,8 +283,16 @@ impl crate::clients::HealthClient for AppContext {
             self.set_env_cache(fresh.clone())?;
             fresh
         };
-        crate::health::run_json(&conn, detail, 0, 1, self.config.cache.ttl_seconds, &self.i18n, &env_cache)
-            .await
+        crate::health::run_json(
+            &conn,
+            detail,
+            0,
+            1,
+            self.config.cache.ttl_seconds,
+            &self.i18n,
+            &env_cache,
+        )
+        .await
     }
 }
 

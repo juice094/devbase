@@ -87,8 +87,13 @@ pub async fn run_json(
         let mut repo_details: Vec<serde_json::Value> = Vec::new();
 
         // Batch load health cache for all git repos
-        let repo_ids: Vec<&str> = repos.iter().filter(|r| r.workspace_type == "git").map(|r| r.id.as_str()).collect();
-        let health_batch = crate::registry::health::get_health_batch(conn, &repo_ids).unwrap_or_default();
+        let repo_ids: Vec<&str> = repos
+            .iter()
+            .filter(|r| r.workspace_type == "git")
+            .map(|r| r.id.as_str())
+            .collect();
+        let health_batch =
+            crate::registry::health::get_health_batch(conn, &repo_ids).unwrap_or_default();
 
         for repo in repos {
             total_repos += 1;

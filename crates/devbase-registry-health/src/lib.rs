@@ -70,7 +70,8 @@ pub fn get_health_batch(
         placeholders.join(",")
     );
     let mut stmt = conn.prepare(&sql)?;
-    let params: Vec<&dyn rusqlite::ToSql> = repo_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+    let params: Vec<&dyn rusqlite::ToSql> =
+        repo_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
     let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
         let repo_id: String = row.get(0)?;
         let status: String = row.get(1)?;
@@ -81,12 +82,15 @@ pub fn get_health_batch(
             Ok(dt) => dt.with_timezone(&Utc),
             Err(_) => Utc::now(),
         };
-        Ok((repo_id, HealthEntry {
-            status,
-            ahead: ahead as usize,
-            behind: behind as usize,
-            checked_at,
-        }))
+        Ok((
+            repo_id,
+            HealthEntry {
+                status,
+                ahead: ahead as usize,
+                behind: behind as usize,
+                checked_at,
+            },
+        ))
     })?;
     let mut result = std::collections::HashMap::new();
     for row in rows {

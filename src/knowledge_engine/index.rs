@@ -58,7 +58,11 @@ pub fn index_repo(
 }
 
 /// 兼容旧调用的包装层：执行索引逻辑
-pub fn run_index(conn: &mut rusqlite::Connection, path: &str, skip_embeddings: bool) -> anyhow::Result<usize> {
+pub fn run_index(
+    conn: &mut rusqlite::Connection,
+    path: &str,
+    skip_embeddings: bool,
+) -> anyhow::Result<usize> {
     run_index_with_progress(conn, path, None, skip_embeddings)
 }
 

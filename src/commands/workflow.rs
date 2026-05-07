@@ -19,11 +19,14 @@ pub fn run_workflow(
                         })
                     })
                     .collect();
-                println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                    "success": true,
-                    "count": items.len(),
-                    "workflows": items
-                }))?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "success": true,
+                        "count": items.len(),
+                        "workflows": items
+                    }))?
+                );
             } else {
                 if workflows.is_empty() {
                     println!("No workflows registered.");

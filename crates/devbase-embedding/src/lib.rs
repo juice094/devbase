@@ -111,8 +111,7 @@ fn encode_batch_with_candle(
     }
 
     // Batch tokenize
-    let encodings = tokenizer.encode_batch(texts.to_vec(), true)
-        .map_err(|e| anyhow::anyhow!(e))?;
+    let encodings = tokenizer.encode_batch(texts.to_vec(), true).map_err(|e| anyhow::anyhow!(e))?;
 
     // Find max length for padding
     let max_len = encodings.iter().map(|e| e.get_ids().len()).max().unwrap_or(0);
@@ -132,11 +131,10 @@ fn encode_batch_with_candle(
     }
 
     let batch_size = texts.len();
-    let input_ids = Tensor::new(input_ids_vec, &model.device)?
-        .reshape((batch_size, max_len))?;
+    let input_ids = Tensor::new(input_ids_vec, &model.device)?.reshape((batch_size, max_len))?;
     let token_type_ids = input_ids.zeros_like()?;
-    let attention_mask_t = Tensor::new(attention_mask_vec, &model.device)?
-        .reshape((batch_size, max_len))?;
+    let attention_mask_t =
+        Tensor::new(attention_mask_vec, &model.device)?.reshape((batch_size, max_len))?;
 
     // Single forward pass for the whole batch
     let output = model.forward(&input_ids, &token_type_ids, Some(&attention_mask_t))?;
