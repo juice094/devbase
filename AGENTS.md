@@ -414,6 +414,13 @@ v0.11.3 已交付（tagged）。v0.12.0-alpha 全部功能已完成，进入发�
 - 生成工具：`tools/embedding-provider/skills.py`（sentence-transformers `all-MiniLM-L6-v2`）
 - 激活路径：启动 Ollama + `devbase index <repo>` 生成 embedding，或配置远程 provider 于 `config.toml [embedding]` 段
 
+### 2026-05-04 索引性能实验记录
+
+**发现**：Candle CPU BERT `batch_size=32` forward 比 `rayon` 并行单条慢 **5.2×**（88s vs 16s）。
+- 根因：Candle CPU matmul 对大 padded batch 不友好；batch 内序列长度差异导致大量无效 padding token 计算。
+- **决策**：`generate_and_save_embeddings` 回滚到 `rayon::par_iter()` 单条编码；保留 `EmbeddingProvider::encode_batch` trait 方法供未来 GPU/ONNX provider。
+- **新增**：`devbase index <path> --skip-embeddings` 跳过 embedding 生成，纯符号/调用图索引从 ~16s 降至 ~250ms。
+
 ## 上下文安全机制（Context Safety Mechanism）
 
 > 长期架构原则：在多 Agent / 子代理协作场景下，保证工作区状态的一致性与可恢复性。
