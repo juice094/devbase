@@ -132,7 +132,7 @@ pub fn should_skip_dir(path: &Path, exclude: &[String]) -> bool {
 /// Extract symbols from a single source file.
 ///
 /// Supports Rust, Python, JavaScript/TypeScript, and Go.
-pub fn index_repo_full(repo_path: &Path) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
+pub fn index_repo_full(repo_path: &Path) -> anyhow::Result<(Vec<CodeSymbol>, Vec<CodeCall>)> {
     let exts: &[&str] = &["rs", "py", "js", "ts", "jsx", "tsx", "go"];
     let cfg = crate::config::Config::load().unwrap_or_default();
     let mut exclude = cfg.scan.exclude_patterns;
@@ -169,7 +169,7 @@ pub fn index_repo_full(repo_path: &Path) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
         for path in files {
             process_file(repo_path, &path, &mut all_symbols, &mut all_calls);
         }
-        return (all_symbols, all_calls);
+        return Ok((all_symbols, all_calls));
     }
 
     std::thread::scope(|s| {
@@ -177,29 +177,28 @@ pub fn index_repo_full(repo_path: &Path) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
         let mut handles = Vec::with_capacity(num_threads);
 
         for chunk in files.chunks(chunk_size) {
-            handles.push(
-                std::thread::Builder::new()
-                    .stack_size(4 * 1024 * 1024)
-                    .spawn_scoped(s, move || {
-                        let mut symbols = Vec::new();
-                        let mut calls = Vec::new();
-                        for path in chunk {
-                            process_file(repo_path, path, &mut symbols, &mut calls);
-                        }
-                        (symbols, calls)
-                    })
-                    .expect("failed to spawn index worker"),
-            );
+            handles.push(std::thread::Builder::new().stack_size(4 * 1024 * 1024).spawn_scoped(
+                s,
+                move || {
+                    let mut symbols = Vec::new();
+                    let mut calls = Vec::new();
+                    for path in chunk {
+                        process_file(repo_path, path, &mut symbols, &mut calls);
+                    }
+                    (symbols, calls)
+                },
+            )?);
         }
 
         let mut all_symbols = Vec::new();
         let mut all_calls = Vec::new();
         for handle in handles {
-            let (s, c) = handle.join().unwrap();
+            let (s, c) =
+                handle.join().map_err(|e| anyhow::anyhow!("index worker panicked: {:?}", e))?;
             all_symbols.extend(s);
             all_calls.extend(c);
         }
-        (all_symbols, all_calls)
+        Ok((all_symbols, all_calls))
     })
 }
 
@@ -270,8 +269,8 @@ fn process_file(
 }
 
 /// Scan a repository for source files and extract all symbols.
-pub fn index_repo(repo_path: &Path) -> Vec<CodeSymbol> {
-    index_repo_full(repo_path).0
+pub fn index_repo(repo_path: &Path) -> anyhow::Result<Vec<CodeSymbol>> {
+    Ok(index_repo_full(repo_path)?.0)
 }
 
 #[cfg(test)]
@@ -599,7 +598,7 @@ class MyClass:
         )
         .unwrap();
 
-        let (symbols, calls) = index_repo_full(tmp.path());
+        let (symbols, calls) = index_repo_full(tmp.path()).unwrap();
         assert!(!symbols.is_empty());
 
         let names: Vec<_> = symbols.iter().map(|s| s.name.as_str()).collect();

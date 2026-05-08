@@ -36,7 +36,7 @@ fn bench_index_repo_full(c: &mut Criterion) {
 
         group.bench_with_input(BenchmarkId::new("scale", label), &path, |b, p| {
             b.iter(|| {
-                let result = index_repo_full(p);
+                let result = index_repo_full(p).unwrap();
                 black_box(result);
             });
         });

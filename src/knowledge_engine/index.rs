@@ -183,7 +183,7 @@ pub fn run_index_with_progress(
             crate::semantic_index::index_repo_incremental(&repo.local_path, changed)
         } else {
             // Full index
-            crate::semantic_index::index_repo_full(&repo.local_path)
+            crate::semantic_index::index_repo_full(&repo.local_path)?
         };
         let t4 = std::time::Instant::now();
 
