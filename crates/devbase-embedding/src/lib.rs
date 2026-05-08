@@ -97,7 +97,8 @@ fn encode_with_candle(
     tokenizer: &tokenizers::Tokenizer,
     text: &str,
 ) -> anyhow::Result<Vec<f32>> {
-    encode_batch_with_candle(model, tokenizer, &[text]).map(|mut v| v.pop().unwrap())
+    encode_batch_with_candle(model, tokenizer, &[text])
+        .and_then(|mut v| v.pop().ok_or_else(|| anyhow::anyhow!("empty embedding batch")))
 }
 
 fn encode_batch_with_candle(
