@@ -285,11 +285,7 @@ pub fn bytes_to_embedding(bytes: &[u8]) -> Vec<f32> {
         .collect()
 }
 
-/// Convenience wrapper that uses the default provider.
-/// Kept for backward compatibility with existing call sites.
-pub fn generate_query_embedding(query: &str) -> anyhow::Result<Vec<f32>> {
-    default_provider().encode(query)
-}
+
 
 #[cfg(test)]
 mod tests {
