@@ -219,5 +219,17 @@ pub async fn run(
     Ok(())
 }
 
+impl crate::clients::SyncClient for crate::storage::AppContext {
+    async fn sync_repos(
+        &self,
+        dry_run: bool,
+        filter_tags: Option<Vec<String>>,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let filter_tags_str = filter_tags.as_deref().map(|v| v.join(","));
+        crate::sync::run_json(&conn, dry_run, filter_tags_str.as_deref(), None, &self.i18n).await
+    }
+}
+
 #[cfg(test)]
 mod tests;

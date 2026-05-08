@@ -2,6 +2,7 @@
 // Copyright (c) 2026 juice094
 use crate::registry::repo;
 use crate::registry::{CodeMetrics, OplogEntry, RemoteEntry, RepoEntry};
+use crate::storage::AppContext;
 use chrono::Utc;
 use git2::Repository;
 use r2d2::Pool;
@@ -556,6 +557,16 @@ pub fn compute_code_metrics(path: &str) -> Option<CodeMetrics> {
         language_breakdown: serde_json::Value::Object(breakdown),
         updated_at: chrono::Utc::now(),
     })
+}
+
+impl crate::clients::ScanClient for AppContext {
+    async fn scan_directory(
+        &self,
+        path: &str,
+        register: bool,
+    ) -> anyhow::Result<serde_json::Value> {
+        crate::scan::run_json(path, register, &self.pool()).await
+    }
 }
 
 #[cfg(test)]

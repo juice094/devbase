@@ -507,6 +507,30 @@ fn fmt_version(raw: Option<String>, i18n: &crate::i18n::I18n) -> String {
     }
 }
 
+impl crate::clients::HealthClient for crate::storage::AppContext {
+    async fn check_health(&self, detail: bool) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let cache = self.env_cache()?;
+        let env_cache = if cache.is_fresh() {
+            cache
+        } else {
+            let fresh = crate::health::refresh_env_cache().await;
+            self.set_env_cache(fresh.clone())?;
+            fresh
+        };
+        crate::health::run_json(
+            &conn,
+            detail,
+            0,
+            1,
+            self.config.cache.ttl_seconds,
+            &self.i18n,
+            &env_cache,
+        )
+        .await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
