@@ -4,9 +4,9 @@
 
 > 它将本地数字资产的原始数据（代码库、笔记、Skill、工作流）编译为 AI 可决策的结构化情境，不负责思考，不负责执行，只负责感知、编码、持久化、检索。
 
-- **当前阶段**：阶段六 → v0.15.0 / P1~P2 完成（BM25 符号搜索 + AppContext 拆分 + 不变量 CI）
-- **当前版本**：v0.15.0-in-progress (`fix/project-health-cleanup@6a51d66`)
-- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ 18 workspace crates 提取 + MCP Python SDK 1.16.0 兼容修复 + repo.rs trait 化 + flaky 测试根治（RF-2.1/2.2/2.3）+ 许可证迁移 + health 性能优化（-44%）+ index skip-embeddings + batch encoding 实验 + RF-6 清零 + 架构治理文档（ADR/不变量清单）+ Tantivy BM25 代码符号搜索（P1）+ AppContext 职责拆分 Phase 1/2（storage.rs 860→430 行）+ 架构不变量 CI（G5/T11/T12）
+- **当前阶段**：阶段六 → v0.15.0 / P1~P5 全部完成（BM25 + AppContext 拆分 + Embedding 多后端 + Health 扩展 + 不变量 CI）
+- **当前版本**：v0.15.0-in-progress (`fix/project-health-cleanup@e230b6b`)
+- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ 18 workspace crates 提取 + MCP Python SDK 1.16.0 兼容修复 + repo.rs trait 化 + flaky 测试根治（RF-2.1/2.2/2.3）+ 许可证迁移 + health 性能优化（-44%）+ index skip-embeddings + batch encoding 实验 + RF-6 清零 + 架构治理文档（ADR/不变量清单）+ Tantivy BM25 代码符号搜索（P1）+ AppContext 职责拆分 Phase 1/2（storage.rs 860→430 行）+ 架构不变量 CI（G5/T11/T12）+ Embedding 多后端（Candle/Ollama 配置切换, P3）+ EnvVersionCache 扩展（9 工具链检测, P4）
 - **核心方向**：让 Kimi CLI 在调用文件工具之前，先通过 devbase 获得"该读哪些文件、为什么读、它们之间的关系"
 - **本质分析**：见 `vault/99-Meta/devbase-essence-analysis-20260430.md` 与 `docs/architecture/redefinition.md`
 - **设计文档**：
