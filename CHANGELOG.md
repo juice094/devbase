@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-05-04
+
+### Added
+
+- **P1: Tantivy BM25 代码符号搜索** — `search/symbol_index.rs`
+  - 独立 Schema (`repo_id`, `name`, `signature`, `file_path`, `line_start`)
+  - `keyword_search_symbols` 主路径走 Tantivy BM25，SQLite LIKE 回退
+  - 索引流程 `index.rs` 自动同步写入 symbol_index
+  - `StorageBackend` 扩展 `symbol_index_path()`（6 实现）
+- **P3: Embedding 多后端** — Candle (默认) + Ollama (配置切换)
+  - 新增 `OllamaProvider` (`ureq` HTTP `/api/embed`)
+  - `create_provider(backend, model, base_url, timeout)` 配置化创建
+  - `generate_query_embedding` 通过 `OnceLock` 懒加载配置化 provider
+  - 默认模型改为 `all-minilm` (384-dim，与 Candle 维度兼容)
+- **P4: Health 环境检测扩展** — `EnvVersionCache` 从 5 工具 → 9 工具
+  - 新增: `python`, `bun`, `zig`, `java`
+  - `get_tool_version` 支持 stderr fallback (Java 输出到 stderr)
+  - `fmt_version` 改进: Java 引号提取、Docker/Python 格式处理
+- **P5: 架构不变量自动化 CI** — `tools/invariant-checks/run-checks.ps1`
+  - G5: diff-only 检测新增生产代码 unwrap/expect/panic（排除 `#[cfg(test)]`）
+  - T11: 检测 `mcp/tools/*` 直接调用 `rusqlite::Connection`
+  - T12: 检测 `tui/render/*` 写入操作
+  - CI job `invariant-check` 加入 `.github/workflows/ci.yml`
+- **P2 Phase 1: AppContext 职责拆分** — 6 个 Client trait impl 迁出 `storage.rs`
+  - `scan.rs` / `health.rs` / `sync.rs` / `digest.rs` / `knowledge_engine/mod.rs` / `registry.rs`
+  - `storage.rs` 860 → 430 行 (-50%)
+  - 删除冗余 `conn_mut()`
+- **P2 Phase 2: 内联 SQL 下沉** — 新增 `registry/code_symbols.rs` + `registry/dead_code.rs`
+  - `CodeSymbolRow` / `DeadCodeRow` + 纯函数查询 (12 个单元测试)
+  - `RegistryClient` 退化为纯代理层
+
+### Changed
+
+- `EmbeddingConfig` 默认模型 `nomic-embed-text` → `all-minilm` (384-dim)
+- AGENTS.md 阶段描述更新: v0.14.3 → v0.15.0 推进中 → v0.15.0 全部完成
+
+### Fixed
+
+- **TTL 缓存负值 bug** (`97172ec`): `elapsed < ttl_seconds` → `elapsed >= 0 && elapsed < ttl_seconds`
+  - 防止系统时间回溯导致缓存永不过期
+- `crates/devbase-embedding/src/lib.rs` 遗留 unwrap 清零 (`encode_with_candle` → `ok_or`)
+
 ## [0.14.3] - 2026-05-05
 
 ### Added
