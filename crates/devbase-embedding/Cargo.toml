@@ -9,6 +9,7 @@ repository = "https://github.com/juice094/devbase"
 [dependencies]
 anyhow = "1"
 serde_json = "1"
+ureq = { version = "2", features = ["json"] }
 candle-core = { version = "0.10" }
 candle-nn = { version = "0.10" }
 candle-transformers = { version = "0.10" }
