@@ -47,6 +47,8 @@
 | [`architecture/workflow-dsl.md`](architecture/workflow-dsl.md) | Workflow DSL v0.4.0 规范（YAML 多步骤编排） |
 | [`architecture/dependency-topology.md`](architecture/dependency-topology.md) | 模块依赖拓扑（Tier 1–11 自底向上进化顺序） |
 | [`architecture/pre-split-evaluation.md`](architecture/pre-split-evaluation.md) | 单 crate vs 多 crate 评估结论 |
+| [`architecture/adr-template.md`](architecture/adr-template.md) | ADR 模板与已完成决策索引（batch encoding、split defer） |
+| [`architecture/invariants.md`](architecture/invariants.md) | 架构不变量清单：全局 + 分层约束 + 提取演习检查表 |
 
 ### 📖 使用指南（Guides）
 

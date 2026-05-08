@@ -207,6 +207,24 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 # 预期输出：空
 ```
 
+### 架构治理框架（Architecture Governance）
+
+> 参考：外部架构治理方法论（Kimi 会话 `e9f2965f-b949-46a5-9d7c-afd6d4d9232c`）
+
+**已制度化实践**：
+
+| 实践 | devbase 落地形式 | 文档位置 |
+|------|-----------------|---------|
+| ADR（架构决策记录） | ADR-001（单 crate defer）、ADR-002（batch encoding 回滚） | [`docs/architecture/adr-template.md`](docs/architecture/adr-template.md) |
+| 不变量清单（Invariants） | RF-1~RF-7 + 分层模块约束（T01–T12） | [`docs/architecture/invariants.md`](docs/architecture/invariants.md) |
+| 模块提取演习 | RF-7 的 5 个 `crate::` 引用阈值 + 已提取 18 workspace crates | 本文件 §RF-7 |
+| 三层摘要 | `crates/*/README.md` 要求：一句话 + 一页纸 + 深度链接 | 各 crate README |
+| 定期架构回顾 | 每次 Wave 结束时的架构审计（见 `docs/_audit/`） | `docs/_audit/2026-04-26-*.md` |
+
+**待增强**：
+- 三层摘要：部分已提取 crate 的 README 尚未达到"一页纸"标准
+- 定期架构回顾：当前按 Wave（功能迭代周期）触发，建议每 2–4 周增加一次纯架构 review（不看 feature 进度，只看不变量违反和隐式依赖）
+
 ---
 
 ## 技术债登记簿（Technical Debt Ledger）
