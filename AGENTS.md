@@ -421,6 +421,8 @@ v0.11.3 已交付（tagged）。v0.12.0-alpha 全部功能已完成，进入发�
 - **决策**：`generate_and_save_embeddings` 回滚到 `rayon::par_iter()` 单条编码；保留 `EmbeddingProvider::encode_batch` trait 方法供未来 GPU/ONNX provider。
 - **新增**：`devbase index <path> --skip-embeddings` 跳过 embedding 生成，纯符号/调用图索引从 ~16s 降至 ~250ms。
 
+**外部参考**：知识蒸馏 Pipeline 设计规格（六阶段：噪声过滤→语义分割→主题聚类→层级展开→可信度标注→结构化输出），来源见 `docs/_audit/2026-04-26-embedding-research.md` §2026-05-04 补充。该规格提出通过 devbase MCP 暴露 `devkit_knowledge_distill` 工具，与 Vault 系统形成输入-处理-输出闭环。状态：设计规格级，待验证后评估集成优先级。
+
 ## 上下文安全机制（Context Safety Mechanism）
 
 > 长期架构原则：在多 Agent / 子代理协作场景下，保证工作区状态的一致性与可恢复性。
