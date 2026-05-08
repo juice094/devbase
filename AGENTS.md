@@ -239,7 +239,7 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 | 主从表切换 | 🟢 | Phase 1 全部完成：`repos` 表已删除，entities 为唯一数据源 | `entities` 为第一公民 | Phase 2 类型系统开放（新增 entity_type 无需改表结构） | v0.12.0 |
 | vault/paper/workflow entities 缺口 | 🟢 | Stage C+D+E 全部完成：`vault_notes`/`papers`/`workflows` 表已删除，`skills` 保留（embedding BLOB） | 0 缺口 | — | v0.12.0 |
 | scan 路径排除 | 🟢 | `discover_repos` + `collect_tasks` 均支持 `scan.exclude_paths`；scan 和 sync 双阶段过滤 | 0 缺口 | 排除路径使用 `Path::starts_with` 组件级匹配，避免字符串前缀误杀；相对路径在 sync 场景（无 root）下被忽略 | v0.12.0 |
-| tree-sitter 编译成本 | 🟡 | ~15-20s | 可控 | 评估 `ccache` 或 grammar 预编译；或按需 feature-gate | 8 |
+| tree-sitter 编译成本 | 🟢 | ~15-20s grammar C compilation | 可控 | 已完成 feature-gate：`lang-rust`/`lang-python`/`lang-js-ts`/`lang-go` 四个 feature，默认全启，可选关闭减少编译；`--no-default-features` 编译通过 | 8 |
 | Feature flags 缺失 | 🟢 | 4 个可选 feature (tui, watch, mcp, embedding) | ≥3 | 已完成：`tui`/`watch`/`mcp`/`embedding` 均为 optional；`--no-default-features` 编译通过 | ≤15 |
 | `LOCALAPPDATA` 测试模式残留 | 🟢 | 0 处 | 0 | 全面废弃 `LOCALAPPDATA` 环境变量覆盖，统一为 `DEVBASE_DATA_DIR`；mcp/tests.rs 修复 cleanup 逻辑（remove_var 目标从 LOCALAPPDATA 修正为 DEVBASE_DATA_DIR） | 47 |
 
