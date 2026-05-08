@@ -222,6 +222,10 @@ pub async fn run_json(
         "node": fmt_version(env_cache.node.clone(), i18n),
         "go": fmt_version(env_cache.go.clone(), i18n),
         "cmake": fmt_version(env_cache.cmake.clone(), i18n),
+        "python": fmt_version(env_cache.python.clone(), i18n),
+        "bun": fmt_version(env_cache.bun.clone(), i18n),
+        "zig": fmt_version(env_cache.zig.clone(), i18n),
+        "java": fmt_version(env_cache.java.clone(), i18n),
     });
 
     let summary = serde_json::json!({
@@ -310,6 +314,10 @@ pub async fn run(
     println!("  node: {}", env["node"].as_str().unwrap_or(i18n.log.not_installed));
     println!("  go: {}", env["go"].as_str().unwrap_or(i18n.log.not_installed));
     println!("  cmake: {}", env["cmake"].as_str().unwrap_or(i18n.log.not_installed));
+    println!("  python: {}", env["python"].as_str().unwrap_or(i18n.log.not_installed));
+    println!("  bun: {}", env["bun"].as_str().unwrap_or(i18n.log.not_installed));
+    println!("  zig: {}", env["zig"].as_str().unwrap_or(i18n.log.not_installed));
+    println!("  java: {}", env["java"].as_str().unwrap_or(i18n.log.not_installed));
 
     if detail {
         let repos = result["repos"]
@@ -451,12 +459,16 @@ fn calc_ahead_behind(
 
 /// Refresh environment version cache by spawning all tool subprocesses in parallel.
 pub async fn refresh_env_cache() -> crate::storage::EnvVersionCache {
-    let (rustc, cargo, node, go, cmake) = tokio::join!(
+    let (rustc, cargo, node, go, cmake, python, bun, zig, java) = tokio::join!(
         get_tool_version("rustc", &["--version"]),
         get_tool_version("cargo", &["--version"]),
         get_tool_version("node", &["--version"]),
         get_tool_version("go", &["version"]),
         get_tool_version("cmake", &["--version"]),
+        get_tool_version("python", &["--version"]),
+        get_tool_version("bun", &["--version"]),
+        get_tool_version("zig", &["version"]),
+        get_tool_version("java", &["-version"]),
     );
     crate::storage::EnvVersionCache {
         rustc,
@@ -464,6 +476,10 @@ pub async fn refresh_env_cache() -> crate::storage::EnvVersionCache {
         node,
         go,
         cmake,
+        python,
+        bun,
+        zig,
+        java,
         fetched_at: Some(std::time::Instant::now()),
     }
 }
@@ -475,7 +491,11 @@ async fn get_tool_version(cmd: &str, args: &[&str]) -> Option<String> {
         return None;
     }
 
-    let raw = String::from_utf8_lossy(&output.stdout);
+    let raw = if !output.stdout.is_empty() {
+        String::from_utf8_lossy(&output.stdout)
+    } else {
+        String::from_utf8_lossy(&output.stderr)
+    };
     let line = raw.lines().next()?.trim();
     if line.is_empty() {
         return None;
@@ -486,21 +506,35 @@ async fn get_tool_version(cmd: &str, args: &[&str]) -> Option<String> {
 fn fmt_version(raw: Option<String>, i18n: &crate::i18n::I18n) -> String {
     match raw {
         Some(s) => {
+            let s = s.trim();
+            // Java outputs: java version "1.8.0_31" — extract quoted version
+            if let Some(start) = s.find('"') {
+                if let Some(end) = s[start + 1..].find('"') {
+                    return s[start + 1..start + 1 + end].to_string();
+                }
+            }
             let parts: Vec<&str> = s.split_whitespace().collect();
             if parts.len() >= 2 {
                 match parts[0] {
-                    "rustc" | "cargo" => parts.get(1).unwrap_or(&"unknown").to_string(),
+                    "rustc" | "cargo" | "bun" | "zig" | "Python" => {
+                        parts.get(1).unwrap_or(&"unknown").to_string()
+                    }
                     "cmake" | "version" => parts.get(2).unwrap_or(&"unknown").to_string(),
+                    "go" if parts.len() >= 3 => parts[2].to_string(),
+                    "Docker" if parts.len() >= 3 && parts[1] == "version" => {
+                        parts[2..].join(" ")
+                    }
                     _ => {
-                        if parts[0] == "go" && parts.len() >= 3 {
-                            parts[2].to_string()
+                        // Heuristic: if second word is "version", skip first two
+                        if parts.len() >= 3 && parts[1] == "version" {
+                            parts[2..].join(" ")
                         } else {
-                            s
+                            s.to_string()
                         }
                     }
                 }
             } else {
-                s
+                s.to_string()
             }
         }
         None => i18n.log.not_installed.to_string(),
@@ -616,5 +650,35 @@ mod tests {
     fn test_fmt_version_single_word() {
         let i18n = crate::i18n::from_language("en");
         assert_eq!(fmt_version(Some("v1.0".to_string()), &i18n), "v1.0");
+    }
+
+    #[test]
+    fn test_fmt_version_python() {
+        let i18n = crate::i18n::from_language("en");
+        assert_eq!(fmt_version(Some("Python 3.12.13".to_string()), &i18n), "3.12.13");
+    }
+
+    #[test]
+    fn test_fmt_version_bun() {
+        let i18n = crate::i18n::from_language("en");
+        assert_eq!(fmt_version(Some("1.3.11".to_string()), &i18n), "1.3.11");
+    }
+
+    #[test]
+    fn test_fmt_version_java() {
+        let i18n = crate::i18n::from_language("en");
+        assert_eq!(
+            fmt_version(Some("java version \"1.8.0_31\"".to_string()), &i18n),
+            "1.8.0_31"
+        );
+    }
+
+    #[test]
+    fn test_fmt_version_docker() {
+        let i18n = crate::i18n::from_language("en");
+        assert_eq!(
+            fmt_version(Some("Docker version 24.0.7, build afdd53b".to_string()), &i18n),
+            "24.0.7, build afdd53b"
+        );
     }
 }

@@ -15,6 +15,10 @@ pub struct EnvVersionCache {
     pub node: Option<String>,
     pub go: Option<String>,
     pub cmake: Option<String>,
+    pub python: Option<String>,
+    pub bun: Option<String>,
+    pub zig: Option<String>,
+    pub java: Option<String>,
     pub fetched_at: Option<Instant>,
 }
 
