@@ -199,15 +199,30 @@ impl AppContext {
     }
 }
 
+/// Result of a startup consistency scan.
+#[allow(dead_code)]
+pub(crate) struct RepairResult {
+    /// Tantivy documents whose repo no longer exists in SQLite.
+    pub orphans: usize,
+    /// SQLite entities that are missing from the Tantivy index.
+    pub missing_from_index: usize,
+}
+
 /// Startup consistency scan: detect Tantivy documents whose repo no longer exists in SQLite.
+/// Also detects SQLite repos that are missing from the Tantivy index.
 /// Inserts orphan records into `orphan_tantivy_docs` for lazy cleanup during next index.
-pub(crate) fn repair_tantivy_consistency(conn: &mut rusqlite::Connection) -> anyhow::Result<usize> {
+pub(crate) fn repair_tantivy_consistency(
+    conn: &mut rusqlite::Connection,
+) -> anyhow::Result<RepairResult> {
     let backend = crate::storage::DefaultStorageBackend {};
     let index_path = match backend.index_path() {
         Ok(p) => p,
         Err(e) => {
             tracing::warn!("Failed to resolve index path: {}", e);
-            return Ok(0);
+            return Ok(RepairResult {
+                orphans: 0,
+                missing_from_index: 0,
+            });
         }
     };
     repair_tantivy_consistency_at(&index_path, conn)
@@ -217,14 +232,18 @@ pub(crate) fn repair_tantivy_consistency(conn: &mut rusqlite::Connection) -> any
 pub(crate) fn repair_tantivy_consistency_at(
     index_path: &std::path::Path,
     conn: &mut rusqlite::Connection,
-) -> anyhow::Result<usize> {
-    let tantivy_ids = match crate::search::list_indexed_repo_ids_at(index_path) {
-        Ok(ids) => ids,
-        Err(e) => {
-            tracing::warn!("Failed to list Tantivy repo IDs: {}", e);
-            return Ok(0);
-        }
-    };
+) -> anyhow::Result<RepairResult> {
+    let tantivy_ids: std::collections::HashSet<String> =
+        match crate::search::list_indexed_repo_ids_at(index_path) {
+            Ok(ids) => ids.into_iter().collect(),
+            Err(e) => {
+                tracing::warn!("Failed to list Tantivy repo IDs: {}", e);
+                return Ok(RepairResult {
+                    orphans: 0,
+                    missing_from_index: 0,
+                });
+            }
+        };
 
     let sqlite_ids: std::collections::HashSet<String> = {
         let mut stmt = conn.prepare("SELECT id FROM entities WHERE entity_type = ?1")?;
@@ -234,7 +253,6 @@ pub(crate) fn repair_tantivy_consistency_at(
     };
 
     // Clear stale orphans: repos that are now present in SQLite but still marked orphan
-    let mut orphaned = 0usize;
     {
         let mut stmt = conn.prepare("SELECT repo_id FROM orphan_tantivy_docs")?;
         let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
@@ -246,6 +264,7 @@ pub(crate) fn repair_tantivy_consistency_at(
     }
 
     // Record new orphans: Tantivy has doc but SQLite has no entity
+    let mut orphaned = 0usize;
     for repo_id in &tantivy_ids {
         if !sqlite_ids.contains(repo_id) {
             conn.execute(
@@ -259,7 +278,23 @@ pub(crate) fn repair_tantivy_consistency_at(
     if orphaned > 0 {
         tracing::info!("Detected {} orphan Tantivy document(s)", orphaned);
     }
-    Ok(orphaned)
+
+    // Reverse check: SQLite entities missing from Tantivy
+    let mut missing = 0usize;
+    for repo_id in &sqlite_ids {
+        if !tantivy_ids.contains(repo_id) {
+            tracing::warn!(
+                "repo {} exists in SQLite but missing from Tantivy index; needs re-index",
+                repo_id
+            );
+            missing += 1;
+        }
+    }
+
+    Ok(RepairResult {
+        orphans: orphaned,
+        missing_from_index: missing,
+    })
 }
 
 impl crate::clients::ScanClient for AppContext {
@@ -778,8 +813,9 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(800));
 
         // Repair should detect the orphan
-        let count = repair_tantivy_consistency_at(&index_path, &mut conn).unwrap();
-        assert_eq!(count, 1);
+        let result = repair_tantivy_consistency_at(&index_path, &mut conn).unwrap();
+        assert_eq!(result.orphans, 1);
+        assert_eq!(result.missing_from_index, 0);
 
         let orphan_exists: bool = conn
             .query_row("SELECT 1 FROM orphan_tantivy_docs WHERE repo_id = 'ghost_repo'", [], |_| {
@@ -796,8 +832,9 @@ mod tests {
         ).unwrap();
 
         // Repair should now find zero orphans and clear the record
-        let count2 = repair_tantivy_consistency_at(&index_path, &mut conn).unwrap();
-        assert_eq!(count2, 0);
+        let result2 = repair_tantivy_consistency_at(&index_path, &mut conn).unwrap();
+        assert_eq!(result2.orphans, 0);
+        assert_eq!(result2.missing_from_index, 0);
 
         let orphan_still_exists: bool = conn
             .query_row("SELECT 1 FROM orphan_tantivy_docs WHERE repo_id = 'ghost_repo'", [], |_| {
