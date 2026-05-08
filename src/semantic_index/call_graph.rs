@@ -94,6 +94,7 @@ fn extract_current_function_name(
     lang: Lang,
 ) -> Option<String> {
     match lang {
+        #[cfg(feature = "lang-rust")]
         Lang::Rust => {
             if node.kind() == "function_item" || node.kind() == "closure_expression" {
                 extract_node_name(node, source_bytes)
@@ -101,6 +102,7 @@ fn extract_current_function_name(
                 None
             }
         }
+        #[cfg(feature = "lang-python")]
         Lang::Python => {
             if node.kind() == "function_definition" {
                 extract_node_name(node, source_bytes)
@@ -108,6 +110,7 @@ fn extract_current_function_name(
                 None
             }
         }
+        #[cfg(feature = "lang-js-ts")]
         Lang::JsTs => {
             if node.kind() == "function_declaration" || node.kind() == "method_definition" {
                 if node.kind() == "method_definition" {
@@ -119,6 +122,7 @@ fn extract_current_function_name(
                 None
             }
         }
+        #[cfg(feature = "lang-go")]
         Lang::Go => {
             if node.kind() == "function_declaration" {
                 extract_node_name(node, source_bytes)
@@ -137,6 +141,7 @@ fn extract_callee_name(
     lang: Lang,
 ) -> Option<String> {
     match lang {
+        #[cfg(feature = "lang-rust")]
         Lang::Rust => {
             if node.kind() == "call_expression" {
                 let func_node = node.child(0)?;
@@ -147,6 +152,7 @@ fn extract_callee_name(
                 None
             }
         }
+        #[cfg(feature = "lang-python")]
         Lang::Python => {
             if node.kind() == "call" {
                 let func_node = node.child(0)?;
@@ -155,6 +161,7 @@ fn extract_callee_name(
                 None
             }
         }
+        #[cfg(feature = "lang-js-ts")]
         Lang::JsTs => {
             if node.kind() == "call_expression" {
                 let func_node = node.child(0)?;
@@ -163,6 +170,7 @@ fn extract_callee_name(
                 None
             }
         }
+        #[cfg(feature = "lang-go")]
         Lang::Go => {
             if node.kind() == "call_expression" {
                 let func_node = node.child(0)?;

@@ -82,9 +82,13 @@ fn node_to_symbol(
     lang: Lang,
 ) -> Option<CodeSymbol> {
     match lang {
+        #[cfg(feature = "lang-rust")]
         Lang::Rust => rust_node_to_symbol(node, file_path, source_bytes),
+        #[cfg(feature = "lang-python")]
         Lang::Python => python_node_to_symbol(node, file_path, source_bytes),
+        #[cfg(feature = "lang-js-ts")]
         Lang::JsTs => js_node_to_symbol(node, file_path, source_bytes),
+        #[cfg(feature = "lang-go")]
         Lang::Go => go_node_to_symbol(node, file_path, source_bytes),
     }
 }
@@ -372,6 +376,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "lang-rust")]
     fn test_extract_rust_attributes() {
         let source = r#"
 #[tokio::test]

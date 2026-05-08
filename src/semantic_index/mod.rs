@@ -86,19 +86,28 @@ pub type SemanticSearchRow = (String, String, String, i64, f32);
 
 #[derive(Clone, Copy)]
 pub(crate) enum Lang {
+    #[cfg(feature = "lang-rust")]
     Rust,
+    #[cfg(feature = "lang-python")]
     Python,
+    #[cfg(feature = "lang-js-ts")]
     JsTs,
+    #[cfg(feature = "lang-go")]
     Go,
 }
 
 impl Lang {
     fn from_ext(ext: &str) -> Option<Self> {
         match ext {
+            #[cfg(feature = "lang-rust")]
             "rs" => Some(Lang::Rust),
+            #[cfg(feature = "lang-python")]
             "py" => Some(Lang::Python),
+            #[cfg(feature = "lang-js-ts")]
             "js" | "ts" | "jsx" => Some(Lang::JsTs),
+            #[cfg(feature = "lang-js-ts")]
             "tsx" => Some(Lang::JsTs),
+            #[cfg(feature = "lang-go")]
             "go" => Some(Lang::Go),
             _ => None,
         }
@@ -106,9 +115,13 @@ impl Lang {
 
     fn parser_language(self) -> tree_sitter::Language {
         match self {
+            #[cfg(feature = "lang-rust")]
             Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
+            #[cfg(feature = "lang-python")]
             Lang::Python => tree_sitter_python::LANGUAGE.into(),
+            #[cfg(feature = "lang-js-ts")]
             Lang::JsTs => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            #[cfg(feature = "lang-go")]
             Lang::Go => tree_sitter_go::LANGUAGE.into(),
         }
     }
