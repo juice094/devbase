@@ -106,7 +106,8 @@ pub async fn run_json(
                     Some(health) => {
                         let elapsed =
                             Utc::now().signed_duration_since(health.checked_at).num_seconds();
-                        if elapsed < ttl_seconds {
+                        // Guard against negative elapsed (system clock drift / future checked_at)
+                        if elapsed >= 0 && elapsed < ttl_seconds {
                             (health.status, health.ahead, health.behind)
                         } else {
                             let (status, ahead, behind) = analyze_repo(
