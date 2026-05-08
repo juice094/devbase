@@ -434,6 +434,9 @@ mod tests {
         fn index_path(&self) -> anyhow::Result<PathBuf> {
             Ok(self.dir.path().join("idx"))
         }
+        fn symbol_index_path(&self) -> anyhow::Result<PathBuf> {
+            Ok(self.dir.path().join("sym_idx"))
+        }
         fn backup_dir(&self) -> anyhow::Result<PathBuf> {
             Ok(self.dir.path().join("bk"))
         }

@@ -3,6 +3,7 @@
 // Copyright (c) 2026 juice094
 
 pub mod hybrid;
+pub mod symbol_index;
 
 use crate::storage::StorageBackend;
 use std::path::PathBuf;

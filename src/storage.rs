@@ -44,6 +44,9 @@ pub trait StorageBackend: Send + Sync {
     /// Tantivy 搜索索引目录。
     fn index_path(&self) -> anyhow::Result<PathBuf>;
 
+    /// Tantivy 代码符号搜索索引目录。
+    fn symbol_index_path(&self) -> anyhow::Result<PathBuf>;
+
     /// 自动备份目录。
     fn backup_dir(&self) -> anyhow::Result<PathBuf>;
 }
@@ -85,6 +88,12 @@ impl StorageBackend for DefaultStorageBackend {
         let dir = self.data_base()?;
         std::fs::create_dir_all(&dir)?;
         Ok(dir.join("search_index"))
+    }
+
+    fn symbol_index_path(&self) -> anyhow::Result<PathBuf> {
+        let dir = self.data_base()?;
+        std::fs::create_dir_all(&dir)?;
+        Ok(dir.join("symbol_index"))
     }
 
     fn backup_dir(&self) -> anyhow::Result<PathBuf> {
@@ -763,6 +772,11 @@ impl StorageBackend for TempStorageBackend {
         let dir = self.dir.path();
         std::fs::create_dir_all(dir)?;
         Ok(dir.join("search_index"))
+    }
+    fn symbol_index_path(&self) -> anyhow::Result<PathBuf> {
+        let dir = self.dir.path();
+        std::fs::create_dir_all(dir)?;
+        Ok(dir.join("symbol_index"))
     }
     fn backup_dir(&self) -> anyhow::Result<PathBuf> {
         Ok(self.dir.path().join("backups"))

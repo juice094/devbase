@@ -200,6 +200,13 @@ pub fn run_index_with_progress(
                 }
                 Err(e) => warn!("Failed to save code symbols for {}: {}", repo.id, e),
             }
+
+            // Index symbols in Tantivy for BM25 keyword search
+            if let Err(e) = index_symbols_in_search(&repo.id, &symbols, is_incremental) {
+                warn!("Failed to index symbols in search for {}: {}", repo.id, e);
+            } else {
+                notify(format!("symbol_index:{},symbols={}", repo.id, symbols.len()));
+            }
         }
         if !calls.is_empty() {
             let result = if is_incremental {
@@ -412,6 +419,19 @@ fn detect_changes(
             None
         }
     }
+}
+
+fn index_symbols_in_search(
+    repo_id: &str,
+    symbols: &[crate::semantic_index::CodeSymbol],
+    _is_incremental: bool,
+) -> anyhow::Result<()> {
+    let (index, _reader) = crate::search::symbol_index::init_index()?;
+    let mut writer = crate::search::symbol_index::get_writer(&index)?;
+    let schema = index.schema();
+    crate::search::symbol_index::add_symbols(&mut writer, &schema, repo_id, symbols)?;
+    crate::search::symbol_index::commit_writer(&mut writer)?;
+    Ok(())
 }
 
 fn save_repo_index_state(
