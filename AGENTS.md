@@ -235,7 +235,7 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 |---|---|---|---|---|---|
 | `main.rs` 上帝文件 | 🟢 | 548 行 | ≤1000 行 | 拆分为 `commands/simple.rs` + `commands/skill.rs` + `commands/workflow.rs` + `commands/limit.rs`；全部 22 个命令/子命令树已迁移 | ≤15 |
 | `init_db()` 全局路径 | 🟢 | `AppContext` 已集成到全部 commands/ 模块；`main()` 通过 `AppContext` 分发配置；`init_db()` 无外部调用 | 0 | 已完成：`StorageBackend` trait + `AppContext` 全面替代；`db_path`/`workspace_dir`/`index_path`/`backup_dir` 已统一 | ≤15 |
-| Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调 | 补偿机制 | 设计 `sync_index_to_db()` 回滚或两阶段提交；或改为 SQLite FTS5 替代 Tantivy | 7 |
+| Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调；**已添加反向检测**（`repair_tantivy_consistency` 现在检测 SQLite→Tantivy 缺失） | 补偿机制 | 长期：事务协调或 SQLite FTS5 替代；短期：反向检测 + 日志已落地（`fe14c81`） | 7 |
 | 主从表切换 | 🟢 | Phase 1 全部完成：`repos` 表已删除，entities 为唯一数据源 | `entities` 为第一公民 | Phase 2 类型系统开放（新增 entity_type 无需改表结构） | v0.12.0 |
 | vault/paper/workflow entities 缺口 | 🟢 | Stage C+D+E 全部完成：`vault_notes`/`papers`/`workflows` 表已删除，`skills` 保留（embedding BLOB） | 0 缺口 | — | v0.12.0 |
 | scan 路径排除 | 🟢 | `discover_repos` + `collect_tasks` 均支持 `scan.exclude_paths`；scan 和 sync 双阶段过滤 | 0 缺口 | 排除路径使用 `Path::starts_with` 组件级匹配，避免字符串前缀误杀；相对路径在 sync 场景（无 root）下被忽略 | v0.12.0 |
