@@ -4,9 +4,9 @@
 
 > 它将本地数字资产的原始数据（代码库、笔记、Skill、工作流）编译为 AI 可决策的结构化情境，不负责思考，不负责执行，只负责感知、编码、持久化、检索。
 
-- **当前阶段**：阶段六 — v0.14.3 / MCP Python SDK 兼容修复 + repo.rs trait 化收尾
-- **当前版本**：v0.14.3 (`main@2867811`)
-- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ 18 workspace crates 提取 + MCP Python SDK 1.16.0 兼容修复（NDJSON + null-id workaround）+ repo.rs crate:: 引用 13→9 + flaky 测试根治（RF-2.1/2.2/2.3）+ 许可证迁移（MIT → AGPL-3.0-or-later 双许可）
+- **当前阶段**：阶段六 — v0.14.3 / 性能优化（health 68ms / index skip-embed 0.25s）+ RF-6 生产代码 unwrap 清零 + 架构治理框架（ADR + 不变量清单）
+- **当前版本**：v0.14.3 (`fix/project-health-cleanup@70d722d`)
+- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ 18 workspace crates 提取 + MCP Python SDK 1.16.0 兼容修复 + repo.rs trait 化 + flaky 测试根治（RF-2.1/2.2/2.3）+ 许可证迁移 + health 性能优化（-44%）+ index skip-embeddings + batch encoding 实验 + RF-6 清零 + 架构治理文档（ADR/不变量清单）
 - **核心方向**：让 Kimi CLI 在调用文件工具之前，先通过 devbase 获得"该读哪些文件、为什么读、它们之间的关系"
 - **本质分析**：见 `vault/99-Meta/devbase-essence-analysis-20260430.md` 与 `docs/architecture/redefinition.md`
 - **设计文档**：
@@ -347,7 +347,7 @@ devbase 承载外部资源调度的抽象接口：
 - **短期**：devbase MCP 接口可封装外部 TEE 服务（如 Azure Confidential Computing）
 - **长期**：如需自建，新建 `clarity-tee` 或 `devbase-secure` 子项目
 
-## 当前阶段待办（v0.12.0 发布冲刺）
+## 当前阶段待办（v0.14.3 健康清理冲刺）
 
 v0.11.3 已交付（tagged）。v0.12.0-alpha 全部功能已完成，进入发布治理阶段。
 
