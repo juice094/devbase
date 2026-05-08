@@ -327,56 +327,24 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
         limit: usize,
     ) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        let mut sql = String::from(
-            "SELECT file_path, symbol_type, name, line_start, line_end, signature \
-             FROM code_symbols WHERE repo_id = ?1",
-        );
-        let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(repo_id.to_string())];
-        if let Some(ty) = symbol_type.filter(|s| !s.is_empty()) {
-            sql.push_str(" AND symbol_type = ?");
-            sql.push_str(&(params.len() + 1).to_string());
-            params.push(Box::new(ty.to_string()));
-        }
-        if let Some(n) = name.filter(|s| !s.is_empty()) {
-            sql.push_str(" AND name LIKE ?");
-            sql.push_str(&(params.len() + 1).to_string());
-            params.push(Box::new(format!("%{}%", n)));
-        }
-        if let Some(f) = file.filter(|s| !s.is_empty()) {
-            sql.push_str(" AND file_path LIKE ?");
-            sql.push_str(&(params.len() + 1).to_string());
-            params.push(Box::new(format!("%{}%", f)));
-        }
-        sql.push_str(&format!(" ORDER BY file_path, line_start LIMIT {}", limit.min(200)));
-
-        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(rusqlite::params_from_iter(param_refs), |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, i64>(4)?,
-                row.get::<_, Option<String>>(5)?,
-            ))
-        })?;
-
-        let mut symbols = Vec::new();
-        for row in rows {
-            symbols.push(row?);
-        }
-
+        let symbols = crate::registry::code_symbols::query_code_symbols(
+            &conn,
+            repo_id,
+            name,
+            symbol_type,
+            file,
+            limit,
+        )?;
         let out: Vec<serde_json::Value> = symbols
             .iter()
-            .map(|(fp, st, n, ls, le, sig)| {
+            .map(|s| {
                 serde_json::json!({
-                    "file_path": fp,
-                    "symbol_type": st,
-                    "name": n,
-                    "line_start": ls,
-                    "line_end": le,
-                    "signature": sig,
+                    "file_path": s.file_path,
+                    "symbol_type": s.symbol_type,
+                    "name": s.name,
+                    "line_start": s.line_start,
+                    "line_end": s.line_end,
+                    "signature": s.signature,
                 })
             })
             .collect();
@@ -395,49 +363,15 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
         limit: usize,
     ) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        let mut sql = String::from(
-            "SELECT file_path, name, line_start, signature \
-             FROM code_symbols cs \
-             WHERE cs.repo_id = ?1 AND cs.symbol_type = 'function' \
-             AND NOT EXISTS ( \
-                 SELECT 1 FROM code_call_graph ccg \
-                 WHERE ccg.repo_id = cs.repo_id AND ccg.callee_name = cs.name \
-             )",
-        );
-        if !include_pub {
-            sql.push_str(" AND (cs.signature IS NULL OR cs.signature NOT LIKE 'pub%fn%')");
-        }
-        sql.push_str(" AND cs.name != 'main'");
-        sql.push_str(" AND cs.name NOT LIKE 'test_%'");
-        sql.push_str(
-            " AND cs.file_path NOT LIKE '%/tests.rs' AND cs.file_path NOT LIKE '%\\tests.rs'",
-        );
-        sql.push_str(" AND (cs.attributes IS NULL OR cs.attributes NOT LIKE '%#[test]%')");
-        sql.push_str(&format!(" ORDER BY cs.file_path, cs.line_start LIMIT {}", limit.min(200)));
-
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map([repo_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, Option<String>>(3)?,
-            ))
-        })?;
-
-        let mut dead = Vec::new();
-        for row in rows {
-            dead.push(row?);
-        }
-
+        let dead = crate::registry::dead_code::query_dead_code(&conn, repo_id, include_pub, limit)?;
         let out: Vec<serde_json::Value> = dead
             .iter()
-            .map(|(fp, n, line, sig)| {
+            .map(|d| {
                 serde_json::json!({
-                    "file_path": fp,
-                    "name": n,
-                    "line_start": line,
-                    "signature": sig,
+                    "file_path": d.file_path,
+                    "name": d.name,
+                    "line_start": d.line_start,
+                    "signature": d.signature,
                 })
             })
             .collect();
