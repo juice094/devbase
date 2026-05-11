@@ -505,6 +505,7 @@ mod tests {
 
     #[test]
     fn test_sync_index_to_db_removes_orphans() {
+        let _guard = super::SEARCH_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let backend = crate::storage::TempStorageBackend::new();
         let index_path = backend.index_path().unwrap();
         let db_path = backend.db_path().unwrap();
@@ -513,14 +514,12 @@ mod tests {
         let conn = crate::registry::WorkspaceRegistry::init_db_at(&db_path).unwrap();
 
         // Add 2 repo docs to Tantivy
-        let (index, _reader) = crate::search::init_index_at(&index_path).unwrap();
-        let mut writer = crate::search::get_writer(&index).unwrap();
+        let (index, _reader) = init_index_at(&index_path).unwrap();
+        let mut writer = get_writer(&index).unwrap();
         let schema = index.schema();
-        crate::search::add_repo_doc(&mut writer, &schema, "foo", "Foo", "foo content", &[])
-            .unwrap();
-        crate::search::add_repo_doc(&mut writer, &schema, "bar", "Bar", "bar content", &[])
-            .unwrap();
-        crate::search::commit_writer(&mut writer).unwrap();
+        add_repo_doc(&mut writer, &schema, "foo", "Foo", "foo content", &[]).unwrap();
+        add_repo_doc(&mut writer, &schema, "bar", "Bar", "bar content", &[]).unwrap();
+        commit_writer(&mut writer).unwrap();
         drop(writer);
         drop(index);
         // Windows releases Tantivy mmap handles asynchronously.
@@ -535,14 +534,14 @@ mod tests {
         .unwrap();
 
         // Sync should delete bar (orphan)
-        let deleted = crate::search::sync_index_to_db_at(&index_path, &conn).unwrap();
+        let deleted = sync_index_to_db_at(&index_path, &conn).unwrap();
         assert_eq!(deleted, 1);
 
         // Windows may need extra time before reopening the index
         std::thread::sleep(std::time::Duration::from_millis(1500));
 
         // Verify only foo remains in index
-        let remaining = crate::search::list_indexed_repo_ids_at(&index_path).unwrap();
+        let remaining = list_indexed_repo_ids_at(&index_path).unwrap();
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0], "foo");
     }
