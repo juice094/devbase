@@ -2,25 +2,14 @@
 // Copyright (c) 2026 juice094
 use crate::registry::RepoEntry;
 use std::path::PathBuf;
+use tantivy::{IndexWriter, schema::Schema};
 
-fn index_repo_in_search(
-    repo: &crate::registry::RepoEntry,
-    summary: &str,
-    keywords: &str,
-) -> anyhow::Result<()> {
-    let (index, _reader) = crate::search::init_index()?;
-    let mut writer = crate::search::get_writer(&index)?;
-    let schema = index.schema();
-    crate::search::delete_repo_doc(&mut writer, &schema, &repo.id)?;
-    crate::search::add_repo_doc(&mut writer, &schema, &repo.id, summary, keywords, &repo.tags)?;
-    crate::search::commit_writer(&mut writer)?;
-    Ok(())
-}
-
-pub fn index_repo(
+fn index_repo_core(
     conn: &mut rusqlite::Connection,
     repo: &crate::registry::RepoEntry,
     config: Option<&crate::config::Config>,
+    writer: &mut IndexWriter,
+    schema: &Schema,
 ) -> anyhow::Result<()> {
     use tracing::{info, warn};
 
@@ -37,7 +26,9 @@ pub fn index_repo(
 
     crate::registry::knowledge::save_summary(conn, &repo.id, &summary, &keywords)?;
 
-    if let Err(e) = index_repo_in_search(repo, &summary, &keywords) {
+    if let Err(e) = crate::search::delete_repo_doc(writer, schema, &repo.id).and_then(|_| {
+        crate::search::add_repo_doc(writer, schema, &repo.id, &summary, &keywords, &repo.tags)
+    }) {
         warn!("Failed to index repo in search: {}", e);
     }
 
@@ -55,6 +46,33 @@ pub fn index_repo(
         repo.id, summary, keywords, detected_lang
     );
     Ok(())
+}
+
+/// Index a single repo with a standalone Tantivy writer.
+/// Suitable for one-off indexing where writer reuse is not needed.
+pub fn index_repo(
+    conn: &mut rusqlite::Connection,
+    repo: &crate::registry::RepoEntry,
+    config: Option<&crate::config::Config>,
+) -> anyhow::Result<()> {
+    let (index, _reader) = crate::search::init_index()?;
+    let mut writer = crate::search::get_writer(&index)?;
+    let schema = index.schema();
+    index_repo_core(conn, repo, config, &mut writer, &schema)?;
+    crate::search::commit_writer(&mut writer)?;
+    Ok(())
+}
+
+/// Index a single repo reusing an existing Tantivy writer.
+/// Callers must commit the writer after the batch.
+pub fn index_repo_with_writer(
+    conn: &mut rusqlite::Connection,
+    repo: &crate::registry::RepoEntry,
+    config: Option<&crate::config::Config>,
+    writer: &mut IndexWriter,
+    schema: &Schema,
+) -> anyhow::Result<()> {
+    index_repo_core(conn, repo, config, writer, schema)
 }
 
 /// 兼容旧调用的包装层：执行索引逻辑
