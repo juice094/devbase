@@ -20,10 +20,10 @@ fn index_repo_in_search(
 pub fn index_repo(
     conn: &mut rusqlite::Connection,
     repo: &crate::registry::RepoEntry,
+    config: Option<&crate::config::Config>,
 ) -> anyhow::Result<()> {
     use tracing::{info, warn};
 
-    let config = crate::config::Config::load().ok();
     let (summary, keywords) = config
         .as_ref()
         .and_then(|cfg| super::try_llm_summary(&repo.local_path, &cfg.llm))
@@ -66,6 +66,31 @@ pub fn run_index(
     run_index_with_progress(conn, path, None, skip_embeddings)
 }
 
+/// Resolve the list of repositories to index for a given path.
+/// If `path` is empty, returns all registered repos.
+/// If `path` points to an unregistered repo, auto-registers it before returning.
+fn prepare_repos(conn: &mut rusqlite::Connection, path: &str) -> anyhow::Result<Vec<RepoEntry>> {
+    use tracing::info;
+
+    if path.is_empty() {
+        return crate::registry::repo::list_repos(conn);
+    }
+
+    let p = PathBuf::from(path);
+    if !p.exists() {
+        anyhow::bail!("Path does not exist: {}", path);
+    }
+    let registered = crate::registry::repo::list_repos(conn)?;
+    if let Some(repo) = registered.into_iter().find(|r| r.local_path == p) {
+        Ok(vec![repo])
+    } else {
+        info!("Registering {} before indexing", path);
+        let repo = crate::scan::inspect_repo(&p, None)?;
+        crate::registry::repo::save_repo(conn, &repo)?;
+        Ok(vec![repo])
+    }
+}
+
 /// 带进度上报的索引逻辑。
 /// `progress_tx` 接收阶段性进度消息，用于 MCP streaming 等实时反馈场景。
 pub fn run_index_with_progress(
@@ -82,23 +107,7 @@ pub fn run_index_with_progress(
         }
     };
 
-    let repos: Vec<RepoEntry> = if path.is_empty() {
-        crate::registry::repo::list_repos(conn)?
-    } else {
-        let p = PathBuf::from(path);
-        if !p.exists() {
-            anyhow::bail!("Path does not exist: {}", path);
-        }
-        let registered = crate::registry::repo::list_repos(conn)?;
-        if let Some(repo) = registered.into_iter().find(|r| r.local_path == p) {
-            vec![repo]
-        } else {
-            info!("Registering {} before indexing", path);
-            let repo = crate::scan::inspect_repo(&p, None)?;
-            crate::registry::repo::save_repo(conn, &repo)?;
-            vec![repo]
-        }
-    };
+    let repos = prepare_repos(conn, path)?;
 
     // Initialize Tantivy search index writer once for the batch
     let (search_index, _reader) = crate::search::init_index()?;
@@ -112,10 +121,10 @@ pub fn run_index_with_progress(
         .filter_map(Result::ok)
         .collect();
 
+    let config = crate::config::Config::load().ok();
     let mut count = 0;
     for repo in &repos {
         let t0 = std::time::Instant::now();
-        let config = crate::config::Config::load().ok();
         let (summary, keywords) = config
             .as_ref()
             .and_then(|cfg| super::try_llm_summary(&repo.local_path, &cfg.llm))
