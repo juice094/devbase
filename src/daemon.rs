@@ -5,7 +5,6 @@ use crate::digest::generate_daily_digest;
 use crate::discovery_engine::{discover_dependencies, discover_similar_projects};
 use crate::health::analyze_repo;
 use crate::i18n::from_language;
-use crate::knowledge_engine::index_repo;
 use crate::registry::{
     HealthEntry, health as reg_health, knowledge as reg_knowledge, relation as reg_relation, repo,
 };
@@ -111,13 +110,26 @@ impl Daemon {
             } else {
                 crate::registry::repo::list_repos(&conn)?
             };
+            // Batch-index: reuse a single Tantivy writer across all repos
+            let (search_index, _reader) = crate::search::init_index()?;
+            let mut writer = crate::search::get_writer(&search_index)?;
+            let schema = search_index.schema();
             let mut count = 0;
             for repo in repos {
-                if let Err(e) = index_repo(&mut conn, &repo, config.as_ref()) {
+                if let Err(e) = crate::knowledge_engine::index_repo_with_writer(
+                    &mut conn,
+                    &repo,
+                    config.as_ref(),
+                    &mut writer,
+                    &schema,
+                ) {
                     tracing::warn!("Failed to index {}: {}", repo.id, e);
                 } else {
                     count += 1;
                 }
+            }
+            if let Err(e) = crate::search::commit_writer(&mut writer) {
+                tracing::warn!("Failed to commit search index: {}", e);
             }
             Ok::<_, anyhow::Error>(count)
         })
