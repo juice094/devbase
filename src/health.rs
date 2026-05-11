@@ -1,11 +1,21 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+use crate::clients::HealthClient;
+use crate::i18n::I18n;
 use crate::registry::repo;
-use crate::registry::{HealthEntry, OplogEntry, WorkspaceSnapshot};
+use crate::registry::{
+    HealthEntry, OplogEntry, OplogEventType, WorkspaceSnapshot, health as reg_health,
+    workspace as reg_workspace,
+};
+use crate::storage::{AppContext, EnvVersionCache};
 use chrono::Utc;
 use git2::Repository;
 use std::path::Path;
 use tracing::info;
+
+pub use self::env_cache::{fmt_version, refresh_env_cache};
+
+mod env_cache;
 
 const IGNORED_DIRS: &[&str] = &[
     ".git",
@@ -59,8 +69,8 @@ pub async fn run_json(
     limit: usize,
     page: usize,
     ttl_seconds: i64,
-    i18n: &crate::i18n::I18n,
-    env_cache: &crate::storage::EnvVersionCache,
+    i18n: &I18n,
+    env_cache: &EnvVersionCache,
 ) -> anyhow::Result<serde_json::Value> {
     let start = std::time::Instant::now();
     let (total_repos, dirty_repos, behind_upstream, no_upstream_count, repo_details) = {
@@ -92,8 +102,7 @@ pub async fn run_json(
             .filter(|r| r.workspace_type == "git")
             .map(|r| r.id.as_str())
             .collect();
-        let health_batch =
-            crate::registry::health::get_health_batch(conn, &repo_ids).unwrap_or_default();
+        let health_batch = reg_health::get_health_batch(conn, &repo_ids).unwrap_or_default();
 
         for repo in repos {
             total_repos += 1;
@@ -121,9 +130,7 @@ pub async fn run_json(
                                 behind,
                                 checked_at: Utc::now(),
                             };
-                            if let Err(e) =
-                                crate::registry::health::save_health(conn, &repo.id, &new_health)
-                            {
+                            if let Err(e) = reg_health::save_health(conn, &repo.id, &new_health) {
                                 tracing::warn!("Failed to save health for {}: {}", repo.id, e);
                             }
                             (status, ahead, behind)
@@ -168,28 +175,24 @@ pub async fn run_json(
                         continue;
                     }
                 };
-                let status =
-                    match crate::registry::workspace::get_latest_workspace_snapshot(conn, &repo.id)
-                    {
-                        Ok(Some(prev)) if prev.file_hash == current_hash => "ok".to_string(),
-                        _ => {
-                            let snapshot = WorkspaceSnapshot {
-                                repo_id: repo.id.clone(),
-                                file_hash: current_hash,
-                                checked_at: Utc::now(),
-                            };
-                            if let Err(e) =
-                                crate::registry::workspace::save_workspace_snapshot(conn, &snapshot)
-                            {
-                                tracing::warn!(
-                                    "Failed to save workspace snapshot for {}: {}",
-                                    repo.id,
-                                    e
-                                );
-                            }
-                            "changed".to_string()
+                let status = match reg_workspace::get_latest_workspace_snapshot(conn, &repo.id) {
+                    Ok(Some(prev)) if prev.file_hash == current_hash => "ok".to_string(),
+                    _ => {
+                        let snapshot = WorkspaceSnapshot {
+                            repo_id: repo.id.clone(),
+                            file_hash: current_hash,
+                            checked_at: Utc::now(),
+                        };
+                        if let Err(e) = reg_workspace::save_workspace_snapshot(conn, &snapshot) {
+                            tracing::warn!(
+                                "Failed to save workspace snapshot for {}: {}",
+                                repo.id,
+                                e
+                            );
                         }
-                    };
+                        "changed".to_string()
+                    }
+                };
                 (status, 0, 0)
             };
 
@@ -245,11 +248,11 @@ pub async fn run_json(
         "behind_upstream": behind_upstream,
         "no_upstream": no_upstream_count
     });
-    let _ = crate::registry::workspace::save_oplog(
+    let _ = reg_workspace::save_oplog(
         conn,
         &OplogEntry {
             id: None,
-            event_type: crate::registry::OplogEventType::HealthCheck,
+            event_type: OplogEventType::HealthCheck,
             repo_id: None,
             details: Some(details.to_string()),
             status: "success".to_string(),
@@ -291,8 +294,8 @@ pub async fn run(
     limit: usize,
     page: usize,
     ttl_seconds: i64,
-    i18n: &crate::i18n::I18n,
-    env_cache: &crate::storage::EnvVersionCache,
+    i18n: &I18n,
+    env_cache: &EnvVersionCache,
 ) -> anyhow::Result<()> {
     let result = run_json(conn, detail, limit, page, ttl_seconds, i18n, env_cache).await?;
 
@@ -457,115 +460,25 @@ fn calc_ahead_behind(
     repo.graph_ahead_behind(local_oid, remote_oid).map_err(|e| anyhow::anyhow!(e))
 }
 
-/// Refresh environment version cache by spawning all tool subprocesses in parallel.
-pub async fn refresh_env_cache() -> crate::storage::EnvVersionCache {
-    let (rustc, cargo, node, go, cmake, python, bun, zig, java) = tokio::join!(
-        get_tool_version("rustc", &["--version"]),
-        get_tool_version("cargo", &["--version"]),
-        get_tool_version("node", &["--version"]),
-        get_tool_version("go", &["version"]),
-        get_tool_version("cmake", &["--version"]),
-        get_tool_version("python", &["--version"]),
-        get_tool_version("bun", &["--version"]),
-        get_tool_version("zig", &["version"]),
-        get_tool_version("java", &["-version"]),
-    );
-    crate::storage::EnvVersionCache {
-        rustc,
-        cargo,
-        node,
-        go,
-        cmake,
-        python,
-        bun,
-        zig,
-        java,
-        fetched_at: Some(std::time::Instant::now()),
-    }
-}
-
-async fn get_tool_version(cmd: &str, args: &[&str]) -> Option<String> {
-    let output = tokio::process::Command::new(cmd).args(args).output().await.ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let raw = if !output.stdout.is_empty() {
-        String::from_utf8_lossy(&output.stdout)
-    } else {
-        String::from_utf8_lossy(&output.stderr)
-    };
-    let line = raw.lines().next()?.trim();
-    if line.is_empty() {
-        return None;
-    }
-    Some(line.to_string())
-}
-
-fn fmt_version(raw: Option<String>, i18n: &crate::i18n::I18n) -> String {
-    match raw {
-        Some(s) => {
-            let s = s.trim();
-            // Java outputs: java version "1.8.0_31" — extract quoted version
-            if let Some(start) = s.find('"')
-                && let Some(end) = s[start + 1..].find('"')
-            {
-                return s[start + 1..start + 1 + end].to_string();
-            }
-            let parts: Vec<&str> = s.split_whitespace().collect();
-            if parts.len() >= 2 {
-                match parts[0] {
-                    "rustc" | "cargo" | "bun" | "zig" | "Python" => {
-                        parts.get(1).unwrap_or(&"unknown").to_string()
-                    }
-                    "cmake" | "version" => parts.get(2).unwrap_or(&"unknown").to_string(),
-                    "go" if parts.len() >= 3 => parts[2].to_string(),
-                    "Docker" if parts.len() >= 3 && parts[1] == "version" => parts[2..].join(" "),
-                    _ => {
-                        // Heuristic: if second word is "version", skip first two
-                        if parts.len() >= 3 && parts[1] == "version" {
-                            parts[2..].join(" ")
-                        } else {
-                            s.to_string()
-                        }
-                    }
-                }
-            } else {
-                s.to_string()
-            }
-        }
-        None => i18n.log.not_installed.to_string(),
-    }
-}
-
-impl crate::clients::HealthClient for crate::storage::AppContext {
+impl HealthClient for AppContext {
     async fn check_health(&self, detail: bool) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
         let cache = self.env_cache()?;
         let env_cache = if cache.is_fresh() {
             cache
         } else {
-            let fresh = crate::health::refresh_env_cache().await;
+            let fresh = refresh_env_cache().await;
             self.set_env_cache(fresh.clone())?;
             fresh
         };
-        crate::health::run_json(
-            &conn,
-            detail,
-            0,
-            1,
-            self.config.cache.ttl_seconds,
-            &self.i18n,
-            &env_cache,
-        )
-        .await
+        run_json(&conn, detail, 0, 1, self.config.cache.ttl_seconds, &self.i18n, &env_cache).await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::i18n::from_language;
 
     #[test]
     fn test_compute_workspace_hash_empty_dir() {
@@ -616,61 +529,61 @@ mod tests {
 
     #[test]
     fn test_fmt_version_rustc() {
-        let i18n = crate::i18n::from_language("en");
+        let i18n = from_language("en");
         assert_eq!(fmt_version(Some("rustc 1.70.0".to_string()), &i18n), "1.70.0");
     }
 
     #[test]
     fn test_fmt_version_cargo() {
-        let i18n = crate::i18n::from_language("en");
+        let i18n = from_language("en");
         assert_eq!(fmt_version(Some("cargo 1.70.0".to_string()), &i18n), "1.70.0");
     }
 
     #[test]
     fn test_fmt_version_cmake() {
-        let i18n = crate::i18n::from_language("en");
+        let i18n = from_language("en");
         assert_eq!(fmt_version(Some("cmake version 3.26".to_string()), &i18n), "3.26");
     }
 
     #[test]
     fn test_fmt_version_go() {
-        let i18n = crate::i18n::from_language("en");
+        let i18n = from_language("en");
         assert_eq!(fmt_version(Some("go version go1.20".to_string()), &i18n), "go1.20");
     }
 
     #[test]
     fn test_fmt_version_unknown() {
-        let i18n = crate::i18n::from_language("en");
+        let i18n = from_language("en");
         assert_eq!(fmt_version(Some("foo bar".to_string()), &i18n), "foo bar");
     }
 
     #[test]
     fn test_fmt_version_single_word() {
-        let i18n = crate::i18n::from_language("en");
+        let i18n = from_language("en");
         assert_eq!(fmt_version(Some("v1.0".to_string()), &i18n), "v1.0");
     }
 
     #[test]
     fn test_fmt_version_python() {
-        let i18n = crate::i18n::from_language("en");
+        let i18n = from_language("en");
         assert_eq!(fmt_version(Some("Python 3.12.13".to_string()), &i18n), "3.12.13");
     }
 
     #[test]
     fn test_fmt_version_bun() {
-        let i18n = crate::i18n::from_language("en");
+        let i18n = from_language("en");
         assert_eq!(fmt_version(Some("1.3.11".to_string()), &i18n), "1.3.11");
     }
 
     #[test]
     fn test_fmt_version_java() {
-        let i18n = crate::i18n::from_language("en");
+        let i18n = from_language("en");
         assert_eq!(fmt_version(Some("java version \"1.8.0_31\"".to_string()), &i18n), "1.8.0_31");
     }
 
     #[test]
     fn test_fmt_version_docker() {
-        let i18n = crate::i18n::from_language("en");
+        let i18n = from_language("en");
         assert_eq!(
             fmt_version(Some("Docker version 24.0.7, build afdd53b".to_string()), &i18n),
             "24.0.7, build afdd53b"
