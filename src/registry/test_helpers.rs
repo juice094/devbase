@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+pub use super::WorkspaceRegistry;
 use super::*;
 
 #[cfg(test)]
@@ -354,6 +355,12 @@ CREATE INDEX IF NOT EXISTS idx_symbol_links_target ON code_symbol_links(target_r
 CREATE TABLE IF NOT EXISTS orphan_tantivy_docs (
     repo_id TEXT PRIMARY KEY,
     detected_at DATETIME DEFAULT current_timestamp
+);
+
+CREATE TABLE IF NOT EXISTS repo_index_state (
+    repo_id TEXT PRIMARY KEY,
+    last_commit_hash TEXT,
+    indexed_at DATETIME DEFAULT current_timestamp
 );
 "#;
 

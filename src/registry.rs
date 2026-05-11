@@ -517,7 +517,7 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
 }
 
 #[cfg(test)]
-mod test_helpers;
+pub mod test_helpers;
 
 #[cfg(test)]
 mod tests;

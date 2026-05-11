@@ -473,3 +473,125 @@ fn save_repo_index_state(
     )?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::RepoEntry;
+    use crate::registry::test_helpers::WorkspaceRegistry;
+    use std::path::Path;
+
+    fn init_git_repo(path: &Path) -> git2::Repository {
+        let repo = git2::Repository::init(path).unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "Test").unwrap();
+        config.set_str("user.email", "test@example.com").unwrap();
+        let sig = repo.signature().unwrap();
+        let tree_id = {
+            let mut index = repo.index().unwrap();
+            index.write_tree().unwrap()
+        };
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[]).unwrap();
+        drop(tree);
+        repo
+    }
+
+    #[test]
+    fn test_prepare_repos_empty_path_returns_all() -> anyhow::Result<()> {
+        let mut conn = WorkspaceRegistry::init_in_memory()?;
+        let _ = WorkspaceRegistry::seed_test_repo(&mut conn, "repo1")?;
+        let _ = WorkspaceRegistry::seed_test_repo(&mut conn, "repo2")?;
+
+        let repos = prepare_repos(&mut conn, "")?;
+        assert_eq!(repos.len(), 2);
+        assert!(repos.iter().any(|r| r.id == "repo1"));
+        assert!(repos.iter().any(|r| r.id == "repo2"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_prepare_repos_matching_path_returns_one() -> anyhow::Result<()> {
+        let mut conn = WorkspaceRegistry::init_in_memory()?;
+        let tmp = tempfile::tempdir()?;
+        let path = tmp.path().join("myrepo");
+        std::fs::create_dir(&path)?;
+
+        let repo = RepoEntry {
+            id: "myrepo".to_string(),
+            local_path: path.clone(),
+            tags: vec![],
+            language: Some("rust".to_string()),
+            discovered_at: chrono::Utc::now(),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        };
+        crate::registry::repo::save_repo(&mut conn, &repo)?;
+
+        let repos = prepare_repos(&mut conn, path.to_str().unwrap())?;
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].id, "myrepo");
+        Ok(())
+    }
+
+    #[test]
+    fn test_prepare_repos_nonexistent_path_errors() -> anyhow::Result<()> {
+        let mut conn = WorkspaceRegistry::init_in_memory()?;
+        let result = prepare_repos(&mut conn, "/nonexistent/path/12345");
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_prepare_repos_unregistered_existing_path_auto_registers() -> anyhow::Result<()> {
+        let mut conn = WorkspaceRegistry::init_in_memory()?;
+        let tmp = tempfile::tempdir()?;
+        let path = tmp.path().join("unregistered");
+        std::fs::create_dir(&path)?;
+        let _ = init_git_repo(&path);
+
+        let repos = prepare_repos(&mut conn, path.to_str().unwrap())?;
+        assert_eq!(repos.len(), 1);
+        // Use file_name comparison to avoid Windows short-name (8.3) path mismatches
+        assert_eq!(repos[0].local_path.file_name(), path.file_name());
+        assert!(repos[0].local_path.exists());
+        // Verify it was saved to registry
+        let all = crate::registry::repo::list_repos(&conn)?;
+        assert_eq!(all.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn test_save_and_get_repo_index_state() -> anyhow::Result<()> {
+        let mut conn = WorkspaceRegistry::init_in_memory()?;
+        let tmp = tempfile::tempdir()?;
+        let path = tmp.path().join("gitrepo");
+        std::fs::create_dir(&path)?;
+        let repo = git2::Repository::init(&path)?;
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "Test").unwrap();
+        config.set_str("user.email", "test@example.com").unwrap();
+        let sig = repo.signature().unwrap();
+        let tree_id = {
+            let mut index = repo.index().unwrap();
+            index.write_tree().unwrap()
+        };
+        let tree = repo.find_tree(tree_id).unwrap();
+        let oid = repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])?;
+
+        save_repo_index_state(&mut conn, "test-repo", &oid.to_string())?;
+
+        let hash: Option<String> = conn
+            .query_row(
+                "SELECT last_commit_hash FROM repo_index_state WHERE repo_id = ?1",
+                ["test-repo"],
+                |row| row.get(0),
+            )
+            .unwrap_or(None);
+        assert_eq!(hash, Some(oid.to_string()));
+        Ok(())
+    }
+}
