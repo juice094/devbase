@@ -87,6 +87,7 @@ predicates = "3"
 
 [profile.dev]
 opt-level = 1
+incremental = false
 
 [profile.release]
 lto = true
