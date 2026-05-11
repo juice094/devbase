@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/juice094/devbase/security/advisories/new
+    about: Please report security issues privately via GitHub Security Advisories.
+  - name: Question or discussion
+    url: https://github.com/juice094/devbase/discussions
+    about: For Q&A, architecture debates, or show-and-tell, use GitHub Discussions.
