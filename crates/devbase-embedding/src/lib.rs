@@ -92,9 +92,7 @@ impl OllamaProvider {
         let embeddings = resp
             .get("embeddings")
             .and_then(|v| v.as_array())
-            .ok_or_else(|| {
-                anyhow::anyhow!("Ollama response missing embeddings: {}", resp)
-            })?;
+            .ok_or_else(|| anyhow::anyhow!("Ollama response missing embeddings: {}", resp))?;
 
         let mut results = Vec::with_capacity(embeddings.len());
         for emb in embeddings {
@@ -284,8 +282,6 @@ pub fn bytes_to_embedding(bytes: &[u8]) -> Vec<f32> {
         })
         .collect()
 }
-
-
 
 #[cfg(test)]
 mod tests {

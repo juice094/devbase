@@ -7,7 +7,8 @@
 pub use devbase_embedding::*;
 
 #[cfg(feature = "embedding")]
-static CONFIG_PROVIDER: std::sync::OnceLock<Box<dyn EmbeddingProvider>> = std::sync::OnceLock::new();
+static CONFIG_PROVIDER: std::sync::OnceLock<Box<dyn EmbeddingProvider>> =
+    std::sync::OnceLock::new();
 
 /// Generate a query embedding, respecting the user's embedding backend configuration.
 /// Falls back to the default Candle provider if config cannot be loaded.

@@ -521,9 +521,7 @@ fn fmt_version(raw: Option<String>, i18n: &crate::i18n::I18n) -> String {
                     }
                     "cmake" | "version" => parts.get(2).unwrap_or(&"unknown").to_string(),
                     "go" if parts.len() >= 3 => parts[2].to_string(),
-                    "Docker" if parts.len() >= 3 && parts[1] == "version" => {
-                        parts[2..].join(" ")
-                    }
+                    "Docker" if parts.len() >= 3 && parts[1] == "version" => parts[2..].join(" "),
                     _ => {
                         // Heuristic: if second word is "version", skip first two
                         if parts.len() >= 3 && parts[1] == "version" {
@@ -667,10 +665,7 @@ mod tests {
     #[test]
     fn test_fmt_version_java() {
         let i18n = crate::i18n::from_language("en");
-        assert_eq!(
-            fmt_version(Some("java version \"1.8.0_31\"".to_string()), &i18n),
-            "1.8.0_31"
-        );
+        assert_eq!(fmt_version(Some("java version \"1.8.0_31\"".to_string()), &i18n), "1.8.0_31");
     }
 
     #[test]
