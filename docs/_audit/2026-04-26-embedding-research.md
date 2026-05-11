@@ -144,3 +144,48 @@ fn encode(model: &BertModel, tokenizer: &Tokenizer, text: &str) -> anyhow::Resul
 3. 修改 `src/embedding.rs` — feature-gated 路由 (`local-embedding` 优先，否则 Python 回退)
 4. 集成测试: 验证 embedding 维度 = 384，与 Python 输出余弦相似度 > 0.999
 5. 更新 `project_context` — `goal` 参数启用时自动生成 query embedding
+
+---
+
+## 2026-05-04 补充：batch encoding 实验与知识蒸馏参考
+
+### batch encoding 实验（Candle CPU BERT）
+
+**假设**：batch_size=32 可提升 BERT 吞吐量，减少 1572 次单条 forward 的 overhead。
+**结果**：batch encoding **比单条慢 5.2 倍**（88s vs 16s）。
+
+| 方案 | embed 时间 | total 时间 | symbols |
+|------|-----------|-----------|---------|
+| 单条并行 (`rayon::par_iter()`) | 15,941ms | 16,322ms | 1573 |
+| batch=32 (`encode_batch_with_candle`) | 88,259ms | 88,987ms | 1573 |
+| `--skip-embeddings` | 0ms | 245ms | 1573 |
+
+**根因分析**：
+- Candle CPU 矩阵乘法对大 padded batch 不友好
+- batch 内序列长度差异导致 pad 到 max_len，处理大量无效 token
+- 每 batch forward ~1.7s，而单条仅 ~10ms；49 batches × 1.7s >> 1572 × 10ms
+
+**决策**：
+- `generate_and_save_embeddings` 回滚到 `rayon::par_iter()` 单条编码
+- 保留 `EmbeddingProvider::encode_batch` trait 方法供未来 GPU/ONNX provider
+- 新增 `--skip-embeddings` CLI 标志：纯符号/调用图索引跳过 embedding（16s → 0.25s）
+
+### 外部文献参考：知识蒸馏 Pipeline
+
+> 来源：Kimi 会话研究（`kimi.com/share/19e06760-97a2-84ea-8000-00006aaf036d`）
+
+**`distill-knowledge` Skill 设计规格**（六阶段 Pipeline）：
+1. **噪声过滤**：去除 UI 元素、元数据噪音、重复路径、广告语句、时间戳
+2. **语义块分割**：切分为最小知识单元（项目/概念/论证）
+3. **主题聚类**：一级主题 ≤6，二级分类 ≤4（奥卡姆剃刀）
+4. **层级展开**：三级知识点表格化（项目|核心特征|可信度）
+5. **可信度标注**：🟡 文档验证 / ⚠️ 社区传播 / ❓ 设想级
+6. **结构化输出**：Markdown 知识库（目录锚点/统计区块/跨域规律附录）
+
+**与 devbase 的对接点**：
+- Vault 笔记系统可作为知识蒸馏的**输出存储**（`devkit_vault_write`）
+- `devkit_paper_index`（PDF）可扩展为通用文本知识蒸馏入口
+- MCP Server 可暴露 `devkit_knowledge_distill` 工具，供 Clarity 等 Agent 调用做预处理
+- 噪声过滤规则库可直接嵌入 vault 索引流程，提升笔记质量
+
+**状态**：设计规格级，待 Clarity 侧落地验证后评估 devbase 集成优先级。

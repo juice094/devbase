@@ -117,6 +117,14 @@ pub fn generate_daily_digest(
     Ok(lines.join("\n"))
 }
 
+impl crate::clients::DigestClient for crate::storage::AppContext {
+    fn generate_daily_digest(&self) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let text = crate::digest::generate_daily_digest(&conn, &self.config, &self.i18n)?;
+        Ok(serde_json::json!({ "success": true, "digest": text }))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

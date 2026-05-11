@@ -1,7 +1,7 @@
 # devbase
 
-[![Version](https://img.shields.io/badge/version-v0.14.3-blue)](https://github.com/juice094/devbase/releases)
-[![Tests](https://img.shields.io/badge/tests-390%20passed-brightgreen)](./AGENTS.md)
+[![Version](https://img.shields.io/badge/version-v0.15.0-blue)](https://github.com/juice094/devbase/releases)
+[![Tests](https://img.shields.io/badge/tests-490%2B%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-orange)](./LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-9cf)](https://www.rust-lang.org)
@@ -283,19 +283,19 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | v0.7.0 | ✅ 已发布 | NLQ 自然语言查询 + 智能同步建议 |
 | v0.8.0 | ✅ 已发布 | Workflow 子类型：Subworkflow / Parallel / Condition / Loop |
 | v0.9.0 | ✅ 已发布 | Loop Step 硬化 + 发布闭环 |
-| **v0.10.0** | **✅ 已发布** | **L3-L4 知识模型 + 工程健康维护（main.rs 拆分 / StorageBackend / feature flags）** |
-| **v0.11.0** | **✅ 已发布** | **AppContext Pool 化 + MCP 测试隔离 + CI 多线程** |
-| **v0.11.1** | **✅ 已发布** | **Flat ID 命名空间 + entities-first 写入反转** |
-| **v0.11.2** | **✅ 已发布** | **读路径全量迁移：所有 SELECT 切到 `entities`** |
-| **v0.11.3** | **✅ 已发布** | **`repos` 表删除，`entities` 成为唯一数据源（Phase 1 完成）** |
-| **v0.12.0-alpha** | **✅ 已发布** | **Phase 2 完成 (Stage A-E): entities 统一重构 + `.devbase-ignore` + managed-gate fail-safe 同步** |
-| **v0.13.0** | **✅ 已发布** | **Registry God Object 拆解：10 子模块提取为 free function；WorkspaceRegistry 退化为纯 facade** |
-| **v0.14.0** | **✅ 已发布** | **Workspace 拆分：6 个零耦合 crate 提取；MCP trait 化：`mcp/tools/repo.rs` `crate::` 引用 68→41** |
-| **v0.15.0** | **✅ 已发布** | **Sprint A/B/C：三维 embedding + Saga 一致性 + Agent 状态接口 + MCP Streaming（45 tools）** |
-| **v0.16.0** | **✅ 已发布** | **Workspace crate 第二批提取 + Windows debug 栈溢出修复** |
-| **v0.14.1** | **✅ 已发布** | **CLI JSON 输出补全 (`--json`/`--recalc`) + relations MCP 工具加固 + License headers + Vault Daily/Graph** |
-| **v0.14.2** | **✅ 已发布** | **health dirty 检测修复（排除 ignored 文件）+ scan 路径规范化 + syncthing-rust 识别修复 + experiment_log/CodeMetrics/ModuleGraph/CallGraph/DeadCode 提升为 Beta（48 tools: Stable 5 / Beta 40 / Experimental 3）** |
-| **v0.14.3** | **✅ 当前** | **Schema v30 code symbol attributes + dead-code 过滤增强 + init_db() 注入式改造（RF-1）+ Tantivy/SQLite 补偿扫描 + Feature flags（mcp / embedding）+ sccache 构建加速文档** |
+| v0.10.0 | ✅ 已发布 | L3-L4 知识模型 + 工程健康维护（main.rs 拆分 / StorageBackend / feature flags） |
+| v0.11.0 | ✅ 已发布 | AppContext Pool 化 + MCP 测试隔离 + CI 多线程 |
+| v0.11.1 | ✅ 已发布 | Flat ID 命名空间 + entities-first 写入反转 |
+| v0.11.2 | ✅ 已发布 | 读路径全量迁移：所有 SELECT 切到 `entities` |
+| v0.11.3 | ✅ 已发布 | `repos` 表删除，`entities` 成为唯一数据源（Phase 1 完成） |
+| v0.12.0 | ✅ 已发布 | Phase 2 完成（Stage A-E）：entities 统一重构 + `.devbase-ignore` + managed-gate fail-safe 同步 |
+| v0.13.0 | ✅ 已发布 | Registry God Object 拆解：10 子模块提取为 free function；WorkspaceRegistry 退化为纯 facade |
+| v0.14.0 | ✅ 已发布 | Workspace 拆分：6 个零耦合 crate 提取；MCP trait 化：`mcp/tools/repo.rs` `crate::` 引用 68→41 |
+| v0.14.1 | ✅ 已发布 | CLI JSON 输出补全 (`--json`/`--recalc`) + relations MCP 工具加固 + License headers + Vault Daily/Graph |
+| v0.14.2 | ✅ 已发布 | health dirty 检测修复（排除 ignored 文件）+ scan 路径规范化 + syncthing-rust 识别修复 + experiment_log/CodeMetrics/ModuleGraph/CallGraph/DeadCode 提升为 Beta（48 tools: Stable 5 / Beta 40 / Experimental 3） |
+| v0.14.3 | ✅ 已发布 | Schema v30 code symbol attributes + dead-code 过滤增强 + init_db() 注入式改造（RF-1）+ Tantivy/SQLite 补偿扫描 + Feature flags（mcp / embedding）+ sccache 构建加速文档 |
+| **v0.15.0** | **✅ 当前** | **P1 Tantivy BM25 代码符号搜索 + P2 AppContext 职责拆分（storage.rs 860→430 行）+ P3 Embedding 多后端（Candle + Ollama）+ P4 EnvVersionCache 扩展（9 工具链：含 python/bun/zig/java）+ P5 架构不变量自动化 CI（G5/T11/T12）** |
+| v0.16.0 | 📋 进行中 | Workspace 扩展 Phase 2：成员目标 8-10 个；以 `docs/ROADMAP.md` 阶段六规划为准 |
 
 ---
 

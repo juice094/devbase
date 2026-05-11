@@ -1,8 +1,8 @@
 # devbase 文档导航
 
-> **项目状态**：v0.13.0 — 情境编译器闭环构建中  
+> **项目状态**：v0.14.3 — 性能优化 + 架构治理 + RF-6 清零  
 > **主入口**：[`AGENTS.md`](../AGENTS.md)（Agent 环境指引）· [`ROADMAP.md`](ROADMAP.md)（功能路线图）  
-> **最后整理**：2026-04-30
+> **最后整理**：2026-05-08
 
 ---
 
@@ -10,12 +10,14 @@
 
 | 指标 | 数值 |
 |------|------|
-| 版本 | v0.13.0 |
-| 测试 | 389 passed / 0 failed / 4 ignored |
+| 版本 | v0.14.3 |
+| 测试 | 408 passed / 0 failed / 3 ignored |
 | Clippy | 0 warnings |
 | Schema | v23 |
 | MCP Tools | 38 个（Stable 5 / Beta 29 / Experimental 4） |
-| 代码行数 | ~30 KLOC |
+| 代码行数 | ~32 KLOC |
+| RF-6 | ✅ 生产代码 unwrap/expect 清零 |
+| 已提取 Crates | 18 个 workspace crate |
 
 ---
 
@@ -47,6 +49,8 @@
 | [`architecture/workflow-dsl.md`](architecture/workflow-dsl.md) | Workflow DSL v0.4.0 规范（YAML 多步骤编排） |
 | [`architecture/dependency-topology.md`](architecture/dependency-topology.md) | 模块依赖拓扑（Tier 1–11 自底向上进化顺序） |
 | [`architecture/pre-split-evaluation.md`](architecture/pre-split-evaluation.md) | 单 crate vs 多 crate 评估结论 |
+| [`architecture/adr-template.md`](architecture/adr-template.md) | ADR 模板与已完成决策索引（batch encoding、split defer） |
+| [`architecture/invariants.md`](architecture/invariants.md) | 架构不变量清单：全局 + 分层约束 + 提取演习检查表 |
 
 ### 📖 使用指南（Guides）
 

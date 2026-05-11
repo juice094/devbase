@@ -6,6 +6,30 @@
 #[cfg(feature = "embedding")]
 pub use devbase_embedding::*;
 
+#[cfg(feature = "embedding")]
+static CONFIG_PROVIDER: std::sync::OnceLock<Box<dyn EmbeddingProvider>> =
+    std::sync::OnceLock::new();
+
+/// Generate a query embedding, respecting the user's embedding backend configuration.
+/// Falls back to the default Candle provider if config cannot be loaded.
+#[cfg(feature = "embedding")]
+pub fn generate_query_embedding(text: &str) -> anyhow::Result<Vec<f32>> {
+    let provider = CONFIG_PROVIDER.get_or_init(|| {
+        crate::config::Config::load()
+            .ok()
+            .map(|c| {
+                create_provider(
+                    &c.embedding.provider,
+                    &c.embedding.model,
+                    &c.embedding.base_url,
+                    c.embedding.timeout_seconds,
+                )
+            })
+            .unwrap_or_else(default_provider)
+    });
+    provider.encode(text)
+}
+
 #[cfg(not(feature = "embedding"))]
 pub fn generate_query_embedding(_text: &str) -> anyhow::Result<Vec<f32>> {
     anyhow::bail!("Embedding support is disabled. Enable the 'embedding' feature.")

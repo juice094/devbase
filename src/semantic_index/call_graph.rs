@@ -35,8 +35,18 @@ pub fn extract_calls_from_file(file_path: &Path, source: &str) -> Vec<CodeCall> 
         }
     };
 
+    extract_calls_from_tree(&tree, file_path, source.as_bytes(), lang)
+}
+
+/// Extract calls from an already-parsed tree-sitter tree.
+/// This avoids re-parsing when both symbols and calls are needed.
+pub(crate) fn extract_calls_from_tree(
+    tree: &tree_sitter::Tree,
+    file_path: &Path,
+    source_bytes: &[u8],
+    lang: Lang,
+) -> Vec<CodeCall> {
     let mut calls = Vec::new();
-    let source_bytes = source.as_bytes();
     let root = tree.root_node();
     let mut cursor = root.walk();
     walk_tree_for_calls(&mut cursor, file_path, source_bytes, lang, &mut calls, None);
@@ -84,6 +94,7 @@ fn extract_current_function_name(
     lang: Lang,
 ) -> Option<String> {
     match lang {
+        #[cfg(feature = "lang-rust")]
         Lang::Rust => {
             if node.kind() == "function_item" || node.kind() == "closure_expression" {
                 extract_node_name(node, source_bytes)
@@ -91,6 +102,7 @@ fn extract_current_function_name(
                 None
             }
         }
+        #[cfg(feature = "lang-python")]
         Lang::Python => {
             if node.kind() == "function_definition" {
                 extract_node_name(node, source_bytes)
@@ -98,6 +110,7 @@ fn extract_current_function_name(
                 None
             }
         }
+        #[cfg(feature = "lang-js-ts")]
         Lang::JsTs => {
             if node.kind() == "function_declaration" || node.kind() == "method_definition" {
                 if node.kind() == "method_definition" {
@@ -109,6 +122,7 @@ fn extract_current_function_name(
                 None
             }
         }
+        #[cfg(feature = "lang-go")]
         Lang::Go => {
             if node.kind() == "function_declaration" {
                 extract_node_name(node, source_bytes)
@@ -127,6 +141,7 @@ fn extract_callee_name(
     lang: Lang,
 ) -> Option<String> {
     match lang {
+        #[cfg(feature = "lang-rust")]
         Lang::Rust => {
             if node.kind() == "call_expression" {
                 let func_node = node.child(0)?;
@@ -137,6 +152,7 @@ fn extract_callee_name(
                 None
             }
         }
+        #[cfg(feature = "lang-python")]
         Lang::Python => {
             if node.kind() == "call" {
                 let func_node = node.child(0)?;
@@ -145,6 +161,7 @@ fn extract_callee_name(
                 None
             }
         }
+        #[cfg(feature = "lang-js-ts")]
         Lang::JsTs => {
             if node.kind() == "call_expression" {
                 let func_node = node.child(0)?;
@@ -153,6 +170,7 @@ fn extract_callee_name(
                 None
             }
         }
+        #[cfg(feature = "lang-go")]
         Lang::Go => {
             if node.kind() == "call_expression" {
                 let func_node = node.child(0)?;

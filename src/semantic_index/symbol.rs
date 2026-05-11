@@ -37,8 +37,18 @@ fn extract_symbols_with_parser(file_path: &Path, source: &str, lang: Lang) -> Ve
         }
     };
 
+    extract_symbols_from_tree(&tree, file_path, source.as_bytes(), lang)
+}
+
+/// Extract symbols from an already-parsed tree-sitter tree.
+/// This avoids re-parsing when both symbols and calls are needed.
+pub(crate) fn extract_symbols_from_tree(
+    tree: &tree_sitter::Tree,
+    file_path: &Path,
+    source_bytes: &[u8],
+    lang: Lang,
+) -> Vec<CodeSymbol> {
     let mut symbols = Vec::new();
-    let source_bytes = source.as_bytes();
     let root = tree.root_node();
     collect_symbols_from_node(&root, file_path, source_bytes, lang, &mut symbols);
     symbols
@@ -72,9 +82,13 @@ fn node_to_symbol(
     lang: Lang,
 ) -> Option<CodeSymbol> {
     match lang {
+        #[cfg(feature = "lang-rust")]
         Lang::Rust => rust_node_to_symbol(node, file_path, source_bytes),
+        #[cfg(feature = "lang-python")]
         Lang::Python => python_node_to_symbol(node, file_path, source_bytes),
+        #[cfg(feature = "lang-js-ts")]
         Lang::JsTs => js_node_to_symbol(node, file_path, source_bytes),
+        #[cfg(feature = "lang-go")]
         Lang::Go => go_node_to_symbol(node, file_path, source_bytes),
     }
 }
@@ -362,6 +376,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "lang-rust")]
     fn test_extract_rust_attributes() {
         let source = r#"
 #[tokio::test]

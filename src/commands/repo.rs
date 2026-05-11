@@ -7,10 +7,17 @@ pub async fn run_scan(
     ctx: &mut crate::storage::AppContext,
     path: &str,
     register: bool,
+    json: bool,
 ) -> anyhow::Result<()> {
     info!("{}: {}", ctx.i18n.cli.scanning, path);
     let pool = ctx.pool();
-    scan::run(path, register, &pool).await
+    if json {
+        let result = scan::run_json(path, register, &pool).await?;
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        scan::run(path, register, &pool).await?;
+    }
+    Ok(())
 }
 
 pub async fn run_health(
@@ -21,14 +28,41 @@ pub async fn run_health(
     json: bool,
 ) -> anyhow::Result<()> {
     info!("{}", ctx.i18n.cli.health_check);
+
+    // Refresh env cache if stale
+    let cache = ctx.env_cache()?;
+    let env_cache = if cache.is_fresh() {
+        cache
+    } else {
+        let fresh = health::refresh_env_cache().await;
+        ctx.set_env_cache(fresh.clone())?;
+        fresh
+    };
+
     let conn = ctx.conn()?;
     if json {
-        let output =
-            health::run_json(&conn, detail, limit, page, ctx.config.cache.ttl_seconds, &ctx.i18n)
-                .await?;
+        let output = health::run_json(
+            &conn,
+            detail,
+            limit,
+            page,
+            ctx.config.cache.ttl_seconds,
+            &ctx.i18n,
+            &env_cache,
+        )
+        .await?;
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
-        health::run(&conn, detail, limit, page, ctx.config.cache.ttl_seconds, &ctx.i18n).await?;
+        health::run(
+            &conn,
+            detail,
+            limit,
+            page,
+            ctx.config.cache.ttl_seconds,
+            &ctx.i18n,
+            &env_cache,
+        )
+        .await?;
     }
     Ok(())
 }
@@ -51,13 +85,17 @@ pub async fn run_query(
     Ok(())
 }
 
-pub async fn run_index(ctx: &mut crate::storage::AppContext, path: &str) -> anyhow::Result<()> {
-    info!("{}: path='{}'", ctx.i18n.cli.indexing, path);
+pub async fn run_index(
+    ctx: &mut crate::storage::AppContext,
+    path: &str,
+    skip_embeddings: bool,
+) -> anyhow::Result<()> {
+    info!("{}: path='{}' skip_embeddings={}", ctx.i18n.cli.indexing, path, skip_embeddings);
     let path = path.to_string();
     let pool = ctx.pool();
     let count = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get()?;
-        knowledge_engine::run_index(&mut conn, &path)
+        knowledge_engine::run_index(&mut conn, &path, skip_embeddings)
     })
     .await
     .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
@@ -364,6 +402,60 @@ pub async fn run_status(ctx: &mut crate::storage::AppContext, json: bool) -> any
         }
     }
 
+    Ok(())
+}
+
+pub fn run_knowledge_report(
+    ctx: &mut crate::storage::AppContext,
+    repo_id: &str,
+    activity_limit: usize,
+    json: bool,
+) -> anyhow::Result<()> {
+    let conn = ctx.conn()?;
+    let report = crate::oplog_analytics::generate_report(
+        &conn,
+        if repo_id.is_empty() {
+            None
+        } else {
+            Some(repo_id)
+        },
+        activity_limit,
+    )?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!("Knowledge Coverage Report");
+        println!("=========================");
+        println!(
+            "Repos: {} | Symbols: {} | Embeddings: {} | Calls: {}",
+            report.repo_count, report.total_symbols, report.total_embeddings, report.total_calls
+        );
+        println!("Overall coverage: {:.1}%", report.overall_coverage_pct);
+        if !report.repos.is_empty() {
+            println!("\nPer-repo breakdown:");
+            for r in &report.repos {
+                println!(
+                    "  [{}] symbols={} embeddings={} calls={} coverage={:.1}%",
+                    r.repo_id, r.symbol_count, r.embedding_count, r.call_count, r.coverage_pct
+                );
+            }
+        }
+        println!(
+            "\nHealth summary: dirty={} ahead={} behind={} diverged={} up_to_date={}",
+            report.health_summary.dirty,
+            report.health_summary.ahead,
+            report.health_summary.behind,
+            report.health_summary.diverged,
+            report.health_summary.up_to_date
+        );
+        if !report.recent_activity.is_empty() {
+            println!("\nRecent activity (last {} events):", report.recent_activity.len());
+            for act in &report.recent_activity {
+                let repo = act.repo_id.as_deref().unwrap_or("-");
+                println!("  [{}] repo={} type={}", act.timestamp, repo, act.event_type);
+            }
+        }
+    }
     Ok(())
 }
 

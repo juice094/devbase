@@ -120,6 +120,270 @@ pub mod repos_toml;
 pub mod vault;
 pub mod workspace;
 
+impl crate::clients::RegistryClient for crate::storage::AppContext {
+    fn list_repos(&self, _filter: Option<&str>) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let repos = crate::registry::repo::list_repos(&conn)?;
+        let results: Vec<serde_json::Value> = repos
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "id": r.id,
+                    "local_path": r.local_path,
+                    "language": r.language,
+                    "tags": r.tags,
+                    "workspace_type": r.workspace_type,
+                    "data_tier": r.data_tier,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({ "success": true, "count": results.len(), "repos": results }))
+    }
+
+    fn get_repo(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let repos = crate::registry::repo::list_repos(&conn)?;
+        match repos.into_iter().find(|r| r.id == repo_id) {
+            Some(r) => Ok(serde_json::json!({
+                "success": true,
+                "id": r.id,
+                "local_path": r.local_path,
+                "language": r.language,
+                "tags": r.tags,
+                "workspace_type": r.workspace_type,
+                "data_tier": r.data_tier,
+            })),
+            None => Ok(serde_json::json!({ "success": false, "error": "repo not found" })),
+        }
+    }
+
+    fn list_modules(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let modules = crate::registry::knowledge::list_modules(&conn, repo_id)?;
+        let results: Vec<serde_json::Value> = modules
+            .into_iter()
+            .map(|(name, ty, path)| {
+                serde_json::json!({
+                    "name": name,
+                    "type": ty,
+                    "path": path,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({ "success": true, "count": results.len(), "modules": results }))
+    }
+
+    fn save_paper(&self, paper: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let paper_entry: crate::registry::PaperEntry = serde_json::from_value(paper.clone())?;
+        crate::registry::knowledge::save_paper(&conn, &paper_entry)?;
+        Ok(serde_json::json!({ "success": true }))
+    }
+
+    fn save_experiment(&self, exp: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let exp_entry: crate::registry::ExperimentEntry = serde_json::from_value(exp.clone())?;
+        crate::registry::WorkspaceRegistry::save_experiment(&conn, &exp_entry)?;
+        Ok(serde_json::json!({ "success": true }))
+    }
+
+    fn list_code_metrics(&self) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let metrics = crate::registry::metrics::list_code_metrics(&conn)?;
+        let repos: Vec<serde_json::Value> = metrics
+            .into_iter()
+            .map(|(id, m)| {
+                serde_json::json!({
+                    "repo_id": id,
+                    "total_lines": m.total_lines,
+                    "source_lines": m.source_lines,
+                    "test_lines": m.test_lines,
+                    "comment_lines": m.comment_lines,
+                    "file_count": m.file_count,
+                    "language_breakdown": m.language_breakdown,
+                    "updated_at": m.updated_at.to_rfc3339()
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({ "success": true, "count": repos.len(), "repos": repos }))
+    }
+
+    fn get_code_metrics(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        match crate::registry::metrics::get_code_metrics(&conn, repo_id)? {
+            Some(m) => Ok(serde_json::json!({
+                "success": true,
+                "repo_id": repo_id,
+                "total_lines": m.total_lines,
+                "source_lines": m.source_lines,
+                "test_lines": m.test_lines,
+                "comment_lines": m.comment_lines,
+                "file_count": m.file_count,
+                "language_breakdown": m.language_breakdown,
+                "updated_at": m.updated_at.to_rfc3339()
+            })),
+            None => {
+                Ok(serde_json::json!({ "success": false, "error": "No metrics found for repo" }))
+            }
+        }
+    }
+
+    fn get_health(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        match crate::registry::health::get_health(&conn, repo_id)? {
+            Some(h) => Ok(serde_json::json!({
+                "success": true,
+                "repo_id": repo_id,
+                "status": h.status,
+                "ahead": h.ahead,
+                "behind": h.behind,
+                "checked_at": h.checked_at.to_rfc3339()
+            })),
+            None => Ok(serde_json::json!({ "success": false, "error": "No health data found" })),
+        }
+    }
+
+    fn query_call_graph(
+        &self,
+        repo_id: &str,
+        callee: Option<&str>,
+        caller: Option<&str>,
+        file: Option<&str>,
+        limit: usize,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let edges = crate::registry::call_graph::query_call_edges(
+            &conn,
+            repo_id,
+            callee.filter(|s| !s.is_empty()),
+            caller.filter(|s| !s.is_empty()),
+            file.filter(|s| !s.is_empty()),
+            limit,
+        )?;
+        let calls: Vec<serde_json::Value> = edges
+            .into_iter()
+            .map(|e| {
+                serde_json::json!({
+                    "caller_file": e.caller_file,
+                    "caller_symbol": e.caller_symbol,
+                    "caller_line": e.caller_line,
+                    "callee_name": e.callee_name,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({
+            "success": true,
+            "repo_id": repo_id,
+            "count": calls.len(),
+            "calls": calls
+        }))
+    }
+
+    fn query_dependencies(
+        &self,
+        repo_id: &str,
+        direction: &str,
+        relation_type: Option<&str>,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let rel_filter = relation_type.filter(|s| !s.is_empty());
+        let label = if direction == "incoming" || direction == "reverse" {
+            "reverse dependencies"
+        } else {
+            "dependencies"
+        };
+        let rows = if direction == "incoming" || direction == "reverse" {
+            crate::dependency_graph::list_reverse_dependencies(&conn, repo_id)?
+        } else {
+            crate::dependency_graph::list_dependencies(&conn, repo_id)?
+        };
+        let deps: Vec<serde_json::Value> = rows
+            .into_iter()
+            .filter(|(_, rel, _)| rel_filter.is_none_or(|f| f == rel))
+            .map(|(id, rel, conf)| {
+                serde_json::json!({
+                    "repo_id": id,
+                    "relation_type": rel,
+                    "confidence": conf,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({
+            "success": true,
+            "repo_id": repo_id,
+            "direction": direction,
+            "label": label,
+            "count": deps.len(),
+            "dependencies": deps
+        }))
+    }
+
+    fn query_code_symbols(
+        &self,
+        repo_id: &str,
+        name: Option<&str>,
+        symbol_type: Option<&str>,
+        file: Option<&str>,
+        limit: usize,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let symbols = crate::registry::code_symbols::query_code_symbols(
+            &conn,
+            repo_id,
+            name,
+            symbol_type,
+            file,
+            limit,
+        )?;
+        let out: Vec<serde_json::Value> = symbols
+            .iter()
+            .map(|s| {
+                serde_json::json!({
+                    "file_path": s.file_path,
+                    "symbol_type": s.symbol_type,
+                    "name": s.name,
+                    "line_start": s.line_start,
+                    "line_end": s.line_end,
+                    "signature": s.signature,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({
+            "success": true,
+            "repo_id": repo_id,
+            "count": out.len(),
+            "symbols": out
+        }))
+    }
+
+    fn query_dead_code(
+        &self,
+        repo_id: &str,
+        include_pub: bool,
+        limit: usize,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let dead = crate::registry::dead_code::query_dead_code(&conn, repo_id, include_pub, limit)?;
+        let out: Vec<serde_json::Value> = dead
+            .iter()
+            .map(|d| {
+                serde_json::json!({
+                    "file_path": d.file_path,
+                    "name": d.name,
+                    "line_start": d.line_start,
+                    "signature": d.signature,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({
+            "success": true,
+            "repo_id": repo_id,
+            "count": out.len(),
+            "dead_functions": out
+        }))
+    }
+}
+
 #[cfg(test)]
 mod test_helpers;
 

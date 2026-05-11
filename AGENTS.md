@@ -4,9 +4,9 @@
 
 > 它将本地数字资产的原始数据（代码库、笔记、Skill、工作流）编译为 AI 可决策的结构化情境，不负责思考，不负责执行，只负责感知、编码、持久化、检索。
 
-- **当前阶段**：阶段六 — v0.14.3 / MCP Python SDK 兼容修复 + repo.rs trait 化收尾
-- **当前版本**：v0.14.3 (`main@2867811`)
-- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ 18 workspace crates 提取 + MCP Python SDK 1.16.0 兼容修复（NDJSON + null-id workaround）+ repo.rs crate:: 引用 13→9 + flaky 测试根治（RF-2.1/2.2/2.3）+ 许可证迁移（MIT → AGPL-3.0-or-later 双许可）
+- **当前阶段**：阶段六 → v0.15.0 已发布（CHANGELOG 已记录）；v0.16.0 进行中（Workspace 扩展 Phase 2）
+- **当前版本**：v0.15.0（CHANGELOG 已记录，`fix/project-health-cleanup@4e8d882`，**待合入 `main` 并打 tag**）
+- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ 18 workspace crates 提取 + MCP Python SDK 1.16.0 兼容修复 + repo.rs trait 化 + flaky 测试根治（RF-2.1/2.2/2.3）+ 许可证迁移 + health 性能优化（-44%）+ index skip-embeddings + batch encoding 实验 + RF-6 清零 + 架构治理文档（ADR/不变量清单）+ Tantivy BM25 代码符号搜索（P1）+ AppContext 职责拆分 Phase 1/2（storage.rs 860→430 行）+ 架构不变量 CI（G5/T11/T12）+ Embedding 多后端（Candle/Ollama 配置切换, P3）+ EnvVersionCache 扩展（9 工具链检测, P4）
 - **核心方向**：让 Kimi CLI 在调用文件工具之前，先通过 devbase 获得"该读哪些文件、为什么读、它们之间的关系"
 - **本质分析**：见 `vault/99-Meta/devbase-essence-analysis-20260430.md` 与 `docs/architecture/redefinition.md`
 - **设计文档**：
@@ -207,6 +207,24 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 # 预期输出：空
 ```
 
+### 架构治理框架（Architecture Governance）
+
+> 参考：外部架构治理方法论（Kimi 会话 `e9f2965f-b949-46a5-9d7c-afd6d4d9232c`）
+
+**已制度化实践**：
+
+| 实践 | devbase 落地形式 | 文档位置 |
+|------|-----------------|---------|
+| ADR（架构决策记录） | ADR-001（单 crate defer）、ADR-002（batch encoding 回滚） | [`docs/architecture/adr-template.md`](docs/architecture/adr-template.md) |
+| 不变量清单（Invariants） | RF-1~RF-7 + 分层模块约束（T01–T12） | [`docs/architecture/invariants.md`](docs/architecture/invariants.md) |
+| 模块提取演习 | RF-7 的 5 个 `crate::` 引用阈值 + 已提取 18 workspace crates | 本文件 §RF-7 |
+| 三层摘要 | `crates/*/README.md` 要求：一句话 + 一页纸 + 深度链接 | 各 crate README |
+| 定期架构回顾 | 每次 Wave 结束时的架构审计（见 `docs/_audit/`） | `docs/_audit/2026-04-26-*.md` |
+
+**待增强**：
+- 三层摘要：部分已提取 crate 的 README 尚未达到"一页纸"标准
+- 定期架构回顾：当前按 Wave（功能迭代周期）触发，建议每 2–4 周增加一次纯架构 review（不看 feature 进度，只看不变量违反和隐式依赖）
+
 ---
 
 ## 技术债登记簿（Technical Debt Ledger）
@@ -216,13 +234,13 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 | 债项 | 严重 | 当前值 | 目标阈值 | 清理路径 | 引入 Wave |
 |---|---|---|---|---|---|
 | `main.rs` 上帝文件 | 🟢 | 548 行 | ≤1000 行 | 拆分为 `commands/simple.rs` + `commands/skill.rs` + `commands/workflow.rs` + `commands/limit.rs`；全部 22 个命令/子命令树已迁移 | ≤15 |
-| `init_db()` 全局路径 | 🟡 | `AppContext` 已集成到全部 commands/ 模块（22 个函数）；`main()` 通过 `AppContext` 分发配置 | 0 新增 | `StorageBackend` trait + `AppContext` 已奠基；`db_path`/`workspace_dir`/`index_path`/`backup_dir` 已统一；`init_db()` 调用点 grandfathered 待迁移 | ≤15 |
-| Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调 | 补偿机制 | 设计 `sync_index_to_db()` 回滚或两阶段提交；或改为 SQLite FTS5 替代 Tantivy | 7 |
+| `init_db()` 全局路径 | 🟢 | `AppContext` 已集成到全部 commands/ 模块；`main()` 通过 `AppContext` 分发配置；`init_db()` 无外部调用 | 0 | 已完成：`StorageBackend` trait + `AppContext` 全面替代；`db_path`/`workspace_dir`/`index_path`/`backup_dir` 已统一 | ≤15 |
+| Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调；**已添加反向检测**（`repair_tantivy_consistency` 现在检测 SQLite→Tantivy 缺失） | 补偿机制 | 长期：事务协调或 SQLite FTS5 替代；短期：反向检测 + 日志已落地（`fe14c81`） | 7 |
 | 主从表切换 | 🟢 | Phase 1 全部完成：`repos` 表已删除，entities 为唯一数据源 | `entities` 为第一公民 | Phase 2 类型系统开放（新增 entity_type 无需改表结构） | v0.12.0 |
 | vault/paper/workflow entities 缺口 | 🟢 | Stage C+D+E 全部完成：`vault_notes`/`papers`/`workflows` 表已删除，`skills` 保留（embedding BLOB） | 0 缺口 | — | v0.12.0 |
 | scan 路径排除 | 🟢 | `discover_repos` + `collect_tasks` 均支持 `scan.exclude_paths`；scan 和 sync 双阶段过滤 | 0 缺口 | 排除路径使用 `Path::starts_with` 组件级匹配，避免字符串前缀误杀；相对路径在 sync 场景（无 root）下被忽略 | v0.12.0 |
-| tree-sitter 编译成本 | 🟡 | ~15-20s | 可控 | 评估 `ccache` 或 grammar 预编译；或按需 feature-gate | 8 |
-| Feature flags 缺失 | 🟡 | 2 个可选 feature (tui, watch) | ≥3 (tui, watch, mcp) | `Cargo.toml` 已添加 `tui` + `watch` feature；ratatui/crossterm/notify 均为 optional；`--no-default-features` 编译通过 | ≤15 |
+| tree-sitter 编译成本 | 🟢 | ~15-20s grammar C compilation | 可控 | 已完成 feature-gate：`lang-rust`/`lang-python`/`lang-js-ts`/`lang-go` 四个 feature，默认全启，可选关闭减少编译；`--no-default-features` 编译通过 | 8 |
+| Feature flags 缺失 | 🟢 | 4 个可选 feature (tui, watch, mcp, embedding) | ≥3 | 已完成：`tui`/`watch`/`mcp`/`embedding` 均为 optional；`--no-default-features` 编译通过 | ≤15 |
 | `LOCALAPPDATA` 测试模式残留 | 🟢 | 0 处 | 0 | 全面废弃 `LOCALAPPDATA` 环境变量覆盖，统一为 `DEVBASE_DATA_DIR`；mcp/tests.rs 修复 cleanup 逻辑（remove_var 目标从 LOCALAPPDATA 修正为 DEVBASE_DATA_DIR） | 47 |
 
 **清偿原则**：
@@ -329,7 +347,7 @@ devbase 承载外部资源调度的抽象接口：
 - **短期**：devbase MCP 接口可封装外部 TEE 服务（如 Azure Confidential Computing）
 - **长期**：如需自建，新建 `clarity-tee` 或 `devbase-secure` 子项目
 
-## 当前阶段待办（v0.12.0 发布冲刺）
+## 当前阶段待办（v0.15.0 推进中）
 
 v0.11.3 已交付（tagged）。v0.12.0-alpha 全部功能已完成，进入发布治理阶段。
 
@@ -413,6 +431,15 @@ v0.11.3 已交付（tagged）。v0.12.0-alpha 全部功能已完成，进入发�
 - `skills.embedding`: 3 个 builtin skill 已有 384-dim 向量
 - 生成工具：`tools/embedding-provider/skills.py`（sentence-transformers `all-MiniLM-L6-v2`）
 - 激活路径：启动 Ollama + `devbase index <repo>` 生成 embedding，或配置远程 provider 于 `config.toml [embedding]` 段
+
+### 2026-05-04 索引性能实验记录
+
+**发现**：Candle CPU BERT `batch_size=32` forward 比 `rayon` 并行单条慢 **5.2×**（88s vs 16s）。
+- 根因：Candle CPU matmul 对大 padded batch 不友好；batch 内序列长度差异导致大量无效 padding token 计算。
+- **决策**：`generate_and_save_embeddings` 回滚到 `rayon::par_iter()` 单条编码；保留 `EmbeddingProvider::encode_batch` trait 方法供未来 GPU/ONNX provider。
+- **新增**：`devbase index <path> --skip-embeddings` 跳过 embedding 生成，纯符号/调用图索引从 ~16s 降至 ~250ms。
+
+**外部参考**：知识蒸馏 Pipeline 设计规格（六阶段：噪声过滤→语义分割→主题聚类→层级展开→可信度标注→结构化输出），来源见 `docs/_audit/2026-04-26-embedding-research.md` §2026-05-04 补充。该规格提出通过 devbase MCP 暴露 `devkit_knowledge_distill` 工具，与 Vault 系统形成输入-处理-输出闭环。状态：设计规格级，待验证后评估集成优先级。
 
 ## 上下文安全机制（Context Safety Mechanism）
 

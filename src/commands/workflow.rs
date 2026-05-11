@@ -6,14 +6,35 @@ pub fn run_workflow(
 ) -> anyhow::Result<()> {
     let conn = ctx.conn_mut()?;
     match cmd {
-        crate::WorkflowCommands::List => {
+        crate::WorkflowCommands::List { json } => {
             let workflows = crate::workflow::list_workflows(&conn)?;
-            if workflows.is_empty() {
-                println!("No workflows registered.");
+            if json {
+                let items: Vec<serde_json::Value> = workflows
+                    .into_iter()
+                    .map(|(id, name, version)| {
+                        serde_json::json!({
+                            "id": id,
+                            "name": name,
+                            "version": version
+                        })
+                    })
+                    .collect();
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "success": true,
+                        "count": items.len(),
+                        "workflows": items
+                    }))?
+                );
             } else {
-                println!("Registered workflows:");
-                for (id, name, version) in workflows {
-                    println!("  [{}] {} (v{})", id, name, version);
+                if workflows.is_empty() {
+                    println!("No workflows registered.");
+                } else {
+                    println!("Registered workflows:");
+                    for (id, name, version) in workflows {
+                        println!("  [{}] {} (v{})", id, name, version);
+                    }
                 }
             }
         }
@@ -142,6 +163,9 @@ mod tests {
         fn index_path(&self) -> anyhow::Result<PathBuf> {
             Ok(self.dir.path().join("idx"))
         }
+        fn symbol_index_path(&self) -> anyhow::Result<PathBuf> {
+            Ok(self.dir.path().join("sym_idx"))
+        }
         fn backup_dir(&self) -> anyhow::Result<PathBuf> {
             Ok(self.dir.path().join("bk"))
         }
@@ -151,7 +175,7 @@ mod tests {
     fn test_run_workflow_list_empty() {
         let storage = Arc::new(TempStorage::new());
         let mut ctx = AppContext::with_storage(storage).unwrap();
-        let result = run_workflow(&mut ctx, crate::WorkflowCommands::List);
+        let result = run_workflow(&mut ctx, crate::WorkflowCommands::List { json: false });
         assert!(result.is_ok());
     }
 

@@ -85,20 +85,29 @@ pub type SemanticSearchRow = (String, String, String, i64, f32);
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy)]
-enum Lang {
+pub(crate) enum Lang {
+    #[cfg(feature = "lang-rust")]
     Rust,
+    #[cfg(feature = "lang-python")]
     Python,
+    #[cfg(feature = "lang-js-ts")]
     JsTs,
+    #[cfg(feature = "lang-go")]
     Go,
 }
 
 impl Lang {
     fn from_ext(ext: &str) -> Option<Self> {
         match ext {
+            #[cfg(feature = "lang-rust")]
             "rs" => Some(Lang::Rust),
+            #[cfg(feature = "lang-python")]
             "py" => Some(Lang::Python),
+            #[cfg(feature = "lang-js-ts")]
             "js" | "ts" | "jsx" => Some(Lang::JsTs),
+            #[cfg(feature = "lang-js-ts")]
             "tsx" => Some(Lang::JsTs),
+            #[cfg(feature = "lang-go")]
             "go" => Some(Lang::Go),
             _ => None,
         }
@@ -106,9 +115,13 @@ impl Lang {
 
     fn parser_language(self) -> tree_sitter::Language {
         match self {
+            #[cfg(feature = "lang-rust")]
             Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
+            #[cfg(feature = "lang-python")]
             Lang::Python => tree_sitter_python::LANGUAGE.into(),
+            #[cfg(feature = "lang-js-ts")]
             Lang::JsTs => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            #[cfg(feature = "lang-go")]
             Lang::Go => tree_sitter_go::LANGUAGE.into(),
         }
     }
@@ -132,7 +145,7 @@ pub fn should_skip_dir(path: &Path, exclude: &[String]) -> bool {
 /// Extract symbols from a single source file.
 ///
 /// Supports Rust, Python, JavaScript/TypeScript, and Go.
-pub fn index_repo_full(repo_path: &Path) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
+pub fn index_repo_full(repo_path: &Path) -> anyhow::Result<(Vec<CodeSymbol>, Vec<CodeCall>)> {
     let exts: &[&str] = &["rs", "py", "js", "ts", "jsx", "tsx", "go"];
     let cfg = crate::config::Config::load().unwrap_or_default();
     let mut exclude = cfg.scan.exclude_patterns;
@@ -169,7 +182,7 @@ pub fn index_repo_full(repo_path: &Path) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
         for path in files {
             process_file(repo_path, &path, &mut all_symbols, &mut all_calls);
         }
-        return (all_symbols, all_calls);
+        return Ok((all_symbols, all_calls));
     }
 
     std::thread::scope(|s| {
@@ -177,29 +190,28 @@ pub fn index_repo_full(repo_path: &Path) -> (Vec<CodeSymbol>, Vec<CodeCall>) {
         let mut handles = Vec::with_capacity(num_threads);
 
         for chunk in files.chunks(chunk_size) {
-            handles.push(
-                std::thread::Builder::new()
-                    .stack_size(4 * 1024 * 1024)
-                    .spawn_scoped(s, move || {
-                        let mut symbols = Vec::new();
-                        let mut calls = Vec::new();
-                        for path in chunk {
-                            process_file(repo_path, path, &mut symbols, &mut calls);
-                        }
-                        (symbols, calls)
-                    })
-                    .expect("failed to spawn index worker"),
-            );
+            handles.push(std::thread::Builder::new().stack_size(4 * 1024 * 1024).spawn_scoped(
+                s,
+                move || {
+                    let mut symbols = Vec::new();
+                    let mut calls = Vec::new();
+                    for path in chunk {
+                        process_file(repo_path, path, &mut symbols, &mut calls);
+                    }
+                    (symbols, calls)
+                },
+            )?);
         }
 
         let mut all_symbols = Vec::new();
         let mut all_calls = Vec::new();
         for handle in handles {
-            let (s, c) = handle.join().unwrap();
+            let (s, c) =
+                handle.join().map_err(|e| anyhow::anyhow!("index worker panicked: {:?}", e))?;
             all_symbols.extend(s);
             all_calls.extend(c);
         }
-        (all_symbols, all_calls)
+        Ok((all_symbols, all_calls))
     })
 }
 
@@ -233,10 +245,34 @@ fn process_file(
     match std::fs::read_to_string(path) {
         Ok(source) => {
             let rel_path = path.strip_prefix(repo_path).unwrap_or(path);
-            let symbols = extract_symbols(rel_path, &source);
-            all_symbols.extend(symbols);
 
-            let calls = extract_calls_from_file(rel_path, &source);
+            let ext = rel_path.extension().and_then(|e| e.to_str());
+            let lang = match ext {
+                Some(ext) => match Lang::from_ext(ext) {
+                    Some(l) => l,
+                    None => return,
+                },
+                None => return,
+            };
+
+            let mut parser = tree_sitter::Parser::new();
+            let ts_lang = lang.parser_language();
+            if let Err(e) = parser.set_language(&ts_lang) {
+                warn!("Failed to set tree-sitter language: {}", e);
+                return;
+            }
+            let tree = match parser.parse(&source, None) {
+                Some(t) => t,
+                None => {
+                    warn!("Failed to parse {:?}", rel_path);
+                    return;
+                }
+            };
+
+            let source_bytes = source.as_bytes();
+            let symbols = extract_symbols_from_tree(&tree, rel_path, source_bytes, lang);
+            all_symbols.extend(symbols);
+            let calls = extract_calls_from_tree(&tree, rel_path, source_bytes, lang);
             all_calls.extend(calls);
         }
         Err(e) => {
@@ -246,8 +282,8 @@ fn process_file(
 }
 
 /// Scan a repository for source files and extract all symbols.
-pub fn index_repo(repo_path: &Path) -> Vec<CodeSymbol> {
-    index_repo_full(repo_path).0
+pub fn index_repo(repo_path: &Path) -> anyhow::Result<Vec<CodeSymbol>> {
+    Ok(index_repo_full(repo_path)?.0)
 }
 
 #[cfg(test)]
@@ -575,7 +611,7 @@ class MyClass:
         )
         .unwrap();
 
-        let (symbols, calls) = index_repo_full(tmp.path());
+        let (symbols, calls) = index_repo_full(tmp.path()).unwrap();
         assert!(!symbols.is_empty());
 
         let names: Vec<_> = symbols.iter().map(|s| s.name.as_str()).collect();

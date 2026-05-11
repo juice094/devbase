@@ -56,6 +56,50 @@ pub fn get_health(
     }
 }
 
+/// Batch load health entries for multiple repos in a single query.
+pub fn get_health_batch(
+    conn: &rusqlite::Connection,
+    repo_ids: &[&str],
+) -> anyhow::Result<std::collections::HashMap<String, HealthEntry>> {
+    if repo_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let placeholders: Vec<String> = repo_ids.iter().map(|_| "?".to_string()).collect();
+    let sql = format!(
+        "SELECT repo_id, status, ahead, behind, checked_at FROM repo_health WHERE repo_id IN ({})",
+        placeholders.join(",")
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let params: Vec<&dyn rusqlite::ToSql> =
+        repo_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+        let repo_id: String = row.get(0)?;
+        let status: String = row.get(1)?;
+        let ahead: i64 = row.get(2)?;
+        let behind: i64 = row.get(3)?;
+        let checked_at: String = row.get(4)?;
+        let checked_at = match DateTime::parse_from_rfc3339(&checked_at) {
+            Ok(dt) => dt.with_timezone(&Utc),
+            Err(_) => Utc::now(),
+        };
+        Ok((
+            repo_id,
+            HealthEntry {
+                status,
+                ahead: ahead as usize,
+                behind: behind as usize,
+                checked_at,
+            },
+        ))
+    })?;
+    let mut result = std::collections::HashMap::new();
+    for row in rows {
+        let (id, entry) = row?;
+        result.insert(id, entry);
+    }
+    Ok(result)
+}
+
 pub fn save_stars_cache(
     conn: &rusqlite::Connection,
     repo_id: &str,

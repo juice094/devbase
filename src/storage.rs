@@ -4,6 +4,35 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+/// Session-level cache for environment tool versions.
+/// Avoids spawning subprocesses on every health check.
+#[derive(Debug, Clone, Default)]
+pub struct EnvVersionCache {
+    pub rustc: Option<String>,
+    pub cargo: Option<String>,
+    pub node: Option<String>,
+    pub go: Option<String>,
+    pub cmake: Option<String>,
+    pub python: Option<String>,
+    pub bun: Option<String>,
+    pub zig: Option<String>,
+    pub java: Option<String>,
+    pub fetched_at: Option<Instant>,
+}
+
+impl EnvVersionCache {
+    const TTL: Duration = Duration::from_secs(30);
+
+    pub fn is_fresh(&self) -> bool {
+        self.fetched_at.map(|t| t.elapsed() < Self::TTL).unwrap_or(false)
+    }
+
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+}
 
 /// 抽象数据存储后端，解耦具体路径实现。
 ///
@@ -18,6 +47,9 @@ pub trait StorageBackend: Send + Sync {
 
     /// Tantivy 搜索索引目录。
     fn index_path(&self) -> anyhow::Result<PathBuf>;
+
+    /// Tantivy 代码符号搜索索引目录。
+    fn symbol_index_path(&self) -> anyhow::Result<PathBuf>;
 
     /// 自动备份目录。
     fn backup_dir(&self) -> anyhow::Result<PathBuf>;
@@ -62,6 +94,12 @@ impl StorageBackend for DefaultStorageBackend {
         Ok(dir.join("search_index"))
     }
 
+    fn symbol_index_path(&self) -> anyhow::Result<PathBuf> {
+        let dir = self.data_base()?;
+        std::fs::create_dir_all(&dir)?;
+        Ok(dir.join("symbol_index"))
+    }
+
     fn backup_dir(&self) -> anyhow::Result<PathBuf> {
         let dir = self.data_base()?;
         let backup = dir.join("backups");
@@ -79,6 +117,7 @@ pub struct AppContext {
     pub config: crate::config::Config,
     pub i18n: crate::i18n::I18n,
     pool: Pool<SqliteConnectionManager>,
+    env_cache: std::sync::Mutex<EnvVersionCache>,
 }
 
 impl AppContext {
@@ -98,7 +137,13 @@ impl AppContext {
         let pool = Self::build_pool(&path)?;
         let config = crate::config::Config::load()?;
         let i18n = crate::i18n::from_language(&config.general.language);
-        Ok(Self { storage, config, i18n, pool })
+        Ok(Self {
+            storage,
+            config,
+            i18n,
+            pool,
+            env_cache: std::sync::Mutex::new(EnvVersionCache::default()),
+        })
     }
 
     /// 使用自定义存储后端创建上下文（主要用于测试）。
@@ -115,7 +160,13 @@ impl AppContext {
         let pool = Self::build_pool(&path)?;
         let config = crate::config::Config::load()?;
         let i18n = crate::i18n::from_language(&config.general.language);
-        Ok(Self { storage, config, i18n, pool })
+        Ok(Self {
+            storage,
+            config,
+            i18n,
+            pool,
+            env_cache: std::sync::Mutex::new(EnvVersionCache::default()),
+        })
     }
 
     fn build_pool(path: &std::path::Path) -> anyhow::Result<Pool<SqliteConnectionManager>> {
@@ -140,17 +191,51 @@ impl AppContext {
     pub fn pool(&self) -> Pool<SqliteConnectionManager> {
         self.pool.clone()
     }
+
+    /// 获取环境版本缓存的只读快照。
+    pub fn env_cache(&self) -> anyhow::Result<EnvVersionCache> {
+        let guard = self
+            .env_cache
+            .lock()
+            .map_err(|e| anyhow::anyhow!("env_cache poisoned: {}", e))?;
+        Ok(guard.clone())
+    }
+
+    /// 更新环境版本缓存。
+    pub fn set_env_cache(&self, cache: EnvVersionCache) -> anyhow::Result<()> {
+        let mut guard = self
+            .env_cache
+            .lock()
+            .map_err(|e| anyhow::anyhow!("env_cache poisoned: {}", e))?;
+        *guard = cache;
+        Ok(())
+    }
+}
+
+/// Result of a startup consistency scan.
+#[allow(dead_code)]
+pub(crate) struct RepairResult {
+    /// Tantivy documents whose repo no longer exists in SQLite.
+    pub orphans: usize,
+    /// SQLite entities that are missing from the Tantivy index.
+    pub missing_from_index: usize,
 }
 
 /// Startup consistency scan: detect Tantivy documents whose repo no longer exists in SQLite.
+/// Also detects SQLite repos that are missing from the Tantivy index.
 /// Inserts orphan records into `orphan_tantivy_docs` for lazy cleanup during next index.
-pub(crate) fn repair_tantivy_consistency(conn: &mut rusqlite::Connection) -> anyhow::Result<usize> {
+pub(crate) fn repair_tantivy_consistency(
+    conn: &mut rusqlite::Connection,
+) -> anyhow::Result<RepairResult> {
     let backend = crate::storage::DefaultStorageBackend {};
     let index_path = match backend.index_path() {
         Ok(p) => p,
         Err(e) => {
             tracing::warn!("Failed to resolve index path: {}", e);
-            return Ok(0);
+            return Ok(RepairResult {
+                orphans: 0,
+                missing_from_index: 0,
+            });
         }
     };
     repair_tantivy_consistency_at(&index_path, conn)
@@ -160,14 +245,18 @@ pub(crate) fn repair_tantivy_consistency(conn: &mut rusqlite::Connection) -> any
 pub(crate) fn repair_tantivy_consistency_at(
     index_path: &std::path::Path,
     conn: &mut rusqlite::Connection,
-) -> anyhow::Result<usize> {
-    let tantivy_ids = match crate::search::list_indexed_repo_ids_at(index_path) {
-        Ok(ids) => ids,
-        Err(e) => {
-            tracing::warn!("Failed to list Tantivy repo IDs: {}", e);
-            return Ok(0);
-        }
-    };
+) -> anyhow::Result<RepairResult> {
+    let tantivy_ids: std::collections::HashSet<String> =
+        match crate::search::list_indexed_repo_ids_at(index_path) {
+            Ok(ids) => ids.into_iter().collect(),
+            Err(e) => {
+                tracing::warn!("Failed to list Tantivy repo IDs: {}", e);
+                return Ok(RepairResult {
+                    orphans: 0,
+                    missing_from_index: 0,
+                });
+            }
+        };
 
     let sqlite_ids: std::collections::HashSet<String> = {
         let mut stmt = conn.prepare("SELECT id FROM entities WHERE entity_type = ?1")?;
@@ -177,7 +266,6 @@ pub(crate) fn repair_tantivy_consistency_at(
     };
 
     // Clear stale orphans: repos that are now present in SQLite but still marked orphan
-    let mut orphaned = 0usize;
     {
         let mut stmt = conn.prepare("SELECT repo_id FROM orphan_tantivy_docs")?;
         let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
@@ -189,6 +277,7 @@ pub(crate) fn repair_tantivy_consistency_at(
     }
 
     // Record new orphans: Tantivy has doc but SQLite has no entity
+    let mut orphaned = 0usize;
     for repo_id in &tantivy_ids {
         if !sqlite_ids.contains(repo_id) {
             conn.execute(
@@ -202,425 +291,23 @@ pub(crate) fn repair_tantivy_consistency_at(
     if orphaned > 0 {
         tracing::info!("Detected {} orphan Tantivy document(s)", orphaned);
     }
-    Ok(orphaned)
-}
 
-impl crate::clients::ScanClient for AppContext {
-    async fn scan_directory(
-        &self,
-        path: &str,
-        register: bool,
-    ) -> anyhow::Result<serde_json::Value> {
-        crate::scan::run_json(path, register, &self.pool()).await
-    }
-}
-
-impl crate::clients::HealthClient for AppContext {
-    async fn check_health(&self, detail: bool) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        crate::health::run_json(&conn, detail, 0, 1, self.config.cache.ttl_seconds, &self.i18n)
-            .await
-    }
-}
-
-impl crate::clients::SyncClient for AppContext {
-    async fn sync_repos(
-        &self,
-        dry_run: bool,
-        filter_tags: Option<Vec<String>>,
-    ) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        let filter_tags_str = filter_tags.as_deref().map(|v| v.join(","));
-        crate::sync::run_json(&conn, dry_run, filter_tags_str.as_deref(), None, &self.i18n).await
-    }
-}
-
-impl crate::clients::DigestClient for AppContext {
-    fn generate_daily_digest(&self) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        let text = crate::digest::generate_daily_digest(&conn, &self.config, &self.i18n)?;
-        Ok(serde_json::json!({ "success": true, "digest": text }))
-    }
-}
-
-impl crate::clients::KnowledgeClient for AppContext {
-    fn run_index(&self, path: &str) -> anyhow::Result<serde_json::Value> {
-        let mut conn = self.conn()?;
-        let count = crate::knowledge_engine::run_index(&mut conn, path)?;
-        Ok(serde_json::json!({ "success": true, "indexed": count, "errors": 0 }))
-    }
-
-    fn save_note(
-        &self,
-        repo_id: &str,
-        text: &str,
-        author: &str,
-    ) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        crate::registry::knowledge::save_note(&conn, repo_id, text, author)?;
-        Ok(serde_json::json!({ "success": true }))
-    }
-
-    fn save_summary(
-        &self,
-        repo_id: &str,
-        desc: &str,
-        author: &str,
-    ) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        crate::registry::knowledge::save_summary(&conn, repo_id, desc, author)?;
-        Ok(serde_json::json!({ "success": true }))
-    }
-
-    fn get_paper(&self, arxiv_id: &str) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        let papers = crate::registry::knowledge::list_papers(&conn)?;
-        match papers.into_iter().find(|p| p.id == arxiv_id) {
-            Some(p) => Ok(serde_json::json!({
-                "success": true,
-                "id": p.id,
-                "title": p.title,
-                "venue": p.venue,
-                "year": p.year,
-                "pdf_path": p.pdf_path,
-                "tags": p.tags,
-            })),
-            None => Ok(serde_json::json!({ "success": false, "error": "Paper not found" })),
-        }
-    }
-}
-
-impl crate::clients::RegistryClient for AppContext {
-    fn list_repos(&self, _filter: Option<&str>) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        let repos = crate::registry::repo::list_repos(&conn)?;
-        let results: Vec<serde_json::Value> = repos
-            .into_iter()
-            .map(|r| {
-                serde_json::json!({
-                    "id": r.id,
-                    "local_path": r.local_path,
-                    "language": r.language,
-                    "tags": r.tags,
-                    "workspace_type": r.workspace_type,
-                    "data_tier": r.data_tier,
-                })
-            })
-            .collect();
-        Ok(serde_json::json!({ "success": true, "count": results.len(), "repos": results }))
-    }
-
-    fn get_repo(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        let repos = crate::registry::repo::list_repos(&conn)?;
-        match repos.into_iter().find(|r| r.id == repo_id) {
-            Some(r) => Ok(serde_json::json!({
-                "success": true,
-                "id": r.id,
-                "local_path": r.local_path,
-                "language": r.language,
-                "tags": r.tags,
-                "workspace_type": r.workspace_type,
-                "data_tier": r.data_tier,
-            })),
-            None => Ok(serde_json::json!({ "success": false, "error": "repo not found" })),
+    // Reverse check: SQLite entities missing from Tantivy
+    let mut missing = 0usize;
+    for repo_id in &sqlite_ids {
+        if !tantivy_ids.contains(repo_id) {
+            tracing::warn!(
+                "repo {} exists in SQLite but missing from Tantivy index; needs re-index",
+                repo_id
+            );
+            missing += 1;
         }
     }
 
-    fn list_modules(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        let modules = crate::registry::knowledge::list_modules(&conn, repo_id)?;
-        let results: Vec<serde_json::Value> = modules
-            .into_iter()
-            .map(|(name, ty, path)| {
-                serde_json::json!({
-                    "name": name,
-                    "type": ty,
-                    "path": path,
-                })
-            })
-            .collect();
-        Ok(serde_json::json!({ "success": true, "count": results.len(), "modules": results }))
-    }
-
-    fn save_paper(&self, paper: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        let paper_entry: crate::registry::PaperEntry = serde_json::from_value(paper.clone())?;
-        crate::registry::knowledge::save_paper(&conn, &paper_entry)?;
-        Ok(serde_json::json!({ "success": true }))
-    }
-
-    fn save_experiment(&self, exp: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        let exp_entry: crate::registry::ExperimentEntry = serde_json::from_value(exp.clone())?;
-        crate::registry::WorkspaceRegistry::save_experiment(&conn, &exp_entry)?;
-        Ok(serde_json::json!({ "success": true }))
-    }
-
-    fn list_code_metrics(&self) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        let metrics = crate::registry::metrics::list_code_metrics(&conn)?;
-        let repos: Vec<serde_json::Value> = metrics
-            .into_iter()
-            .map(|(id, m)| {
-                serde_json::json!({
-                    "repo_id": id,
-                    "total_lines": m.total_lines,
-                    "source_lines": m.source_lines,
-                    "test_lines": m.test_lines,
-                    "comment_lines": m.comment_lines,
-                    "file_count": m.file_count,
-                    "language_breakdown": m.language_breakdown,
-                    "updated_at": m.updated_at.to_rfc3339()
-                })
-            })
-            .collect();
-        Ok(serde_json::json!({ "success": true, "count": repos.len(), "repos": repos }))
-    }
-
-    fn get_code_metrics(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        match crate::registry::metrics::get_code_metrics(&conn, repo_id)? {
-            Some(m) => Ok(serde_json::json!({
-                "success": true,
-                "repo_id": repo_id,
-                "total_lines": m.total_lines,
-                "source_lines": m.source_lines,
-                "test_lines": m.test_lines,
-                "comment_lines": m.comment_lines,
-                "file_count": m.file_count,
-                "language_breakdown": m.language_breakdown,
-                "updated_at": m.updated_at.to_rfc3339()
-            })),
-            None => {
-                Ok(serde_json::json!({ "success": false, "error": "No metrics found for repo" }))
-            }
-        }
-    }
-
-    fn get_health(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        match crate::registry::health::get_health(&conn, repo_id)? {
-            Some(h) => Ok(serde_json::json!({
-                "success": true,
-                "repo_id": repo_id,
-                "status": h.status,
-                "ahead": h.ahead,
-                "behind": h.behind,
-                "checked_at": h.checked_at.to_rfc3339()
-            })),
-            None => Ok(serde_json::json!({ "success": false, "error": "No health data found" })),
-        }
-    }
-
-    fn query_call_graph(
-        &self,
-        repo_id: &str,
-        callee: Option<&str>,
-        caller: Option<&str>,
-        file: Option<&str>,
-        limit: usize,
-    ) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        let edges = crate::registry::call_graph::query_call_edges(
-            &conn,
-            repo_id,
-            callee.filter(|s| !s.is_empty()),
-            caller.filter(|s| !s.is_empty()),
-            file.filter(|s| !s.is_empty()),
-            limit,
-        )?;
-        let calls: Vec<serde_json::Value> = edges
-            .into_iter()
-            .map(|e| {
-                serde_json::json!({
-                    "caller_file": e.caller_file,
-                    "caller_symbol": e.caller_symbol,
-                    "caller_line": e.caller_line,
-                    "callee_name": e.callee_name,
-                })
-            })
-            .collect();
-        Ok(serde_json::json!({
-            "success": true,
-            "repo_id": repo_id,
-            "count": calls.len(),
-            "calls": calls
-        }))
-    }
-
-    fn query_dependencies(
-        &self,
-        repo_id: &str,
-        direction: &str,
-        relation_type: Option<&str>,
-    ) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        let rel_filter = relation_type.filter(|s| !s.is_empty());
-        let label = if direction == "incoming" || direction == "reverse" {
-            "reverse dependencies"
-        } else {
-            "dependencies"
-        };
-        let rows = if direction == "incoming" || direction == "reverse" {
-            crate::dependency_graph::list_reverse_dependencies(&conn, repo_id)?
-        } else {
-            crate::dependency_graph::list_dependencies(&conn, repo_id)?
-        };
-        let deps: Vec<serde_json::Value> = rows
-            .into_iter()
-            .filter(|(_, rel, _)| rel_filter.is_none_or(|f| f == rel))
-            .map(|(id, rel, conf)| {
-                serde_json::json!({
-                    "repo_id": id,
-                    "relation_type": rel,
-                    "confidence": conf,
-                })
-            })
-            .collect();
-        Ok(serde_json::json!({
-            "success": true,
-            "repo_id": repo_id,
-            "direction": direction,
-            "label": label,
-            "count": deps.len(),
-            "dependencies": deps
-        }))
-    }
-
-    fn query_code_symbols(
-        &self,
-        repo_id: &str,
-        name: Option<&str>,
-        symbol_type: Option<&str>,
-        file: Option<&str>,
-        limit: usize,
-    ) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        let mut sql = String::from(
-            "SELECT file_path, symbol_type, name, line_start, line_end, signature \
-             FROM code_symbols WHERE repo_id = ?1",
-        );
-        let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(repo_id.to_string())];
-        if let Some(ty) = symbol_type.filter(|s| !s.is_empty()) {
-            sql.push_str(" AND symbol_type = ?");
-            sql.push_str(&(params.len() + 1).to_string());
-            params.push(Box::new(ty.to_string()));
-        }
-        if let Some(n) = name.filter(|s| !s.is_empty()) {
-            sql.push_str(" AND name LIKE ?");
-            sql.push_str(&(params.len() + 1).to_string());
-            params.push(Box::new(format!("%{}%", n)));
-        }
-        if let Some(f) = file.filter(|s| !s.is_empty()) {
-            sql.push_str(" AND file_path LIKE ?");
-            sql.push_str(&(params.len() + 1).to_string());
-            params.push(Box::new(format!("%{}%", f)));
-        }
-        sql.push_str(&format!(" ORDER BY file_path, line_start LIMIT {}", limit.min(200)));
-
-        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(rusqlite::params_from_iter(param_refs), |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, i64>(4)?,
-                row.get::<_, Option<String>>(5)?,
-            ))
-        })?;
-
-        let mut symbols = Vec::new();
-        for row in rows {
-            symbols.push(row?);
-        }
-
-        let out: Vec<serde_json::Value> = symbols
-            .iter()
-            .map(|(fp, st, n, ls, le, sig)| {
-                serde_json::json!({
-                    "file_path": fp,
-                    "symbol_type": st,
-                    "name": n,
-                    "line_start": ls,
-                    "line_end": le,
-                    "signature": sig,
-                })
-            })
-            .collect();
-        Ok(serde_json::json!({
-            "success": true,
-            "repo_id": repo_id,
-            "count": out.len(),
-            "symbols": out
-        }))
-    }
-
-    fn query_dead_code(
-        &self,
-        repo_id: &str,
-        include_pub: bool,
-        limit: usize,
-    ) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn()?;
-        let mut sql = String::from(
-            "SELECT file_path, name, line_start, signature \
-             FROM code_symbols cs \
-             WHERE cs.repo_id = ?1 AND cs.symbol_type = 'function' \
-             AND NOT EXISTS ( \
-                 SELECT 1 FROM code_call_graph ccg \
-                 WHERE ccg.repo_id = cs.repo_id AND ccg.callee_name = cs.name \
-             )",
-        );
-        if !include_pub {
-            sql.push_str(" AND (cs.signature IS NULL OR cs.signature NOT LIKE 'pub%fn%')");
-        }
-        sql.push_str(" AND cs.name != 'main'");
-        // Exclude test functions — heuristic: name starts with 'test_' (Rust convention)
-        sql.push_str(" AND cs.name NOT LIKE 'test_%'");
-        // Exclude functions in tests.rs files (Rust unit-test modules)
-        sql.push_str(
-            " AND cs.file_path NOT LIKE '%/tests.rs' AND cs.file_path NOT LIKE '%\\tests.rs'",
-        );
-        // Exclude functions with #[test] or #[tokio::test] attributes (tree-sitter extracted)
-        sql.push_str(" AND (cs.attributes IS NULL OR cs.attributes NOT LIKE '%#[test]%')");
-        sql.push_str(&format!(" ORDER BY cs.file_path, cs.line_start LIMIT {}", limit.min(200)));
-
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map([repo_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, Option<String>>(3)?,
-            ))
-        })?;
-
-        let mut dead = Vec::new();
-        for row in rows {
-            dead.push(row?);
-        }
-
-        let out: Vec<serde_json::Value> = dead
-            .iter()
-            .map(|(fp, n, line, sig)| {
-                serde_json::json!({
-                    "file_path": fp,
-                    "name": n,
-                    "line_start": line,
-                    "signature": sig,
-                })
-            })
-            .collect();
-        Ok(serde_json::json!({
-            "success": true,
-            "repo_id": repo_id,
-            "count": out.len(),
-            "dead_functions": out
-        }))
-    }
+    Ok(RepairResult {
+        orphans: orphaned,
+        missing_from_index: missing,
+    })
 }
 
 /// Test-only storage backend that uses an independent temporary directory.
@@ -655,6 +342,11 @@ impl StorageBackend for TempStorageBackend {
         let dir = self.dir.path();
         std::fs::create_dir_all(dir)?;
         Ok(dir.join("search_index"))
+    }
+    fn symbol_index_path(&self) -> anyhow::Result<PathBuf> {
+        let dir = self.dir.path();
+        std::fs::create_dir_all(dir)?;
+        Ok(dir.join("symbol_index"))
     }
     fn backup_dir(&self) -> anyhow::Result<PathBuf> {
         Ok(self.dir.path().join("backups"))
@@ -705,8 +397,9 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(800));
 
         // Repair should detect the orphan
-        let count = repair_tantivy_consistency_at(&index_path, &mut conn).unwrap();
-        assert_eq!(count, 1);
+        let result = repair_tantivy_consistency_at(&index_path, &mut conn).unwrap();
+        assert_eq!(result.orphans, 1);
+        assert_eq!(result.missing_from_index, 0);
 
         let orphan_exists: bool = conn
             .query_row("SELECT 1 FROM orphan_tantivy_docs WHERE repo_id = 'ghost_repo'", [], |_| {
@@ -723,8 +416,9 @@ mod tests {
         ).unwrap();
 
         // Repair should now find zero orphans and clear the record
-        let count2 = repair_tantivy_consistency_at(&index_path, &mut conn).unwrap();
-        assert_eq!(count2, 0);
+        let result2 = repair_tantivy_consistency_at(&index_path, &mut conn).unwrap();
+        assert_eq!(result2.orphans, 0);
+        assert_eq!(result2.missing_from_index, 0);
 
         let orphan_still_exists: bool = conn
             .query_row("SELECT 1 FROM orphan_tantivy_docs WHERE repo_id = 'ghost_repo'", [], |_| {

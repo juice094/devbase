@@ -250,7 +250,7 @@ fn default_embedding_provider() -> String {
     "ollama".to_string()
 }
 fn default_embedding_model() -> String {
-    "nomic-embed-text".to_string()
+    "all-minilm".to_string()
 }
 fn default_embedding_base_url() -> String {
     "http://localhost:11434".to_string()
@@ -376,10 +376,12 @@ max_tokens = 200
 timeout_seconds = 30
 
 [embedding]
-# Local embedding for semantic code search. Requires Ollama installed.
+# Local embedding for semantic code search.
+# Backend: "candle" (pure Rust, all-MiniLM-L6-v2) or "ollama" (requires local Ollama).
+# Use "all-minilm" model with Ollama for 384-dim embeddings (compatible with candle).
 enabled = false
 provider = "ollama"
-model = "nomic-embed-text"
+model = "all-minilm"
 base_url = "http://localhost:11434"
 timeout_seconds = 30
 

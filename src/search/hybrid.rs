@@ -13,15 +13,30 @@ use std::collections::HashMap;
 
 use crate::semantic_index::SemanticSearchRow;
 
-/// Keyword search over code symbols using SQLite LIKE on name and signature.
+/// Keyword search over code symbols.
 ///
-/// Score heuristic:
-/// - name match = 3.0
-/// - signature match = 1.0
-///
-/// The query string is whitespace-split and each token contributes
-/// independently.
+/// Primary path: Tantivy BM25 via symbol_index.
+/// Fallback path: SQLite LIKE (for repos without a symbol index).
 pub fn keyword_search_symbols(
+    conn: &rusqlite::Connection,
+    repo_id: &str,
+    query: &str,
+    limit: usize,
+) -> anyhow::Result<Vec<SemanticSearchRow>> {
+    // Try Tantivy BM25 first
+    match crate::search::symbol_index::search_symbols(query, limit, Some(repo_id)) {
+        Ok(results) if !results.is_empty() => return Ok(results),
+        Ok(_) => {} // empty results, try fallback
+        Err(e) => {
+            tracing::debug!("Symbol index search failed for {}: {}", repo_id, e);
+        }
+    }
+
+    // Fallback: SQLite LIKE (for repos without symbol index or when index is empty)
+    keyword_search_symbols_fallback(conn, repo_id, query, limit)
+}
+
+fn keyword_search_symbols_fallback(
     conn: &rusqlite::Connection,
     repo_id: &str,
     query: &str,
@@ -32,9 +47,6 @@ pub fn keyword_search_symbols(
         return Ok(Vec::new());
     }
 
-    // Simple per-token query with aggregated scoring.
-    // For each token we query once and accumulate scores in a HashMap.
-    // name match = 3.0, signature match = 1.0.
     let mut accum: HashMap<String, (String, String, String, i64, f32)> = HashMap::new();
 
     for token in &tokens {
@@ -85,13 +97,12 @@ pub fn keyword_search_symbols(
 /// fused ranking. The standard k constant is 60.0.
 ///
 /// Items are deduplicated by `(repo_id, name, file_path)`.
-pub fn rrf_merge(lists: Vec<Vec<SemanticSearchRow>>, k: f32) -> Vec<SemanticSearchRow> {
+pub fn rrf_merge(mut lists: Vec<Vec<SemanticSearchRow>>, k: f32) -> Vec<SemanticSearchRow> {
     if lists.is_empty() {
         return Vec::new();
     }
     if lists.len() == 1 {
-        // TODO(veto-audit-2026-04-26): RF-6 expect — 前置 len==1 检查已做，风险低。可保留或改为 `unwrap_or_default`。
-        return lists.into_iter().next().expect("lists len == 1 checked above");
+        return lists.remove(0);
     }
 
     let mut accum: HashMap<String, (SemanticSearchRow, f32)> = HashMap::new();
@@ -153,14 +164,7 @@ pub fn hybrid_search_symbols(
 
     match lists.len() {
         0 => Ok(Vec::new()),
-        1 => Ok(lists
-            .into_iter()
-            .next()
-            // TODO(veto-audit-2026-04-26): RF-6 expect — 前置 len==1 检查已做，风险低。
-            .expect("lists len == 1 checked above")
-            .into_iter()
-            .take(limit)
-            .collect()),
+        1 => Ok(lists.remove(0).into_iter().take(limit).collect()),
         _ => {
             let merged = rrf_merge(lists, 60.0);
             Ok(merged.into_iter().take(limit).collect())

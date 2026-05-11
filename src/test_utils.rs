@@ -5,8 +5,8 @@ use chrono::Utc;
 use std::path::PathBuf;
 
 /// Create an in-memory SQLite connection with the full devbase schema.
-pub fn temp_db() -> rusqlite::Connection {
-    WorkspaceRegistry::init_in_memory().expect("failed to create in-memory db")
+pub fn temp_db() -> anyhow::Result<rusqlite::Connection> {
+    WorkspaceRegistry::init_in_memory()
 }
 
 /// Build a minimal RepoEntry fixture for tests.

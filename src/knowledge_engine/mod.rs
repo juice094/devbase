@@ -44,3 +44,50 @@ where
         }
     }
 }
+
+impl crate::clients::KnowledgeClient for crate::storage::AppContext {
+    fn run_index(&self, path: &str) -> anyhow::Result<serde_json::Value> {
+        let mut conn = self.conn()?;
+        let count = crate::knowledge_engine::run_index(&mut conn, path, false)?;
+        Ok(serde_json::json!({ "success": true, "indexed": count, "errors": 0 }))
+    }
+
+    fn save_note(
+        &self,
+        repo_id: &str,
+        text: &str,
+        author: &str,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        crate::registry::knowledge::save_note(&conn, repo_id, text, author)?;
+        Ok(serde_json::json!({ "success": true }))
+    }
+
+    fn save_summary(
+        &self,
+        repo_id: &str,
+        desc: &str,
+        author: &str,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        crate::registry::knowledge::save_summary(&conn, repo_id, desc, author)?;
+        Ok(serde_json::json!({ "success": true }))
+    }
+
+    fn get_paper(&self, arxiv_id: &str) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let papers = crate::registry::knowledge::list_papers(&conn)?;
+        match papers.into_iter().find(|p| p.id == arxiv_id) {
+            Some(p) => Ok(serde_json::json!({
+                "success": true,
+                "id": p.id,
+                "title": p.title,
+                "venue": p.venue,
+                "year": p.year,
+                "pdf_path": p.pdf_path,
+                "tags": p.tags,
+            })),
+            None => Ok(serde_json::json!({ "success": false, "error": "Paper not found" })),
+        }
+    }
+}

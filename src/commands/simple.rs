@@ -13,8 +13,8 @@ pub use crate::commands::knowledge::{
 #[cfg(feature = "tui")]
 pub use crate::commands::repo::run_discover;
 pub use crate::commands::repo::{
-    run_health, run_index, run_query, run_registry, run_scan, run_status, run_sync,
-    run_syncthing_push,
+    run_health, run_index, run_knowledge_report, run_query, run_registry, run_scan, run_status,
+    run_sync, run_syncthing_push,
 };
 #[cfg(feature = "mcp")]
 pub use crate::commands::system::run_mcp;
@@ -52,6 +52,9 @@ mod tests {
         }
         fn index_path(&self) -> anyhow::Result<PathBuf> {
             Ok(self.dir.path().join("idx"))
+        }
+        fn symbol_index_path(&self) -> anyhow::Result<PathBuf> {
+            Ok(self.dir.path().join("sym_idx"))
         }
         fn backup_dir(&self) -> anyhow::Result<PathBuf> {
             Ok(self.dir.path().join("bk"))

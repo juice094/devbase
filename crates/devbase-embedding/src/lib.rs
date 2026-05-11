@@ -15,6 +15,12 @@ pub trait EmbeddingProvider: Send + Sync {
     /// Generate an embedding for a single query string.
     fn encode(&self, text: &str) -> anyhow::Result<Vec<f32>>;
 
+    /// Generate embeddings for a batch of texts.
+    /// Default implementation falls back to sequential single encoding.
+    fn encode_batch(&self, texts: &[&str]) -> anyhow::Result<Vec<Vec<f32>>> {
+        texts.iter().map(|t| self.encode(t)).collect()
+    }
+
     /// Provider name for diagnostics.
     fn name(&self) -> &'static str;
 }
@@ -23,6 +29,100 @@ pub trait EmbeddingProvider: Send + Sync {
 /// Returns the best available provider at runtime.
 pub fn default_provider() -> Box<dyn EmbeddingProvider> {
     Box::new(CandleProvider)
+}
+
+/// Create a provider from configuration parameters.
+/// `backend`: "candle" | "ollama"
+/// `model`: model name (for Ollama, e.g. "all-minilm")
+/// `base_url`: Ollama base URL (e.g. "http://localhost:11434")
+/// `timeout_seconds`: HTTP timeout for Ollama
+pub fn create_provider(
+    backend: &str,
+    _model: &str,
+    base_url: &str,
+    timeout_seconds: u64,
+) -> Box<dyn EmbeddingProvider> {
+    match backend {
+        "ollama" => Box::new(OllamaProvider::new(base_url, _model, timeout_seconds)),
+        _ => Box::new(CandleProvider),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// OllamaProvider — local HTTP embedding via Ollama /api/embed
+// ---------------------------------------------------------------------------
+
+pub struct OllamaProvider {
+    base_url: String,
+    model: String,
+    timeout_seconds: u64,
+}
+
+impl OllamaProvider {
+    pub fn new(base_url: &str, model: &str, timeout_seconds: u64) -> Self {
+        Self {
+            base_url: base_url.trim_end_matches('/').to_string(),
+            model: model.to_string(),
+            timeout_seconds,
+        }
+    }
+
+    fn embed_inner(&self, inputs: Vec<&str>) -> anyhow::Result<Vec<Vec<f32>>> {
+        let url = format!("{}/api/embed", self.base_url);
+        let body = if inputs.len() == 1 {
+            serde_json::json!({
+                "model": self.model,
+                "input": inputs[0],
+            })
+        } else {
+            serde_json::json!({
+                "model": self.model,
+                "input": inputs,
+            })
+        };
+
+        let resp: serde_json::Value = ureq::post(&url)
+            .set("Content-Type", "application/json")
+            .timeout(std::time::Duration::from_secs(self.timeout_seconds))
+            .send_json(body)
+            .map_err(|e| anyhow::anyhow!("Ollama API request failed: {}", e))?
+            .into_json()
+            .map_err(|e| anyhow::anyhow!("Ollama API JSON parse error: {}", e))?;
+
+        let embeddings = resp
+            .get("embeddings")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Ollama response missing embeddings: {}", resp))?;
+
+        let mut results = Vec::with_capacity(embeddings.len());
+        for emb in embeddings {
+            let vec: Vec<f32> = emb
+                .as_array()
+                .ok_or_else(|| anyhow::anyhow!("invalid embedding array in Ollama response"))?
+                .iter()
+                .map(|v| v.as_f64().unwrap_or(0.0) as f32)
+                .collect();
+            results.push(vec);
+        }
+        Ok(results)
+    }
+}
+
+impl EmbeddingProvider for OllamaProvider {
+    fn encode(&self, text: &str) -> anyhow::Result<Vec<f32>> {
+        self.embed_inner(vec![text])?
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("empty embedding result from Ollama"))
+    }
+
+    fn encode_batch(&self, texts: &[&str]) -> anyhow::Result<Vec<Vec<f32>>> {
+        self.embed_inner(texts.to_vec())
+    }
+
+    fn name(&self) -> &'static str {
+        "ollama"
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -35,6 +135,10 @@ impl EmbeddingProvider for CandleProvider {
     fn encode(&self, text: &str) -> anyhow::Result<Vec<f32>> {
         let (model, tokenizer) = get_candle_resources()?;
         encode_with_candle(model, tokenizer, text)
+    }
+    fn encode_batch(&self, texts: &[&str]) -> anyhow::Result<Vec<Vec<f32>>> {
+        let (model, tokenizer) = get_candle_resources()?;
+        encode_batch_with_candle(model, tokenizer, texts)
     }
     fn name(&self) -> &'static str {
         "candle-all-MiniLM-L6-v2"
@@ -87,29 +191,65 @@ fn encode_with_candle(
     tokenizer: &tokenizers::Tokenizer,
     text: &str,
 ) -> anyhow::Result<Vec<f32>> {
+    encode_batch_with_candle(model, tokenizer, &[text])
+        .and_then(|mut v| v.pop().ok_or_else(|| anyhow::anyhow!("empty embedding batch")))
+}
+
+fn encode_batch_with_candle(
+    model: &candle_transformers::models::bert::BertModel,
+    tokenizer: &tokenizers::Tokenizer,
+    texts: &[&str],
+) -> anyhow::Result<Vec<Vec<f32>>> {
     use candle_core::Tensor;
+    if texts.is_empty() {
+        return Ok(Vec::new());
+    }
 
-    let encoding = tokenizer.encode(text, true).map_err(|e| anyhow::anyhow!(e))?;
-    let input_ids = encoding.get_ids();
-    let attention_mask = encoding.get_attention_mask();
+    // Batch tokenize
+    let encodings = tokenizer.encode_batch(texts.to_vec(), true).map_err(|e| anyhow::anyhow!(e))?;
 
-    let input_ids = Tensor::new(input_ids, &model.device)?.unsqueeze(0)?;
+    // Find max length for padding
+    let max_len = encodings.iter().map(|e| e.get_ids().len()).max().unwrap_or(0);
+
+    // Build padded batch tensors
+    let mut input_ids_vec = Vec::new();
+    let mut attention_mask_vec = Vec::new();
+    for encoding in &encodings {
+        let ids = encoding.get_ids();
+        let mask = encoding.get_attention_mask();
+        let mut padded_ids = ids.to_vec();
+        let mut padded_mask = mask.to_vec();
+        padded_ids.resize(max_len, 0);
+        padded_mask.resize(max_len, 0);
+        input_ids_vec.extend(padded_ids);
+        attention_mask_vec.extend(padded_mask);
+    }
+
+    let batch_size = texts.len();
+    let input_ids = Tensor::new(input_ids_vec, &model.device)?.reshape((batch_size, max_len))?;
     let token_type_ids = input_ids.zeros_like()?;
-    let attention_mask_t = Tensor::new(attention_mask, &model.device)?.unsqueeze(0)?;
+    let attention_mask_t =
+        Tensor::new(attention_mask_vec, &model.device)?.reshape((batch_size, max_len))?;
 
+    // Single forward pass for the whole batch
     let output = model.forward(&input_ids, &token_type_ids, Some(&attention_mask_t))?;
 
-    // Mean pooling: average over non-padding tokens
+    // Mean pooling + L2 normalize per sample
     let mask = attention_mask_t.to_dtype(candle_core::DType::F32)?.unsqueeze(2)?;
     let sum = output.broadcast_mul(&mask)?.sum(1)?;
     let count = mask.sum(1)?;
     let mean_pooled = sum.broadcast_div(&count)?;
 
-    // L2 normalize (sentence-transformers default)
     let norm = mean_pooled.sqr()?.sum_keepdim(1)?.sqrt()?;
     let normalized = mean_pooled.broadcast_div(&norm)?;
 
-    Ok(normalized.squeeze(0)?.to_vec1()?)
+    // Extract per-sample embeddings
+    let mut results = Vec::with_capacity(batch_size);
+    for i in 0..batch_size {
+        let emb = normalized.get(i)?.squeeze(0)?.to_vec1()?;
+        results.push(emb);
+    }
+    Ok(results)
 }
 
 /// Cosine similarity between two f32 vectors.
@@ -141,12 +281,6 @@ pub fn bytes_to_embedding(bytes: &[u8]) -> Vec<f32> {
             f32::from_le_bytes(arr)
         })
         .collect()
-}
-
-/// Convenience wrapper that uses the default provider.
-/// Kept for backward compatibility with existing call sites.
-pub fn generate_query_embedding(query: &str) -> anyhow::Result<Vec<f32>> {
-    default_provider().encode(query)
 }
 
 #[cfg(test)]
@@ -272,5 +406,23 @@ mod tests {
             candidates.len(),
             last_err
         ))
+    }
+
+    #[test]
+    fn test_create_provider_candle() {
+        let provider = create_provider("candle", "", "", 0);
+        assert_eq!(provider.name(), "candle-all-MiniLM-L6-v2");
+    }
+
+    #[test]
+    fn test_create_provider_ollama() {
+        let provider = create_provider("ollama", "all-minilm", "http://localhost:11434", 30);
+        assert_eq!(provider.name(), "ollama");
+    }
+
+    #[test]
+    fn test_create_provider_unknown_defaults_to_candle() {
+        let provider = create_provider("unknown", "", "", 0);
+        assert_eq!(provider.name(), "candle-all-MiniLM-L6-v2");
     }
 }
