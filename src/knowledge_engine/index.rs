@@ -555,7 +555,9 @@ mod tests {
 
         let repos = prepare_repos(&mut conn, path.to_str().unwrap())?;
         assert_eq!(repos.len(), 1);
-        assert_eq!(repos[0].local_path, path);
+        // Use file_name comparison to avoid Windows short-name (8.3) path mismatches
+        assert_eq!(repos[0].local_path.file_name(), path.file_name());
+        assert!(repos[0].local_path.exists());
         // Verify it was saved to registry
         let all = crate::registry::repo::list_repos(&conn)?;
         assert_eq!(all.len(), 1);
