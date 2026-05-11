@@ -1,5 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+//! Knowledge engine: repository indexing, summary extraction, and module analysis.
+//!
+//! Orchestrates Tantivy full-text indexing, SQLite registry persistence,
+//! semantic code indexing (AST + call graph), and optional embedding generation.
+//!
+//! Entry points:
+//! - [`run_index`] — batch index all registered repos or a single path
+//! - [`index_repo`] — index a single repo (standalone writer)
+//! - [`index_repo_with_writer`] — index a single repo reusing an existing writer
+
 pub mod fallback;
 pub mod index;
 pub mod index_state;

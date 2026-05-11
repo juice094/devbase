@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+//! Registry layer: SQLite-backed entity storage and domain-specific submodules.
+//!
+//! Central types (`RepoEntry`, `VaultNote`, `PaperEntry`, etc.) and the
+//! [`RegistryClient`] trait implementation on [`AppContext`].
+//! Submodules cover repos, health, knowledge, code metrics, call graphs,
+//! dead-code analysis, and migrations.
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

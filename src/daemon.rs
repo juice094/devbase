@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+//! Background daemon: periodic health checks, re-indexing, discovery,
+//! daily digest generation, and relation graph maintenance.
+//!
+//! The daemon runs on a configurable schedule (`daemon.interval_seconds`)
+//! and uses `tokio::spawn_blocking` for CPU- or I/O-heavy tasks to avoid
+//! blocking the async runtime.
+
 use crate::config::Config;
 use crate::digest::generate_daily_digest;
 use crate::discovery_engine::{discover_dependencies, discover_similar_projects};

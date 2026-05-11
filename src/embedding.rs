@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
-// RE-EXPORT ONLY — 实现已迁移至 devbase-embedding crate.
-// 禁止在本文件中添加新代码。
+//! Embedding generation: local Candle-based BERT inference for code symbols.
+//!
+//! **Re-export only** — implementation lives in the `devbase-embedding` crate.
+//! Do not add new code here; extend the extracted crate instead.
+//!
+//! Feature-gated behind `embedding`; disabled by default to reduce binary size.
 
 #[cfg(feature = "embedding")]
 pub use devbase_embedding::*;

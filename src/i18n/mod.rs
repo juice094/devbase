@@ -1,5 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+//! Internationalization (i18n) layer for devbase.
+//!
+//! Provides language-specific UI strings for TUI, CLI, sync reports, and logs.
+//! Supported languages: English (`en`) and Simplified Chinese (`zh_cn`).
+//!
+//! **Note on `#[allow(dead_code)]`**: Many string fields are accessed only when
+//! the `tui` feature is enabled. Without this attribute, compiling without
+//! `--features tui` would produce spurious dead-code warnings. The fields are
+//! actively used in production builds with the default feature set.
+
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
 pub struct I18n {

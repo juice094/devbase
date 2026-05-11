@@ -1,5 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+//! Workflow automation engine: YAML-defined multi-step pipelines with parallel
+//! execution, variable interpolation, and SQLite-backed execution tracking.
+//!
+//! A workflow consists of ordered steps, each referencing a registered Skill.
+//! The scheduler builds independent batches; the executor runs each batch in
+//! parallel while preserving step ordering across batches.
+//!
+//! Key traits:
+//! - [`WorkflowClient`] — MCP-facing API for listing, running, and querying workflows
+
 pub mod executor;
 pub mod interpolate;
 pub mod model;

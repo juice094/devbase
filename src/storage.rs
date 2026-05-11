@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+//! Storage abstraction and application context (`AppContext`).
+//!
+//! [`StorageBackend`] decouples concrete paths from consumers, enabling
+//! test isolation via [`TempStorageBackend`] and future remote backends.
+//! [`AppContext`] is the central dependency-injection container: it holds
+//! the storage backend, database pool, config, i18n, and environment cache,
+//! and implements all MCP client traits (`ScanClient`, `HealthClient`, etc.).
+
 use crate::config::Config;
 use crate::i18n::{I18n, from_language};
 use crate::registry::{ENTITY_TYPE_REPO, WorkspaceRegistry};
