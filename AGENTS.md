@@ -242,6 +242,7 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 | tree-sitter 编译成本 | 🟢 | ~15-20s grammar C compilation | 可控 | 已完成 feature-gate：`lang-rust`/`lang-python`/`lang-js-ts`/`lang-go` 四个 feature，默认全启，可选关闭减少编译；`--no-default-features` 编译通过 | 8 |
 | Feature flags 缺失 | 🟢 | 4 个可选 feature (tui, watch, mcp, embedding) | ≥3 | 已完成：`tui`/`watch`/`mcp`/`embedding` 均为 optional；`--no-default-features` 编译通过 | ≤15 |
 | `LOCALAPPDATA` 测试模式残留 | 🟢 | 0 处 | 0 | 全面废弃 `LOCALAPPDATA` 环境变量覆盖，统一为 `DEVBASE_DATA_DIR`；mcp/tests.rs 修复 cleanup 逻辑（remove_var 目标从 LOCALAPPDATA 修正为 DEVBASE_DATA_DIR） | 47 |
+| 单体职责膨胀（代码智能+知识库+仓库管理+工作流+Skill+Syncthing） | 🟡 | 6 个核心领域耦合于单一二进制（31MB）；`workflow`/`skill` 与 Claude Code Agent 能力重叠 | 按领域拆分为 `devbase-core`（代码+vault）+ `devbase-sync`（仓库管理）+ `devbase-bridge`（Syncthing）；冻结 workflow/skill 新增 | 外部审查 2026-05-11 |
 
 **清偿原则**：
 1. 禁止在清偿现有 🔴 债务前新增同类别债务。
@@ -390,7 +391,7 @@ v0.11.3 已交付（tagged）。v0.12.0-alpha 全部功能已完成，进入发�
 - `.devbase` 目录规范（无外部采纳者）
 - MCP 协议扩展提案（Star = 0，不会被采纳）
 - 商业化 / 付费版
-- 拆分 crate（50+ tools 后再评估）
+- ~~拆分 crate（50+ tools 后再评估）~~ → **重新评估**：已触发外部架构审查（§九 耦合检查，6 领域耦合），`workflow`/`skill` 与 Claude Code Agent 重叠，v0.16.0 需输出拆分方案（`devbase-core` / `devbase-sync` / `devbase-bridge`）
 
 ### Future / Icebox（无排期）
 

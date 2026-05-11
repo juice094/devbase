@@ -1,5 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+#![cfg_attr(
+    not(any(
+        feature = "lang-rust",
+        feature = "lang-python",
+        feature = "lang-js-ts",
+        feature = "lang-go"
+    )),
+    allow(dead_code, unused_imports, unused_variables)
+)]
 use std::path::Path;
 use tracing::{debug, warn};
 

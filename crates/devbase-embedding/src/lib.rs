@@ -361,7 +361,7 @@ mod tests {
     fn generate_python_embedding(text: &str) -> anyhow::Result<Vec<f32>> {
         let candidates: Vec<std::path::PathBuf> = ["python", "python3"]
             .iter()
-            .map(|c| std::path::PathBuf::from(c))
+            .map(std::path::PathBuf::from)
             .filter(|p| {
                 std::process::Command::new(p)
                     .arg("-c")

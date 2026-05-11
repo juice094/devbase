@@ -88,6 +88,11 @@ predicates = "3"
 [profile.dev]
 opt-level = 1
 
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
 [workspace]
 members = ["crates/*"]
 resolver = "2"
