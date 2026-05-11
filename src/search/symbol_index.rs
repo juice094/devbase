@@ -86,7 +86,7 @@ pub fn add_symbol_doc(
         doc.add_text(sig_f, s);
     }
     doc.add_text(path_f, file_path);
-    doc.add_text(line_f, &line_start.to_string());
+    doc.add_text(line_f, line_start.to_string());
     writer.add_document(doc)?;
     Ok(())
 }

@@ -508,10 +508,10 @@ fn fmt_version(raw: Option<String>, i18n: &crate::i18n::I18n) -> String {
         Some(s) => {
             let s = s.trim();
             // Java outputs: java version "1.8.0_31" — extract quoted version
-            if let Some(start) = s.find('"') {
-                if let Some(end) = s[start + 1..].find('"') {
-                    return s[start + 1..start + 1 + end].to_string();
-                }
+            if let Some(start) = s.find('"')
+                && let Some(end) = s[start + 1..].find('"')
+            {
+                return s[start + 1..start + 1 + end].to_string();
             }
             let parts: Vec<&str> = s.split_whitespace().collect();
             if parts.len() >= 2 {
