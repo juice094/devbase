@@ -46,6 +46,9 @@
 |------|------|------|------|
 | ADR-001 | 单 crate 模型（defer split）| accepted | 2026-04-26 |
 | ADR-002 | Candle CPU BERT 单条编码（batch 回滚）| accepted | 2026-05-04 |
+| ADR-003 | Tantivy + SQLite 双写一致性策略 | proposed | 2026-05-11 |
+| ADR-004 | MCP Tool Layer Trait Decoupling | accepted | 2026-05-11 |
+| ADR-005 | AppContext Clone for Async Context Propagation | accepted | 2026-05-11 |
 
 ### ADR-001: 单 crate 模型（defer split）
 
