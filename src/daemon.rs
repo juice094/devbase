@@ -1,19 +1,28 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+use crate::config::Config;
+use crate::digest::generate_daily_digest;
+use crate::discovery_engine::{discover_dependencies, discover_similar_projects};
+use crate::health::analyze_repo;
+use crate::i18n::from_language;
+use crate::knowledge_engine::index_repo;
+use crate::registry::{
+    HealthEntry, health as reg_health, knowledge as reg_knowledge, relation as reg_relation, repo,
+};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{info, warn};
 
 pub struct Daemon {
     pub interval: Duration,
-    pub config: crate::config::Config,
+    pub config: Config,
     pub pool: r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>,
 }
 
 impl Daemon {
     pub fn new(
         interval_seconds: u64,
-        config: crate::config::Config,
+        config: Config,
         pool: r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>,
     ) -> Self {
         Self {
@@ -55,26 +64,26 @@ impl Daemon {
         match tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
             let repos = if let Some(threshold) = stale_threshold {
-                crate::registry::repo::list_repos_stale_health(&conn, &threshold)?
+                repo::list_repos_stale_health(&conn, &threshold)?
             } else {
-                crate::registry::repo::list_repos(&conn)?
+                repo::list_repos(&conn)?
             };
             for repo in &repos {
                 let primary = repo.primary_remote();
                 let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
                 let default_branch = primary.and_then(|r| r.default_branch.as_deref());
-                let (status, ahead, behind) = crate::health::analyze_repo(
+                let (status, ahead, behind) = analyze_repo(
                     repo.local_path.to_string_lossy().as_ref(),
                     upstream_url,
                     default_branch,
                 );
-                let health = crate::registry::HealthEntry {
+                let health = HealthEntry {
                     status: status.clone(),
                     ahead,
                     behind,
                     checked_at: chrono::Utc::now(),
                 };
-                if let Err(e) = crate::registry::health::save_health(&conn, &repo.id, &health) {
+                if let Err(e) = reg_health::save_health(&conn, &repo.id, &health) {
                     tracing::warn!("Failed to save health for {}: {}", repo.id, e);
                 }
             }
@@ -103,7 +112,7 @@ impl Daemon {
             };
             let mut count = 0;
             for repo in repos {
-                if let Err(e) = crate::knowledge_engine::index_repo(&mut conn, &repo) {
+                if let Err(e) = index_repo(&mut conn, &repo) {
                     tracing::warn!("Failed to index {}: {}", repo.id, e);
                 } else {
                     count += 1;
@@ -122,11 +131,11 @@ impl Daemon {
         let pool = self.pool.clone();
         match tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
-            let repos = crate::registry::repo::list_repos(&conn)?;
-            let deps = crate::discovery_engine::discover_dependencies(&repos);
-            let sims = crate::discovery_engine::discover_similar_projects(&conn)?;
+            let repos = repo::list_repos(&conn)?;
+            let deps = discover_dependencies(&repos);
+            let sims = discover_similar_projects(&conn)?;
             for d in deps.into_iter().chain(sims) {
-                let _ = crate::registry::relation::save_relation(
+                let _ = reg_relation::save_relation(
                     &conn,
                     &d.from,
                     &d.to,
@@ -138,7 +147,7 @@ impl Daemon {
                 } else {
                     Some(d.from.as_str())
                 };
-                let _ = crate::registry::knowledge::save_discovery(
+                let _ = reg_knowledge::save_discovery(
                     &conn,
                     repo_id,
                     &d.relation_type,
@@ -160,12 +169,12 @@ impl Daemon {
         let pool = self.pool.clone();
         match tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
-            let cfg = crate::config::Config {
+            let cfg = Config {
                 digest: digest_config,
                 ..Default::default()
             };
-            let i18n = crate::i18n::from_language(&cfg.general.language);
-            crate::digest::generate_daily_digest(&conn, &cfg, &i18n)
+            let i18n = from_language(&cfg.general.language);
+            generate_daily_digest(&conn, &cfg, &i18n)
         })
         .await
         {
@@ -191,7 +200,7 @@ mod tests {
 
     #[test]
     fn test_daemon_new() {
-        let config = crate::config::Config::default();
+        let config = Config::default();
         let manager = r2d2_sqlite::SqliteConnectionManager::memory();
         let pool = r2d2::Pool::builder().max_size(1).build(manager).unwrap();
         let daemon = Daemon::new(60, config, pool);
