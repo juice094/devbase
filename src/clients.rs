@@ -88,3 +88,25 @@ pub trait KnowledgeClient: Send + Sync {
 pub trait DigestClient: Send + Sync {
     fn generate_daily_digest(&self) -> Result<Value>;
 }
+
+/// Low-level repository analysis (no async, no external state).
+pub trait RepoAnalyzer: Send + Sync {
+    fn compute_workspace_hash(&self, path: &str) -> Result<String>;
+    fn analyze_repo(
+        &self,
+        path: &str,
+        upstream_url: Option<&str>,
+        default_branch: Option<&str>,
+    ) -> Result<(String, usize, usize)>;
+}
+
+/// Tantivy search operations exposed to MCP tools.
+pub trait SearchClient: Send + Sync {
+    fn index_is_empty_at(&self, path: &std::path::Path) -> Result<bool>;
+    fn search_repos_at(
+        &self,
+        path: &std::path::Path,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, f32)>>;
+}

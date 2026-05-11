@@ -402,7 +402,19 @@ fn test_nl_filter_repos_empty_query_returns_empty() {
     let _guard = NL_FILTER_TEST_LOCK.lock().unwrap();
     let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
     let repos: Vec<crate::registry::RepoEntry> = vec![];
-    let results = crate::mcp::tools::repo::nl_filter_repos("", &repos, &conn).unwrap();
+    let backend = crate::storage::TempStorageBackend::new();
+    let index_path = backend.index_path().unwrap();
+    let searcher = crate::search::SearchClientImpl;
+    let analyzer = crate::health::RepoAnalyzerImpl;
+    let results = crate::mcp::tools::repo::nl_filter_repos_at(
+        &index_path,
+        "",
+        &repos,
+        &conn,
+        &searcher,
+        &analyzer,
+    )
+    .unwrap();
     assert!(results.is_empty());
 }
 
@@ -414,7 +426,19 @@ fn test_nl_filter_repos_fallback_finds_by_language() {
         mock_repo("repo1", Some("rust"), vec!["cli"], Some(10)),
         mock_repo("repo2", Some("python"), vec!["web"], Some(5)),
     ];
-    let results = crate::mcp::tools::repo::nl_filter_repos("rust cli tool", &repos, &conn).unwrap();
+    let backend = crate::storage::TempStorageBackend::new();
+    let index_path = backend.index_path().unwrap();
+    let searcher = crate::search::SearchClientImpl;
+    let analyzer = crate::health::RepoAnalyzerImpl;
+    let results = crate::mcp::tools::repo::nl_filter_repos_at(
+        &index_path,
+        "rust cli tool",
+        &repos,
+        &conn,
+        &searcher,
+        &analyzer,
+    )
+    .unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, "repo1");
 }
@@ -455,11 +479,15 @@ fn test_nl_filter_repos_tantivy_finds_devbase() {
         remotes: vec![],
     }];
 
+    let searcher = crate::search::SearchClientImpl;
+    let analyzer = crate::health::RepoAnalyzerImpl;
     let results = crate::mcp::tools::repo::nl_filter_repos_at(
         &index_path,
         "developer workspace",
         &repos,
         &conn,
+        &searcher,
+        &analyzer,
     )
     .unwrap();
     assert!(!results.is_empty(), "tantivy path should find devbase");
