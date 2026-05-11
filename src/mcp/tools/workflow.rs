@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+use crate::clients::WorkflowClient;
 use crate::mcp::McpTool;
-use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct DevkitWorkflowListTool;
@@ -35,23 +35,7 @@ Returns: JSON array of workflows with id, name, and version."#,
         _args: serde_json::Value,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        let conn = ctx.conn()?;
-        let workflows = crate::workflow::state::list_workflows(&conn)?;
-        let items: Vec<serde_json::Value> = workflows
-            .into_iter()
-            .map(|(id, name, version)| {
-                serde_json::json!({
-                    "id": id,
-                    "name": name,
-                    "version": version
-                })
-            })
-            .collect();
-        Ok(serde_json::json!({
-            "success": true,
-            "count": items.len(),
-            "workflows": items
-        }))
+        ctx.list_workflows()
     }
 }
 
@@ -104,81 +88,7 @@ Returns: execution summary with status, step results, and execution_id."#,
             }));
         }
 
-        let conn = ctx.conn()?;
-        let wf = match crate::workflow::state::get_workflow(&conn, &workflow_id)? {
-            Some(wf) => wf,
-            None => {
-                return Ok(serde_json::json!({
-                    "success": false,
-                    "error": format!("workflow '{}' not found", workflow_id)
-                }));
-            }
-        };
-
-        // Parse inputs into HashMap<String, String>
-        let inputs: HashMap<String, String> = if let Some(obj) = inputs_value.as_object() {
-            obj.iter()
-                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                .collect()
-        } else {
-            HashMap::new()
-        };
-
-        let inputs_json = inputs_value.to_string();
-        let exec_id = crate::workflow::state::create_execution(&conn, &workflow_id, &inputs_json)?;
-        crate::workflow::state::update_execution(
-            &conn,
-            exec_id,
-            &crate::workflow::model::ExecutionStatus::Running,
-            None,
-            None,
-        )?;
-
-        let pool = ctx.pool();
-        let start = std::time::Instant::now();
-        let result = crate::workflow::executor::execute_workflow(&conn, &pool, &wf, inputs);
-        let duration_ms = start.elapsed().as_millis() as i64;
-
-        match result {
-            Ok(step_results) => {
-                crate::workflow::state::update_execution(
-                    &conn,
-                    exec_id,
-                    &crate::workflow::model::ExecutionStatus::Completed,
-                    None,
-                    Some(duration_ms),
-                )?;
-                let results_json: HashMap<String, serde_json::Value> = step_results
-                    .into_iter()
-                    .map(|(k, v)| (k, serde_json::to_value(v).unwrap_or(serde_json::json!(null))))
-                    .collect();
-                Ok(serde_json::json!({
-                    "success": true,
-                    "execution_id": exec_id,
-                    "workflow_id": workflow_id,
-                    "status": "Completed",
-                    "duration_ms": duration_ms,
-                    "step_results": results_json
-                }))
-            }
-            Err(e) => {
-                crate::workflow::state::update_execution(
-                    &conn,
-                    exec_id,
-                    &crate::workflow::model::ExecutionStatus::Failed,
-                    None,
-                    Some(duration_ms),
-                )?;
-                Ok(serde_json::json!({
-                    "success": false,
-                    "execution_id": exec_id,
-                    "workflow_id": workflow_id,
-                    "status": "Failed",
-                    "duration_ms": duration_ms,
-                    "error": e.to_string()
-                }))
-            }
-        }
+        ctx.run_workflow(&workflow_id, inputs_value)
     }
 }
 
@@ -227,24 +137,7 @@ Returns: execution record with status, current_step, timestamps, and duration."#
             }));
         }
 
-        let conn = ctx.conn()?;
-        match crate::workflow::state::get_execution(&conn, exec_id)? {
-            Some(exec) => Ok(serde_json::json!({
-                "success": true,
-                "execution_id": exec.id,
-                "workflow_id": exec.workflow_id,
-                "status": format!("{:?}", exec.status),
-                "current_step": exec.current_step,
-                "started_at": exec.started_at,
-                "finished_at": exec.finished_at,
-                "duration_ms": exec.duration_ms,
-                "inputs": exec.inputs_json
-            })),
-            None => Ok(serde_json::json!({
-                "success": false,
-                "error": format!("execution {} not found", exec_id)
-            })),
-        }
+        ctx.get_execution(exec_id)
     }
 }
 

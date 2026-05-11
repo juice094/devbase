@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+use crate::clients::RegistryClient;
 use crate::mcp::McpTool;
 
 #[derive(Clone)]
@@ -83,10 +84,7 @@ Returns: success boolean and relation details."#,
             }));
         }
 
-        let conn = ctx.conn()?;
-        if let Err(e) =
-            crate::registry::relation::save_relation(&conn, &from, &to, &rel_type, confidence)
-        {
+        if let Err(e) = ctx.save_relation(&from, &to, &rel_type, confidence) {
             let msg = e.to_string();
             if msg.contains("foreign key constraint") || msg.contains("FOREIGN KEY") {
                 return Ok(serde_json::json!({
@@ -162,73 +160,9 @@ Returns: JSON array of relations with to_entity_id, relation_type, confidence, a
             }));
         }
 
-        let conn = ctx.conn()?;
-        let results = match direction {
-            "bidirectional" => {
-                let rows = crate::registry::relation::find_related_entities(
-                    &conn,
-                    &entity_id,
-                    relation_type,
-                )?;
-                rows.into_iter()
-                    .map(|(from, to, rt, conf, created)| {
-                        serde_json::json!({
-                            "from_entity_id": from,
-                            "to_entity_id": to,
-                            "relation_type": rt,
-                            "confidence": conf,
-                            "created_at": created
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            }
-            "incoming" => {
-                let mut stmt = conn.prepare(
-                    "SELECT from_entity_id, relation_type, confidence, created_at FROM relations
-                     WHERE to_entity_id = ?1
-                     ORDER BY confidence DESC",
-                )?;
-                let rows = stmt.query_map([&entity_id], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, f64>(2)?,
-                        row.get::<_, String>(3)?,
-                    ))
-                })?;
-                let filtered: Vec<_> = if let Some(rt) = relation_type.filter(|s| !s.is_empty()) {
-                    rows.filter(|r| r.as_ref().map(|(_, t, _, _)| t == rt).unwrap_or(false))
-                        .collect::<Result<Vec<_>, _>>()?
-                } else {
-                    rows.collect::<Result<Vec<_>, _>>()?
-                };
-                filtered
-                    .into_iter()
-                    .map(|(from, rt, conf, created)| {
-                        serde_json::json!({
-                            "from_entity_id": from,
-                            "relation_type": rt,
-                            "confidence": conf,
-                            "created_at": created
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            }
-            _ => {
-                let rows =
-                    crate::registry::relation::list_relations(&conn, &entity_id, relation_type)?;
-                rows.into_iter()
-                    .map(|(to, rt, conf, created)| {
-                        serde_json::json!({
-                            "to_entity_id": to,
-                            "relation_type": rt,
-                            "confidence": conf,
-                            "created_at": created
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            }
-        };
+        let value = ctx.query_relations(&entity_id, direction, relation_type)?;
+        let results =
+            value.get("relations").and_then(|v| v.as_array()).cloned().unwrap_or_default();
 
         Ok(serde_json::json!({
             "success": true,
@@ -297,17 +231,9 @@ Returns: success boolean and count of deleted relations."#,
             }));
         }
 
-        let conn = ctx.conn()?;
-        let count = match rel_type.as_deref().filter(|s| !s.is_empty()) {
-            Some(rt) => conn.execute(
-                "DELETE FROM relations WHERE from_entity_id = ?1 AND to_entity_id = ?2 AND relation_type = ?3",
-                rusqlite::params![&from, &to, rt],
-            )?,
-            None => conn.execute(
-                "DELETE FROM relations WHERE from_entity_id = ?1 AND to_entity_id = ?2",
-                rusqlite::params![&from, &to],
-            )?,
-        };
+        let value =
+            ctx.delete_relations(&from, &to, rel_type.as_deref().filter(|s| !s.is_empty()))?;
+        let count = value.get("deleted").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
         Ok(serde_json::json!({
             "success": true,

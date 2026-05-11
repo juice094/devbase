@@ -74,6 +74,25 @@ pub trait RegistryClient: Send + Sync {
     ) -> Result<Value>;
 
     fn query_dead_code(&self, repo_id: &str, include_pub: bool, limit: usize) -> Result<Value>;
+
+    fn save_relation(
+        &self,
+        from: &str,
+        to: &str,
+        relation_type: &str,
+        confidence: f64,
+    ) -> Result<Value>;
+
+    fn query_relations(
+        &self,
+        entity_id: &str,
+        direction: &str,
+        relation_type: Option<&str>,
+    ) -> Result<Value>;
+
+    fn delete_relations(&self, from: &str, to: &str, relation_type: Option<&str>) -> Result<Value>;
+
+    fn list_vault_notes(&self) -> Result<Value>;
 }
 
 /// Knowledge engine operations.
@@ -109,4 +128,20 @@ pub trait SearchClient: Send + Sync {
         query: &str,
         limit: usize,
     ) -> Result<Vec<(String, f32)>>;
+}
+
+/// Workflow management exposed to MCP tools.
+pub trait WorkflowClient: Send + Sync {
+    fn list_workflows(&self) -> Result<Value>;
+    fn get_workflow(&self, workflow_id: &str) -> Result<Value>;
+    fn run_workflow(&self, workflow_id: &str, inputs: Value) -> Result<Value>;
+    fn get_execution(&self, exec_id: i64) -> Result<Value>;
+}
+
+/// Vault (Markdown knowledge-base) operations exposed to MCP tools.
+pub trait VaultClient: Send + Sync {
+    fn list_vault_notes(&self) -> Result<Value>;
+    fn read_vault_note(&self, path: &str) -> Result<Value>;
+    fn get_backlinks(&self, note_id: &str) -> Result<Value>;
+    fn build_vault_graph(&self, repo_id: Option<&str>) -> Result<Value>;
 }
