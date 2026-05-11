@@ -105,6 +105,7 @@ impl Daemon {
         let pool = self.pool.clone();
         match tokio::task::spawn_blocking(move || {
             let mut conn = pool.get()?;
+            let config = crate::config::Config::load().ok();
             let repos = if let Some(threshold) = index_threshold {
                 crate::registry::repo::list_repos_need_index(&conn, &threshold)?
             } else {
@@ -112,7 +113,7 @@ impl Daemon {
             };
             let mut count = 0;
             for repo in repos {
-                if let Err(e) = index_repo(&mut conn, &repo) {
+                if let Err(e) = index_repo(&mut conn, &repo, config.as_ref()) {
                     tracing::warn!("Failed to index {}: {}", repo.id, e);
                 } else {
                     count += 1;
