@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+use crate::clients::{DigestClient, VaultClient};
 use crate::mcp::McpTool;
+use crate::registry::VaultNote;
 use anyhow::Context;
 
 #[derive(Clone)]
@@ -51,42 +53,45 @@ Returns: JSON array of matching notes. Each includes: id, title, path, and tags.
             .and_then(|v| v.as_str())
             .context("Missing required argument: query")?;
 
-        let pool = ctx.pool();
-        let results = tokio::task::spawn_blocking({
-            let query = query.to_string();
-            move || {
-                let conn = pool.get()?;
-                let notes = crate::registry::vault::list_vault_notes(&conn)?;
-                let keywords: Vec<&str> = query.split_whitespace().collect();
+        let ctx = ctx.clone();
+        let query_owned = query.to_string();
+        let results = tokio::task::spawn_blocking(move || {
+            let value = ctx.list_vault_notes()?;
+            let notes: Vec<VaultNote> = serde_json::from_value(
+                value.get("notes").cloned().unwrap_or(serde_json::json!([])),
+            )
+            .unwrap_or_default();
+            let keywords: Vec<&str> = query_owned.split_whitespace().collect();
 
-                let filtered: Vec<_> = notes
-                    .into_iter()
-                    .filter(|n| {
-                        let content = crate::vault::fs_io::read_note_body(&n.path)
-                            .map(|(body, _fm)| body)
-                            .unwrap_or_default();
-                        let hay = format!(
-                            "{} {} {} {}",
-                            n.id,
-                            n.title.as_deref().unwrap_or(""),
-                            n.tags.join(","),
-                            content
-                        )
-                        .to_lowercase();
-                        keywords.iter().all(|kw| hay.contains(&kw.to_lowercase()))
+            let filtered: Vec<_> = notes
+                .into_iter()
+                .filter(|n| {
+                    let content = ctx
+                        .read_vault_note(&n.path)
+                        .ok()
+                        .and_then(|v| v.get("content").and_then(|c| c.as_str()).map(String::from))
+                        .unwrap_or_default();
+                    let hay = format!(
+                        "{} {} {} {}",
+                        n.id,
+                        n.title.as_deref().unwrap_or(""),
+                        n.tags.join(","),
+                        content
+                    )
+                    .to_lowercase();
+                    keywords.iter().all(|kw| hay.contains(&kw.to_lowercase()))
+                })
+                .map(|n| {
+                    serde_json::json!({
+                        "id": n.id,
+                        "title": n.title,
+                        "path": n.path,
+                        "tags": n.tags,
                     })
-                    .map(|n| {
-                        serde_json::json!({
-                            "id": n.id,
-                            "title": n.title,
-                            "path": n.path,
-                            "tags": n.tags,
-                        })
-                    })
-                    .collect();
+                })
+                .collect();
 
-                anyhow::Ok(filtered)
-            }
+            anyhow::Ok(filtered)
         })
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
@@ -140,15 +145,18 @@ Returns: JSON with frontmatter (id, repo, tags, ai_context, created, updated) an
     async fn invoke(
         &self,
         args: serde_json::Value,
-        _ctx: &mut crate::storage::AppContext,
+        ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let path = args
             .get("path")
             .and_then(|v| v.as_str())
             .context("Missing required argument: path")?;
 
-        let (body, frontmatter) = crate::vault::fs_io::read_note_body(path)
+        let value = ctx
+            .read_vault_note(path)
             .context("Failed to read note — file not found or unreadable")?;
+        let body = value.get("content").cloned().unwrap_or(serde_json::json!(""));
+        let frontmatter = value.get("frontmatter").cloned().unwrap_or(serde_json::json!(null));
 
         Ok(serde_json::json!({
             "success": true,
@@ -325,30 +333,12 @@ Returns: JSON array of backlinking notes, each with id, title, and path."#,
             .and_then(|v| v.as_str())
             .context("Missing required argument: note_id")?;
 
-        let vault_dir = ctx.storage.workspace_dir().ok().map(|ws| ws.join("vault"));
-        let backlinks = tokio::task::spawn_blocking({
-            let note_id = note_id.to_string();
-            let vault_dir = vault_dir.clone();
-            move || {
-                if let Some(vd) = vault_dir {
-                    match crate::vault::backlinks::build_backlink_index(&vd) {
-                        Ok(index) => crate::vault::backlinks::get_backlinks(&index, &note_id),
-                        Err(_) => Vec::new(),
-                    }
-                } else {
-                    Vec::new()
-                }
-            }
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?;
-
-        Ok(serde_json::json!({
-            "success": true,
-            "target": note_id,
-            "count": backlinks.len(),
-            "backlinks": backlinks,
-        }))
+        let ctx = ctx.clone();
+        let note_id = note_id.to_string();
+        let value = tokio::task::spawn_blocking(move || ctx.get_backlinks(&note_id))
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+        Ok(value)
     }
 }
 
@@ -386,39 +376,32 @@ Returns: JSON with success status and the generated file path."#,
         let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
         let rel_path = format!("99-Meta/Daily/{}.md", today);
 
-        let pool = ctx.pool();
-        let config = ctx.config.clone();
-        let i18n = ctx.i18n;
-
+        let ctx = ctx.clone();
+        let today_owned = today.clone();
         let vault_root = ctx
             .storage
             .workspace_dir()
             .map(|ws| ws.join("vault"))
             .unwrap_or_else(|_| std::path::PathBuf::from("vault"));
-        let file_path = tokio::task::spawn_blocking({
-            let rel_path = rel_path.clone();
-            let today = today.clone();
-            let vault_root = vault_root.clone();
-            move || {
-                let conn = pool.get()?;
-                let digest = crate::digest::generate_daily_digest(&conn, &config, &i18n)?;
+        let file_path = tokio::task::spawn_blocking(move || {
+            let digest = ctx.generate_daily_digest()?;
+            let digest_str = digest.get("digest").and_then(|v| v.as_str()).unwrap_or("");
 
-                let target = resolve_vault_path(&rel_path, &vault_root)?;
+            let target = resolve_vault_path(&rel_path, &vault_root)?;
 
-                if let Some(parent) = target.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-
-                let content = if target.exists() {
-                    let existing = std::fs::read_to_string(&target)?;
-                    format!("{}\n\n{}", existing, digest)
-                } else {
-                    format!("---\ndate: {}\ntags: [\"daily\"]\n---\n\n{}", today, digest)
-                };
-
-                std::fs::write(&target, content)?;
-                anyhow::Ok(target.to_string_lossy().to_string())
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)?;
             }
+
+            let content = if target.exists() {
+                let existing = std::fs::read_to_string(&target)?;
+                format!("{}\n\n{}", existing, digest_str)
+            } else {
+                format!("---\ndate: {}\ntags: [\"daily\"]\n---\n\n{}", today_owned, digest_str)
+            };
+
+            std::fs::write(&target, content)?;
+            anyhow::Ok(target.to_string_lossy().to_string())
         })
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
@@ -468,110 +451,10 @@ Returns: JSON with nodes (id, title) and edges (source, target)."#,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-        let vault_dir = ctx.storage.workspace_dir().ok().map(|ws| ws.join("vault"));
-        let graph = tokio::task::spawn_blocking({
-            let repo_id = repo_id.clone();
-            let vault_dir = vault_dir.clone();
-            move || {
-                let Some(vd) = vault_dir else {
-                    return anyhow::Ok(serde_json::json!({
-                        "success": true,
-                        "count": 0,
-                        "edge_count": 0,
-                        "nodes": [],
-                        "edges": [],
-                    }));
-                };
-
-                let index = crate::vault::backlinks::build_backlink_index(&vd)?;
-
-                let mut id_to_title: std::collections::HashMap<String, String> =
-                    std::collections::HashMap::new();
-                let mut id_to_repo: std::collections::HashMap<String, String> =
-                    std::collections::HashMap::new();
-
-                for entry in walkdir::WalkDir::new(&vd)
-                    .follow_links(false)
-                    .into_iter()
-                    .filter_map(|e| e.ok())
-                    .filter(|e| e.file_type().is_file())
-                    .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
-                {
-                    let path = entry.path();
-                    let rel_path = path.strip_prefix(&vd).unwrap_or(path);
-                    let id = rel_path.to_string_lossy().replace('\\', "/");
-
-                    let content = match std::fs::read_to_string(path) {
-                        Ok(c) => c,
-                        Err(_) => continue,
-                    };
-
-                    if let Some((fm, _)) = crate::vault::frontmatter::extract_frontmatter(&content)
-                    {
-                        id_to_title.insert(id.clone(), fm.title.unwrap_or_else(|| id.clone()));
-                        if let Some(repo) = fm.repo {
-                            id_to_repo.insert(id, repo);
-                        }
-                    } else {
-                        id_to_title.insert(id.clone(), id.clone());
-                    }
-                }
-
-                let allowed_ids: std::collections::HashSet<String> = if let Some(ref rid) = repo_id
-                {
-                    id_to_repo.iter().filter(|(_, r)| *r == rid).map(|(id, _)| id.clone()).collect()
-                } else {
-                    id_to_title.keys().cloned().collect()
-                };
-
-                // Normalize wikilink targets (e.g. "b" -> "b.md") to vault file ids.
-                let mut id_lookup: std::collections::HashMap<String, String> =
-                    std::collections::HashMap::new();
-                for id in id_to_title.keys() {
-                    id_lookup.insert(id.clone(), id.clone());
-                    if let Some(stem) = id.strip_suffix(".md") {
-                        id_lookup.insert(stem.to_string(), id.clone());
-                    }
-                }
-
-                let nodes: Vec<_> = allowed_ids
-                    .iter()
-                    .map(|id| {
-                        serde_json::json!({
-                            "id": id,
-                            "title": id_to_title.get(id).unwrap_or(id),
-                        })
-                    })
-                    .collect();
-
-                let mut edges = Vec::new();
-                for (target, sources) in &index {
-                    let normalized =
-                        id_lookup.get(target).cloned().unwrap_or_else(|| target.clone());
-                    if !allowed_ids.contains(&normalized) {
-                        continue;
-                    }
-                    for source in sources {
-                        if allowed_ids.contains(source) {
-                            edges.push(serde_json::json!({
-                                "source": source,
-                                "target": &normalized,
-                            }));
-                        }
-                    }
-                }
-
-                anyhow::Ok(serde_json::json!({
-                    "success": true,
-                    "count": nodes.len(),
-                    "edge_count": edges.len(),
-                    "nodes": nodes,
-                    "edges": edges,
-                }))
-            }
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+        let ctx = ctx.clone();
+        let graph = tokio::task::spawn_blocking(move || ctx.build_vault_graph(repo_id.as_deref()))
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
 
         Ok(graph)
     }

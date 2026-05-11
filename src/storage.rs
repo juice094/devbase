@@ -116,12 +116,13 @@ impl StorageBackend for DefaultStorageBackend {
 ///
 /// 命令处理函数应通过此结构体获取所有外部依赖，
 /// 避免直接调用全局函数或读取环境变量。
+#[derive(Clone)]
 pub struct AppContext {
     pub storage: Arc<dyn StorageBackend>,
     pub config: Config,
     pub i18n: I18n,
     pool: Pool<SqliteConnectionManager>,
-    env_cache: std::sync::Mutex<EnvVersionCache>,
+    env_cache: Arc<std::sync::Mutex<EnvVersionCache>>,
 }
 
 impl AppContext {
@@ -146,7 +147,7 @@ impl AppContext {
             config,
             i18n,
             pool,
-            env_cache: std::sync::Mutex::new(EnvVersionCache::default()),
+            env_cache: Arc::new(std::sync::Mutex::new(EnvVersionCache::default())),
         })
     }
 
@@ -169,7 +170,7 @@ impl AppContext {
             config,
             i18n,
             pool,
-            env_cache: std::sync::Mutex::new(EnvVersionCache::default()),
+            env_cache: Arc::new(std::sync::Mutex::new(EnvVersionCache::default())),
         })
     }
 

@@ -382,6 +382,131 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
             "dead_functions": out
         }))
     }
+
+    fn save_relation(
+        &self,
+        from: &str,
+        to: &str,
+        relation_type: &str,
+        confidence: f64,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        crate::registry::relation::save_relation(&conn, from, to, relation_type, confidence)?;
+        Ok(serde_json::json!({ "success": true }))
+    }
+
+    fn query_relations(
+        &self,
+        entity_id: &str,
+        direction: &str,
+        relation_type: Option<&str>,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let results = match direction {
+            "bidirectional" => {
+                let rows = crate::registry::relation::find_related_entities(
+                    &conn,
+                    entity_id,
+                    relation_type,
+                )?;
+                rows.into_iter()
+                    .map(|(from, to, rt, conf, created)| {
+                        serde_json::json!({
+                            "from_entity_id": from,
+                            "to_entity_id": to,
+                            "relation_type": rt,
+                            "confidence": conf,
+                            "created_at": created
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            }
+            "incoming" => {
+                let mut stmt = conn.prepare(
+                    "SELECT from_entity_id, relation_type, confidence, created_at FROM relations
+                     WHERE to_entity_id = ?1
+                     ORDER BY confidence DESC",
+                )?;
+                let rows = stmt.query_map([entity_id], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, f64>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                })?;
+                let filtered: Vec<_> = if let Some(rt) = relation_type.filter(|s| !s.is_empty()) {
+                    rows.filter(|r| r.as_ref().map(|(_, t, _, _)| t == rt).unwrap_or(false))
+                        .collect::<Result<Vec<_>, _>>()?
+                } else {
+                    rows.collect::<Result<Vec<_>, _>>()?
+                };
+                filtered
+                    .into_iter()
+                    .map(|(from, rt, conf, created)| {
+                        serde_json::json!({
+                            "from_entity_id": from,
+                            "relation_type": rt,
+                            "confidence": conf,
+                            "created_at": created
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            }
+            _ => {
+                let rows =
+                    crate::registry::relation::list_relations(&conn, entity_id, relation_type)?;
+                rows.into_iter()
+                    .map(|(to, rt, conf, created)| {
+                        serde_json::json!({
+                            "to_entity_id": to,
+                            "relation_type": rt,
+                            "confidence": conf,
+                            "created_at": created
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            }
+        };
+        Ok(serde_json::json!({ "success": true, "relations": results }))
+    }
+
+    fn delete_relations(
+        &self,
+        from: &str,
+        to: &str,
+        relation_type: Option<&str>,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let count = match relation_type.filter(|s| !s.is_empty()) {
+            Some(rt) => conn.execute(
+                "DELETE FROM relations WHERE from_entity_id = ?1 AND to_entity_id = ?2 AND relation_type = ?3",
+                rusqlite::params![from, to, rt],
+            )?,
+            None => conn.execute(
+                "DELETE FROM relations WHERE from_entity_id = ?1 AND to_entity_id = ?2",
+                rusqlite::params![from, to],
+            )?,
+        };
+        Ok(serde_json::json!({ "success": true, "deleted": count }))
+    }
+
+    fn list_vault_notes(&self) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let notes = crate::registry::vault::list_vault_notes(&conn)?;
+        let results: Vec<serde_json::Value> = notes
+            .into_iter()
+            .map(|n| {
+                serde_json::json!({
+                    "id": n.id,
+                    "path": n.path,
+                    "title": n.title,
+                    "tags": n.tags,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({ "success": true, "count": results.len(), "notes": results }))
+    }
 }
 
 #[cfg(test)]
