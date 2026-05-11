@@ -1,2 +1,10 @@
 ﻿[env]
 RUST_TEST_THREADS = "1"
+
+# [build]
+# rustc-wrapper = "sccache"  # 取消注释以启用 sccache（需先安装: cargo install sccache）
+# 或在 shell 中设置环境变量: RUSTC_WRAPPER=sccache cargo build
+
+# [registries.crates-io]
+# protocol = "sparse"
+# protocol = "sparse" is default in Rust 1.70+
