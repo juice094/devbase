@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+use crate::config::Config;
+use crate::i18n::{I18n, from_language};
+use crate::registry::{ENTITY_TYPE_REPO, WorkspaceRegistry};
+use crate::search::{list_indexed_repo_ids_at, sync_index_to_db};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use std::path::PathBuf;
@@ -114,8 +118,8 @@ impl StorageBackend for DefaultStorageBackend {
 /// 避免直接调用全局函数或读取环境变量。
 pub struct AppContext {
     pub storage: Arc<dyn StorageBackend>,
-    pub config: crate::config::Config,
-    pub i18n: crate::i18n::I18n,
+    pub config: Config,
+    pub i18n: I18n,
     pool: Pool<SqliteConnectionManager>,
     env_cache: std::sync::Mutex<EnvVersionCache>,
 }
@@ -126,17 +130,17 @@ impl AppContext {
         let storage: Arc<dyn StorageBackend> = Arc::new(DefaultStorageBackend);
         let path = storage.db_path()?;
         // 先执行 init_db_with 确保数据库已初始化并迁移
-        let mut conn = crate::registry::WorkspaceRegistry::init_db_with(&*storage)?;
+        let mut conn = WorkspaceRegistry::init_db_with(&*storage)?;
         if let Err(e) = repair_tantivy_consistency(&mut conn) {
             tracing::warn!("Startup Tantivy consistency check failed: {}", e);
         }
-        if let Err(e) = crate::search::sync_index_to_db(&conn) {
+        if let Err(e) = sync_index_to_db(&conn) {
             tracing::warn!("Startup Tantivy/SQLite orphan sync failed: {}", e);
         }
         drop(conn);
         let pool = Self::build_pool(&path)?;
-        let config = crate::config::Config::load()?;
-        let i18n = crate::i18n::from_language(&config.general.language);
+        let config = Config::load()?;
+        let i18n = from_language(&config.general.language);
         Ok(Self {
             storage,
             config,
@@ -149,17 +153,17 @@ impl AppContext {
     /// 使用自定义存储后端创建上下文（主要用于测试）。
     pub fn with_storage(storage: Arc<dyn StorageBackend>) -> anyhow::Result<Self> {
         let path = storage.db_path()?;
-        let mut conn = crate::registry::WorkspaceRegistry::init_db_with(&*storage)?;
+        let mut conn = WorkspaceRegistry::init_db_with(&*storage)?;
         if let Err(e) = repair_tantivy_consistency(&mut conn) {
             tracing::warn!("Startup Tantivy consistency check failed: {}", e);
         }
-        if let Err(e) = crate::search::sync_index_to_db(&conn) {
+        if let Err(e) = sync_index_to_db(&conn) {
             tracing::warn!("Startup Tantivy/SQLite orphan sync failed: {}", e);
         }
         drop(conn);
         let pool = Self::build_pool(&path)?;
-        let config = crate::config::Config::load()?;
-        let i18n = crate::i18n::from_language(&config.general.language);
+        let config = Config::load()?;
+        let i18n = from_language(&config.general.language);
         Ok(Self {
             storage,
             config,
@@ -227,7 +231,7 @@ pub(crate) struct RepairResult {
 pub(crate) fn repair_tantivy_consistency(
     conn: &mut rusqlite::Connection,
 ) -> anyhow::Result<RepairResult> {
-    let backend = crate::storage::DefaultStorageBackend {};
+    let backend = DefaultStorageBackend {};
     let index_path = match backend.index_path() {
         Ok(p) => p,
         Err(e) => {
@@ -246,22 +250,21 @@ pub(crate) fn repair_tantivy_consistency_at(
     index_path: &std::path::Path,
     conn: &mut rusqlite::Connection,
 ) -> anyhow::Result<RepairResult> {
-    let tantivy_ids: std::collections::HashSet<String> =
-        match crate::search::list_indexed_repo_ids_at(index_path) {
-            Ok(ids) => ids.into_iter().collect(),
-            Err(e) => {
-                tracing::warn!("Failed to list Tantivy repo IDs: {}", e);
-                return Ok(RepairResult {
-                    orphans: 0,
-                    missing_from_index: 0,
-                });
-            }
-        };
+    let tantivy_ids: std::collections::HashSet<String> = match list_indexed_repo_ids_at(index_path)
+    {
+        Ok(ids) => ids.into_iter().collect(),
+        Err(e) => {
+            tracing::warn!("Failed to list Tantivy repo IDs: {}", e);
+            return Ok(RepairResult {
+                orphans: 0,
+                missing_from_index: 0,
+            });
+        }
+    };
 
     let sqlite_ids: std::collections::HashSet<String> = {
         let mut stmt = conn.prepare("SELECT id FROM entities WHERE entity_type = ?1")?;
-        let rows =
-            stmt.query_map([crate::registry::ENTITY_TYPE_REPO], |row| row.get::<_, String>(0))?;
+        let rows = stmt.query_map([ENTITY_TYPE_REPO], |row| row.get::<_, String>(0))?;
         rows.filter_map(Result::ok).collect()
     };
 
@@ -356,6 +359,7 @@ impl StorageBackend for TempStorageBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::search::{add_repo_doc, commit_writer, get_writer, init_index_at};
 
     #[test]
     fn test_app_context_with_temp_storage() {
@@ -369,27 +373,19 @@ mod tests {
 
     #[test]
     fn test_repair_tantivy_consistency_detects_orphan() {
-        let backend = crate::storage::TempStorageBackend::new();
+        let backend = TempStorageBackend::new();
         let index_path = backend.index_path().unwrap();
         let db_path = backend.db_path().unwrap();
 
         // Initialize DB with full schema
-        let mut conn = crate::registry::WorkspaceRegistry::init_db_at(&db_path).unwrap();
+        let mut conn = WorkspaceRegistry::init_db_at(&db_path).unwrap();
 
         // Add a Tantivy doc for a repo that does NOT exist in SQLite
-        let (index, _reader) = crate::search::init_index_at(&index_path).unwrap();
-        let mut writer = crate::search::get_writer(&index).unwrap();
+        let (index, _reader) = init_index_at(&index_path).unwrap();
+        let mut writer = get_writer(&index).unwrap();
         let schema = index.schema();
-        crate::search::add_repo_doc(
-            &mut writer,
-            &schema,
-            "ghost_repo",
-            "Ghost",
-            "ghost content",
-            &[],
-        )
-        .unwrap();
-        crate::search::commit_writer(&mut writer).unwrap();
+        add_repo_doc(&mut writer, &schema, "ghost_repo", "Ghost", "ghost content", &[]).unwrap();
+        commit_writer(&mut writer).unwrap();
         drop(writer);
         drop(index);
         // Windows releases Tantivy mmap handles asynchronously.
