@@ -8,11 +8,11 @@
 
 | 指标 | 状态 |
 |:---|:---|
-| 版本 | v0.8.0 |
-| 测试 | 267 passed / 0 failed / 3 ignored |
+| 版本 | v0.15.0 |
+| 测试 | 427 passed / 0 failed / 3 ignored |
 | Clippy | `-D warnings` 全绿 |
 | 生产代码 unwrap | 0 |
-| 许可证 | MIT |
+| 许可证 | AGPL-3.0-or-later |
 
 ---
 
