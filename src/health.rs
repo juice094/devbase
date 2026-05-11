@@ -475,6 +475,24 @@ impl HealthClient for AppContext {
     }
 }
 
+/// Stateless implementation of [`RepoAnalyzer`] for use in spawn_blocking closures.
+pub struct RepoAnalyzerImpl;
+
+impl crate::clients::RepoAnalyzer for RepoAnalyzerImpl {
+    fn compute_workspace_hash(&self, path: &str) -> anyhow::Result<String> {
+        compute_workspace_hash(std::path::Path::new(path))
+    }
+
+    fn analyze_repo(
+        &self,
+        path: &str,
+        upstream_url: Option<&str>,
+        default_branch: Option<&str>,
+    ) -> anyhow::Result<(String, usize, usize)> {
+        Ok(analyze_repo(path, upstream_url, default_branch))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -302,6 +302,24 @@ fn open_index_at(path: &std::path::Path) -> Result<(Index, Schema), TantivyError
     Ok((idx, schema))
 }
 
+/// Stateless implementation of [`crate::clients::SearchClient`] for use in spawn_blocking closures.
+pub struct SearchClientImpl;
+
+impl crate::clients::SearchClient for SearchClientImpl {
+    fn index_is_empty_at(&self, path: &std::path::Path) -> anyhow::Result<bool> {
+        index_is_empty_at(path).map_err(|e| anyhow::anyhow!(e))
+    }
+
+    fn search_repos_at(
+        &self,
+        path: &std::path::Path,
+        query: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<(String, f32)>> {
+        search_repos_at(path, query, limit).map_err(|e| anyhow::anyhow!(e))
+    }
+}
+
 #[cfg(test)]
 pub(crate) static SEARCH_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 

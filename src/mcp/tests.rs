@@ -398,38 +398,62 @@ fn mock_repo(
 }
 
 #[test]
-fn test_nl_filter_repos_empty_query_returns_empty() {
+fn test_nl_filter_repos_empty_query_returns_empty() -> anyhow::Result<()> {
     let _guard = NL_FILTER_TEST_LOCK.lock().unwrap();
-    let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
+    let conn = crate::registry::WorkspaceRegistry::init_in_memory()?;
     let repos: Vec<crate::registry::RepoEntry> = vec![];
-    let results = crate::mcp::tools::repo::nl_filter_repos("", &repos, &conn).unwrap();
+    let backend = crate::storage::TempStorageBackend::new();
+    let index_path = backend.index_path()?;
+    let searcher = crate::search::SearchClientImpl;
+    let analyzer = crate::health::RepoAnalyzerImpl;
+    let results = crate::mcp::tools::repo::nl_filter_repos_at(
+        &index_path,
+        "",
+        &repos,
+        &conn,
+        &searcher,
+        &analyzer,
+    )?;
     assert!(results.is_empty());
+    Ok(())
 }
 
 #[test]
-fn test_nl_filter_repos_fallback_finds_by_language() {
+fn test_nl_filter_repos_fallback_finds_by_language() -> anyhow::Result<()> {
     let _guard = NL_FILTER_TEST_LOCK.lock().unwrap();
-    let conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
+    let conn = crate::registry::WorkspaceRegistry::init_in_memory()?;
     let repos = vec![
         mock_repo("repo1", Some("rust"), vec!["cli"], Some(10)),
         mock_repo("repo2", Some("python"), vec!["web"], Some(5)),
     ];
-    let results = crate::mcp::tools::repo::nl_filter_repos("rust cli tool", &repos, &conn).unwrap();
+    let backend = crate::storage::TempStorageBackend::new();
+    let index_path = backend.index_path()?;
+    let searcher = crate::search::SearchClientImpl;
+    let analyzer = crate::health::RepoAnalyzerImpl;
+    let results = crate::mcp::tools::repo::nl_filter_repos_at(
+        &index_path,
+        "rust cli tool",
+        &repos,
+        &conn,
+        &searcher,
+        &analyzer,
+    )?;
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, "repo1");
+    Ok(())
 }
 
 #[test]
-fn test_nl_filter_repos_tantivy_finds_devbase() {
+fn test_nl_filter_repos_tantivy_finds_devbase() -> anyhow::Result<()> {
     let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
-    let index_path = backend.index_path().unwrap();
+    let index_path = backend.index_path()?;
 
     // Ensure DB schema exists
-    let conn = crate::registry::WorkspaceRegistry::init_db_with(&*backend).unwrap();
+    let conn = crate::registry::WorkspaceRegistry::init_db_with(&*backend)?;
 
     // Populate Tantivy index with devbase doc
-    let (index, _reader) = crate::search::init_index_at(&index_path).unwrap();
-    let mut writer = crate::search::get_writer(&index).unwrap();
+    let (index, _reader) = crate::search::init_index_at(&index_path)?;
+    let mut writer = crate::search::get_writer(&index)?;
     let schema = index.schema();
     crate::search::add_repo_doc(
         &mut writer,
@@ -438,9 +462,8 @@ fn test_nl_filter_repos_tantivy_finds_devbase() {
         "devbase developer workspace manager",
         "rust, cli, workspace, developer",
         &["rust".to_string(), "cli".to_string()],
-    )
-    .unwrap();
-    crate::search::commit_writer(&mut writer).unwrap();
+    )?;
+    crate::search::commit_writer(&mut writer)?;
 
     let repos = vec![crate::registry::RepoEntry {
         id: "devbase".to_string(),
@@ -455,15 +478,19 @@ fn test_nl_filter_repos_tantivy_finds_devbase() {
         remotes: vec![],
     }];
 
+    let searcher = crate::search::SearchClientImpl;
+    let analyzer = crate::health::RepoAnalyzerImpl;
     let results = crate::mcp::tools::repo::nl_filter_repos_at(
         &index_path,
         "developer workspace",
         &repos,
         &conn,
-    )
-    .unwrap();
+        &searcher,
+        &analyzer,
+    )?;
     assert!(!results.is_empty(), "tantivy path should find devbase");
     assert_eq!(results[0].id, "devbase");
+    Ok(())
 }
 
 #[test]

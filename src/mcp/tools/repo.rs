@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
 use super::super::McpTool;
-use crate::clients::{HealthClient, KnowledgeClient, ScanClient, SyncClient};
+use crate::clients::{
+    HealthClient, KnowledgeClient, RepoAnalyzer, ScanClient, SearchClient, SyncClient,
+};
+use crate::health::RepoAnalyzerImpl;
 use crate::registry::RepoEntry;
 use crate::repository::health::HealthRepository;
 use crate::repository::repo::RepoRepository;
 use crate::repository::workspace::WorkspaceRepository;
-use crate::storage::{AppContext, StorageBackend};
+use crate::search::SearchClientImpl;
+use crate::storage::AppContext;
 use anyhow::Context;
 
 #[derive(Clone)]
@@ -309,6 +313,7 @@ Returns: JSON array of repo objects. Each includes: id, local_path, language, ta
         let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(50) as usize;
 
         let pool = ctx.pool();
+        let analyzer = RepoAnalyzerImpl;
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
             let repos = RepoRepository::new(&conn).list_repos(None)?;
@@ -332,12 +337,13 @@ Returns: JSON array of repo objects. Each includes: id, local_path, language, ta
                 let (ahead, behind, dirty) = if repo.workspace_type == "git" {
                     let (st, ah, bh) = match HealthRepository::new(&conn).get_health(&repo.id)? {
                         Some(health) => (health.status.clone(), health.ahead, health.behind),
-                        None => analyze_repo_for_repo(&repo),
+                        None => analyze_repo_for_repo(&repo, &analyzer)?,
                     };
                     let dirty = st == "dirty" || st == "changed";
                     (ah, bh, dirty)
                 } else {
-                    let dirty = match crate::health::compute_workspace_hash(&repo.local_path) {
+                    let path_str = repo.local_path.to_string_lossy();
+                    let dirty = match analyzer.compute_workspace_hash(&path_str) {
                         Ok(current_hash) => {
                             match WorkspaceRepository::new(&conn).get_latest_snapshot(&repo.id)? {
                                 Some(prev) => prev.file_hash != current_hash,
@@ -440,10 +446,14 @@ Returns: JSON array of matching repos with metadata, same format as devkit_query
         let query = query.to_string();
 
         let pool = ctx.pool();
+        let index_path = ctx.storage.index_path()?;
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
             let repos = RepoRepository::new(&conn).list_repos(None)?;
-            let filtered = nl_filter_repos(&query, &repos, &conn)?;
+            let searcher = SearchClientImpl;
+            let analyzer = RepoAnalyzerImpl;
+            let filtered =
+                nl_filter_repos_at(&index_path, &query, &repos, &conn, &searcher, &analyzer)?;
 
             let results: Vec<serde_json::Value> = filtered
                 .into_iter()
@@ -469,12 +479,13 @@ Returns: JSON array of matching repos with metadata, same format as devkit_query
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
     }
 }
-fn apply_nl_filters(
+fn apply_nl_filters<A: RepoAnalyzer>(
     repo: &RepoEntry,
     q: &str,
     stars_cond: Option<(char, u64)>,
     explicit_tag: Option<&str>,
     conn: &rusqlite::Connection,
+    analyzer: &A,
 ) -> anyhow::Result<bool> {
     // Language filter: only apply if query explicitly mentions a language keyword
     let lang_keywords = [
@@ -527,7 +538,7 @@ fn apply_nl_filters(
     {
         let (st, ah, bh) = match HealthRepository::new(conn).get_health(&repo.id)? {
             Some(h) => (h.status.clone(), h.ahead, h.behind),
-            None => analyze_repo_for_repo(repo),
+            None => analyze_repo_for_repo(repo, analyzer)?,
         };
         let dirty = st == "dirty" || st == "changed";
 
@@ -550,38 +561,14 @@ fn apply_nl_filters(
 
     Ok(true)
 }
-pub(crate) fn nl_filter_repos(
-    query: &str,
-    repos: &[RepoEntry],
-    conn: &rusqlite::Connection,
-) -> anyhow::Result<Vec<RepoEntry>> {
-    let backend = crate::storage::DefaultStorageBackend {};
-    let index_path = match backend.index_path() {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::warn!("Failed to resolve index path: {}", e);
-            // Fallback to non-Tantivy path
-            let q = query.to_lowercase();
-            let stars_cond = parse_stars_condition(&q);
-            let explicit_tag = extract_tag_from_query(&q);
-            let mut results = Vec::new();
-            for repo in repos {
-                if apply_nl_filters(repo, &q, stars_cond, explicit_tag.as_deref(), conn)? {
-                    results.push(repo.clone());
-                }
-            }
-            return Ok(results);
-        }
-    };
-    nl_filter_repos_at(&index_path, query, repos, conn)
-}
-
 /// Filter repos using an explicit Tantivy index path, bypassing global storage backend.
-pub(crate) fn nl_filter_repos_at(
+pub(crate) fn nl_filter_repos_at<S: SearchClient, A: RepoAnalyzer>(
     index_path: &std::path::Path,
     query: &str,
     repos: &[RepoEntry],
     conn: &rusqlite::Connection,
+    searcher: &S,
+    analyzer: &A,
 ) -> anyhow::Result<Vec<RepoEntry>> {
     let q = query.to_lowercase();
     let stars_cond = parse_stars_condition(&q);
@@ -597,7 +584,7 @@ pub(crate) fn nl_filter_repos_at(
         || q.contains("uptodate");
 
     // Try Tantivy search first if index is not empty
-    let use_tantivy = match crate::search::index_is_empty_at(index_path) {
+    let use_tantivy = match searcher.index_is_empty_at(index_path) {
         Ok(empty) => !empty,
         Err(e) => {
             tracing::warn!("Failed to check search index: {}", e);
@@ -607,7 +594,7 @@ pub(crate) fn nl_filter_repos_at(
 
     if use_tantivy && !query.trim().is_empty() {
         let limit = repos.len().max(1000);
-        match crate::search::search_repos_at(index_path, query, limit) {
+        match searcher.search_repos_at(index_path, query, limit) {
             Ok(search_results) => {
                 let repo_map: std::collections::HashMap<_, _> =
                     repos.iter().map(|r| (r.id.clone(), r)).collect();
@@ -618,7 +605,14 @@ pub(crate) fn nl_filter_repos_at(
                         continue;
                     }
                     if let Some(repo) = repo_map.get(&id)
-                        && apply_nl_filters(repo, &q, stars_cond, explicit_tag.as_deref(), conn)?
+                        && apply_nl_filters(
+                            repo,
+                            &q,
+                            stars_cond,
+                            explicit_tag.as_deref(),
+                            conn,
+                            analyzer,
+                        )?
                     {
                         results.push((*repo).clone());
                     }
@@ -640,7 +634,7 @@ pub(crate) fn nl_filter_repos_at(
     // Fallback: iterate all repos with hardcoded regex logic
     let mut results = Vec::new();
     for repo in repos {
-        if apply_nl_filters(repo, &q, stars_cond, explicit_tag.as_deref(), conn)? {
+        if apply_nl_filters(repo, &q, stars_cond, explicit_tag.as_deref(), conn, analyzer)? {
             results.push(repo.clone());
         }
     }
@@ -677,12 +671,15 @@ fn extract_tag_from_query(q: &str) -> Option<String> {
         None
     }
 }
-fn analyze_repo_for_repo(repo: &RepoEntry) -> (String, usize, usize) {
+fn analyze_repo_for_repo<A: RepoAnalyzer>(
+    repo: &RepoEntry,
+    analyzer: &A,
+) -> anyhow::Result<(String, usize, usize)> {
     let path = repo.local_path.to_string_lossy();
     let primary = repo.primary_remote();
     let upstream_url = primary.and_then(|r| r.upstream_url.as_deref());
     let default_branch = primary.and_then(|r| r.default_branch.as_deref());
-    crate::health::analyze_repo(&path, upstream_url, default_branch)
+    analyzer.analyze_repo(&path, upstream_url, default_branch)
 }
 
 #[cfg(test)]
