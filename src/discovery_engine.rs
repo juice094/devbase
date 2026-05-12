@@ -300,4 +300,133 @@ my-lib = { path = "../my-lib" }
         assert!(discoveries.is_empty());
         std::fs::remove_dir_all(&tmp).unwrap();
     }
+
+    #[test]
+    fn test_discover_dependencies_package_json() {
+        let tmp1 =
+            std::env::temp_dir().join(format!("devbase_discover_npm1_{}", std::process::id()));
+        let tmp2 =
+            std::env::temp_dir().join(format!("devbase_discover_npm2_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp1).unwrap();
+        std::fs::create_dir_all(&tmp2).unwrap();
+        std::fs::write(tmp1.join("package.json"), r#"{"dependencies": {"my-lib": "^1.0.0"}}"#)
+            .unwrap();
+
+        let repo1 = RepoEntry {
+            id: "app".to_string(),
+            local_path: tmp1.clone(),
+            tags: vec![],
+            discovered_at: chrono::Utc::now(),
+            language: Some("node".to_string()),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        };
+        let repo2 = RepoEntry {
+            id: "my-lib".to_string(),
+            local_path: tmp2.clone(),
+            tags: vec![],
+            discovered_at: chrono::Utc::now(),
+            language: Some("node".to_string()),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        };
+
+        let discoveries = discover_dependencies(&[repo1, repo2]);
+        assert!(!discoveries.is_empty());
+        assert_eq!(discoveries[0].from, "app");
+        assert_eq!(discoveries[0].to, "my-lib");
+        assert_eq!(discoveries[0].relation_type, "depends_on");
+
+        std::fs::remove_dir_all(&tmp1).unwrap();
+        std::fs::remove_dir_all(&tmp2).unwrap();
+    }
+
+    #[test]
+    fn test_discover_dependencies_go_mod() {
+        let tmp1 =
+            std::env::temp_dir().join(format!("devbase_discover_go1_{}", std::process::id()));
+        let tmp2 =
+            std::env::temp_dir().join(format!("devbase_discover_go2_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp1).unwrap();
+        std::fs::create_dir_all(&tmp2).unwrap();
+        std::fs::write(
+            tmp1.join("go.mod"),
+            "module example.com/app\n\nrequire (\n\texample.com/my-lib v1.0.0\n)\n",
+        )
+        .unwrap();
+
+        let repo1 = RepoEntry {
+            id: "example.com/app".to_string(),
+            local_path: tmp1.clone(),
+            tags: vec![],
+            discovered_at: chrono::Utc::now(),
+            language: Some("go".to_string()),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        };
+        let repo2 = RepoEntry {
+            id: "example.com/my-lib".to_string(),
+            local_path: tmp2.clone(),
+            tags: vec![],
+            discovered_at: chrono::Utc::now(),
+            language: Some("go".to_string()),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        };
+
+        let discoveries = discover_dependencies(&[repo1, repo2]);
+        assert!(!discoveries.is_empty());
+        assert_eq!(discoveries[0].from, "example.com/app");
+        assert_eq!(discoveries[0].to, "example.com/my-lib");
+        assert_eq!(discoveries[0].relation_type, "depends_on");
+
+        std::fs::remove_dir_all(&tmp1).unwrap();
+        std::fs::remove_dir_all(&tmp2).unwrap();
+    }
+
+    #[test]
+    fn test_discover_similar_projects() {
+        let conn = crate::registry::test_helpers::WorkspaceRegistry::init_in_memory().unwrap();
+        conn.execute(
+            "INSERT INTO repo_summaries (repo_id, keywords, generated_at) VALUES (?1, ?2, datetime('now'))",
+            ["repo-a", "rust,cli,tool"],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO repo_summaries (repo_id, keywords, generated_at) VALUES (?1, ?2, datetime('now'))",
+            ["repo-b", "rust,web,server"],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO repo_summaries (repo_id, keywords, generated_at) VALUES (?1, ?2, datetime('now'))",
+            ["repo-c", "python,ml,ai"],
+        )
+        .unwrap();
+
+        let discoveries = discover_similar_projects(&conn).unwrap();
+        assert!(!discoveries.is_empty());
+
+        // repo-a and repo-b share "rust"
+        let ab = discoveries.iter().find(|d| {
+            (d.from == "repo-a" && d.to == "repo-b") || (d.from == "repo-b" && d.to == "repo-a")
+        });
+        assert!(ab.is_some(), "expected repo-a/repo-b similarity");
+        assert_eq!(ab.unwrap().relation_type, "similar_to");
+
+        // repo-c has no overlap with others
+        let c_involved = discoveries.iter().any(|d| d.from == "repo-c" || d.to == "repo-c");
+        assert!(!c_involved, "repo-c should have no similar projects");
+    }
 }
