@@ -18,6 +18,7 @@ pub enum OplogEventType {
     Index,
     HealthCheck,
     KnownLimit,
+    AgentContext,
 }
 
 impl OplogEventType {
@@ -28,6 +29,7 @@ impl OplogEventType {
             OplogEventType::Index => "index",
             OplogEventType::HealthCheck => "health_check",
             OplogEventType::KnownLimit => "known_limit",
+            OplogEventType::AgentContext => "agent_context",
         }
     }
 }
@@ -42,6 +44,7 @@ impl std::str::FromStr for OplogEventType {
             "health_check" => Ok(OplogEventType::HealthCheck),
             "health" => Ok(OplogEventType::HealthCheck),
             "known_limit" => Ok(OplogEventType::KnownLimit),
+            "agent_context" => Ok(OplogEventType::AgentContext),
             _ => Err(()),
         }
     }

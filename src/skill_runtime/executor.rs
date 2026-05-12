@@ -65,6 +65,45 @@ pub fn run_skill(
     cmd.env("DEVBASE_SKILL_ID", &skill.id);
     cmd.env("DEVBASE_HOME", devbase_home()?);
 
+    // P2-B: Inject active session context memories if available
+    if let Some(ctx_id) = resolve_active_context() {
+        if let Ok(memories) = crate::registry::agent_context::list_memories(conn, &ctx_id)
+            && !memories.is_empty()
+        {
+            let mem_json: Vec<serde_json::Value> = memories
+                .iter()
+                .map(|m| {
+                    serde_json::json!({
+                        "type": m.memory_type,
+                        "content": m.content,
+                    })
+                })
+                .collect();
+            cmd.env("DEVBASE_ACTIVE_CONTEXT", &ctx_id);
+            cmd.env(
+                "DEVBASE_CONTEXT_MEMORIES",
+                serde_json::to_string(&mem_json).unwrap_or_default(),
+            );
+        }
+        if let Ok(linked) = crate::registry::agent_context::list_linked_entities(conn, &ctx_id)
+            && !linked.is_empty()
+        {
+            let links_json: Vec<serde_json::Value> = linked
+                .iter()
+                .map(|(eid, ltype, _)| {
+                    serde_json::json!({
+                        "entity_id": eid,
+                        "link_type": ltype,
+                    })
+                })
+                .collect();
+            cmd.env(
+                "DEVBASE_CONTEXT_LINKS",
+                serde_json::to_string(&links_json).unwrap_or_default(),
+            );
+        }
+    }
+
     // Build JSON input from key=value args and pass via stdin
     let mut json_args = serde_json::Map::new();
     for arg in args {
@@ -213,6 +252,22 @@ pub(crate) fn check_hard_vetoes_for_skill(
         vetoes.len(),
         descriptions.join("\n")
     ))
+}
+
+/// Resolve the active agent context ID from environment or state file.
+fn resolve_active_context() -> Option<String> {
+    if let Ok(ctx) = std::env::var("DEVBASE_ACTIVE_CONTEXT")
+        && !ctx.is_empty()
+    {
+        return Some(ctx);
+    }
+    let state_file = crate::registry::WorkspaceRegistry::workspace_dir()
+        .ok()?
+        .join(".active_context");
+    std::fs::read_to_string(state_file)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn resolve_interpreter(path: &std::path::Path) -> (Option<String>, String) {

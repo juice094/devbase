@@ -236,6 +236,19 @@ Use this when the user wants to:
                 } else {
                     vec![]
                 };
+
+                let linked =
+                    crate::registry::agent_context::list_linked_entities(&conn, context_id)?;
+                let linked_json: Vec<serde_json::Value> = linked
+                    .into_iter()
+                    .map(|(eid, ltype, _cat)| {
+                        json!({
+                            "entity_id": eid,
+                            "link_type": ltype,
+                        })
+                    })
+                    .collect();
+
                 Ok(json!({
                     "success": true,
                     "context": {
@@ -248,6 +261,8 @@ Use this when the user wants to:
                     },
                     "memories": memory_json,
                     "memory_count": memory_json.len(),
+                    "linked_entities": linked_json,
+                    "linked_count": linked_json.len(),
                 }))
             }
             None => Ok(json!({
@@ -255,6 +270,324 @@ Use this when the user wants to:
                 "error": format!("Session '{}' not found", context_id)
             })),
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitSessionAttachTool;
+
+impl McpTool for DevkitSessionAttachTool {
+    fn name(&self) -> &'static str {
+        "devkit_session_attach"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        json!({
+            "description": r#"Attach an entity (repo, vault note, skill, etc.) to an agent session.
+
+Use this when the user wants to:
+- Link a repository to a project session
+- Associate a skill or vault note with the current context
+- Build a project workspace by connecting relevant resources"#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "context_id": { "type": "string", "description": "Session ID" },
+                    "entity_id": { "type": "string", "description": "Entity ID (repo_id, vault path, skill_id, etc.)" },
+                    "link_type": {
+                        "type": "string",
+                        "enum": ["linked_repo", "linked_vault", "linked_skill", "linked_paper", "linked"],
+                        "default": "linked",
+                        "description": "Type of relationship"
+                    }
+                },
+                "required": ["context_id", "entity_id"]
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let context_id = args.get("context_id").and_then(|v| v.as_str()).unwrap_or("");
+        let entity_id = args.get("entity_id").and_then(|v| v.as_str()).unwrap_or("");
+        let link_type = args.get("link_type").and_then(|v| v.as_str()).unwrap_or("linked");
+        if context_id.is_empty() {
+            anyhow::bail!("Missing required argument: context_id");
+        }
+        if entity_id.is_empty() {
+            anyhow::bail!("Missing required argument: entity_id");
+        }
+
+        let mut conn = ctx.conn_mut()?;
+        crate::registry::agent_context::attach_entity(&mut conn, context_id, entity_id, link_type)?;
+        Ok(json!({
+            "success": true,
+            "context_id": context_id,
+            "entity_id": entity_id,
+            "link_type": link_type,
+        }))
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitSessionDetachTool;
+
+impl McpTool for DevkitSessionDetachTool {
+    fn name(&self) -> &'static str {
+        "devkit_session_detach"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        json!({
+            "description": r#"Detach an entity from an agent session.
+
+Use this when the user wants to:
+- Remove a stale repository link
+- Unlink a skill that is no longer relevant to the project"#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "context_id": { "type": "string", "description": "Session ID" },
+                    "entity_id": { "type": "string", "description": "Entity ID to remove" },
+                    "link_type": {
+                        "type": "string",
+                        "description": "Specific link type to remove. Omit to remove all links to this entity."
+                    }
+                },
+                "required": ["context_id", "entity_id"]
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let context_id = args.get("context_id").and_then(|v| v.as_str()).unwrap_or("");
+        let entity_id = args.get("entity_id").and_then(|v| v.as_str()).unwrap_or("");
+        let link_type = args.get("link_type").and_then(|v| v.as_str());
+        if context_id.is_empty() {
+            anyhow::bail!("Missing required argument: context_id");
+        }
+        if entity_id.is_empty() {
+            anyhow::bail!("Missing required argument: entity_id");
+        }
+
+        let mut conn = ctx.conn_mut()?;
+        let removed = crate::registry::agent_context::detach_entity(
+            &mut conn, context_id, entity_id, link_type,
+        )?;
+        Ok(json!({
+            "success": true,
+            "removed": removed,
+            "context_id": context_id,
+            "entity_id": entity_id,
+        }))
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitSessionActivateTool;
+
+impl McpTool for DevkitSessionActivateTool {
+    fn name(&self) -> &'static str {
+        "devkit_session_activate"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        json!({
+            "description": r#"Activate a session so that subsequent skill executions automatically receive its memories and linked entities.
+
+Use this when the user wants to:
+- Set a default project context for the current workspace
+- Make all future skill runs context-aware without manual memory passing
+- Switch between projects"#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "context_id": { "type": "string", "description": "Session ID to activate" }
+                },
+                "required": ["context_id"]
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        _ctx: &mut AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let context_id = args.get("context_id").and_then(|v| v.as_str()).unwrap_or("");
+        if context_id.is_empty() {
+            anyhow::bail!("Missing required argument: context_id");
+        }
+
+        let state_file =
+            crate::registry::WorkspaceRegistry::workspace_dir()?.join(".active_context");
+        std::fs::write(&state_file, context_id)?;
+
+        Ok(json!({
+            "success": true,
+            "context_id": context_id,
+            "state_file": state_file.to_string_lossy().to_string(),
+            "tip": format!("Set DEVBASE_ACTIVE_CONTEXT={} in your environment to make this persistent across shell sessions.", context_id),
+        }))
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitSessionSearchTool;
+
+impl McpTool for DevkitSessionSearchTool {
+    fn name(&self) -> &'static str {
+        "devkit_session_search"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        json!({
+            "description": r#"Search memories by keyword across all sessions or within a specific session.
+
+Use this when the user wants to:
+- Find a past decision or constraint mentioned in memories
+- Recall what was discussed in a previous project session
+- Audit all sessions for a specific topic"#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "Keyword to search for" },
+                    "context_id": {
+                        "type": "string",
+                        "description": "Restrict search to a specific session. Omit for global search."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum results",
+                        "default": 20
+                    }
+                },
+                "required": ["query"]
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+        let context_id = args.get("context_id").and_then(|v| v.as_str());
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+        if query.is_empty() {
+            anyhow::bail!("Missing required argument: query");
+        }
+
+        let conn = ctx.conn()?;
+        let memories =
+            crate::registry::agent_context::search_memories(&conn, context_id, query, limit)?;
+        let results: Vec<serde_json::Value> = memories
+            .into_iter()
+            .map(|m| {
+                json!({
+                    "id": m.id,
+                    "context_id": m.context_id,
+                    "type": m.memory_type,
+                    "content": m.content,
+                    "created_at": m.created_at.to_rfc3339(),
+                })
+            })
+            .collect();
+
+        Ok(json!({
+            "success": true,
+            "query": query,
+            "count": results.len(),
+            "memories": results,
+        }))
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitSessionCaptureTool;
+
+impl McpTool for DevkitSessionCaptureTool {
+    fn name(&self) -> &'static str {
+        "devkit_session_capture"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        json!({
+            "description": r#"Capture a decision, constraint, or observation into the active session's memory.
+
+Use this when the AI (or user) wants to:
+- Record an architectural decision made during the conversation
+- Save a constraint discovered while debugging
+- Checkpoint a key insight before moving to another topic
+
+This is a lightweight append-only operation. No validation is performed on content."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "context_id": {
+                        "type": "string",
+                        "description": "Session ID. Omit to use the currently activated session (via devkit_session_activate)."
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": ["decision", "constraint", "note", "discovery", "error", "action"],
+                        "default": "note",
+                        "description": "Memory classification"
+                    },
+                    "content": { "type": "string", "description": "Memory content" }
+                },
+                "required": ["content"]
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
+        if content.is_empty() {
+            anyhow::bail!("Missing required argument: content");
+        }
+        let memory_type = args.get("type").and_then(|v| v.as_str()).unwrap_or("note");
+
+        let context_id = match args.get("context_id").and_then(|v| v.as_str()) {
+            Some(cid) if !cid.is_empty() => cid.to_string(),
+            _ => {
+                // Fallback: read activated session from state file
+                let state_file =
+                    crate::registry::WorkspaceRegistry::workspace_dir()?.join(".active_context");
+                std::fs::read_to_string(state_file)
+                    .ok()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| anyhow::anyhow!("No active session. Use context_id argument or devkit_session_activate first."))?
+            }
+        };
+
+        let mut conn = ctx.conn_mut()?;
+        let id = crate::registry::agent_context::insert_memory(
+            &mut conn,
+            &context_id,
+            memory_type,
+            content,
+        )?;
+
+        Ok(json!({
+            "success": true,
+            "memory_id": id,
+            "context_id": context_id,
+            "type": memory_type,
+        }))
     }
 }
 
@@ -268,6 +601,11 @@ mod tests {
         assert_eq!(DevkitSessionSaveTool.name(), "devkit_session_save");
         assert_eq!(DevkitSessionListTool.name(), "devkit_session_list");
         assert_eq!(DevkitSessionResumeTool.name(), "devkit_session_resume");
+        assert_eq!(DevkitSessionAttachTool.name(), "devkit_session_attach");
+        assert_eq!(DevkitSessionDetachTool.name(), "devkit_session_detach");
+        assert_eq!(DevkitSessionActivateTool.name(), "devkit_session_activate");
+        assert_eq!(DevkitSessionSearchTool.name(), "devkit_session_search");
+        assert_eq!(DevkitSessionCaptureTool.name(), "devkit_session_capture");
     }
 
     #[test]

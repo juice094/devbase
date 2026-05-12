@@ -53,6 +53,7 @@ pub fn upsert_context(
         rusqlite::params![id, name, intent, now],
     )?;
     tx.commit()?;
+    log_op(conn, "upsert_context", id, intent, "ok");
     Ok(())
 }
 
@@ -147,6 +148,7 @@ pub fn archive_context(conn: &mut Connection, id: &str) -> anyhow::Result<bool> 
         rusqlite::params![now, id],
     )?;
     tx.commit()?;
+    log_op(conn, "archive_context", id, None, "ok");
     Ok(rows > 0)
 }
 
@@ -155,6 +157,7 @@ pub fn delete_context(conn: &mut Connection, id: &str) -> anyhow::Result<bool> {
     let tx = conn.transaction()?;
     let rows = tx.execute("DELETE FROM agent_contexts WHERE id = ?1", [id])?;
     tx.commit()?;
+    log_op(conn, "delete_context", id, None, "ok");
     Ok(rows > 0)
 }
 
@@ -177,6 +180,7 @@ pub fn insert_memory(
     )?;
     let id = tx.last_insert_rowid();
     tx.commit()?;
+    log_op(conn, "insert_memory", context_id, Some(content), "ok");
     Ok(id)
 }
 
@@ -205,6 +209,156 @@ pub fn list_memories(conn: &Connection, context_id: &str) -> anyhow::Result<Vec<
         })
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+// ---------------------------------------------------------------------------
+// Context → Entity Links
+// ---------------------------------------------------------------------------
+
+/// Link an entity (repo, vault, skill, etc.) to a context.
+pub fn attach_entity(
+    conn: &mut Connection,
+    context_id: &str,
+    entity_id: &str,
+    link_type: &str,
+) -> anyhow::Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "INSERT OR REPLACE INTO context_entity_links (context_id, entity_id, link_type, created_at)
+         VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![context_id, entity_id, link_type, Utc::now().to_rfc3339()],
+    )?;
+    tx.commit()?;
+    log_op(conn, "attach_entity", context_id, Some(entity_id), "ok");
+    Ok(())
+}
+
+/// Remove a link between a context and an entity.
+pub fn detach_entity(
+    conn: &mut Connection,
+    context_id: &str,
+    entity_id: &str,
+    link_type: Option<&str>,
+) -> anyhow::Result<bool> {
+    let tx = conn.transaction()?;
+    let rows = match link_type {
+        Some(lt) => tx.execute(
+            "DELETE FROM context_entity_links
+             WHERE context_id = ?1 AND entity_id = ?2 AND link_type = ?3",
+            rusqlite::params![context_id, entity_id, lt],
+        )?,
+        None => tx.execute(
+            "DELETE FROM context_entity_links
+             WHERE context_id = ?1 AND entity_id = ?2",
+            rusqlite::params![context_id, entity_id],
+        )?,
+    };
+    tx.commit()?;
+    log_op(conn, "detach_entity", context_id, Some(entity_id), "ok");
+    Ok(rows > 0)
+}
+
+/// List all entities linked to a context.
+pub fn list_linked_entities(
+    conn: &Connection,
+    context_id: &str,
+) -> anyhow::Result<Vec<(String, String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT entity_id, link_type, created_at
+         FROM context_entity_links
+         WHERE context_id = ?1
+         ORDER BY created_at DESC",
+    )?;
+    let rows = stmt.query_map([context_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// List all contexts linked to an entity.
+pub fn list_linking_contexts(
+    conn: &Connection,
+    entity_id: &str,
+) -> anyhow::Result<Vec<(String, String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT context_id, link_type, created_at
+         FROM context_entity_links
+         WHERE entity_id = ?1
+         ORDER BY created_at DESC",
+    )?;
+    let rows = stmt.query_map([entity_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Search memories by keyword (LIKE query) within a context or globally.
+pub fn search_memories(
+    conn: &Connection,
+    context_id: Option<&str>,
+    query: &str,
+    limit: usize,
+) -> anyhow::Result<Vec<AgentMemory>> {
+    let pattern = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
+    let row_mapper = |row: &rusqlite::Row| {
+        let created_at = parse_datetime(row.get(4)?).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                4,
+                rusqlite::types::Type::Text,
+                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+            )
+        })?;
+        Ok(AgentMemory {
+            id: row.get(0)?,
+            context_id: row.get(1)?,
+            memory_type: row.get(2)?,
+            content: row.get(3)?,
+            created_at,
+        })
+    };
+    if let Some(cid) = context_id {
+        let mut stmt = conn.prepare(
+            "SELECT id, context_id, memory_type, content, created_at
+             FROM agent_memories
+             WHERE context_id = ?1 AND content LIKE ?2
+             ORDER BY created_at DESC
+             LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![cid, &pattern, limit as i64], row_mapper)?;
+        return rows.collect::<Result<Vec<_>, _>>().map_err(Into::into);
+    }
+    let mut stmt = conn.prepare(
+        "SELECT id, context_id, memory_type, content, created_at
+         FROM agent_memories
+         WHERE content LIKE ?1
+         ORDER BY created_at DESC
+         LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(rusqlite::params![&pattern, limit as i64], row_mapper)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Write an agent-context operation to the oplog for audit/compensation.
+fn log_op(
+    conn: &rusqlite::Connection,
+    _operation: &str,
+    context_id: &str,
+    details: Option<&str>,
+    status: &str,
+) {
+    let _ = crate::registry::workspace::save_oplog(
+        conn,
+        &crate::registry::OplogEntry {
+            id: None,
+            event_type: crate::registry::OplogEventType::AgentContext,
+            repo_id: Some(context_id.to_string()),
+            details: details.map(|s| s.to_string()),
+            status: status.to_string(),
+            timestamp: chrono::Utc::now(),
+            duration_ms: None,
+            event_version: 1,
+        },
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -303,5 +457,29 @@ mod tests {
         delete_context(&mut conn, "ctx-cascade").unwrap();
         let mems = list_memories(&conn, "ctx-cascade").unwrap();
         assert!(mems.is_empty());
+    }
+
+    #[test]
+    fn test_entity_links() {
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+        upsert_context(&mut conn, "ctx-links", "Links", None).unwrap();
+
+        attach_entity(&mut conn, "ctx-links", "repo-1", "linked_repo").unwrap();
+        attach_entity(&mut conn, "ctx-links", "skill-1", "linked_skill").unwrap();
+        attach_entity(&mut conn, "ctx-links", "repo-1", "linked_repo").unwrap(); // idempotent
+
+        let linked = list_linked_entities(&conn, "ctx-links").unwrap();
+        assert_eq!(linked.len(), 2);
+
+        let contexts = list_linking_contexts(&conn, "repo-1").unwrap();
+        assert_eq!(contexts.len(), 1);
+        assert_eq!(contexts[0].0, "ctx-links");
+
+        assert!(detach_entity(&mut conn, "ctx-links", "repo-1", Some("linked_repo")).unwrap());
+        let linked2 = list_linked_entities(&conn, "ctx-links").unwrap();
+        assert_eq!(linked2.len(), 1);
+
+        assert!(detach_entity(&mut conn, "ctx-links", "skill-1", None).unwrap());
+        assert!(list_linked_entities(&conn, "ctx-links").unwrap().is_empty());
     }
 }

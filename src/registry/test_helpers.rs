@@ -381,6 +381,15 @@ CREATE TABLE IF NOT EXISTS agent_memories (
     FOREIGN KEY (context_id) REFERENCES agent_contexts(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_agent_memories_context ON agent_memories(context_id);
+
+CREATE TABLE IF NOT EXISTS context_entity_links (
+    context_id TEXT NOT NULL,
+    entity_id  TEXT NOT NULL,
+    link_type  TEXT NOT NULL DEFAULT 'linked',
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (context_id, entity_id, link_type)
+);
+CREATE INDEX IF NOT EXISTS idx_context_links_entity ON context_entity_links(entity_id);
 "#;
 
 #[cfg(test)]
