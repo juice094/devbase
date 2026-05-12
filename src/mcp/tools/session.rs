@@ -591,6 +591,70 @@ This is a lightweight append-only operation. No validation is performed on conte
     }
 }
 
+#[derive(Clone)]
+pub struct DevkitSessionWorkflowsTool;
+
+impl McpTool for DevkitSessionWorkflowsTool {
+    fn name(&self) -> &'static str {
+        "devkit_session_workflows"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        json!({
+            "description": r#"List workflow executions associated with an agent session.
+
+Use this when the user wants to:
+- Review what automated workflows were run in a project context
+- Audit the execution history of a session
+- Check workflow status for a specific project"#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "context_id": { "type": "string", "description": "Session ID" },
+                    "limit": { "type": "integer", "description": "Maximum results", "default": 20 }
+                },
+                "required": ["context_id"]
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let context_id = args.get("context_id").and_then(|v| v.as_str()).unwrap_or("");
+        let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(20);
+        if context_id.is_empty() {
+            anyhow::bail!("Missing required argument: context_id");
+        }
+
+        let conn = ctx.conn()?;
+        let executions =
+            crate::workflow::state::list_executions_by_context(&conn, context_id, limit)?;
+        let results: Vec<serde_json::Value> = executions
+            .into_iter()
+            .map(|(id, wf_id, status, current_step, started_at, duration_ms)| {
+                json!({
+                    "execution_id": id,
+                    "workflow_id": wf_id,
+                    "status": status,
+                    "current_step": current_step,
+                    "started_at": started_at,
+                    "duration_ms": duration_ms,
+                })
+            })
+            .collect();
+
+        Ok(json!({
+            "success": true,
+            "context_id": context_id,
+            "count": results.len(),
+            "executions": results,
+        }))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -606,6 +670,7 @@ mod tests {
         assert_eq!(DevkitSessionActivateTool.name(), "devkit_session_activate");
         assert_eq!(DevkitSessionSearchTool.name(), "devkit_session_search");
         assert_eq!(DevkitSessionCaptureTool.name(), "devkit_session_capture");
+        assert_eq!(DevkitSessionWorkflowsTool.name(), "devkit_session_workflows");
     }
 
     #[test]

@@ -82,10 +82,12 @@ pub fn run_workflow(
                     ));
                 }
             }
+            let active_ctx = crate::registry::agent_context::resolve_active_context();
             let exec_id = crate::workflow::create_execution(
                 &conn,
                 &workflow_id,
                 &serde_json::to_string(&input_map)?,
+                active_ctx.as_deref(),
             )?;
             crate::workflow::update_execution(
                 &conn,

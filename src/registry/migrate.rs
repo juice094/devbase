@@ -4,7 +4,7 @@ use super::*;
 use crate::storage::StorageBackend;
 use std::path::PathBuf;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 32;
+pub const CURRENT_SCHEMA_VERSION: i32 = 33;
 
 impl WorkspaceRegistry {
     pub fn db_path() -> anyhow::Result<PathBuf> {

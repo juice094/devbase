@@ -361,6 +361,22 @@ fn log_op(
     );
 }
 
+/// Resolve the active agent context ID from environment or workspace state file.
+pub fn resolve_active_context() -> Option<String> {
+    if let Ok(ctx) = std::env::var("DEVBASE_ACTIVE_CONTEXT")
+        && !ctx.is_empty()
+    {
+        return Some(ctx);
+    }
+    let state_file = crate::registry::WorkspaceRegistry::workspace_dir()
+        .ok()?
+        .join(".active_context");
+    std::fs::read_to_string(state_file)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
