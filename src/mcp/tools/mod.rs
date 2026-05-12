@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
 pub mod context;
+pub mod evaluate;
 pub mod known_limit;
 pub mod oplog;
 pub mod query;
@@ -28,6 +29,7 @@ pub use vault::*;
 pub use workflow::*;
 
 pub use code_analysis::*;
+pub use evaluate::*;
 pub use external::*;
 pub use knowledge::*;
 pub use search::*;
