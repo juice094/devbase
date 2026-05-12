@@ -11,7 +11,7 @@ use tantivy::{
     Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, TantivyError,
     collector::TopDocs,
     query::{BooleanQuery, Occur, QueryParser, TermQuery},
-    schema::{STORED, Schema, TEXT, Value},
+    schema::{STORED, STRING, Schema, TEXT, Value},
 };
 
 const INDEX_DIR: &str = "devbase/search_index";
@@ -24,7 +24,7 @@ fn index_path() -> Result<PathBuf, TantivyError> {
 
 fn build_schema() -> Schema {
     let mut schema_builder = Schema::builder();
-    schema_builder.add_text_field("id", TEXT | STORED);
+    schema_builder.add_text_field("id", STRING | STORED);
     schema_builder.add_text_field("title", TEXT | STORED);
     schema_builder.add_text_field("content", TEXT);
     schema_builder.add_text_field("tags", TEXT);
