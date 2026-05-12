@@ -7,6 +7,7 @@ pub mod oplog;
 pub mod query;
 pub mod relations;
 pub mod repo;
+pub mod session;
 pub mod skill;
 pub mod status;
 pub mod vault;
@@ -23,6 +24,7 @@ pub use oplog::*;
 pub use query::*;
 pub use relations::*;
 pub use repo::*;
+pub use session::*;
 pub use skill::*;
 pub use status::*;
 pub use vault::*;
@@ -50,5 +52,8 @@ mod tests {
         let _ = super::vault::DevkitVaultDailyTool;
         let _ = super::vault::DevkitVaultGraphTool;
         let _ = super::workflow::DevkitWorkflowListTool;
+        let _ = super::session::DevkitSessionSaveTool;
+        let _ = super::session::DevkitSessionListTool;
+        let _ = super::session::DevkitSessionResumeTool;
     }
 }

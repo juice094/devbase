@@ -22,7 +22,7 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 - **Workspace**：`%LOCALAPPDATA%\devbase\workspace/` —— 文件系统 = source of truth
   - `vault/` —— PARA 结构：00-Inbox, 01-Projects, 02-Areas, 03-Resources, 04-Archives, 99-Meta
   - `assets/` —— 二进制资源
-- **MCP Server**：stdio only，**49 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools + 3 个 Relation tools + 2 个 Agent 状态工具 + 1 个 streaming index 工具 + 1 个 oplog 工具）；配置见 `mcp.json`
+- **MCP Server**：stdio only，**52 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools + 3 个 Relation tools + 2 个 Agent 状态工具 + 3 个 Agent Context tools + 1 个 streaming index 工具 + 1 个 oplog 工具）；配置见 `mcp.json`
 - **Kimi CLI 集成**：MCP server 已通过 `kimi mcp add` 注册，端到端验证通过（`kimi --print` 成功调用 `devkit_health`）；项目级 skill 位于 `.kimi/skills/devbase-project/SKILL.md`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
 - **当前测试**：490+ workspace passed / 0 failed / 4 ignored（主 crate 390 + symbol-links 4 + sync-protocol 12 + core-types 3 + syncthing-client 2 + vault-frontmatter 5 + vault-wikilink 5 + workflow-interpolate 9 + workflow-model 2 + registry-health 3 + registry-metrics 4 + registry-workspace 5 + embedding 5 + skill-runtime-types 7 + skill-runtime-parser 3 + 其他 crates ~30）；11/11 passed（integration `tests/cli.rs`）

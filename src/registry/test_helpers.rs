@@ -362,6 +362,25 @@ CREATE TABLE IF NOT EXISTS repo_index_state (
     last_commit_hash TEXT,
     indexed_at DATETIME DEFAULT current_timestamp
 );
+
+CREATE TABLE IF NOT EXISTS agent_contexts (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    intent TEXT,
+    status TEXT DEFAULT 'active',
+    created_at DATETIME DEFAULT current_timestamp,
+    updated_at DATETIME DEFAULT current_timestamp
+);
+
+CREATE TABLE IF NOT EXISTS agent_memories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    context_id TEXT NOT NULL,
+    memory_type TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT current_timestamp,
+    FOREIGN KEY (context_id) REFERENCES agent_contexts(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_memories_context ON agent_memories(context_id);
 "#;
 
 #[cfg(test)]
@@ -412,5 +431,31 @@ mod tests {
             )
             .unwrap_or(false);
         assert!(exists, "knowledge_meta table must exist in current schema");
+    }
+
+    #[test]
+    fn test_agent_contexts_table_exists() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_contexts'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        assert!(exists, "agent_contexts table must exist in current schema");
+    }
+
+    #[test]
+    fn test_agent_memories_table_exists() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_memories'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        assert!(exists, "agent_memories table must exist in current schema");
     }
 }
