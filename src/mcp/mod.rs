@@ -104,6 +104,7 @@ pub enum McpToolEnum {
     WorkflowRun(DevkitWorkflowRunTool),
     WorkflowStatus(DevkitWorkflowStatusTool),
     OplogQuery(DevkitOplogQueryTool),
+    Evaluate(DevkitEvaluateTool),
 }
 
 /// Stability tier for MCP tools.
@@ -180,6 +181,7 @@ impl McpToolEnum {
             McpToolEnum::WorkflowRun(_) => ToolTier::Beta,
             McpToolEnum::WorkflowStatus(_) => ToolTier::Beta,
             McpToolEnum::OplogQuery(_) => ToolTier::Beta,
+            McpToolEnum::Evaluate(_) => ToolTier::Beta,
         }
     }
 }
@@ -235,6 +237,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::WorkflowRun(t) => t.name(),
             McpToolEnum::WorkflowStatus(t) => t.name(),
             McpToolEnum::OplogQuery(t) => t.name(),
+            McpToolEnum::Evaluate(t) => t.name(),
         }
     }
 
@@ -288,6 +291,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::WorkflowRun(t) => t.schema(),
             McpToolEnum::WorkflowStatus(t) => t.schema(),
             McpToolEnum::OplogQuery(t) => t.schema(),
+            McpToolEnum::Evaluate(t) => t.schema(),
         }
     }
 
@@ -345,6 +349,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::WorkflowRun(t) => t.invoke(args, ctx).await,
             McpToolEnum::WorkflowStatus(t) => t.invoke(args, ctx).await,
             McpToolEnum::OplogQuery(t) => t.invoke(args, ctx).await,
+            McpToolEnum::Evaluate(t) => t.invoke(args, ctx).await,
         }
     }
 }
@@ -592,6 +597,7 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::WorkflowRun(DevkitWorkflowRunTool),
         McpToolEnum::WorkflowStatus(DevkitWorkflowStatusTool),
         McpToolEnum::OplogQuery(DevkitOplogQueryTool),
+        McpToolEnum::Evaluate(DevkitEvaluateTool),
     ];
     for tool in all_tools {
         if let Some(allowed) = tiers
