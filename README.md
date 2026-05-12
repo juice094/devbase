@@ -258,10 +258,14 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | `devkit_skill_run` | 执行 Skill | "运行 embed-repo skill" |
 | `devkit_workflow_list` | 列出工作流 | "有哪些工作流？" |
 | `devkit_workflow_run` | 执行工作流 | "运行 deploy-staging" |
-| `devkit_skill_top` | Top 评分 Skills | "评分最高的 skill？" |
+| `devkit_workflow_status` | 查询工作流执行状态 | "检查工作流是否完成" |
 | `devkit_relation_store` | 存储实体关系 | "记录 devbase 依赖 clarity" |
 | `devkit_relation_query` | 查询实体关系 | "谁依赖了 devbase？" |
 | `devkit_relation_delete` | 删除实体关系 | "移除已弃用的关系" |
+| `devkit_oplog_query` | 查询操作日志 | "最近 devbase 做了什么？" |
+| `devkit_skill_discover` | 自动发现 Skill | "把这个项目打包成 Skill" |
+| `devkit_vault_daily` | 生成每日笔记 | "创建今日日报" |
+| `devkit_vault_graph` | 导出知识图谱 | "可视化笔记关联" |
 | `devkit_known_limit_store` | 记录 known limit | "记录系统约束" |
 | `devkit_known_limit_list` | 列出 known limits | "查看当前风险" |
 
