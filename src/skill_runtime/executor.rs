@@ -66,7 +66,7 @@ pub fn run_skill(
     cmd.env("DEVBASE_HOME", devbase_home()?);
 
     // P2-B: Inject active session context memories if available
-    if let Some(ctx_id) = resolve_active_context() {
+    if let Some(ctx_id) = crate::registry::agent_context::resolve_active_context() {
         if let Ok(memories) = crate::registry::agent_context::list_memories(conn, &ctx_id)
             && !memories.is_empty()
         {
@@ -252,22 +252,6 @@ pub(crate) fn check_hard_vetoes_for_skill(
         vetoes.len(),
         descriptions.join("\n")
     ))
-}
-
-/// Resolve the active agent context ID from environment or state file.
-fn resolve_active_context() -> Option<String> {
-    if let Ok(ctx) = std::env::var("DEVBASE_ACTIVE_CONTEXT")
-        && !ctx.is_empty()
-    {
-        return Some(ctx);
-    }
-    let state_file = crate::registry::WorkspaceRegistry::workspace_dir()
-        .ok()?
-        .join(".active_context");
-    std::fs::read_to_string(state_file)
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
 }
 
 fn resolve_interpreter(path: &std::path::Path) -> (Option<String>, String) {

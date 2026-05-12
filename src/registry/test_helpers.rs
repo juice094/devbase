@@ -275,7 +275,8 @@ CREATE TABLE IF NOT EXISTS workflow_executions (
     current_step    TEXT,
     started_at      TEXT NOT NULL,
     finished_at     TEXT,
-    duration_ms     INTEGER
+    duration_ms     INTEGER,
+    context_id      TEXT
 );
 
 -- v18: Known Limits (L3 risk layer)

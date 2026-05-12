@@ -61,14 +61,42 @@ pub fn create_execution(
     conn: &Connection,
     workflow_id: &str,
     inputs_json: &str,
+    context_id: Option<&str>,
 ) -> anyhow::Result<i64> {
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
-        "INSERT INTO workflow_executions (workflow_id, inputs_json, status, current_step, started_at)
-         VALUES (?1, ?2, 'Pending', NULL, ?3)",
-        params![workflow_id, inputs_json, now],
+        "INSERT INTO workflow_executions (workflow_id, inputs_json, status, current_step, started_at, context_id)
+         VALUES (?1, ?2, 'Pending', NULL, ?3, ?4)",
+        params![workflow_id, inputs_json, now, context_id],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+/// List workflow executions bound to a session context.
+#[allow(clippy::type_complexity)]
+pub fn list_executions_by_context(
+    conn: &Connection,
+    context_id: &str,
+    limit: i64,
+) -> anyhow::Result<Vec<(i64, String, String, Option<String>, String, Option<i64>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, workflow_id, status, current_step, started_at, duration_ms
+         FROM workflow_executions
+         WHERE context_id = ?1
+         ORDER BY started_at DESC
+         LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(params![context_id, limit], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, Option<i64>>(5)?,
+        ))
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 pub fn update_execution(
@@ -162,7 +190,7 @@ mod tests {
         let conn = WorkspaceRegistry::init_in_memory().unwrap();
         let wf = dummy_wf();
         save_workflow(&conn, &wf).unwrap();
-        let exec_id = create_execution(&conn, "test-wf", r#"{"repo_path":"/tmp"}"#).unwrap();
+        let exec_id = create_execution(&conn, "test-wf", r#"{"repo_path":"/tmp"}"#, None).unwrap();
         assert!(exec_id > 0);
         update_execution(&conn, exec_id, &ExecutionStatus::Running, Some("step1"), None).unwrap();
         let exec = get_execution(&conn, exec_id).unwrap().unwrap();
@@ -204,7 +232,7 @@ mod tests {
         validate_workflow(&wf).unwrap();
         save_workflow(&conn, &wf).unwrap();
 
-        let exec_id = create_execution(&conn, "e2e-wf", "{}").unwrap();
+        let exec_id = create_execution(&conn, "e2e-wf", "{}", None).unwrap();
         update_execution(&conn, exec_id, &ExecutionStatus::Running, None, None).unwrap();
 
         // Execution should fail because skill does not exist

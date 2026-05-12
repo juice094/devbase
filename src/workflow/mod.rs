@@ -84,7 +84,9 @@ impl crate::clients::WorkflowClient for AppContext {
             };
 
         let inputs_json = inputs.to_string();
-        let exec_id = state::create_execution(&conn, workflow_id, &inputs_json)?;
+        let active_ctx = crate::registry::agent_context::resolve_active_context();
+        let exec_id =
+            state::create_execution(&conn, workflow_id, &inputs_json, active_ctx.as_deref())?;
         state::update_execution(&conn, exec_id, &model::ExecutionStatus::Running, None, None)?;
 
         let pool = self.pool();

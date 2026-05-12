@@ -34,6 +34,7 @@ pub mod v29_compensation_log;
 pub mod v30_code_symbol_attributes;
 pub mod v31_agent_contexts;
 pub mod v32_context_links;
+pub mod v33_workflow_context;
 
 pub fn run_all(conn: &mut Connection) -> anyhow::Result<()> {
     let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -133,6 +134,9 @@ pub fn run_all(conn: &mut Connection) -> anyhow::Result<()> {
     }
     if user_version < 32 {
         v32_context_links::run(conn)?;
+    }
+    if user_version < 33 {
+        v33_workflow_context::run(conn)?;
     }
 
     Ok(())
