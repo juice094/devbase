@@ -111,6 +111,7 @@ pub use entity::{
     ENTITY_TYPE_WORKFLOW, upsert_entity,
 };
 
+pub mod agent_context;
 pub mod call_graph;
 pub mod code_symbols;
 pub mod dead_code;
