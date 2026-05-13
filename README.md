@@ -1,10 +1,10 @@
 # devbase
 
-[![Version](https://img.shields.io/badge/version-v0.15.0-blue)](https://github.com/juice094/devbase/releases)
-[![Tests](https://img.shields.io/badge/tests-490%2B%20passed-brightgreen)](./AGENTS.md)
+[![Version](https://img.shields.io/badge/version-v0.18.0-blue)](https://github.com/juice094/devbase/releases)
+[![Tests](https://img.shields.io/badge/tests-437%2B%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-orange)](./LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.94%2B-9cf)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.95%2B-9cf)](https://www.rust-lang.org)
 
 **本地优先的 AI Skill 编排基础设施**
 
@@ -31,13 +31,13 @@ devbase 将 GitHub 项目自动封装为**标准化、可发现、可组合的 S
 │       Human Layer           │         AI Layer              │
 │  ┌─────────────────────┐    │    ┌─────────────────────┐    │
 │  │   TUI Dashboard     │    │    │   MCP Server        │    │
-│  │   终端交互仪表盘     │    │    │   48 Tools          │    │
+│  │   终端交互仪表盘     │    │    │   64 Tools          │    │
 │  │   • 多仓库健康总览   │    │    │   stdio + streaming  │    │
 │  │   • 跨仓库代码搜索   │    │    │                     │    │
 │  │   • 一键启动 gitui   │    │    │   • devkit_scan     │    │
 │  │   • Skill / Workflow │    │    │   • devkit_skill_run│    │
-│  └─────────────────────┘    │    │   • devkit_hybrid_search│  │
-│                             │    └─────────────────────┘    │
+│  │   • Vault / Session  │    │    │   • devkit_hybrid_search│  │
+│  └─────────────────────┘    │    └─────────────────────┘    │
 ├─────────────────────────────┴───────────────────────────────┤
 │                      Data Layer                             │
 │   Filesystem (Source of Truth) │ SQLite │ Tantivy (Search)   │
@@ -58,6 +58,24 @@ irm https://raw.githubusercontent.com/juice094/devbase/main/scripts/install.ps1 
 curl -fsSL https://raw.githubusercontent.com/juice094/devbase/main/scripts/install.sh | bash
 ```
 
+**预编译二进制**
+
+| 平台 | 下载 | 大小 |
+|:---|:---|:---|
+| Windows x86_64 | [`devbase-v0.18.0-x86_64-pc-windows-msvc.exe`](https://github.com/juice094/devbase/releases/download/v0.18.0/devbase-v0.18.0-x86_64-pc-windows-msvc.exe) | ~30 MB |
+| Linux x86_64 | [`devbase-v0.18.0-x86_64-unknown-linux-gnu`](https://github.com/juice094/devbase/releases/download/v0.18.0/devbase-v0.18.0-x86_64-unknown-linux-gnu) | ~28 MB |
+
+```powershell
+# Windows (PowerShell)
+Invoke-WebRequest -Uri "https://github.com/juice094/devbase/releases/download/v0.18.0/devbase-v0.18.0-x86_64-pc-windows-msvc.exe" -OutFile devbase.exe
+```
+
+```bash
+# Linux
+wget https://github.com/juice094/devbase/releases/download/v0.18.0/devbase-v0.18.0-x86_64-unknown-linux-gnu -O devbase
+chmod +x devbase
+```
+
 **从源码**
 
 ```bash
@@ -75,7 +93,8 @@ cd devbase && cargo install --path .
 
 | 按键 | 功能 |
 |:---|:---|
-| `↑/↓` `PgUp/PgDn` | 导航仓库列表 |
+| `↑/↓` `PgUp/PgDn` | 导航列表（仓库 / Vault / Session） |
+| `Tab` | 切换主视图（RepoList → VaultList → Session） |
 | `/` | 跨仓库代码搜索（Tantivy / ripgrep） |
 | `Enter` | 一键启动 gitui / lazygit |
 | `s` / `S` | 预览 / 执行安全同步 |
@@ -84,9 +103,12 @@ cd devbase && cargo install --path .
 | `d` | 发现 Skill（自动封装当前项目） |
 | `h` / `?` | 快捷键帮助 |
 
-**面板布局**：左侧 35% 仓库列表（状态图标 ● dirty ◆ diverged ▼ behind ✓ 正常），右侧 65% 三标签页详情（Overview / Health / Insights）。
+**面板布局**：
+- **RepoList**：左侧 35% 仓库列表（状态图标 ● dirty ◆ diverged ▼ behind ✓ 正常），右侧 65% 三标签页详情（Overview / Health / Insights）
+- **VaultList**：Vault 笔记列表，支持 PARA 方法笔记的快速检索与阅读
+- **Session**：Agent 会话列表（● active / ◌ archived），选中后右侧面板展示该上下文的语义记忆（◆ decision ▪ constraint ★ discovery ✗ error）
 
-### AI Layer — 48 个 MCP Tools
+### AI Layer — 64 个 MCP Tools
 
 基于 [Model Context Protocol](https://modelcontextprotocol.io) 标准化接口，stdio 本地进程通信。
 
@@ -98,6 +120,8 @@ cd devbase && cargo install --path .
 | Skill 运行时 | `skill_list`, `skill_search`, `skill_run`, `skill_top` | 发现 / 搜索 / 执行 / 评分 |
 | Workflow 编排 | `workflow_list`, `workflow_run` | YAML 多步骤自动化 |
 | 知识图谱 | `relation_store`, `relation_query`, `relation_delete` | 实体关系存储与查询 |
+| Agent 记忆 | `session_recall`, `session_index`, `session_export`, `session_import` | 语义召回 + 向量索引 + 会话迁移 |
+| ClaudeCode 集成 | `project_brief`, `impact_analysis` | 生成 CLAUDE.md 注入上下文 + 变更影响半径分析 |
 | Vault / 其他 | `vault_search`, `vault_read`, `vault_write`, `arxiv_fetch`, ... | PARA 笔记 + 论文抓取 |
 
 > 完整 Tool 矩阵见下文 [MCP Tool 矩阵](#mcp-tool-矩阵)。
@@ -107,7 +131,8 @@ cd devbase && cargo install --path .
 | 组件 | 技术 | 说明 |
 |:---|:---|:---|
 | 索引 | SQLite + Tantivy | 仓库元数据 + 全文检索 |
-| 语义 | SQLite BLOB (768-dim) | 外置 Embedding 存储协议，不绑定特定模型 |
+| 语义 | SQLite BLOB (768-dim) + UDF | 外置 Embedding 存储 + `cosine_similarity` 纯 SQL 比对 |
+| Agent 记忆 | `agent_contexts` + `agent_memories` | 会话生命周期 + 语义记忆召回 + 向量索引 |
 | AST | tree-sitter | Rust / Python / TS / Go 多语言符号提取 |
 | 审计 | SQLite `oplog` | 所有 `scan`/`sync`/`health` 自动记录，schema 迁移前自动快照 |
 
@@ -157,6 +182,28 @@ devbase mcp
     }
   }
 }
+```
+
+**ClaudeCode 工作流集成**（v0.18.0+）
+
+一键为当前项目生成 `.claude/CLAUDE.md` 上下文简报，并启动 Claude Code：
+
+```powershell
+# PowerShell (Windows)
+./scripts/devbase-claude.ps1
+
+# 可选：退出时自动捕获 git diff 到 Session Memory
+./scripts/devbase-claude.ps1 -CaptureOnExit
+```
+
+或手动通过 MCP 调用：
+
+```bash
+# 生成项目简报（Markdown）
+devbase project brief <repo_id>
+
+# 分析某符号的变更影响半径
+devbase impact analysis <repo_id> <symbol_name>
 ```
 
 ---
@@ -268,6 +315,12 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | `devkit_vault_graph` | 导出知识图谱 | "可视化笔记关联" |
 | `devkit_known_limit_store` | 记录 known limit | "记录系统约束" |
 | `devkit_known_limit_list` | 列出 known limits | "查看当前风险" |
+| `devkit_session_recall` | 语义记忆召回 | "召回与当前任务相关的决策记忆" |
+| `devkit_session_index` | 向量索引记忆 | "为这段记忆生成 embedding 并索引" |
+| `devkit_session_export` | 导出会话 | "导出当前会话为 Markdown" |
+| `devkit_session_import` | 导入会话 | "从文本批量导入记忆" |
+| `devkit_project_brief` | 生成项目简报 | "为 devbase 生成 CLAUDE.md" |
+| `devkit_impact_analysis` | 变更影响分析 | "改 `register_tool` 会影响哪些调用方？" |
 
 ### AI 助手集成
 
@@ -298,8 +351,12 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | v0.14.1 | ✅ 已发布 | CLI JSON 输出补全 (`--json`/`--recalc`) + relations MCP 工具加固 + License headers + Vault Daily/Graph |
 | v0.14.2 | ✅ 已发布 | health dirty 检测修复（排除 ignored 文件）+ scan 路径规范化 + syncthing-rust 识别修复 + experiment_log/CodeMetrics/ModuleGraph/CallGraph/DeadCode 提升为 Beta（48 tools: Stable 5 / Beta 40 / Experimental 3） |
 | v0.14.3 | ✅ 已发布 | Schema v30 code symbol attributes + dead-code 过滤增强 + init_db() 注入式改造（RF-1）+ Tantivy/SQLite 补偿扫描 + Feature flags（mcp / embedding）+ sccache 构建加速文档 |
-| **v0.15.0** | **✅ 当前** | **P1 Tantivy BM25 代码符号搜索 + P2 AppContext 职责拆分（storage.rs 860→430 行）+ P3 Embedding 多后端（Candle + Ollama）+ P4 EnvVersionCache 扩展（9 工具链：含 python/bun/zig/java）+ P5 架构不变量自动化 CI（G5/T11/T12）** |
-| v0.16.0 | 📋 进行中 | Workspace 扩展 Phase 2：成员目标 8-10 个；以 `docs/ROADMAP.md` 阶段六规划为准 |
+| **v0.15.0** | **✅ 已发布** | **P1 Tantivy BM25 代码符号搜索 + P2 AppContext 职责拆分（storage.rs 860→430 行）+ P3 Embedding 多后端（Candle + Ollama）+ P4 EnvVersionCache 扩展（9 工具链：含 python/bun/zig/java）+ P5 架构不变量自动化 CI（G5/T11/T12）** |
+| v0.16.0 | ✅ 已发布 | Agent Context 系统：会话生命周期 + 记忆注入 + Workflow-Session 绑定 |
+| v0.16.1 | ✅ 已发布 | Workflow-Session Binding 硬化（Schema v33）+ 安全修复 |
+| v0.17.0 | ✅ 已发布 | Agent Memory 向量存储（Schema v34）：外置 Embedding 协议 + SQLite UDF `cosine_similarity` + Skill Runtime 语义召回；默认构建零 ML 依赖 |
+| **v0.18.0** | **✅ 当前** | **ClaudeCode 工作流集成：`project_brief` + `impact_analysis` MCP Tools + Session 导出/导入 + `devbase-claude.ps1` 一键启动器；64 Tools 完整矩阵** |
+| v0.19.0 | 📋 规划中 | Redis 缓存层决策落地 + `middleware.ts` 架构优化 + Pre-built Workflow 模板（safe-refactor / code-review / release-prep）|
 
 ---
 
