@@ -4,14 +4,15 @@
 
 > 它将本地数字资产的原始数据（代码库、笔记、Skill、工作流）编译为 AI 可决策的结构化情境，不负责思考，不负责执行，只负责感知、编码、持久化、检索。
 
-- **当前阶段**：阶段六 → v0.15.0 已发布（CHANGELOG 已记录）；v0.16.0 进行中（Workspace 扩展 Phase 2）
-- **当前版本**：v0.15.0（CHANGELOG 已记录，`fix/project-health-cleanup@4e8d882`，**待合入 `main` 并打 tag**）
-- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ 18 workspace crates 提取 + MCP Python SDK 1.16.0 兼容修复 + repo.rs trait 化 + flaky 测试根治（RF-2.1/2.2/2.3）+ 许可证迁移 + health 性能优化（-44%）+ index skip-embeddings + batch encoding 实验 + RF-6 清零 + 架构治理文档（ADR/不变量清单）+ Tantivy BM25 代码符号搜索（P1）+ AppContext 职责拆分 Phase 1/2（storage.rs 860→430 行）+ 架构不变量 CI（G5/T11/T12）+ Embedding 多后端（Candle/Ollama 配置切换, P3）+ EnvVersionCache 扩展（9 工具链检测, P4）
+- **当前阶段**：阶段八 → v0.17.0-dev 进行中（Agent Memory 向量存储 / Embedding 职责外迁）
+- **当前版本**：v0.17.0-dev（Schema 34，60 MCP tools，442 tests）
+- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ 18 workspace crates 提取 + MCP Python SDK 1.16.0 兼容修复 + repo.rs trait 化 + flaky 测试根治（RF-2.1/2.2/2.3）+ 许可证迁移 + health 性能优化（-44%）+ index skip-embeddings + batch encoding 实验 + RF-6 清零 + 架构治理文档（ADR/不变量清单）+ Tantivy BM25 代码符号搜索（P1）+ AppContext 职责拆分 Phase 1/2（storage.rs 860→430 行）+ 架构不变量 CI（G5/T11/T12）+ Embedding 多后端（Candle/Ollama 配置切换, P3）+ EnvVersionCache 扩展（9 工具链检测, P4）+ **v0.16.0 Agent Contexts（P1/P2/P3）**：`agent_contexts`/`agent_memories`/`context_entity_links` Schema + 9 个 Session MCP tools + Context-aware Skill Runtime（`DEVBASE_ACTIVE_CONTEXT` 注入）+ **v0.16.1 Workflow-Session Binding**：`workflow_executions.context_id` + 执行自动绑定 Active Context + **v0.17.0-dev Embedding Externalization**：`embedding` 从 default features 移除（Candle/Ollama 降级为 opt-in `llm-backend`）+ Schema 34 向量存储 + `cosine_similarity` SQLite UDF + `devkit_session_recall` / `devkit_session_index`（60 tools）
 - **核心方向**：让 Kimi CLI 在调用文件工具之前，先通过 devbase 获得"该读哪些文件、为什么读、它们之间的关系"
 - **本质分析**：见 `vault/99-Meta/devbase-essence-analysis-20260430.md` 与 `docs/architecture/redefinition.md`
 - **设计文档**：
   - [`docs/architecture/workflow-dsl.md`](docs/architecture/workflow-dsl.md) — Workflow DSL 规范
   - [`docs/architecture/workspace-as-schema.md`](docs/architecture/workspace-as-schema.md) — 统一实体模型设计
+  - [`docs/RFC/agent-memory-vector-storage.md`](docs/RFC/agent-memory-vector-storage.md) — v0.17.0 Agent Memory 向量存储 RFC（Embedding 职责外迁设计）
   - [`docs/guides/mcp-integration-guide.md`](docs/guides/mcp-integration-guide.md) — MCP 集成指南
   - [`docs/README.md`](docs/README.md) — 完整文档导航
 
@@ -22,10 +23,10 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 - **Workspace**：`%LOCALAPPDATA%\devbase\workspace/` —— 文件系统 = source of truth
   - `vault/` —— PARA 结构：00-Inbox, 01-Projects, 02-Areas, 03-Resources, 04-Archives, 99-Meta
   - `assets/` —— 二进制资源
-- **MCP Server**：stdio only，**58 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools + 3 个 Relation tools + 2 个 Agent 状态工具 + 9 个 Agent Context tools + 1 个 streaming index 工具 + 1 个 oplog 工具）；配置见 `mcp.json`
+- **MCP Server**：stdio only，**60 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools + 3 个 Relation tools + 9 个 Agent Context tools + 2 个 Agent Memory 向量工具 + 1 个 streaming index 工具 + 1 个 oplog 工具）；配置见 `mcp.json`
 - **Kimi CLI 集成**：MCP server 已通过 `kimi mcp add` 注册，端到端验证通过（`kimi --print` 成功调用 `devkit_health`）；项目级 skill 位于 `.kimi/skills/devbase-project/SKILL.md`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：490+ workspace passed / 0 failed / 4 ignored（主 crate 390 + symbol-links 4 + sync-protocol 12 + core-types 3 + syncthing-client 2 + vault-frontmatter 5 + vault-wikilink 5 + workflow-interpolate 9 + workflow-model 2 + registry-health 3 + registry-metrics 4 + registry-workspace 5 + embedding 5 + skill-runtime-types 7 + skill-runtime-parser 3 + 其他 crates ~30）；11/11 passed（integration `tests/cli.rs`）
+- **当前测试**：442+ lib passed / 0 failed / 3 ignored + 11/11 integration passed（`tests/cli.rs`）
 - **编译状态**：0 warning / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
 - **Workspace 结构**：`crates/` 目录已启用，18 个零耦合模块已提取为独立 crate（`devbase-symbol-links`, `devbase-sync-protocol`, `devbase-core-types`, `devbase-syncthing-client`, `devbase-vault-frontmatter`, `devbase-vault-wikilink`, `devbase-workflow-interpolate`, `devbase-workflow-model`, `devbase-registry-health`, `devbase-registry-metrics`, `devbase-registry-workspace`, `devbase-embedding`, `devbase-skill-runtime-types`, `devbase-skill-runtime-parser`, `devbase-registry-entity`, `devbase-registry-relation`, `devbase-registry-call-graph`, `devbase-registry-dead-code`, `devbase-registry-code-symbols`）
 - **Workflow Engine**：YAML 解析 + 拓扑调度 + batch 并行执行 + 5 种 step 类型（skill/subworkflow/parallel/condition/loop）

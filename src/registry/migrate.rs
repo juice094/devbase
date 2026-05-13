@@ -4,7 +4,7 @@ use super::*;
 use crate::storage::StorageBackend;
 use std::path::PathBuf;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 33;
+pub const CURRENT_SCHEMA_VERSION: i32 = 34;
 
 impl WorkspaceRegistry {
     pub fn db_path() -> anyhow::Result<PathBuf> {
@@ -475,7 +475,9 @@ fn run_migrations(conn: &mut rusqlite::Connection, path: &std::path::Path) -> an
     {
         tracing::warn!("Failed to auto-backup registry before migration: {}", e);
     }
-    crate::registry::migrations::run_all(conn)
+    crate::registry::migrations::run_all(conn)?;
+    crate::registry::agent_context::register_vector_functions(conn)?;
+    Ok(())
 }
 
 #[cfg(test)]

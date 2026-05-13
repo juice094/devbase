@@ -18,6 +18,16 @@ impl App {
                     self.vault_list_state.select(Some(self.vault_selected));
                 }
             }
+            MainView::Session => {
+                if !self.sessions.is_empty() {
+                    self.session_selected = (self.session_selected + 1) % self.sessions.len();
+                    self.session_list_state.select(Some(self.session_selected));
+                    if let Some(ctx) = self.sessions.get(self.session_selected) {
+                        let ctx_id = ctx.id.clone();
+                        let _ = self.load_session_memories(&ctx_id);
+                    }
+                }
+            }
         }
     }
 
@@ -35,6 +45,17 @@ impl App {
                     self.vault_selected =
                         (self.vault_selected + self.vaults.len() - 1) % self.vaults.len();
                     self.vault_list_state.select(Some(self.vault_selected));
+                }
+            }
+            MainView::Session => {
+                if !self.sessions.is_empty() {
+                    self.session_selected =
+                        (self.session_selected + self.sessions.len() - 1) % self.sessions.len();
+                    self.session_list_state.select(Some(self.session_selected));
+                    if let Some(ctx) = self.sessions.get(self.session_selected) {
+                        let ctx_id = ctx.id.clone();
+                        let _ = self.load_session_memories(&ctx_id);
+                    }
                 }
             }
         }
@@ -55,6 +76,16 @@ impl App {
                     self.vault_list_state.select(Some(self.vault_selected));
                 }
             }
+            MainView::Session => {
+                if !self.sessions.is_empty() {
+                    self.session_selected = 0;
+                    self.session_list_state.select(Some(self.session_selected));
+                    if let Some(ctx) = self.sessions.get(self.session_selected) {
+                        let ctx_id = ctx.id.clone();
+                        let _ = self.load_session_memories(&ctx_id);
+                    }
+                }
+            }
         }
     }
 
@@ -71,6 +102,16 @@ impl App {
                 if !self.vaults.is_empty() {
                     self.vault_selected = self.vaults.len() - 1;
                     self.vault_list_state.select(Some(self.vault_selected));
+                }
+            }
+            MainView::Session => {
+                if !self.sessions.is_empty() {
+                    self.session_selected = self.sessions.len() - 1;
+                    self.session_list_state.select(Some(self.session_selected));
+                    if let Some(ctx) = self.sessions.get(self.session_selected) {
+                        let ctx_id = ctx.id.clone();
+                        let _ = self.load_session_memories(&ctx_id);
+                    }
                 }
             }
         }

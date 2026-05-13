@@ -65,26 +65,35 @@ pub fn run_skill(
     cmd.env("DEVBASE_SKILL_ID", &skill.id);
     cmd.env("DEVBASE_HOME", devbase_home()?);
 
-    // P2-B: Inject active session context memories if available
+    // P2-B: Inject active session context memories via semantic recall.
+    // v0.17.0: devbase no longer generates embeddings. Semantic recall requires
+    // either the `llm-backend` feature or an external endpoint configured in
+    // config.toml. Falls back to keyword search when embedding unavailable.
     if let Some(ctx_id) = crate::registry::agent_context::resolve_active_context() {
-        if let Ok(memories) = crate::registry::agent_context::list_memories(conn, &ctx_id)
-            && !memories.is_empty()
-        {
+        cmd.env("DEVBASE_ACTIVE_CONTEXT", &ctx_id);
+
+        let recalled = recall_context_memories(conn, &ctx_id, &skill.id, args);
+        if let Ok((memories, recall_method)) = recalled {
             let mem_json: Vec<serde_json::Value> = memories
                 .iter()
-                .map(|m| {
+                .map(|(m, score)| {
                     serde_json::json!({
+                        "id": m.id,
                         "type": m.memory_type,
                         "content": m.content,
+                        "score": score,
+                        "model": m.embedding_model,
                     })
                 })
                 .collect();
-            cmd.env("DEVBASE_ACTIVE_CONTEXT", &ctx_id);
             cmd.env(
                 "DEVBASE_CONTEXT_MEMORIES",
                 serde_json::to_string(&mem_json).unwrap_or_default(),
             );
+            cmd.env("DEVBASE_CONTEXT_MEMORY_COUNT", memories.len().to_string());
+            cmd.env("DEVBASE_CONTEXT_RECALL_METHOD", recall_method);
         }
+
         if let Ok(linked) = crate::registry::agent_context::list_linked_entities(conn, &ctx_id)
             && !linked.is_empty()
         {
@@ -202,6 +211,125 @@ pub fn run_skill(
         exit_code,
         duration_ms: start.elapsed().as_millis() as u64,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Context Memory Auto-Recall (v0.17.0)
+// ---------------------------------------------------------------------------
+
+/// Recall relevant memories for the active context using a tiered strategy:
+/// 1. Semantic recall (cosine similarity) if embedding is available
+/// 2. Keyword fallback (LIKE search) otherwise
+///
+/// Returns (memories with scores, recall_method label).
+fn recall_context_memories(
+    conn: &rusqlite::Connection,
+    context_id: &str,
+    skill_id: &str,
+    args: &[String],
+) -> anyhow::Result<(Vec<(crate::registry::agent_context::AgentMemory, f64)>, String)> {
+    let query_text = build_recall_query(skill_id, args);
+
+    // Tier 1: semantic recall
+    if let Ok(embedding) = generate_query_embedding_external(&query_text) {
+        if let Ok(results) = try_semantic_recall(conn, context_id, &embedding) {
+            if !results.is_empty() {
+                return Ok((results, "semantic".to_string()));
+            }
+        }
+    }
+
+    // Tier 2: keyword fallback
+    let keywords = crate::registry::agent_context::search_memories(
+        conn,
+        Some(context_id),
+        &query_text,
+        5,
+    )?;
+    let scored = keywords.into_iter().map(|m| (m, 0.0)).collect();
+    Ok((scored, "keyword".to_string()))
+}
+
+fn build_recall_query(skill_id: &str, args: &[String]) -> String {
+    let mut parts = vec![skill_id.to_string()];
+    for arg in args {
+        if let Some((k, v)) = arg.split_once('=') {
+            parts.push(format!("{}:{}", k, v));
+        } else {
+            parts.push(arg.to_string());
+        }
+    }
+    parts.join(" ")
+}
+
+fn try_semantic_recall(
+    conn: &rusqlite::Connection,
+    context_id: &str,
+    embedding: &[f32],
+) -> anyhow::Result<Vec<(crate::registry::agent_context::AgentMemory, f64)>> {
+    crate::registry::agent_context::register_vector_functions(conn)?;
+    crate::registry::agent_context::search_memories_semantic(
+        conn,
+        context_id,
+        embedding,
+        5,
+    )
+}
+
+/// Generate a query embedding using the best available provider.
+#[cfg(feature = "embedding")]
+fn generate_query_embedding_external(text: &str) -> anyhow::Result<Vec<f32>> {
+    crate::embedding::generate_query_embedding(text)
+}
+
+#[cfg(not(feature = "embedding"))]
+fn generate_query_embedding_external(text: &str) -> anyhow::Result<Vec<f32>> {
+    let cfg = crate::config::Config::load()?;
+    if !cfg.embedding.enabled {
+        anyhow::bail!("embedding provider not enabled in config.toml");
+    }
+    call_external_embedding_endpoint(text, &cfg.embedding)
+}
+
+#[cfg(not(feature = "embedding"))]
+pub(crate) fn call_external_embedding_endpoint(
+    text: &str,
+    cfg: &crate::config::EmbeddingConfig,
+) -> anyhow::Result<Vec<f32>> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(cfg.timeout_seconds))
+        .build()?;
+
+    let url = format!("{}/api/embeddings", cfg.base_url.trim_end_matches('/'));
+    let body = serde_json::json!({
+        "model": cfg.model,
+        "prompt": text,
+    });
+
+    let resp = client.post(&url).json(&body).send()?;
+    let status = resp.status();
+    let resp_json: serde_json::Value = resp.json()?;
+
+    if !status.is_success() {
+        anyhow::bail!(
+            "Embedding endpoint returned {}: {}",
+            status,
+            resp_json.get("error").and_then(|v| v.as_str()).unwrap_or("unknown error")
+        );
+    }
+
+    let embedding = resp_json
+        .get("embedding")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow::anyhow!("embedding array missing in response"))?
+        .iter()
+        .filter_map(|v| v.as_f64().map(|f| f as f32))
+        .collect::<Vec<f32>>();
+
+    if embedding.is_empty() {
+        anyhow::bail!("embedding array empty");
+    }
+    Ok(embedding)
 }
 
 /// Check for unresolved hard vetoes before skill execution.
@@ -496,5 +624,111 @@ sys.exit(0)
 
         let warning = check_hard_vetoes_for_skill(&skill, &conn);
         assert!(warning.is_none(), "should return None when no vetoes exist");
+    }
+
+    /// End-to-end test: mock Ollama /api/embeddings endpoint and verify
+    /// call_external_embedding_endpoint parses the response correctly.
+    #[test]
+    #[cfg(not(feature = "embedding"))]
+    fn test_external_embedding_endpoint_ollama_parsing() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(&stream);
+            let mut headers = String::new();
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap() == 0 {
+                    break;
+                }
+                if line == "\r\n" {
+                    break;
+                }
+                headers.push_str(&line);
+            }
+            // Verify it hit the correct path
+            assert!(
+                headers.contains("POST /api/embeddings"),
+                "expected POST /api/embeddings, got: {}",
+                headers
+            );
+
+            let body = r#"{"embedding":[0.1,0.2,0.3]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        let cfg = crate::config::EmbeddingConfig {
+            enabled: true,
+            provider: "ollama".to_string(),
+            model: "test-model".to_string(),
+            base_url: format!("http://127.0.0.1:{}", port),
+            timeout_seconds: 5,
+        };
+
+        let result = call_external_embedding_endpoint("test prompt", &cfg);
+        assert!(
+            result.is_ok(),
+            "should parse ollama response: {:?}",
+            result.err()
+        );
+        let emb = result.unwrap();
+        assert_eq!(emb.len(), 3);
+        assert!((emb[0] - 0.1f32).abs() < 0.001);
+        assert!((emb[1] - 0.2f32).abs() < 0.001);
+        assert!((emb[2] - 0.3f32).abs() < 0.001);
+    }
+
+    /// Verify error handling when external endpoint returns non-2xx.
+    #[test]
+    #[cfg(not(feature = "embedding"))]
+    fn test_external_embedding_endpoint_error_response() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(&stream);
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap() == 0 || line == "\r\n" {
+                    break;
+                }
+            }
+            let body = r#"{"error":"model not found"}"#;
+            let response = format!(
+                "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\nContent-Type: application/json\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        let cfg = crate::config::EmbeddingConfig {
+            enabled: true,
+            provider: "ollama".to_string(),
+            model: "missing-model".to_string(),
+            base_url: format!("http://127.0.0.1:{}", port),
+            timeout_seconds: 5,
+        };
+
+        let result = call_external_embedding_endpoint("test", &cfg);
+        assert!(result.is_err(), "should fail on 404");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("404"), "error should mention status code: {}", msg);
     }
 }

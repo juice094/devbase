@@ -61,5 +61,7 @@ mod tests {
         let _ = super::session::DevkitSessionSearchTool;
         let _ = super::session::DevkitSessionCaptureTool;
         let _ = super::session::DevkitSessionWorkflowsTool;
+        let _ = super::session::DevkitSessionRecallTool;
+        let _ = super::session::DevkitSessionIndexTool;
     }
 }

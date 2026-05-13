@@ -379,9 +379,13 @@ CREATE TABLE IF NOT EXISTS agent_memories (
     memory_type TEXT NOT NULL,
     content TEXT NOT NULL,
     created_at DATETIME DEFAULT current_timestamp,
+    embedding BLOB,
+    embedding_model TEXT,
+    indexed_at DATETIME,
     FOREIGN KEY (context_id) REFERENCES agent_contexts(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_agent_memories_context ON agent_memories(context_id);
+CREATE INDEX IF NOT EXISTS idx_agent_memories_embedding ON agent_memories(context_id, indexed_at) WHERE embedding IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS context_entity_links (
     context_id TEXT NOT NULL,

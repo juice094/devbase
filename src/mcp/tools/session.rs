@@ -76,7 +76,7 @@ Parameters:
                 let content = mem.get("content").and_then(|v| v.as_str()).unwrap_or("");
                 if !content.is_empty() {
                     crate::registry::agent_context::insert_memory(
-                        &mut conn, context_id, ty, content,
+                        &mut conn, context_id, ty, content, None, None,
                     )?;
                     memory_count += 1;
                 }
@@ -580,6 +580,8 @@ This is a lightweight append-only operation. No validation is performed on conte
             &context_id,
             memory_type,
             content,
+            None,
+            None,
         )?;
 
         Ok(json!({
@@ -651,6 +653,179 @@ Use this when the user wants to:
             "context_id": context_id,
             "count": results.len(),
             "executions": results,
+        }))
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitSessionRecallTool;
+
+impl McpTool for DevkitSessionRecallTool {
+    fn name(&self) -> &'static str {
+        "devkit_session_recall"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        json!({
+            "description": r#"Semantic memory recall for an active agent session.
+
+Use this when the user wants to:
+- Find relevant past memories by meaning rather than exact keyword
+- Surface decisions, constraints, or discoveries related to the current task
+- Inject top-k relevant memories into the prompt context
+
+Requires an externally-generated query embedding vector. devbase does NOT generate embeddings; it only searches stored vectors.
+
+Parameters:
+- context_id: Session ID (optional; falls back to DEVBASE_ACTIVE_CONTEXT).
+- query_embedding: f32 array from an external embedding provider (required).
+- limit: Maximum memories to return (default 5, max 20).
+
+Returns: memories sorted by cosine similarity score (0.0-1.0)."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "context_id": { "type": "string", "description": "Session ID (optional)" },
+                    "query_embedding": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "description": "Query vector as f32 array (externally generated)"
+                    },
+                    "limit": { "type": "integer", "default": 5 }
+                },
+                "required": ["query_embedding"]
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let context_id = match args.get("context_id").and_then(|v| v.as_str()) {
+            Some(cid) => cid.to_string(),
+            None => {
+                crate::registry::agent_context::resolve_active_context()
+                    .ok_or_else(|| anyhow::anyhow!("No active session. Use context_id argument or devkit_session_activate first."))?
+            }
+        };
+        let query_emb = args
+            .get("query_embedding")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("query_embedding required"))?
+            .iter()
+            .filter_map(|v| v.as_f64().map(|f| f as f32))
+            .collect::<Vec<f32>>();
+        if query_emb.is_empty() {
+            anyhow::bail!("query_embedding must not be empty");
+        }
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(5).min(20) as usize;
+
+        let conn = ctx.conn_mut()?;
+        // Ensure UDF is registered on this connection
+        crate::registry::agent_context::register_vector_functions(&conn)?;
+        let results = crate::registry::agent_context::search_memories_semantic(
+            &conn, &context_id, &query_emb, limit,
+        )?;
+
+        let memories: Vec<serde_json::Value> = results
+            .into_iter()
+            .map(|(mem, score)| {
+                json!({
+                    "id": mem.id,
+                    "type": mem.memory_type,
+                    "content": mem.content,
+                    "created_at": mem.created_at.to_rfc3339(),
+                    "embedding_model": mem.embedding_model,
+                    "score": score,
+                })
+            })
+            .collect();
+
+        Ok(json!({
+            "success": true,
+            "context_id": context_id,
+            "count": memories.len(),
+            "memories": memories,
+        }))
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitSessionIndexTool;
+
+impl McpTool for DevkitSessionIndexTool {
+    fn name(&self) -> &'static str {
+        "devkit_session_index"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        json!({
+            "description": r#"Store an externally-generated embedding for an existing memory.
+
+This is the storage-side of the memory semantic index: an external provider (Ollama, OpenAI, etc.) generates the embedding, and devbase persists it in SQLite for similarity search.
+
+Parameters:
+- memory_id: The integer ID of the memory to index.
+- embedding: f32 vector from external provider.
+- embedding_model: Name of the model used (e.g., "nomic-embed-text").
+
+Returns: success flag."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "memory_id": { "type": "integer", "description": "Memory row ID" },
+                    "embedding": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "description": "Embedding vector as f32 array"
+                    },
+                    "embedding_model": { "type": "string", "description": "Model name used for generation" }
+                },
+                "required": ["memory_id", "embedding", "embedding_model"]
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let memory_id = args
+            .get("memory_id")
+            .and_then(|v| v.as_i64())
+            .ok_or_else(|| anyhow::anyhow!("memory_id required"))?;
+        let embedding = args
+            .get("embedding")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("embedding required"))?
+            .iter()
+            .filter_map(|v| v.as_f64().map(|f| f as f32))
+            .collect::<Vec<f32>>();
+        let embedding_model = args
+            .get("embedding_model")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+
+        let embedding_blob = crate::registry::agent_context::embedding_to_blob(&embedding);
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let conn = ctx.conn_mut()?;
+        let rows = conn.execute(
+            "UPDATE agent_memories SET embedding = ?1, embedding_model = ?2, indexed_at = ?3 WHERE id = ?4",
+            rusqlite::params![embedding_blob, embedding_model, now, memory_id],
+        )?;
+
+        if rows == 0 {
+            anyhow::bail!("Memory {} not found", memory_id);
+        }
+
+        Ok(json!({
+            "success": true,
+            "memory_id": memory_id,
+            "embedding_model": embedding_model,
         }))
     }
 }

@@ -11,6 +11,7 @@ mod help;
 mod list;
 mod logs;
 mod popups;
+pub(crate) mod session;
 
 /// Main render dispatcher.
 ///
@@ -37,7 +38,14 @@ pub(crate) fn ui(frame: &mut Frame, app: &mut App) {
         list::render_list(frame, app, layout.list, &styles);
     } else {
         list::render_list(frame, app, layout.list, &styles);
-        detail::render_detail(frame, app, layout.detail, &styles);
+        match app.main_view {
+            crate::tui::MainView::Session => {
+                session::render_session_detail(frame, app, layout.detail, &styles);
+            }
+            _ => {
+                detail::render_detail(frame, app, layout.detail, &styles);
+            }
+        }
         logs::render_logs(frame, app, layout.logs, &styles);
     }
 
@@ -73,6 +81,7 @@ fn render_bottom_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect, 
             let view_label = match app.main_view {
                 crate::tui::MainView::RepoList => "[Repos]",
                 crate::tui::MainView::VaultList => "[Vault]",
+                crate::tui::MainView::Session => "[Session]",
             };
             let mut spans = vec![
                 Span::styled(
