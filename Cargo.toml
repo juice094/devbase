@@ -14,7 +14,10 @@ name = "registry_bench"
 harness = false
 
 [features]
-default = ["tui", "mcp", "embedding", "lang-rust", "lang-python", "lang-js-ts", "lang-go"]
+default = ["tui", "mcp", "lang-rust", "lang-python", "lang-js-ts", "lang-go"]
+# embedding feature removed from default in v0.17.0.
+# LLM inference (Candle/Ollama) is now opt-in via `llm-backend` feature.
+# devbase stores and searches externally-generated embeddings only.
 tui = ["ratatui", "crossterm", "watch"]
 watch = ["notify"]
 mcp = []
@@ -39,7 +42,7 @@ reqwest = { version = "0.12", features = ["json", "blocking"] }
 tantivy = "0.26"
 dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
-rusqlite = { version = "0.34", features = ["bundled", "chrono"] }
+rusqlite = { version = "0.34", features = ["bundled", "chrono", "functions"] }
 r2d2 = "0.8"
 r2d2_sqlite = "0.27.0"
 blake3 = "1.5"
