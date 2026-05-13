@@ -598,6 +598,15 @@ devbase 的终极壁垒不是"管理仓库的工具"，而是**把静态代码�
 - [ ] 因果发现算法能否从 git history 提取可靠的干预建议？
 - [ ] 世界模型压缩后，本地推理延迟能否控制在 < 100ms？
 
+### 关联笔记（双向联动）
+
+| 笔记 | 类型 | 用途 |
+|:---|:---|:---|
+| `vault/research/world-model-spark-flink-strategy.md` | 完整推导 | 世界模型三层架构、Spark/Flink 定位、研究方向建议 |
+| `vault/ideas/world-model-cognition-card.md` | 精炼认知 | 快速查阅：一句话认知、决策原则、反常识洞察 |
+
+> **认知同步原则**：AGENTS.md 是项目级**约束文档**，Vault 笔记是**探索空间**。若 Vault 中的假设被验证，应反向同步到 AGENTS.md 的"待验证假设"中并打勾；若 AGENTS.md 的决策原则变更，应同步更新 Vault 认知卡片。
+
 ## 禁止事项
 
 - 不得修改 `dev\third_party\*` 外部仓库
