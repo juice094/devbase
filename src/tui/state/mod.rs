@@ -60,6 +60,10 @@ impl App {
             vaults: Vec::new(),
             vault_selected: 0,
             vault_list_state: ListState::default(),
+            sessions: Vec::new(),
+            session_selected: 0,
+            session_list_state: ListState::default(),
+            session_memories: Vec::new(),
             skill_panel: crate::tui::SkillPanelState::default(),
             workflow_popup_mode: WorkflowPopupMode::Hidden,
             workflows: Vec::new(),
@@ -75,6 +79,7 @@ impl App {
         };
         app.log_info(app.ctx.i18n.log.tui_started.to_string());
         app.load_repos()?;
+        app.load_sessions()?;
         app.spawn_stars_refresh();
         app.spawn_vault_watcher();
         Ok(app)
@@ -141,6 +146,29 @@ impl App {
         // Initial sort by registry data only (tags alphabetical)
         self.sort_repos_by_registry();
         self.log_info(self.ctx.i18n.log.loaded_repos(self.repos.len()));
+        Ok(())
+    }
+
+    pub(crate) fn load_sessions(&mut self) -> anyhow::Result<()> {
+        let conn = self.ctx.conn()?;
+        self.sessions = crate::registry::agent_context::list_contexts(&conn)?;
+        if !self.sessions.is_empty() && self.session_selected < self.sessions.len() {
+            let ctx_id = self.sessions[self.session_selected].id.clone();
+            drop(conn);
+            self.load_session_memories(&ctx_id)?;
+        } else {
+            self.session_memories.clear();
+        }
+        Ok(())
+    }
+
+    pub(crate) fn load_session_memories(
+        &mut self,
+        context_id: &str,
+    ) -> anyhow::Result<()> {
+        let conn = self.ctx.conn()?;
+        self.session_memories =
+            crate::registry::agent_context::list_memories(&conn, context_id)?;
         Ok(())
     }
 
@@ -313,6 +341,10 @@ mod tests {
             vaults: vec![],
             vault_selected: 0,
             vault_list_state: ListState::default(),
+            sessions: vec![],
+            session_selected: 0,
+            session_list_state: ListState::default(),
+            session_memories: vec![],
             skill_panel: crate::tui::SkillPanelState::default(),
             workflow_popup_mode: WorkflowPopupMode::Hidden,
             workflows: vec![],

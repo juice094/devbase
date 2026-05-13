@@ -335,6 +335,13 @@ pub(crate) async fn run_app<B: Backend>(
                                 let _ = std::process::Command::new("code").arg(&path).spawn();
                             }
                         }
+                        MainView::Session => {
+                            // Enter on a session: refresh its memories
+                            if let Some(ctx) = app.sessions.get(app.session_selected) {
+                                let ctx_id = ctx.id.clone();
+                                let _ = app.load_session_memories(&ctx_id);
+                            }
+                        }
                     },
                     _ => {}
                 },

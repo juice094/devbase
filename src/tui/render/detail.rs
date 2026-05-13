@@ -15,6 +15,9 @@ pub(crate) fn render_detail(frame: &mut Frame, app: &mut App, area: Rect, styles
     match app.main_view {
         MainView::RepoList => render_repo_detail(frame, app, area, styles),
         MainView::VaultList => render_vault_detail(frame, app, area, styles),
+        MainView::Session => {
+            // Session detail is rendered directly in ui() to avoid nested frame issues
+        }
     }
 }
 

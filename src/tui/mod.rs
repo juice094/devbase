@@ -28,13 +28,15 @@ impl SortMode {
 pub(crate) enum MainView {
     RepoList,
     VaultList,
+    Session,
 }
 
 impl MainView {
     pub fn toggle(self) -> Self {
         match self {
             Self::RepoList => Self::VaultList,
-            Self::VaultList => Self::RepoList,
+            Self::VaultList => Self::Session,
+            Self::Session => Self::RepoList,
         }
     }
 }
@@ -233,6 +235,10 @@ pub struct App {
     pub(crate) vaults: Vec<VaultItem>,
     pub(crate) vault_selected: usize,
     pub(crate) vault_list_state: ListState,
+    pub(crate) sessions: Vec<crate::registry::agent_context::AgentContext>,
+    pub(crate) session_selected: usize,
+    pub(crate) session_list_state: ListState,
+    pub(crate) session_memories: Vec<crate::registry::agent_context::AgentMemory>,
     pub(crate) skill_panel: SkillPanelState,
     pub(crate) workflow_popup_mode: WorkflowPopupMode,
     pub(crate) workflows: Vec<crate::workflow::WorkflowDefinition>,
@@ -318,7 +324,8 @@ mod tests {
     #[test]
     fn test_main_view_toggle() {
         assert_eq!(MainView::RepoList.toggle(), MainView::VaultList);
-        assert_eq!(MainView::VaultList.toggle(), MainView::RepoList);
+        assert_eq!(MainView::VaultList.toggle(), MainView::Session);
+        assert_eq!(MainView::Session.toggle(), MainView::RepoList);
     }
 
     #[test]
