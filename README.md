@@ -6,16 +6,16 @@
 [![License](https://img.shields.io/badge/license-AGPL--3.0-orange)](./LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.95%2B-9cf)](https://www.rust-lang.org)
 
-**本地优先的 AI Skill 编排基础设施**
+**World Model Compiler for Developer Workspaces**
 
-> 把 GitHub 项目变成 AI 能执行的 Skill。  
-> One dashboard for humans. One skill registry for agents.
+> One engine for code context, knowledge memories, and agent reasoning.  
+> Replacing fragmented repo managers, note-taking apps & AI context windows.
 
 ---
 
 ## 30 秒了解
 
-devbase 将 GitHub 项目自动封装为**标准化、可发现、可组合的 Skill**，让弱 AI 子代理能够发现、调用、编排这些 Skill 完成复杂任务。
+devbase 是开发者的**世界模型编译器**。它将代码库、笔记、工作流等原始数字资产编译为 AI 可推理的结构化情境——不是存储数据，是构建环境的心智模型。
 
 | 你是谁 | devbase 为你做什么 |
 |:---|:---|
@@ -26,7 +26,7 @@ devbase 将 GitHub 项目自动封装为**标准化、可发现、可组合的 S
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        devbase                              │
-│              Bimodal Developer Workspace OS                 │
+│         World Model Compiler for Workspaces                 │
 ├─────────────────────────────┬───────────────────────────────┤
 │       Human Layer           │         AI Layer              │
 │  ┌─────────────────────┐    │    ┌─────────────────────┐    │
