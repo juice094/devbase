@@ -321,4 +321,4 @@ skill_runtime::executor → executor
 
 ---
 
-*本文档作为架构决策参考，应与 `ARCHITECTURE.md` 和 `AGENTS.md` 同步维护。*
+*本文档作为架构决策参考，应与 `overview.md` 和 `AGENTS.md` 同步维护。*
