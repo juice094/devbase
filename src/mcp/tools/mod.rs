@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+pub mod brief;
 pub mod context;
 pub mod evaluate;
+pub mod impact;
 pub mod known_limit;
 pub mod oplog;
 pub mod query;
@@ -18,7 +20,9 @@ pub mod external;
 pub mod knowledge;
 pub mod search;
 
+pub use brief::*;
 pub use context::*;
+pub use impact::*;
 pub use known_limit::*;
 pub use oplog::*;
 pub use query::*;
@@ -63,5 +67,9 @@ mod tests {
         let _ = super::session::DevkitSessionWorkflowsTool;
         let _ = super::session::DevkitSessionRecallTool;
         let _ = super::session::DevkitSessionIndexTool;
+        let _ = super::session::DevkitSessionExportTool;
+        let _ = super::session::DevkitSessionImportTool;
+        let _ = super::brief::DevkitProjectBriefTool;
+        let _ = super::impact::DevkitImpactAnalysisTool;
     }
 }

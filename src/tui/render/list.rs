@@ -14,7 +14,9 @@ pub(crate) fn render_list(frame: &mut Frame, app: &mut App, area: Rect, styles: 
     match app.main_view {
         MainView::RepoList => render_repo_list(frame, app, area, styles),
         MainView::VaultList => render_vault_list(frame, app, area, styles),
-        MainView::Session => crate::tui::render::session::render_session_list(frame, app, area, styles),
+        MainView::Session => {
+            crate::tui::render::session::render_session_list(frame, app, area, styles)
+        }
     }
 }
 

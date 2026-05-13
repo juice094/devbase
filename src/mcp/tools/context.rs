@@ -439,7 +439,7 @@ Returns: JSON object with:
     }
 }
 
-fn collect_recent_commits(repo_path: &std::path::Path, limit: usize) -> Vec<String> {
+pub(crate) fn collect_recent_commits(repo_path: &std::path::Path, limit: usize) -> Vec<String> {
     let repo = match git2::Repository::open(repo_path) {
         Ok(r) => r,
         Err(_) => return Vec::new(),
@@ -463,7 +463,7 @@ fn collect_recent_commits(repo_path: &std::path::Path, limit: usize) -> Vec<Stri
     commits
 }
 
-fn collect_hot_files(repo_path: &std::path::Path, days: i64) -> Vec<serde_json::Value> {
+pub(crate) fn collect_hot_files(repo_path: &std::path::Path, days: i64) -> Vec<serde_json::Value> {
     let repo = match git2::Repository::open(repo_path) {
         Ok(r) => r,
         Err(_) => return Vec::new(),

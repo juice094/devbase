@@ -705,10 +705,11 @@ Returns: memories sorted by cosine similarity score (0.0-1.0)."#,
     ) -> anyhow::Result<serde_json::Value> {
         let context_id = match args.get("context_id").and_then(|v| v.as_str()) {
             Some(cid) => cid.to_string(),
-            None => {
-                crate::registry::agent_context::resolve_active_context()
-                    .ok_or_else(|| anyhow::anyhow!("No active session. Use context_id argument or devkit_session_activate first."))?
-            }
+            None => crate::registry::agent_context::resolve_active_context().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No active session. Use context_id argument or devkit_session_activate first."
+                )
+            })?,
         };
         let query_emb = args
             .get("query_embedding")
@@ -726,7 +727,10 @@ Returns: memories sorted by cosine similarity score (0.0-1.0)."#,
         // Ensure UDF is registered on this connection
         crate::registry::agent_context::register_vector_functions(&conn)?;
         let results = crate::registry::agent_context::search_memories_semantic(
-            &conn, &context_id, &query_emb, limit,
+            &conn,
+            &context_id,
+            &query_emb,
+            limit,
         )?;
 
         let memories: Vec<serde_json::Value> = results
@@ -804,10 +808,8 @@ Returns: success flag."#,
             .iter()
             .filter_map(|v| v.as_f64().map(|f| f as f32))
             .collect::<Vec<f32>>();
-        let embedding_model = args
-            .get("embedding_model")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
+        let embedding_model =
+            args.get("embedding_model").and_then(|v| v.as_str()).unwrap_or("unknown");
 
         let embedding_blob = crate::registry::agent_context::embedding_to_blob(&embedding);
         let now = chrono::Utc::now().to_rfc3339();
@@ -826,6 +828,201 @@ Returns: success flag."#,
             "success": true,
             "memory_id": memory_id,
             "embedding_model": embedding_model,
+        }))
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitSessionExportTool;
+
+impl McpTool for DevkitSessionExportTool {
+    fn name(&self) -> &'static str {
+        "devkit_session_export"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        json!({
+            "description": r#"Export an agent session (context + memories + links) to Markdown or JSON. Useful for sharing session state with ClaudeCode or other AI assistants, or for archival.
+
+Parameters:
+- context_id: Session ID to export.
+- format: "markdown" (default) or "json".
+
+Returns: exported content string."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "context_id": { "type": "string" },
+                    "format": { "type": "string", "enum": ["markdown", "json"], "default": "markdown" }
+                },
+                "required": ["context_id"]
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let context_id = args.get("context_id").and_then(|v| v.as_str()).unwrap_or("");
+        let format = args.get("format").and_then(|v| v.as_str()).unwrap_or("markdown");
+        if context_id.is_empty() {
+            anyhow::bail!("Missing required argument: context_id");
+        }
+
+        let conn = ctx.conn()?;
+        let (ctx_data, memories) =
+            match crate::registry::agent_context::get_context_with_memories(&conn, context_id)? {
+                Some(data) => data,
+                None => anyhow::bail!("Context '{}' not found", context_id),
+            };
+        let linked = crate::registry::agent_context::list_linked_entities(&conn, context_id)?;
+
+        let content = if format == "json" {
+            serde_json::to_string_pretty(&json!({
+                "context": {
+                    "id": ctx_data.id,
+                    "name": ctx_data.name,
+                    "intent": ctx_data.intent,
+                    "status": ctx_data.status,
+                },
+                "memories": memories.iter().map(|m| json!({
+                    "type": m.memory_type,
+                    "content": m.content,
+                    "created_at": m.created_at.to_rfc3339(),
+                })).collect::<Vec<_>>(),
+                "linked_entities": linked.iter().map(|(eid, ltype, _)| json!({
+                    "entity_id": eid,
+                    "link_type": ltype,
+                })).collect::<Vec<_>>(),
+            }))? + "\n"
+        } else {
+            let mut md = format!("# Session: {}\n\n", ctx_data.name);
+            if let Some(ref intent) = ctx_data.intent {
+                md.push_str(&format!("**Intent:** {}\n\n", intent));
+            }
+            md.push_str(&format!("**Status:** {}\n\n", ctx_data.status));
+            if !linked.is_empty() {
+                md.push_str("## Linked Entities\n");
+                for (eid, ltype, _) in &linked {
+                    md.push_str(&format!("- `{}` ({})\n", eid, ltype));
+                }
+                md.push('\n');
+            }
+            if !memories.is_empty() {
+                md.push_str("## Memories\n");
+                for m in &memories {
+                    md.push_str(&format!(
+                        "### [{}] {}\n{}\n\n",
+                        m.memory_type,
+                        m.created_at.format("%Y-%m-%d %H:%M"),
+                        m.content
+                    ));
+                }
+            }
+            md
+        };
+
+        Ok(json!({
+            "success": true,
+            "context_id": context_id,
+            "format": format,
+            "content": content,
+        }))
+    }
+}
+
+#[derive(Clone)]
+pub struct DevkitSessionImportTool;
+
+impl McpTool for DevkitSessionImportTool {
+    fn name(&self) -> &'static str {
+        "devkit_session_import"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        json!({
+            "description": r#"Import memories into a session from structured text. Parses a simple format where each memory is on its own line prefixed by [type]. Useful for bulk-importing ClaudeCode conversation excerpts or meeting notes.
+
+Format example:
+  [decision] Use SQLite for persistence
+  [constraint] Must support Windows paths
+  [note] Team agreed on AGPL license
+
+Parameters:
+- context_id: Target session ID (created if not exists).
+- content: Text block to parse.
+- default_type: Memory type for lines without prefix (default "note").
+
+Returns: import summary."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "context_id": { "type": "string" },
+                    "content": { "type": "string" },
+                    "default_type": { "type": "string", "default": "note" }
+                },
+                "required": ["context_id", "content"]
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let context_id = args.get("context_id").and_then(|v| v.as_str()).unwrap_or("");
+        let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
+        let default_type = args.get("default_type").and_then(|v| v.as_str()).unwrap_or("note");
+        if context_id.is_empty() {
+            anyhow::bail!("Missing required argument: context_id");
+        }
+        if content.is_empty() {
+            anyhow::bail!("Missing required argument: content");
+        }
+
+        let mut conn = ctx.conn_mut()?;
+        // Ensure context exists
+        if crate::registry::agent_context::get_context(&conn, context_id)?.is_none() {
+            crate::registry::agent_context::upsert_context(
+                &mut conn,
+                context_id,
+                context_id,
+                Some("imported"),
+            )?;
+        }
+
+        let mut imported = 0;
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let (ty, text) = if let Some(pos) = line.find(']') {
+                if line.starts_with('[') && pos > 1 {
+                    let t = &line[1..pos];
+                    let rest = line[pos + 1..].trim();
+                    (t, rest)
+                } else {
+                    (default_type, line)
+                }
+            } else {
+                (default_type, line)
+            };
+            if !text.is_empty() {
+                crate::registry::agent_context::insert_memory(
+                    &mut conn, context_id, ty, text, None, None,
+                )?;
+                imported += 1;
+            }
+        }
+
+        Ok(json!({
+            "success": true,
+            "context_id": context_id,
+            "imported": imported,
         }))
     }
 }
