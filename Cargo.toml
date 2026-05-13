@@ -1,6 +1,6 @@
 [package]
 name = "devbase"
-version = "0.15.0"
+version = "0.17.0-dev"
 edition = "2024"
 description = "Developer workspace database and knowledge-base manager"
 authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
@@ -102,7 +102,7 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.package]
-version = "0.15.0"
+version = "0.17.0-dev"
 authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
 edition = "2024"
 license = "AGPL-3.0-or-later"

@@ -5,6 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0-dev] - 2026-05-13
+
+### Added
+
+- **Agent Memory 向量存储** — Schema v34
+  - `agent_memories` 新增 `embedding BLOB`, `embedding_model TEXT`, `indexed_at DATETIME`
+  - Partial index `idx_agent_memories_embedding` 仅索引含向量的行
+  - `AgentMemory` 结构体扩展向量元数据字段
+- **SQLite UDF: `cosine_similarity`** — `src/registry/agent_context.rs`
+  - 输入: 两个 little-endian f32 BLOB
+  - 输出: REAL ∈ [-1.0, 1.0]
+  - 注册时机: `WorkspaceRegistry::init_db_at` 迁移完成后自动注册
+- **语义记忆搜索** — `search_memories_semantic(context_id, query_embedding, limit)`
+  - 纯 SQL `ORDER BY cosine_similarity(embedding, ?) DESC`
+  - 零 LLM 运行时依赖；仅执行向量比对
+- **MCP Tools +2** (60 total)
+  - `devkit_session_recall` — 外部向量查询 + 语义召回 top-k memories
+  - `devkit_session_index` — 为已有 memory 注入外部生成 embedding
+- **Skill Runtime Auto-Recall** — `src/skill_runtime/executor.rs`
+  - Tier 1: Semantic recall (本地 Candle/Ollama 或外部 HTTP endpoint)
+  - Tier 2: Keyword fallback (`LIKE` search on `content`)
+  - 新环境变量: `DEVBASE_CONTEXT_MEMORY_COUNT`, `DEVBASE_CONTEXT_RECALL_METHOD`
+  - `DEVBASE_CONTEXT_MEMORIES` 升级为 top-k 相关 memories（含 `score` + `model`）
+- **外部 Embedding Provider 集成**
+  - `call_external_embedding_endpoint` — `reqwest::blocking` POST `/api/embeddings`
+  - 配置驱动: `config.toml [embedding]` (enabled/provider/model/base_url/timeout)
+  - 端到端测试: mock TCP server 验证 Ollama 格式解析 + 错误码处理
+- **RFC 文档** — `docs/RFC/agent-memory-vector-storage.md`
+  - 架构决策: devbase = 向量数据库层，不做 embedding 生成
+  - 参照 pgvector 边界设计
+
+### Changed
+
+- **Feature Flags**: `embedding` 从 `default` 移除
+  - Candle/Ollama 依赖变为 opt-in: `--features embedding`
+  - 默认构建零 ML 依赖，编译时间减少 30~50%
+- `insert_memory` 签名扩展: 新增可选 `embedding: Option<&[f32]>` 和 `embedding_model: Option<&str>`
+- `list_memories` / `search_memories` SELECT 语句扩展为 8 列（兼容新增字段）
+- AGENTS.md 同步至 v0.17.0-dev 基线
+
+### Breaking Changes
+
+- 默认构建不再包含 `devbase-embedding` crate；需要语义生成能力的用户须显式启用 `--features embedding`
+- `generate_query_embedding` 在默认构建下返回错误（提示启用 feature 或配置外部 endpoint）
+
+## [0.16.1] - 2026-05-13
+
+### Added
+
+- **Workflow-Session Binding** — Schema v33
+  - `workflow_executions` 新增 `context_id` 列 + 索引
+  - `create_execution` 自动绑定 `resolve_active_context()`
+  - MCP `devkit_workflow_run` 与 CLI `workflow run` 均支持自动绑定
+  - `devkit_session_workflows` tool: 列出指定 context 的 workflow 执行历史
+- `context_entity_links` 表 (Schema v32): context 与任意 entity 的多对多关联
+
+## [0.16.0] - 2026-05-13
+
+### Added
+
+- **Agent Contexts (AI Agent OS)** — Schema v31
+  - `agent_contexts` 表: 持久化 AI session / project scope
+  - `agent_memories` 表: 结构化记忆（decision/constraint/note/discovery/error）
+  - 9 个 Session MCP tools: save/list/resume/attach/detach/activate/search/capture/workflows
+  - `resolve_active_context()`: 环境变量 `DEVBASE_ACTIVE_CONTEXT` → 文件 `.active_context` fallback
+  - Context-aware Skill Runtime: 注入 `DEVBASE_ACTIVE_CONTEXT` + `DEVBASE_CONTEXT_MEMORIES` + `DEVBASE_CONTEXT_LINKS`
+  - 所有 agent_context 操作自动写入 OpLog (`OplogEventType::AgentContext`)
+
 ## [0.15.0] - 2026-05-04
 
 ### Added

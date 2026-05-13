@@ -292,7 +292,7 @@ fn generate_query_embedding_external(text: &str) -> anyhow::Result<Vec<f32>> {
 }
 
 #[cfg(not(feature = "embedding"))]
-fn call_external_embedding_endpoint(
+pub(crate) fn call_external_embedding_endpoint(
     text: &str,
     cfg: &crate::config::EmbeddingConfig,
 ) -> anyhow::Result<Vec<f32>> {
@@ -624,5 +624,111 @@ sys.exit(0)
 
         let warning = check_hard_vetoes_for_skill(&skill, &conn);
         assert!(warning.is_none(), "should return None when no vetoes exist");
+    }
+
+    /// End-to-end test: mock Ollama /api/embeddings endpoint and verify
+    /// call_external_embedding_endpoint parses the response correctly.
+    #[test]
+    #[cfg(not(feature = "embedding"))]
+    fn test_external_embedding_endpoint_ollama_parsing() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(&stream);
+            let mut headers = String::new();
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap() == 0 {
+                    break;
+                }
+                if line == "\r\n" {
+                    break;
+                }
+                headers.push_str(&line);
+            }
+            // Verify it hit the correct path
+            assert!(
+                headers.contains("POST /api/embeddings"),
+                "expected POST /api/embeddings, got: {}",
+                headers
+            );
+
+            let body = r#"{"embedding":[0.1,0.2,0.3]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        let cfg = crate::config::EmbeddingConfig {
+            enabled: true,
+            provider: "ollama".to_string(),
+            model: "test-model".to_string(),
+            base_url: format!("http://127.0.0.1:{}", port),
+            timeout_seconds: 5,
+        };
+
+        let result = call_external_embedding_endpoint("test prompt", &cfg);
+        assert!(
+            result.is_ok(),
+            "should parse ollama response: {:?}",
+            result.err()
+        );
+        let emb = result.unwrap();
+        assert_eq!(emb.len(), 3);
+        assert!((emb[0] - 0.1f32).abs() < 0.001);
+        assert!((emb[1] - 0.2f32).abs() < 0.001);
+        assert!((emb[2] - 0.3f32).abs() < 0.001);
+    }
+
+    /// Verify error handling when external endpoint returns non-2xx.
+    #[test]
+    #[cfg(not(feature = "embedding"))]
+    fn test_external_embedding_endpoint_error_response() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(&stream);
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap() == 0 || line == "\r\n" {
+                    break;
+                }
+            }
+            let body = r#"{"error":"model not found"}"#;
+            let response = format!(
+                "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\nContent-Type: application/json\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        let cfg = crate::config::EmbeddingConfig {
+            enabled: true,
+            provider: "ollama".to_string(),
+            model: "missing-model".to_string(),
+            base_url: format!("http://127.0.0.1:{}", port),
+            timeout_seconds: 5,
+        };
+
+        let result = call_external_embedding_endpoint("test", &cfg);
+        assert!(result.is_err(), "should fail on 404");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("404"), "error should mention status code: {}", msg);
     }
 }
