@@ -402,7 +402,7 @@ token = "<YOUR_GITHUB_PAT>"
 - **构建加速**: [sccache 配置指南](CONTRIBUTING.md#构建加速可选) — tree-sitter 重复编译从 20s → <1s
 - **代码规范**: `cargo clippy --all-targets -D warnings` + `cargo fmt --check`
 - **Feature flags**: `cargo build --no-default-features`（最小化 CLI）/ `cargo build --features tui`（纯 TUI）/ `cargo build --features mcp`（纯 MCP Server）
-- **架构文档**: [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- **架构文档**: [`docs/architecture/overview.md`](docs/architecture/overview.md)
 - **Agent 约定**: [`AGENTS.md`](AGENTS.md)
 - **贡献指南**: [`CONTRIBUTING.md`](CONTRIBUTING.md) — 如何添加 MCP Tool / Skill、Schema 迁移规范
 
