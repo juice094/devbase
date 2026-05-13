@@ -5,7 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.17.0-dev] - 2026-05-13
+## [0.18.0] - 2026-05-13
+
+### Added
+
+- **ClaudeCode 工作流集成** — `docs/RFC/claudecode-workflow-integration.md`
+  - `devkit_project_brief` — 生成项目 Markdown 简报（架构 + 模块 + 近期提交 + 已知约束），用于 `.claude/CLAUDE.md` 注入
+  - `devkit_impact_analysis` — 符号级变更影响半径分析（BFS 调用图遍历 + 相关符号发现 + 测试启发式 + 历史 oplog）
+  - `scripts/devbase-claude.ps1` — PowerShell 一键启动器：自动检测 repo → 生成简报 → 注入 `.claude/CLAUDE.md` → 启动 `claude` → 可选捕获退出 diff
+- **Session 导入/导出工具**
+  - `devkit_session_export` — 导出会话为 Markdown / JSON；支持记忆类型图标与元数据
+  - `devkit_session_import` — 从 bulk text 批量导入记忆（`[type]` 前缀解析）
+- **MCP Tools +4** (64 total)
+  - `devkit_project_brief`, `devkit_impact_analysis`, `devkit_session_export`, `devkit_session_import`
+- **TUI Session 视图硬化**
+  - 三态 MainView 切换：`RepoList → VaultList → Session`（`Tab` 键循环）
+  - Session 列表：状态图标（● active / ◌ archived）+ 高亮样式
+  - Session 详情：记忆类型图标（◆ decision / ▪ constraint / ★ discovery / ✗ error）+ embedding model 标签 + indexed 状态
+- **AGENTS.md** 同步至 v0.18.0-dev 基线（64 Tools / 437 tests）
+
+### Changed
+
+- `src/mcp/mod.rs` Tool 注册表扩展至 64 工具（稳定 + Beta）
+- `src/mcp/tests.rs` 工具计数断言同步
+- TUI `render_session.rs` / `state/mod.rs` 适配 Schema v34 记忆字段（`embedding_model`, `indexed_at`）
+
+## [0.17.0] - 2026-05-13
 
 ### Added
 
