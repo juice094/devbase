@@ -65,26 +65,35 @@ pub fn run_skill(
     cmd.env("DEVBASE_SKILL_ID", &skill.id);
     cmd.env("DEVBASE_HOME", devbase_home()?);
 
-    // P2-B: Inject active session context memories if available
+    // P2-B: Inject active session context memories via semantic recall.
+    // v0.17.0: devbase no longer generates embeddings. Semantic recall requires
+    // either the `llm-backend` feature or an external endpoint configured in
+    // config.toml. Falls back to keyword search when embedding unavailable.
     if let Some(ctx_id) = crate::registry::agent_context::resolve_active_context() {
-        if let Ok(memories) = crate::registry::agent_context::list_memories(conn, &ctx_id)
-            && !memories.is_empty()
-        {
+        cmd.env("DEVBASE_ACTIVE_CONTEXT", &ctx_id);
+
+        let recalled = recall_context_memories(conn, &ctx_id, &skill.id, args);
+        if let Ok((memories, recall_method)) = recalled {
             let mem_json: Vec<serde_json::Value> = memories
                 .iter()
-                .map(|m| {
+                .map(|(m, score)| {
                     serde_json::json!({
+                        "id": m.id,
                         "type": m.memory_type,
                         "content": m.content,
+                        "score": score,
+                        "model": m.embedding_model,
                     })
                 })
                 .collect();
-            cmd.env("DEVBASE_ACTIVE_CONTEXT", &ctx_id);
             cmd.env(
                 "DEVBASE_CONTEXT_MEMORIES",
                 serde_json::to_string(&mem_json).unwrap_or_default(),
             );
+            cmd.env("DEVBASE_CONTEXT_MEMORY_COUNT", memories.len().to_string());
+            cmd.env("DEVBASE_CONTEXT_RECALL_METHOD", recall_method);
         }
+
         if let Ok(linked) = crate::registry::agent_context::list_linked_entities(conn, &ctx_id)
             && !linked.is_empty()
         {
@@ -202,6 +211,125 @@ pub fn run_skill(
         exit_code,
         duration_ms: start.elapsed().as_millis() as u64,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Context Memory Auto-Recall (v0.17.0)
+// ---------------------------------------------------------------------------
+
+/// Recall relevant memories for the active context using a tiered strategy:
+/// 1. Semantic recall (cosine similarity) if embedding is available
+/// 2. Keyword fallback (LIKE search) otherwise
+///
+/// Returns (memories with scores, recall_method label).
+fn recall_context_memories(
+    conn: &rusqlite::Connection,
+    context_id: &str,
+    skill_id: &str,
+    args: &[String],
+) -> anyhow::Result<(Vec<(crate::registry::agent_context::AgentMemory, f64)>, String)> {
+    let query_text = build_recall_query(skill_id, args);
+
+    // Tier 1: semantic recall
+    if let Ok(embedding) = generate_query_embedding_external(&query_text) {
+        if let Ok(results) = try_semantic_recall(conn, context_id, &embedding) {
+            if !results.is_empty() {
+                return Ok((results, "semantic".to_string()));
+            }
+        }
+    }
+
+    // Tier 2: keyword fallback
+    let keywords = crate::registry::agent_context::search_memories(
+        conn,
+        Some(context_id),
+        &query_text,
+        5,
+    )?;
+    let scored = keywords.into_iter().map(|m| (m, 0.0)).collect();
+    Ok((scored, "keyword".to_string()))
+}
+
+fn build_recall_query(skill_id: &str, args: &[String]) -> String {
+    let mut parts = vec![skill_id.to_string()];
+    for arg in args {
+        if let Some((k, v)) = arg.split_once('=') {
+            parts.push(format!("{}:{}", k, v));
+        } else {
+            parts.push(arg.to_string());
+        }
+    }
+    parts.join(" ")
+}
+
+fn try_semantic_recall(
+    conn: &rusqlite::Connection,
+    context_id: &str,
+    embedding: &[f32],
+) -> anyhow::Result<Vec<(crate::registry::agent_context::AgentMemory, f64)>> {
+    crate::registry::agent_context::register_vector_functions(conn)?;
+    crate::registry::agent_context::search_memories_semantic(
+        conn,
+        context_id,
+        embedding,
+        5,
+    )
+}
+
+/// Generate a query embedding using the best available provider.
+#[cfg(feature = "embedding")]
+fn generate_query_embedding_external(text: &str) -> anyhow::Result<Vec<f32>> {
+    crate::embedding::generate_query_embedding(text)
+}
+
+#[cfg(not(feature = "embedding"))]
+fn generate_query_embedding_external(text: &str) -> anyhow::Result<Vec<f32>> {
+    let cfg = crate::config::Config::load()?;
+    if !cfg.embedding.enabled {
+        anyhow::bail!("embedding provider not enabled in config.toml");
+    }
+    call_external_embedding_endpoint(text, &cfg.embedding)
+}
+
+#[cfg(not(feature = "embedding"))]
+fn call_external_embedding_endpoint(
+    text: &str,
+    cfg: &crate::config::EmbeddingConfig,
+) -> anyhow::Result<Vec<f32>> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(cfg.timeout_seconds))
+        .build()?;
+
+    let url = format!("{}/api/embeddings", cfg.base_url.trim_end_matches('/'));
+    let body = serde_json::json!({
+        "model": cfg.model,
+        "prompt": text,
+    });
+
+    let resp = client.post(&url).json(&body).send()?;
+    let status = resp.status();
+    let resp_json: serde_json::Value = resp.json()?;
+
+    if !status.is_success() {
+        anyhow::bail!(
+            "Embedding endpoint returned {}: {}",
+            status,
+            resp_json.get("error").and_then(|v| v.as_str()).unwrap_or("unknown error")
+        );
+    }
+
+    let embedding = resp_json
+        .get("embedding")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow::anyhow!("embedding array missing in response"))?
+        .iter()
+        .filter_map(|v| v.as_f64().map(|f| f as f32))
+        .collect::<Vec<f32>>();
+
+    if embedding.is_empty() {
+        anyhow::bail!("embedding array empty");
+    }
+    Ok(embedding)
 }
 
 /// Check for unresolved hard vetoes before skill execution.
