@@ -33,7 +33,10 @@ impl McpTool for DevkitImpactAnalysisTool {
         ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
-        let symbol_name = args.get("symbol_name").and_then(|v| v.as_str()).context("symbol_name required")?;
+        let symbol_name = args
+            .get("symbol_name")
+            .and_then(|v| v.as_str())
+            .context("symbol_name required")?;
         let depth = args.get("depth").and_then(|v| v.as_u64()).unwrap_or(2).clamp(1, 3) as usize;
 
         let pool = ctx.pool();
@@ -65,17 +68,19 @@ fn analyze_impact(
     // 1. Symbol metadata
     let mut stmt = conn.prepare(
         "SELECT name, file_path, symbol_type, line_start, signature
-         FROM code_symbols WHERE repo_id = ?1 AND name = ?2 LIMIT 1"
+         FROM code_symbols WHERE repo_id = ?1 AND name = ?2 LIMIT 1",
     )?;
-    let symbol_meta = stmt.query_row([repo_id, symbol_name], |row| {
-        Ok(serde_json::json!({
-            "name": row.get::<_, String>(0)?,
-            "file": row.get::<_, String>(1)?,
-            "type": row.get::<_, String>(2)?,
-            "line": row.get::<_, Option<i64>>(3)?,
-            "signature": row.get::<_, Option<String>>(4)?,
-        }))
-    }).ok();
+    let symbol_meta = stmt
+        .query_row([repo_id, symbol_name], |row| {
+            Ok(serde_json::json!({
+                "name": row.get::<_, String>(0)?,
+                "file": row.get::<_, String>(1)?,
+                "type": row.get::<_, String>(2)?,
+                "line": row.get::<_, Option<i64>>(3)?,
+                "signature": row.get::<_, Option<String>>(4)?,
+            }))
+        })
+        .ok();
 
     // 2. Direct callers (up to 2 levels)
     let mut callers = Vec::new();
@@ -86,7 +91,7 @@ fn analyze_impact(
         for sym in &current {
             let mut stmt = conn.prepare(
                 "SELECT DISTINCT caller_symbol, caller_file
-                 FROM code_call_graph WHERE repo_id = ?1 AND callee_name = ?2"
+                 FROM code_call_graph WHERE repo_id = ?1 AND callee_name = ?2",
             )?;
             let rows = stmt.query_map([repo_id, sym], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -114,7 +119,7 @@ fn analyze_impact(
         for sym in &current {
             let mut stmt = conn.prepare(
                 "SELECT DISTINCT callee_name, caller_file
-                 FROM code_call_graph WHERE repo_id = ?1 AND caller_symbol = ?2"
+                 FROM code_call_graph WHERE repo_id = ?1 AND caller_symbol = ?2",
             )?;
             let rows = stmt.query_map([repo_id, sym], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -134,41 +139,36 @@ fn analyze_impact(
     }
 
     // 4. Related symbols (conceptual)
-    let related = crate::registry::WorkspaceRegistry::find_related_symbols(
-        conn, repo_id, symbol_name, 10,
-    )
-    .unwrap_or_default()
-    .into_iter()
-    .map(|(_src_repo, _src_sym, tgt_repo, tgt_sym, link_type, strength)| {
-        serde_json::json!({
-            "symbol": tgt_sym,
-            "repo": tgt_repo,
-            "link_type": link_type,
-            "strength": strength,
-        })
-    })
-    .collect::<Vec<_>>();
+    let related =
+        crate::registry::WorkspaceRegistry::find_related_symbols(conn, repo_id, symbol_name, 10)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(_src_repo, _src_sym, tgt_repo, tgt_sym, link_type, strength)| {
+                serde_json::json!({
+                    "symbol": tgt_sym,
+                    "repo": tgt_repo,
+                    "link_type": link_type,
+                    "strength": strength,
+                })
+            })
+            .collect::<Vec<_>>();
 
     // 5. Tests: heuristic — symbols containing "test_" that call or are called by target
     let mut tests = Vec::new();
     let mut stmt = conn.prepare(
         "SELECT DISTINCT caller_symbol FROM code_call_graph
-         WHERE repo_id = ?1 AND callee_name = ?2 AND caller_symbol LIKE 'test_%'"
+         WHERE repo_id = ?1 AND callee_name = ?2 AND caller_symbol LIKE 'test_%'",
     )?;
-    let rows = stmt.query_map([repo_id, symbol_name], |row| {
-        row.get::<_, String>(0)
-    })?;
+    let rows = stmt.query_map([repo_id, symbol_name], |row| row.get::<_, String>(0))?;
     for t in rows.flatten() {
         tests.push(t);
     }
     // Also test functions that are CALLED by the target (test helpers)
     let mut stmt = conn.prepare(
         "SELECT DISTINCT callee_name FROM code_call_graph
-         WHERE repo_id = ?1 AND caller_symbol LIKE 'test_%' AND callee_name = ?2"
+         WHERE repo_id = ?1 AND caller_symbol LIKE 'test_%' AND callee_name = ?2",
     )?;
-    let rows = stmt.query_map([repo_id, symbol_name], |row| {
-        row.get::<_, String>(0)
-    })?;
+    let rows = stmt.query_map([repo_id, symbol_name], |row| row.get::<_, String>(0))?;
     for t in rows.flatten() {
         tests.push(t);
     }

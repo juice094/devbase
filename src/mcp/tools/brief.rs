@@ -93,7 +93,11 @@ fn generate_brief(
     if !symbols.is_empty() {
         arch_lines.push("\n**Key Symbols:**\n".to_string());
         for (name, sym_type, file, line) in symbols {
-            let loc = format!("{}:{}", file, line.map(|l| l.to_string()).unwrap_or_else(|| "?".to_string()));
+            let loc = format!(
+                "{}:{}",
+                file,
+                line.map(|l| l.to_string()).unwrap_or_else(|| "?".to_string())
+            );
             arch_lines.push(format!("- `{}` ({}) at `{}`\n", name, sym_type, loc));
         }
     }
@@ -121,12 +125,14 @@ fn generate_brief(
     }
 
     let limits = crate::registry::known_limits::list_known_limits(conn, None, Some(false))?;
-    let repo_limits: Vec<_> = limits.into_iter().filter(|l| l.category != "resolved").take(10).collect();
+    let repo_limits: Vec<_> =
+        limits.into_iter().filter(|l| l.category != "resolved").take(10).collect();
     if !repo_limits.is_empty() {
         let mut limit_lines = vec!["## Known Limits & Tech Debt\n".to_string()];
         for l in repo_limits {
             let sev = l.severity.map(|s| s.to_string()).unwrap_or_else(|| "?".to_string());
-            limit_lines.push(format!("- **[{}]** {} ({}): {}\n", l.id, l.category, sev, l.description));
+            limit_lines
+                .push(format!("- **[{}]** {} ({}): {}\n", l.id, l.category, sev, l.description));
         }
         sections.push(limit_lines.join(""));
     }

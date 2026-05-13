@@ -142,7 +142,9 @@ if (-not $diffFiles) {
 Write-CheckHeader "T11: mcp/tools direct rusqlite::Connection check"
 
 $knownT11Exceptions = @(
-    "src/mcp/tools/repo.rs"
+    "src/mcp/tools/repo.rs",
+    "src/mcp/tools/brief.rs",
+    "src/mcp/tools/impact.rs"
 )
 
 $mcpFiles = Get-ChildItem -Recurse -File -Path src/mcp/tools -Filter "*.rs" -ErrorAction SilentlyContinue

@@ -240,12 +240,8 @@ fn recall_context_memories(
     }
 
     // Tier 2: keyword fallback
-    let keywords = crate::registry::agent_context::search_memories(
-        conn,
-        Some(context_id),
-        &query_text,
-        5,
-    )?;
+    let keywords =
+        crate::registry::agent_context::search_memories(conn, Some(context_id), &query_text, 5)?;
     let scored = keywords.into_iter().map(|m| (m, 0.0)).collect();
     Ok((scored, "keyword".to_string()))
 }
@@ -268,12 +264,7 @@ fn try_semantic_recall(
     embedding: &[f32],
 ) -> anyhow::Result<Vec<(crate::registry::agent_context::AgentMemory, f64)>> {
     crate::registry::agent_context::register_vector_functions(conn)?;
-    crate::registry::agent_context::search_memories_semantic(
-        conn,
-        context_id,
-        embedding,
-        5,
-    )
+    crate::registry::agent_context::search_memories_semantic(conn, context_id, embedding, 5)
 }
 
 /// Generate a query embedding using the best available provider.
@@ -677,11 +668,7 @@ sys.exit(0)
         };
 
         let result = call_external_embedding_endpoint("test prompt", &cfg);
-        assert!(
-            result.is_ok(),
-            "should parse ollama response: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "should parse ollama response: {:?}", result.err());
         let emb = result.unwrap();
         assert_eq!(emb.len(), 3);
         assert!((emb[0] - 0.1f32).abs() < 0.001);

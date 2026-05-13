@@ -162,13 +162,9 @@ impl App {
         Ok(())
     }
 
-    pub(crate) fn load_session_memories(
-        &mut self,
-        context_id: &str,
-    ) -> anyhow::Result<()> {
+    pub(crate) fn load_session_memories(&mut self, context_id: &str) -> anyhow::Result<()> {
         let conn = self.ctx.conn()?;
-        self.session_memories =
-            crate::registry::agent_context::list_memories(&conn, context_id)?;
+        self.session_memories = crate::registry::agent_context::list_memories(&conn, context_id)?;
         Ok(())
     }
 

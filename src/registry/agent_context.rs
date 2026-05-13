@@ -191,7 +191,11 @@ pub fn insert_memory(
         }
         bytes
     });
-    let indexed_at = if embedding.is_some() { Some(&now) } else { None };
+    let indexed_at = if embedding.is_some() {
+        Some(&now)
+    } else {
+        None
+    };
     tx.execute(
         "INSERT INTO agent_memories (context_id, memory_type, content, created_at, embedding, embedding_model, indexed_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -459,47 +463,35 @@ pub fn search_memories_semantic(
          ORDER BY score DESC
          LIMIT ?3",
     )?;
-    let rows = stmt.query_map(
-        rusqlite::params![query_blob, context_id, limit as i64],
-        |row| {
-            let created_at = parse_datetime(row.get(4)?).map_err(|e| {
-                rusqlite::Error::FromSqlConversionFailure(
-                    4,
-                    rusqlite::types::Type::Text,
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        e.to_string(),
-                    )),
-                )
-            })?;
-            let indexed_at: Option<String> = row.get(7)?;
-            let indexed_at = indexed_at
-                .map(|s| parse_datetime(s))
-                .transpose()
-                .map_err(|e| {
-                    rusqlite::Error::FromSqlConversionFailure(
-                        7,
-                        rusqlite::types::Type::Text,
-                        Box::new(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            e.to_string(),
-                        )),
-                    )
-                })?;
-            let score: f64 = row.get(8)?;
-            let mem = AgentMemory {
-                id: row.get(0)?,
-                context_id: row.get(1)?,
-                memory_type: row.get(2)?,
-                content: row.get(3)?,
-                created_at,
-                embedding: row.get(5)?,
-                embedding_model: row.get(6)?,
-                indexed_at,
-            };
-            Ok((mem, score))
-        },
-    )?;
+    let rows = stmt.query_map(rusqlite::params![query_blob, context_id, limit as i64], |row| {
+        let created_at = parse_datetime(row.get(4)?).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                4,
+                rusqlite::types::Type::Text,
+                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+            )
+        })?;
+        let indexed_at: Option<String> = row.get(7)?;
+        let indexed_at = indexed_at.map(|s| parse_datetime(s)).transpose().map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                7,
+                rusqlite::types::Type::Text,
+                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+            )
+        })?;
+        let score: f64 = row.get(8)?;
+        let mem = AgentMemory {
+            id: row.get(0)?,
+            context_id: row.get(1)?,
+            memory_type: row.get(2)?,
+            content: row.get(3)?,
+            created_at,
+            embedding: row.get(5)?,
+            embedding_model: row.get(6)?,
+            indexed_at,
+        };
+        Ok((mem, score))
+    })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
@@ -596,8 +588,10 @@ mod tests {
         let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
         upsert_context(&mut conn, "ctx-mem", "Test", None).unwrap();
 
-        let id1 = insert_memory(&mut conn, "ctx-mem", "decision", "Use SQLite", None, None).unwrap();
-        let id2 = insert_memory(&mut conn, "ctx-mem", "constraint", "Must be <50ms", None, None).unwrap();
+        let id1 =
+            insert_memory(&mut conn, "ctx-mem", "decision", "Use SQLite", None, None).unwrap();
+        let id2 =
+            insert_memory(&mut conn, "ctx-mem", "constraint", "Must be <50ms", None, None).unwrap();
         assert!(id1 > 0);
         assert!(id2 > 0);
 

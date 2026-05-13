@@ -705,10 +705,11 @@ Returns: memories sorted by cosine similarity score (0.0-1.0)."#,
     ) -> anyhow::Result<serde_json::Value> {
         let context_id = match args.get("context_id").and_then(|v| v.as_str()) {
             Some(cid) => cid.to_string(),
-            None => {
-                crate::registry::agent_context::resolve_active_context()
-                    .ok_or_else(|| anyhow::anyhow!("No active session. Use context_id argument or devkit_session_activate first."))?
-            }
+            None => crate::registry::agent_context::resolve_active_context().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No active session. Use context_id argument or devkit_session_activate first."
+                )
+            })?,
         };
         let query_emb = args
             .get("query_embedding")
@@ -726,7 +727,10 @@ Returns: memories sorted by cosine similarity score (0.0-1.0)."#,
         // Ensure UDF is registered on this connection
         crate::registry::agent_context::register_vector_functions(&conn)?;
         let results = crate::registry::agent_context::search_memories_semantic(
-            &conn, &context_id, &query_emb, limit,
+            &conn,
+            &context_id,
+            &query_emb,
+            limit,
         )?;
 
         let memories: Vec<serde_json::Value> = results
@@ -804,10 +808,8 @@ Returns: success flag."#,
             .iter()
             .filter_map(|v| v.as_f64().map(|f| f as f32))
             .collect::<Vec<f32>>();
-        let embedding_model = args
-            .get("embedding_model")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
+        let embedding_model =
+            args.get("embedding_model").and_then(|v| v.as_str()).unwrap_or("unknown");
 
         let embedding_blob = crate::registry::agent_context::embedding_to_blob(&embedding);
         let now = chrono::Utc::now().to_rfc3339();
@@ -870,13 +872,12 @@ Returns: exported content string."#,
         }
 
         let conn = ctx.conn()?;
-        let (ctx_data, memories) = match crate::registry::agent_context::get_context_with_memories(&conn, context_id,
-        )? {
-            Some(data) => data,
-            None => anyhow::bail!("Context '{}' not found", context_id),
-        };
-        let linked = crate::registry::agent_context::list_linked_entities(&conn, context_id,
-        )?;
+        let (ctx_data, memories) =
+            match crate::registry::agent_context::get_context_with_memories(&conn, context_id)? {
+                Some(data) => data,
+                None => anyhow::bail!("Context '{}' not found", context_id),
+            };
+        let linked = crate::registry::agent_context::list_linked_entities(&conn, context_id)?;
 
         let content = if format == "json" {
             serde_json::to_string_pretty(&json!({
@@ -895,8 +896,7 @@ Returns: exported content string."#,
                     "entity_id": eid,
                     "link_type": ltype,
                 })).collect::<Vec<_>>(),
-            }))?+
-            "\n"
+            }))? + "\n"
         } else {
             let mut md = format!("# Session: {}\n\n", ctx_data.name);
             if let Some(ref intent) = ctx_data.intent {
@@ -913,7 +913,12 @@ Returns: exported content string."#,
             if !memories.is_empty() {
                 md.push_str("## Memories\n");
                 for m in &memories {
-                    md.push_str(&format!("### [{}] {}\n{}\n\n", m.memory_type, m.created_at.format("%Y-%m-%d %H:%M"), m.content));
+                    md.push_str(&format!(
+                        "### [{}] {}\n{}\n\n",
+                        m.memory_type,
+                        m.created_at.format("%Y-%m-%d %H:%M"),
+                        m.content
+                    ));
                 }
             }
             md
@@ -982,7 +987,10 @@ Returns: import summary."#,
         // Ensure context exists
         if crate::registry::agent_context::get_context(&conn, context_id)?.is_none() {
             crate::registry::agent_context::upsert_context(
-                &mut conn, context_id, context_id, Some("imported"),
+                &mut conn,
+                context_id,
+                context_id,
+                Some("imported"),
             )?;
         }
 
