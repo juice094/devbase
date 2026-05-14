@@ -52,7 +52,7 @@ Workspace 扩展至 18 crates、Embedding Externalization（Candle/Ollama 降级
 |--------|------|---------|----------|
 | **Sprint A — SQLite 可靠性** | WAL 模式 + 并发安全 | `PRAGMA journal_mode=WAL` 默认启用；并发写入测试覆盖；迁移回滚硬化 | ✅ 2026-05 |
 | **Sprint B — 索引健康度** | Tantivy 可观测与自愈 | `devkit_index_health` tool（健康评分 0-100）；`--repair` 自动修复；损坏检测 | ✅ 2026-05 |
-| **Sprint C — 性能基线** | 查询延迟可观测 | CI 性能回归测试（1k/10k/100k 文档）；OpLog 查询延迟指标；Redis 缓存决策文档 | 2026-06 |
+| **Sprint C — 性能基线** | 查询延迟可观测 | OpLog 查询耗时埋点 ✅；CI 压测 + Redis 决策文档推迟至 v0.20.x | 2026-06 |
 | **Sprint D — 数据自由** | Vault 导出与互操作 | `devkit_vault_export` 完整 PARA 导出；frontmatter 兼容性验证；Vendor Lock-in 消除 | ✅ 2026-05 |
 
 **v0.19.0 验收标准**：

@@ -66,7 +66,7 @@ pub fn scan_vault(
                 });
 
                 let tags = frontmatter.as_ref().map(|fm| fm.tags.clone()).unwrap_or_default();
-                let linked_repo = frontmatter.as_ref().and_then(|fm| fm.extra.get("repo").cloned());
+                let linked_repo = frontmatter.as_ref().and_then(|fm| fm.repo.clone());
                 let fm_raw = frontmatter.map(|fm| fm.raw);
 
                 let note = VaultNote {

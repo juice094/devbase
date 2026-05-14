@@ -143,6 +143,11 @@ pub trait VaultClient: Send + Sync {
     fn list_vault_notes(&self) -> Result<Value>;
     fn read_vault_note(&self, path: &str) -> Result<Value>;
     fn get_backlinks(&self, note_id: &str) -> Result<Value>;
-    fn build_vault_graph(&self, repo_id: Option<&str>) -> Result<Value>;
+    fn build_vault_graph(
+        &self,
+        repo_id: Option<&str>,
+        note_id: Option<&str>,
+        depth: usize,
+    ) -> Result<Value>;
     fn export_vault(&self, output_dir: &str) -> Result<Value>;
 }

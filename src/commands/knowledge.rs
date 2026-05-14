@@ -337,15 +337,17 @@ pub fn run_oplog(
     limit: i64,
     repo: Option<String>,
 ) -> anyhow::Result<()> {
+    let start = std::time::Instant::now();
     let conn = ctx.conn_mut()?;
     let entries = match repo {
         Some(ref r) => crate::registry::workspace::list_oplog_by_repo(&conn, r, limit)?,
         None => crate::registry::workspace::list_oplog(&conn, limit)?,
     };
+    let elapsed_ms = start.elapsed().as_millis();
     if entries.is_empty() {
-        println!("操作日志为空。");
+        println!("操作日志为空。（查询耗时 {}ms）", elapsed_ms);
     } else {
-        println!("最近 {} 条操作日志:", entries.len());
+        println!("最近 {} 条操作日志:（查询耗时 {}ms）", entries.len(), elapsed_ms);
         for entry in entries {
             let ts = entry.timestamp.format("%Y-%m-%d %H:%M:%S").to_string();
             let repo = entry.repo_id.as_deref().unwrap_or("-");

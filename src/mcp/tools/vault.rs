@@ -430,15 +430,20 @@ Use this when the user wants to:
 - Visualize or analyze the structure of the knowledge base
 - Export vault connections for external graph tools
 - Understand the connectivity between topics and projects
+- Traverse links starting from a specific note (bidirectional BFS)
 
 Parameters:
 - repo_id: Optional — if provided, only return notes linked to this repo and their mutual relationships.
+- note_id: Optional — starting note ID for BFS traversal. If omitted, returns the full graph.
+- depth: Optional — BFS depth (1-3). Default 1. Only effective when note_id is provided.
 
 Returns: JSON with nodes (id, title) and edges (source, target)."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "repo_id": { "type": "string", "description": "Optional repo ID to filter notes" }
+                    "repo_id": { "type": "string", "description": "Optional repo ID to filter notes" },
+                    "note_id": { "type": "string", "description": "Optional starting note ID for traversal" },
+                    "depth": { "type": "integer", "description": "BFS depth 1-3 (default 1)", "minimum": 1, "maximum": 3 }
                 }
             }
         })
@@ -450,11 +455,15 @@ Returns: JSON with nodes (id, title) and edges (source, target)."#,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let repo_id = args.get("repo_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let note_id = args.get("note_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let depth = args.get("depth").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
 
         let ctx = ctx.clone();
-        let graph = tokio::task::spawn_blocking(move || ctx.build_vault_graph(repo_id.as_deref()))
-            .await
-            .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+        let graph = tokio::task::spawn_blocking(move || {
+            ctx.build_vault_graph(repo_id.as_deref(), note_id.as_deref(), depth)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
 
         Ok(graph)
     }
@@ -642,6 +651,16 @@ mod tests {
         std::fs::write(vault_dir.join("c.md"), "---\ntitle: Note C\n---\n\nNo links.\n").unwrap();
 
         let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
+        let pool = ctx.pool();
+        let vd = vault_dir.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get()?;
+            crate::vault::scanner::scan_vault(&mut conn, Some(&vd))
+        })
+        .await
+        .unwrap()
+        .unwrap();
+
         let tool = DevkitVaultGraphTool;
         let result = tool.invoke(serde_json::json!({}), &mut ctx).await.unwrap();
 
@@ -678,6 +697,16 @@ mod tests {
         .unwrap();
 
         let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
+        let pool = ctx.pool();
+        let vd = vault_dir.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get()?;
+            crate::vault::scanner::scan_vault(&mut conn, Some(&vd))
+        })
+        .await
+        .unwrap()
+        .unwrap();
+
         let tool = DevkitVaultGraphTool;
         let result =
             tool.invoke(serde_json::json!({ "repo_id": "repo-a" }), &mut ctx).await.unwrap();
@@ -689,5 +718,74 @@ mod tests {
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].get("id").unwrap().as_str().unwrap(), "repo-a-note.md");
         assert_eq!(edges.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_vault_graph_bfs_traversal() {
+        let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+        let vault_dir = backend.workspace_dir().unwrap().join("vault");
+        std::fs::create_dir_all(&vault_dir).unwrap();
+
+        std::fs::write(
+            vault_dir.join("a.md"),
+            "---\ntitle: Note A\n---\n\nLinks to [[b]] and [[c]].\n",
+        )
+        .unwrap();
+        std::fs::write(
+            vault_dir.join("b.md"),
+            "---\ntitle: Note B\n---\n\nLinks to [[d]].\n",
+        )
+        .unwrap();
+        std::fs::write(
+            vault_dir.join("c.md"),
+            "---\ntitle: Note C\n---\n\nNo links.\n",
+        )
+        .unwrap();
+        std::fs::write(
+            vault_dir.join("d.md"),
+            "---\ntitle: Note D\n---\n\nNo links.\n",
+        )
+        .unwrap();
+
+        let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
+        let pool = ctx.pool();
+        let vd = vault_dir.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get()?;
+            crate::vault::scanner::scan_vault(&mut conn, Some(&vd))
+        })
+        .await
+        .unwrap()
+        .unwrap();
+
+        let tool = DevkitVaultGraphTool;
+
+        // Depth 1: a -> b, c
+        let result = tool
+            .invoke(
+                serde_json::json!({ "note_id": "a.md", "depth": 1 }),
+                &mut ctx,
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.get("success").unwrap(), true);
+        let nodes = result.get("nodes").unwrap().as_array().unwrap();
+        let edges = result.get("edges").unwrap().as_array().unwrap();
+        assert_eq!(nodes.len(), 3);
+        assert_eq!(edges.len(), 2);
+
+        // Depth 2: a -> b -> d
+        let result = tool
+            .invoke(
+                serde_json::json!({ "note_id": "a.md", "depth": 2 }),
+                &mut ctx,
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.get("success").unwrap(), true);
+        let nodes = result.get("nodes").unwrap().as_array().unwrap();
+        let edges = result.get("edges").unwrap().as_array().unwrap();
+        assert_eq!(nodes.len(), 4);
+        assert_eq!(edges.len(), 3);
     }
 }
