@@ -192,8 +192,10 @@ pub fn hybrid_search_symbols_with_metrics(
     limit: usize,
 ) -> anyhow::Result<(Vec<SemanticSearchRow>, HybridSearchMetrics)> {
     let start = std::time::Instant::now();
-    let mut metrics = HybridSearchMetrics::default();
-    metrics.rrf_k = 60.0;
+    let mut metrics = HybridSearchMetrics {
+        rrf_k: 60.0,
+        ..HybridSearchMetrics::default()
+    };
 
     let mut lists: Vec<Vec<SemanticSearchRow>> = Vec::new();
 
