@@ -212,7 +212,8 @@ pub fn hybrid_search_symbols_with_metrics(
     }
 
     // Keyword path
-    let (kw_results, kw_source) = keyword_search_symbols_with_source(conn, repo_id, query_text, limit * 2)?;
+    let (kw_results, kw_source) =
+        keyword_search_symbols_with_source(conn, repo_id, query_text, limit * 2)?;
     metrics.keyword_recall = kw_results.len();
     metrics.keyword_source = kw_source.to_string();
     if !kw_results.is_empty() {
@@ -225,8 +226,16 @@ pub fn hybrid_search_symbols_with_metrics(
         0 => Ok((Vec::new(), metrics)),
         1 => {
             let results: Vec<_> = lists.remove(0).into_iter().take(limit).collect();
-            metrics.keyword_only_results = if metrics.vector_recall == 0 { results.len() } else { 0 };
-            metrics.vector_only_results = if metrics.keyword_recall == 0 { results.len() } else { 0 };
+            metrics.keyword_only_results = if metrics.vector_recall == 0 {
+                results.len()
+            } else {
+                0
+            };
+            metrics.vector_only_results = if metrics.keyword_recall == 0 {
+                results.len()
+            } else {
+                0
+            };
             Ok((results, metrics))
         }
         _ => {
@@ -386,7 +395,8 @@ mod tests {
         )
         .unwrap();
 
-        let (results, metrics) = hybrid_search_symbols_with_metrics(&conn, "repo1", "error", None, 10).unwrap();
+        let (results, metrics) =
+            hybrid_search_symbols_with_metrics(&conn, "repo1", "error", None, 10).unwrap();
         assert!(!results.is_empty());
         assert_eq!(metrics.keyword_recall, 1); // handle_error matches
         assert_eq!(metrics.vector_recall, 0); // no embedding
@@ -414,12 +424,20 @@ mod tests {
         .unwrap();
 
         {
-            let mut stmt = conn.prepare(
-                "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start)
+            let mut stmt = conn
+                .prepare(
+                    "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start)
                  VALUES (?1, ?2, 'function', ?3, ?4)",
-            ).unwrap();
+                )
+                .unwrap();
             for i in 0..1000 {
-                stmt.execute(rusqlite::params!["repo1", "src/lib.rs", format!("func_{}", i), i as i64]).unwrap();
+                stmt.execute(rusqlite::params![
+                    "repo1",
+                    "src/lib.rs",
+                    format!("func_{}", i),
+                    i as i64
+                ])
+                .unwrap();
             }
         }
 
@@ -450,12 +468,20 @@ mod tests {
         .unwrap();
 
         {
-            let mut stmt = conn.prepare(
-                "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start)
+            let mut stmt = conn
+                .prepare(
+                    "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start)
                  VALUES (?1, ?2, 'function', ?3, ?4)",
-            ).unwrap();
+                )
+                .unwrap();
             for i in 0..10000 {
-                stmt.execute(rusqlite::params!["repo1", "src/lib.rs", format!("func_{}", i), i as i64]).unwrap();
+                stmt.execute(rusqlite::params![
+                    "repo1",
+                    "src/lib.rs",
+                    format!("func_{}", i),
+                    i as i64
+                ])
+                .unwrap();
             }
         }
 

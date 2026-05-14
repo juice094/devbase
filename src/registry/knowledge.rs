@@ -657,7 +657,11 @@ impl WorkspaceRegistry {
         crate::search::hybrid::HybridSearchMetrics,
     )> {
         crate::search::hybrid::hybrid_search_symbols_with_metrics(
-            conn, repo_id, query_text, query_embedding, limit,
+            conn,
+            repo_id,
+            query_text,
+            query_embedding,
+            limit,
         )
     }
     pub fn record_symbol_read(

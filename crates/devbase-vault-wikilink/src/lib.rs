@@ -67,10 +67,7 @@ pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
 fn parse_link(inner: &str, start: usize, end: usize) -> WikiLink {
     // Step 1: split display text by `|`
     let (left, display) = if let Some(pipe_pos) = inner.find('|') {
-        (
-            inner[..pipe_pos].trim(),
-            Some(inner[pipe_pos + 1..].trim().to_string()),
-        )
+        (inner[..pipe_pos].trim(), Some(inner[pipe_pos + 1..].trim().to_string()))
     } else {
         (inner.trim(), None)
     };

@@ -414,13 +414,14 @@ Returns: JSON with keyword_recall, vector_recall, rrf_overlap, latency_ms, keywo
         let pool = ctx.pool();
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
-            let (_results, metrics) = crate::registry::WorkspaceRegistry::hybrid_search_symbols_with_metrics(
-                &conn,
-                &repo_id,
-                &query_text,
-                query_embedding.as_deref(),
-                limit,
-            )?;
+            let (_results, metrics) =
+                crate::registry::WorkspaceRegistry::hybrid_search_symbols_with_metrics(
+                    &conn,
+                    &repo_id,
+                    &query_text,
+                    query_embedding.as_deref(),
+                    limit,
+                )?;
 
             Ok::<_, anyhow::Error>(serde_json::json!({
                 "success": true,

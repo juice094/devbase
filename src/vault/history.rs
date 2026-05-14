@@ -59,18 +59,17 @@ pub fn note_history(vault_dir: &Path, note_path: &str) -> anyhow::Result<Vec<His
         };
 
         if changed {
-            let (insertions, deletions) =
-                if let Some(ref parent_tree) = last_relevant_tree {
-                    let old_lines = count_lines(parent_tree, path, &repo);
-                    let new_lines = count_lines(&tree, path, &repo);
-                    if new_lines >= old_lines {
-                        (new_lines - old_lines, 0)
-                    } else {
-                        (0, old_lines - new_lines)
-                    }
+            let (insertions, deletions) = if let Some(ref parent_tree) = last_relevant_tree {
+                let old_lines = count_lines(parent_tree, path, &repo);
+                let new_lines = count_lines(&tree, path, &repo);
+                if new_lines >= old_lines {
+                    (new_lines - old_lines, 0)
                 } else {
-                    (0, 0)
-                };
+                    (0, old_lines - new_lines)
+                }
+            } else {
+                (0, 0)
+            };
 
             history.push(HistoryEntry {
                 commit: oid.to_string(),
@@ -129,15 +128,7 @@ mod tests {
             index.write().unwrap();
             let tree_id = index.write_tree().unwrap();
             let tree = repo.find_tree(tree_id).unwrap();
-            repo.commit(
-                Some("HEAD"),
-                &sig,
-                &sig,
-                "Initial commit",
-                &tree,
-                &[],
-            )
-            .unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[]).unwrap();
         }
         repo
     }
@@ -157,15 +148,8 @@ mod tests {
             let tree_id = index.write_tree().unwrap();
             let tree = repo.find_tree(tree_id).unwrap();
             let parent = repo.head().unwrap().peel_to_commit().unwrap();
-            repo.commit(
-                Some("HEAD"),
-                &sig,
-                &sig,
-                "Add more lines",
-                &tree,
-                &[&parent],
-            )
-            .unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "Add more lines", &tree, &[&parent])
+                .unwrap();
         }
 
         let history = note_history(&tmp, "note.md").unwrap();

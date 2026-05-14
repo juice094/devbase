@@ -50,7 +50,10 @@ impl crate::clients::VaultClient for AppContext {
                             let normalized = l.replace('\\', "/");
                             normalized == note_id.replace('\\', "/")
                                 || normalized
-                                    == note_id.replace('\\', "/").strip_suffix(".md").unwrap_or(&note_id.replace('\\', "/"))
+                                    == note_id
+                                        .replace('\\', "/")
+                                        .strip_suffix(".md")
+                                        .unwrap_or(&note_id.replace('\\', "/"))
                                 || l == note_id
                         })
                     })
@@ -121,29 +124,19 @@ impl crate::clients::VaultClient for AppContext {
 
         for note in &notes {
             let id = note.id.replace('\\', "/");
-            id_to_title
-                .insert(id.clone(), note.title.clone().unwrap_or_else(|| id.clone()));
+            id_to_title.insert(id.clone(), note.title.clone().unwrap_or_else(|| id.clone()));
             if let Some(ref r) = note.linked_repo {
                 id_to_repo.insert(id.clone(), r.clone());
             }
 
-            let targets: Vec<String> = note
-                .outgoing_links
-                .iter()
-                .map(|t| t.replace('\\', "/"))
-                .collect();
+            let targets: Vec<String> =
+                note.outgoing_links.iter().map(|t| t.replace('\\', "/")).collect();
             outgoing.insert(id.clone(), targets.clone());
 
             for target in targets {
-                incoming
-                    .entry(target.clone())
-                    .or_default()
-                    .push(id.clone());
+                incoming.entry(target.clone()).or_default().push(id.clone());
                 if let Some(stem) = target.strip_suffix(".md") {
-                    incoming
-                        .entry(stem.to_string())
-                        .or_default()
-                        .push(id.clone());
+                    incoming.entry(stem.to_string()).or_default().push(id.clone());
                 }
             }
         }
@@ -158,11 +151,7 @@ impl crate::clients::VaultClient for AppContext {
         }
 
         let allowed_ids: std::collections::HashSet<String> = if let Some(rid) = repo_id {
-            id_to_repo
-                .iter()
-                .filter(|(_, r)| *r == rid)
-                .map(|(id, _)| id.clone())
-                .collect()
+            id_to_repo.iter().filter(|(_, r)| *r == rid).map(|(id, _)| id.clone()).collect()
         } else {
             id_to_title.keys().cloned().collect()
         };
@@ -173,10 +162,8 @@ impl crate::clients::VaultClient for AppContext {
             std::collections::HashSet<String>,
             Vec<(String, String)>,
         ) = if let Some(start_id) = note_id {
-            let start_normalized = id_lookup
-                .get(start_id)
-                .cloned()
-                .unwrap_or_else(|| start_id.replace('\\', "/"));
+            let start_normalized =
+                id_lookup.get(start_id).cloned().unwrap_or_else(|| start_id.replace('\\', "/"));
             if !allowed_ids.contains(&start_normalized) {
                 return Ok(serde_json::json!({
                     "success": true,
@@ -200,10 +187,7 @@ impl crate::clients::VaultClient for AppContext {
                     continue;
                 }
                 for target in outgoing.get(&current).into_iter().flatten() {
-                    let norm = id_lookup
-                        .get(target)
-                        .cloned()
-                        .unwrap_or_else(|| target.clone());
+                    let norm = id_lookup.get(target).cloned().unwrap_or_else(|| target.clone());
                     if allowed_ids.contains(&norm) {
                         edges.push((current.clone(), norm.clone()));
                         if visited.insert(norm.clone()) {
@@ -212,10 +196,7 @@ impl crate::clients::VaultClient for AppContext {
                     }
                 }
                 for source in incoming.get(&current).into_iter().flatten() {
-                    let norm = id_lookup
-                        .get(source)
-                        .cloned()
-                        .unwrap_or_else(|| source.clone());
+                    let norm = id_lookup.get(source).cloned().unwrap_or_else(|| source.clone());
                     if allowed_ids.contains(&norm) {
                         edges.push((norm.clone(), current.clone()));
                         if visited.insert(norm.clone()) {
@@ -233,10 +214,7 @@ impl crate::clients::VaultClient for AppContext {
                     continue;
                 }
                 for target in targets {
-                    let norm = id_lookup
-                        .get(target)
-                        .cloned()
-                        .unwrap_or_else(|| target.clone());
+                    let norm = id_lookup.get(target).cloned().unwrap_or_else(|| target.clone());
                     if allowed_ids.contains(&norm) {
                         all_edges.push((source.clone(), norm.clone()));
                     }

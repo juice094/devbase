@@ -772,21 +772,10 @@ mod tests {
             "---\ntitle: Note A\n---\n\nLinks to [[b]] and [[c]].\n",
         )
         .unwrap();
-        std::fs::write(
-            vault_dir.join("b.md"),
-            "---\ntitle: Note B\n---\n\nLinks to [[d]].\n",
-        )
-        .unwrap();
-        std::fs::write(
-            vault_dir.join("c.md"),
-            "---\ntitle: Note C\n---\n\nNo links.\n",
-        )
-        .unwrap();
-        std::fs::write(
-            vault_dir.join("d.md"),
-            "---\ntitle: Note D\n---\n\nNo links.\n",
-        )
-        .unwrap();
+        std::fs::write(vault_dir.join("b.md"), "---\ntitle: Note B\n---\n\nLinks to [[d]].\n")
+            .unwrap();
+        std::fs::write(vault_dir.join("c.md"), "---\ntitle: Note C\n---\n\nNo links.\n").unwrap();
+        std::fs::write(vault_dir.join("d.md"), "---\ntitle: Note D\n---\n\nNo links.\n").unwrap();
 
         let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
         let pool = ctx.pool();
@@ -803,10 +792,7 @@ mod tests {
 
         // Depth 1: a -> b, c
         let result = tool
-            .invoke(
-                serde_json::json!({ "note_id": "a.md", "depth": 1 }),
-                &mut ctx,
-            )
+            .invoke(serde_json::json!({ "note_id": "a.md", "depth": 1 }), &mut ctx)
             .await
             .unwrap();
         assert_eq!(result.get("success").unwrap(), true);
@@ -817,10 +803,7 @@ mod tests {
 
         // Depth 2: a -> b -> d
         let result = tool
-            .invoke(
-                serde_json::json!({ "note_id": "a.md", "depth": 2 }),
-                &mut ctx,
-            )
+            .invoke(serde_json::json!({ "note_id": "a.md", "depth": 2 }), &mut ctx)
             .await
             .unwrap();
         assert_eq!(result.get("success").unwrap(), true);
@@ -844,8 +827,7 @@ mod tests {
             index.write().unwrap();
             let tree_id = index.write_tree().unwrap();
             let tree = repo.find_tree(tree_id).unwrap();
-            repo.commit(Some("HEAD"), &sig, &sig, "Initial", &tree, &[])
-                .unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "Initial", &tree, &[]).unwrap();
         }
         {
             let mut index = repo.index().unwrap();
@@ -855,8 +837,7 @@ mod tests {
             let tree_id = index.write_tree().unwrap();
             let tree = repo.find_tree(tree_id).unwrap();
             let parent = repo.head().unwrap().peel_to_commit().unwrap();
-            repo.commit(Some("HEAD"), &sig, &sig, "Update", &tree, &[&parent])
-                .unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "Update", &tree, &[&parent]).unwrap();
         }
 
         let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
@@ -869,14 +850,8 @@ mod tests {
         assert_eq!(result.get("success").unwrap(), true);
         let history = result.get("history").unwrap().as_array().unwrap();
         assert_eq!(history.len(), 2);
-        assert_eq!(
-            history[0].get("message").unwrap().as_str().unwrap(),
-            "Initial"
-        );
-        assert_eq!(
-            history[1].get("message").unwrap().as_str().unwrap(),
-            "Update"
-        );
+        assert_eq!(history[0].get("message").unwrap().as_str().unwrap(), "Initial");
+        assert_eq!(history[1].get("message").unwrap().as_str().unwrap(), "Update");
         assert!(history[1].get("insertions").unwrap().as_u64().unwrap() > 0);
     }
 }

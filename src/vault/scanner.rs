@@ -58,7 +58,8 @@ pub fn scan_vault(
                 let body = &content[body_offset..];
                 let wikilinks = extract_wikilinks(body);
                 let outgoing: Vec<String> = wikilinks.iter().map(|l| l.target.clone()).collect();
-                let block_refs: Vec<String> = wikilinks.iter().filter_map(|l| l.anchor.clone()).collect();
+                let block_refs: Vec<String> =
+                    wikilinks.iter().filter_map(|l| l.anchor.clone()).collect();
 
                 let title = frontmatter.as_ref().and_then(|fm| fm.title.clone()).or_else(|| {
                     // Fallback: first H1 heading
