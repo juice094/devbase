@@ -7,6 +7,8 @@
 //! Submodules cover repos, health, knowledge, code metrics, call graphs,
 //! dead-code analysis, and migrations.
 
+use crate::clients::RegistryClient;
+use crate::storage::AppContext;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -129,10 +131,10 @@ pub mod repos_toml;
 pub mod vault;
 pub mod workspace;
 
-impl crate::clients::RegistryClient for crate::storage::AppContext {
+impl RegistryClient for AppContext {
     fn list_repos(&self, _filter: Option<&str>) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        let repos = crate::registry::repo::list_repos(&conn)?;
+        let repos = repo::list_repos(&conn)?;
         let results: Vec<serde_json::Value> = repos
             .into_iter()
             .map(|r| {
@@ -151,7 +153,7 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
 
     fn get_repo(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        let repos = crate::registry::repo::list_repos(&conn)?;
+        let repos = repo::list_repos(&conn)?;
         match repos.into_iter().find(|r| r.id == repo_id) {
             Some(r) => Ok(serde_json::json!({
                 "success": true,
@@ -168,7 +170,7 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
 
     fn list_modules(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        let modules = crate::registry::knowledge::list_modules(&conn, repo_id)?;
+        let modules = knowledge::list_modules(&conn, repo_id)?;
         let results: Vec<serde_json::Value> = modules
             .into_iter()
             .map(|(name, ty, path)| {
@@ -184,21 +186,21 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
 
     fn save_paper(&self, paper: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        let paper_entry: crate::registry::PaperEntry = serde_json::from_value(paper.clone())?;
-        crate::registry::knowledge::save_paper(&conn, &paper_entry)?;
+        let paper_entry: PaperEntry = serde_json::from_value(paper.clone())?;
+        knowledge::save_paper(&conn, &paper_entry)?;
         Ok(serde_json::json!({ "success": true }))
     }
 
     fn save_experiment(&self, exp: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        let exp_entry: crate::registry::ExperimentEntry = serde_json::from_value(exp.clone())?;
-        crate::registry::WorkspaceRegistry::save_experiment(&conn, &exp_entry)?;
+        let exp_entry: ExperimentEntry = serde_json::from_value(exp.clone())?;
+        WorkspaceRegistry::save_experiment(&conn, &exp_entry)?;
         Ok(serde_json::json!({ "success": true }))
     }
 
     fn list_code_metrics(&self) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        let metrics = crate::registry::metrics::list_code_metrics(&conn)?;
+        let metrics = metrics::list_code_metrics(&conn)?;
         let repos: Vec<serde_json::Value> = metrics
             .into_iter()
             .map(|(id, m)| {
@@ -219,7 +221,7 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
 
     fn get_code_metrics(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        match crate::registry::metrics::get_code_metrics(&conn, repo_id)? {
+        match metrics::get_code_metrics(&conn, repo_id)? {
             Some(m) => Ok(serde_json::json!({
                 "success": true,
                 "repo_id": repo_id,
@@ -239,7 +241,7 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
 
     fn get_health(&self, repo_id: &str) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        match crate::registry::health::get_health(&conn, repo_id)? {
+        match health::get_health(&conn, repo_id)? {
             Some(h) => Ok(serde_json::json!({
                 "success": true,
                 "repo_id": repo_id,
@@ -261,7 +263,7 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
         limit: usize,
     ) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        let edges = crate::registry::call_graph::query_call_edges(
+        let edges = call_graph::query_call_edges(
             &conn,
             repo_id,
             callee.filter(|s| !s.is_empty()),
@@ -336,14 +338,8 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
         limit: usize,
     ) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        let symbols = crate::registry::code_symbols::query_code_symbols(
-            &conn,
-            repo_id,
-            name,
-            symbol_type,
-            file,
-            limit,
-        )?;
+        let symbols =
+            code_symbols::query_code_symbols(&conn, repo_id, name, symbol_type, file, limit)?;
         let out: Vec<serde_json::Value> = symbols
             .iter()
             .map(|s| {
@@ -372,7 +368,7 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
         limit: usize,
     ) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        let dead = crate::registry::dead_code::query_dead_code(&conn, repo_id, include_pub, limit)?;
+        let dead = dead_code::query_dead_code(&conn, repo_id, include_pub, limit)?;
         let out: Vec<serde_json::Value> = dead
             .iter()
             .map(|d| {
@@ -400,7 +396,7 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
         confidence: f64,
     ) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        crate::registry::relation::save_relation(&conn, from, to, relation_type, confidence)?;
+        relation::save_relation(&conn, from, to, relation_type, confidence)?;
         Ok(serde_json::json!({ "success": true }))
     }
 
@@ -413,11 +409,7 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
         let conn = self.conn()?;
         let results = match direction {
             "bidirectional" => {
-                let rows = crate::registry::relation::find_related_entities(
-                    &conn,
-                    entity_id,
-                    relation_type,
-                )?;
+                let rows = relation::find_related_entities(&conn, entity_id, relation_type)?;
                 rows.into_iter()
                     .map(|(from, to, rt, conf, created)| {
                         serde_json::json!({
@@ -463,8 +455,7 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
                     .collect::<Vec<_>>()
             }
             _ => {
-                let rows =
-                    crate::registry::relation::list_relations(&conn, entity_id, relation_type)?;
+                let rows = relation::list_relations(&conn, entity_id, relation_type)?;
                 rows.into_iter()
                     .map(|(to, rt, conf, created)| {
                         serde_json::json!({
@@ -502,7 +493,7 @@ impl crate::clients::RegistryClient for crate::storage::AppContext {
 
     fn list_vault_notes(&self) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        let notes = crate::registry::vault::list_vault_notes(&conn)?;
+        let notes = vault::list_vault_notes(&conn)?;
         let results: Vec<serde_json::Value> = notes
             .into_iter()
             .map(|n| {
