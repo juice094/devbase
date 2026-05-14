@@ -508,6 +508,12 @@ pub(crate) enum VaultCommands {
         #[arg(short, long, default_value_t = 20)]
         limit: usize,
     },
+    /// Export vault notes to a directory with integrity validation
+    Export {
+        /// Output directory for the exported vault
+        #[arg(default_value = "")]
+        output_dir: String,
+    },
 }
 
 #[derive(Subcommand)]

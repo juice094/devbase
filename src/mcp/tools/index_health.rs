@@ -2,9 +2,10 @@
 // Copyright (c) 2026 juice094
 //! MCP tool: devkit_index_health — Tantivy + SQLite 索引健康度诊断。
 
+use crate::clients::KnowledgeClient;
 use crate::mcp::McpTool;
 use crate::registry::ENTITY_TYPE_REPO;
-use crate::search::list_indexed_repo_ids_at;
+use crate::search::{list_indexed_repo_ids_at, sync_index_to_db_at};
 use crate::storage::AppContext;
 use std::collections::HashSet;
 use tantivy::{Index, ReloadPolicy};
@@ -31,20 +32,28 @@ Use this when:
 - Before/after running devkit_index to verify consistency
 - Troubleshooting "missing repo" or "orphan document" issues
 
-Parameters: none (inspects all registered indexes automatically)."#,
+Parameters:
+- repair: If true, automatically delete orphan documents and re-index missing repos. Default false (read-only diagnosis)."#,
             "inputSchema": {
                 "type": "object",
-                "properties": {}
+                "properties": {
+                    "repair": {
+                        "type": "boolean",
+                        "description": "If true, automatically repair detected inconsistencies (delete orphans, re-index missing repos)",
+                        "default": false
+                    }
+                }
             }
         })
     }
 
     async fn invoke(
         &self,
-        _args: serde_json::Value,
+        args: serde_json::Value,
         ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        run_index_health(ctx)
+        let repair = args.get("repair").and_then(|v| v.as_bool()).unwrap_or(false);
+        run_index_health(ctx, repair)
     }
 }
 
@@ -85,7 +94,7 @@ fn check_index_at(
     Ok((schema_valid, num_docs))
 }
 
-pub fn run_index_health(ctx: &mut AppContext) -> anyhow::Result<serde_json::Value> {
+pub fn run_index_health(ctx: &mut AppContext, repair: bool) -> anyhow::Result<serde_json::Value> {
     let index_path = ctx.storage.index_path()?;
     let symbol_index_path = ctx.storage.symbol_index_path()?;
 
@@ -120,7 +129,7 @@ pub fn run_index_health(ctx: &mut AppContext) -> anyhow::Result<serde_json::Valu
     let recorded_orphans = orphan_rows.len();
 
     // 5. Live consistency: Tantivy IDs vs SQLite IDs
-    let (live_orphans, missing_from_index) = {
+    let (live_orphans, missing_from_index, missing_paths) = {
         let tantivy_ids: HashSet<String> = match list_indexed_repo_ids_at(&index_path) {
             Ok(ids) => ids.into_iter().collect(),
             Err(_) => HashSet::new(),
@@ -132,12 +141,49 @@ pub fn run_index_health(ctx: &mut AppContext) -> anyhow::Result<serde_json::Valu
         };
         let orphans = tantivy_ids.difference(&sqlite_ids).count();
         let missing = sqlite_ids.difference(&tantivy_ids).count();
-        (orphans, missing)
+
+        // Collect local paths for missing repos (used by repair)
+        let mut missing_paths = Vec::new();
+        if repair && missing > 0 {
+            for repo_id in sqlite_ids.difference(&tantivy_ids) {
+                if let Ok(path) = conn.query_row(
+                    "SELECT local_path FROM entities WHERE id = ?1",
+                    [repo_id],
+                    |row| row.get::<_, String>(0),
+                ) {
+                    missing_paths.push(path);
+                }
+            }
+        }
+        (orphans, missing, missing_paths)
     };
 
-    drop(conn);
+    // 6. Repair actions (if requested)
+    let mut repaired_orphans = 0usize;
+    let mut reindexed = 0usize;
+    let mut reindex_failed = 0usize;
 
-    // 6. Health score calculation
+    if repair {
+        // 6a. Delete orphan documents from Tantivy
+        repaired_orphans = sync_index_to_db_at(&index_path, &conn).unwrap_or(0);
+
+        drop(conn); // Release pool connection before reindexing
+
+        // 6b. Reindex missing repos one by one
+        for path in missing_paths {
+            match ctx.run_index(&path) {
+                Ok(_) => reindexed += 1,
+                Err(e) => {
+                    tracing::warn!("Failed to reindex {}: {}", path, e);
+                    reindex_failed += 1;
+                }
+            }
+        }
+    } else {
+        drop(conn);
+    }
+
+    // 7. Health score calculation
     let mut score = 100i64;
     if !repo_schema_valid {
         score = 0;
@@ -171,6 +217,16 @@ pub fn run_index_health(ctx: &mut AppContext) -> anyhow::Result<serde_json::Valu
             "live_orphans": live_orphans,
             "missing_from_index": missing_from_index,
             "orphan_repo_ids": orphan_rows,
+        },
+        "repair_actions": if repair {
+            serde_json::json!({
+                "requested": true,
+                "orphans_deleted": repaired_orphans,
+                "missing_reindexed": reindexed,
+                "missing_failed": reindex_failed,
+            })
+        } else {
+            serde_json::Value::Null
         }
     }))
 }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+use devbase::clients::VaultClient;
 use devbase::*;
 use tracing::info;
 
@@ -133,6 +134,19 @@ pub async fn run_vault(
                     println!("  [{}] score={:.3}", id, score);
                 }
             }
+        }
+        crate::VaultCommands::Export { output_dir } => {
+            let out = if output_dir.is_empty() {
+                format!("devbase-vault-export-{}", chrono::Local::now().format("%Y%m%d-%H%M%S"))
+            } else {
+                output_dir
+            };
+            let result = ctx.export_vault(&out)?;
+            println!("Vault exported to: {}", out);
+            println!("  Files: {}", result["exported_files"]);
+            println!("  Bytes: {}", result["total_bytes"]);
+            println!("  Broken links: {}", result["broken_links"]["count"]);
+            println!("  Frontmatter errors: {}", result["frontmatter_errors"]["count"]);
         }
     }
     Ok(())
