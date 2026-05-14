@@ -70,18 +70,22 @@ curl -fsSL https://raw.githubusercontent.com/juice094/devbase/main/scripts/insta
 
 | 平台 | 下载 | 大小 |
 |:---|:---|:---|
-| Windows x86_64 | [`devbase-v0.20.0-x86_64-pc-windows-msvc.exe`](https://github.com/juice094/devbase/releases/download/v0.20.0/devbase-v0.20.0-x86_64-pc-windows-msvc.exe) | ~30 MB |
-| Linux x86_64 | [`devbase-v0.20.0-x86_64-unknown-linux-gnu`](https://github.com/juice094/devbase/releases/download/v0.20.0/devbase-v0.20.0-x86_64-unknown-linux-gnu) | ~28 MB |
+| Windows x86_64 | [`devbase-v0.20.0-windows-x64.zip`](https://github.com/juice094/devbase/releases/download/v0.20.0/devbase-v0.20.0-windows-x64.zip) | ~8.7 MB |
+| Linux x86_64 | [`devbase-v0.20.0-linux-x64.tar.gz`](https://github.com/juice094/devbase/releases/download/v0.20.0/devbase-v0.20.0-linux-x64.tar.gz) | ~8.8 MB |
 
 ```powershell
 # Windows (PowerShell)
-Invoke-WebRequest -Uri "https://github.com/juice094/devbase/releases/download/v0.20.0/devbase-v0.20.0-x86_64-pc-windows-msvc.exe" -OutFile devbase.exe
+Invoke-WebRequest -Uri "https://github.com/juice094/devbase/releases/download/v0.20.0/devbase-v0.20.0-windows-x64.zip" -OutFile devbase.zip
+Expand-Archive -Path devbase.zip -DestinationPath . -Force
+# 提取后的 devbase.exe 可直接运行
 ```
 
 ```bash
 # Linux
-wget https://github.com/juice094/devbase/releases/download/v0.20.0/devbase-v0.20.0-x86_64-unknown-linux-gnu -O devbase
-chmod +x devbase
+curl -fsSL -o devbase.tar.gz https://github.com/juice094/devbase/releases/download/v0.20.0/devbase-v0.20.0-linux-x64.tar.gz
+tar xzf devbase.tar.gz
+cp devbase-v0.20.0-linux-x64/devbase /usr/local/bin/  # 或任意 PATH 目录
+chmod +x /usr/local/bin/devbase
 ```
 
 **从源码**
