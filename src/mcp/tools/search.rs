@@ -342,6 +342,105 @@ Returns: JSON array of symbols with file_path, name, line_start, and similarity_
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
     }
 }
+
+#[derive(Clone)]
+pub struct DevkitSearchQualityTool;
+
+impl McpTool for DevkitSearchQualityTool {
+    fn name(&self) -> &'static str {
+        "devkit_search_quality"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Diagnose the quality of a hybrid search query by returning metrics for each retrieval path (keyword vs vector) and their fusion.
+
+Use this when:
+- Investigating why a search returns poor results
+- Comparing keyword vs semantic recall for a query
+- Tuning the search pipeline
+
+Parameters:
+- repo_id: Registered repository ID to search within.
+- query_text: Text query for keyword matching.
+- query_embedding: Optional f32 vector for semantic search. If omitted, devbase will try to generate one locally.
+- limit: Maximum results (default: 20).
+
+Returns: JSON with keyword_recall, vector_recall, rrf_overlap, latency_ms, keyword_source, and rrf_k."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo_id": { "type": "string" },
+                    "query_text": { "type": "string", "description": "Keyword or natural language query" },
+                    "query_embedding": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "description": "Optional query embedding vector"
+                    },
+                    "limit": { "type": "integer", "default": 20 }
+                },
+                "required": ["repo_id", "query_text"]
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let repo_id = args.get("repo_id").and_then(|v| v.as_str()).context("repo_id required")?;
+        let query_text =
+            args.get("query_text").and_then(|v| v.as_str()).context("query_text required")?;
+        let query_embedding = args.get("query_embedding").and_then(|v| v.as_array()).map(|arr| {
+            arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect::<Vec<f32>>()
+        });
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20).min(100) as usize;
+
+        let query_embedding = match query_embedding {
+            Some(e) => Some(e),
+            None => match crate::embedding::generate_query_embedding(query_text) {
+                Ok(emb) => Some(emb),
+                Err(e) => {
+                    tracing::warn!("Embedding generation failed, keyword-only metrics: {}", e);
+                    None
+                }
+            },
+        };
+
+        let repo_id = repo_id.to_string();
+        let query_text = query_text.to_string();
+
+        let pool = ctx.pool();
+        tokio::task::spawn_blocking(move || {
+            let conn = pool.get()?;
+            let (_results, metrics) = crate::registry::WorkspaceRegistry::hybrid_search_symbols_with_metrics(
+                &conn,
+                &repo_id,
+                &query_text,
+                query_embedding.as_deref(),
+                limit,
+            )?;
+
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "success": true,
+                "repo_id": repo_id,
+                "query_text": query_text,
+                "latency_ms": metrics.latency_ms,
+                "keyword_recall": metrics.keyword_recall,
+                "vector_recall": metrics.vector_recall,
+                "rrf_overlap": metrics.rrf_overlap,
+                "keyword_source": metrics.keyword_source,
+                "rrf_k": metrics.rrf_k,
+                "keyword_only_results": metrics.keyword_only_results,
+                "vector_only_results": metrics.vector_only_results,
+            }))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
+    }
+}
+
 #[derive(Clone)]
 pub struct DevkitRelatedSymbolsTool;
 

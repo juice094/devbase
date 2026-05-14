@@ -646,6 +646,20 @@ impl WorkspaceRegistry {
     ) -> anyhow::Result<Vec<crate::semantic_index::SemanticSearchRow>> {
         hybrid_search_symbols(conn, repo_id, query_text, query_embedding, limit)
     }
+    pub fn hybrid_search_symbols_with_metrics(
+        conn: &rusqlite::Connection,
+        repo_id: &str,
+        query_text: &str,
+        query_embedding: Option<&[f32]>,
+        limit: usize,
+    ) -> anyhow::Result<(
+        Vec<crate::semantic_index::SemanticSearchRow>,
+        crate::search::hybrid::HybridSearchMetrics,
+    )> {
+        crate::search::hybrid::hybrid_search_symbols_with_metrics(
+            conn, repo_id, query_text, query_embedding, limit,
+        )
+    }
     pub fn record_symbol_read(
         conn: &rusqlite::Connection,
         repo_id: &str,
