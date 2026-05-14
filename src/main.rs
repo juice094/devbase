@@ -514,6 +514,11 @@ pub(crate) enum VaultCommands {
         #[arg(default_value = "")]
         output_dir: String,
     },
+    /// Show Git revision history for a vault note
+    History {
+        /// Relative path of the note within the vault
+        path: String,
+    },
 }
 
 #[derive(Subcommand)]

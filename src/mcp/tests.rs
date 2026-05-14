@@ -39,10 +39,11 @@ async fn test_tools_list() {
     let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     let tools = resp.get("result").unwrap().get("tools").unwrap().as_array().unwrap();
-    assert_eq!(tools.len(), 66);
+    assert_eq!(tools.len(), 67);
     let names: Vec<&str> = tools.iter().map(|t| t.get("name").unwrap().as_str().unwrap()).collect();
     assert!(names.contains(&"devkit_index_health"));
     assert!(names.contains(&"devkit_vault_export"));
+    assert!(names.contains(&"devkit_vault_history"));
     assert!(names.contains(&"devkit_session_save"));
     assert!(names.contains(&"devkit_session_list"));
     assert!(names.contains(&"devkit_session_resume"));

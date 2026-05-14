@@ -148,6 +148,29 @@ pub async fn run_vault(
             println!("  Broken links: {}", result["broken_links"]["count"]);
             println!("  Frontmatter errors: {}", result["frontmatter_errors"]["count"]);
         }
+        crate::VaultCommands::History { path } => {
+            let result = ctx.get_vault_history(&path)?;
+            let history = result["history"].as_array().unwrap_or(&vec![]);
+            if history.is_empty() {
+                println!("No history found for '{}'.", path);
+                println!("Hint: Ensure the vault directory is a Git repository.");
+            } else {
+                println!("History for {} ({} commits):", path, history.len());
+                for entry in history {
+                    let ts = entry["timestamp"].as_str().unwrap_or("unknown");
+                    let msg = entry["message"].as_str().unwrap_or("");
+                    let author = entry["author"].as_str().unwrap_or("");
+                    let ins = entry["insertions"].as_u64().unwrap_or(0);
+                    let del = entry["deletions"].as_u64().unwrap_or(0);
+                    let diff_str = if ins > 0 || del > 0 {
+                        format!(" (+{} -{})", ins, del)
+                    } else {
+                        String::new()
+                    };
+                    println!("  [{}] {} by {}{}", ts, msg, author, diff_str);
+                }
+            }
+        }
     }
     Ok(())
 }

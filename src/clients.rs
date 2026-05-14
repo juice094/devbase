@@ -149,5 +149,6 @@ pub trait VaultClient: Send + Sync {
         note_id: Option<&str>,
         depth: usize,
     ) -> Result<Value>;
+    fn get_vault_history(&self, note_id: &str) -> Result<Value>;
     fn export_vault(&self, output_dir: &str) -> Result<Value>;
 }

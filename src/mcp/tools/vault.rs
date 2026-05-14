@@ -518,6 +518,47 @@ Returns: export statistics including file count, total bytes, broken links, and 
     }
 }
 
+#[derive(Clone)]
+pub struct DevkitVaultHistoryTool;
+
+impl McpTool for DevkitVaultHistoryTool {
+    fn name(&self) -> &'static str {
+        "devkit_vault_history"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Get the Git revision history for a vault note.
+
+Returns commit history (author, timestamp, message, insertions/deletions) for the specified note. Requires the vault directory to be a Git repository.
+
+Parameters:
+- note_id: Required — the vault note path (e.g., "ideas/note.md")
+
+Returns: JSON with history array and count."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "note_id": { "type": "string", "description": "Vault note path" }
+                },
+                "required": ["note_id"]
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let note_id = args
+            .get("note_id")
+            .and_then(|v| v.as_str())
+            .context("Missing required argument: note_id")?;
+        ctx.get_vault_history(note_id)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -787,5 +828,55 @@ mod tests {
         let edges = result.get("edges").unwrap().as_array().unwrap();
         assert_eq!(nodes.len(), 4);
         assert_eq!(edges.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_vault_history_tool() {
+        let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+        let vault_dir = backend.workspace_dir().unwrap().join("vault");
+        let repo = git2::Repository::init(&vault_dir).unwrap();
+        let sig = git2::Signature::now("Test", "test@example.com").unwrap();
+
+        {
+            let mut index = repo.index().unwrap();
+            std::fs::write(vault_dir.join("note.md"), "Hello world\n").unwrap();
+            index.add_path(std::path::Path::new("note.md")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "Initial", &tree, &[])
+                .unwrap();
+        }
+        {
+            let mut index = repo.index().unwrap();
+            std::fs::write(vault_dir.join("note.md"), "Hello world\nMore lines\n").unwrap();
+            index.add_path(std::path::Path::new("note.md")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            let parent = repo.head().unwrap().peel_to_commit().unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "Update", &tree, &[&parent])
+                .unwrap();
+        }
+
+        let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
+        let tool = DevkitVaultHistoryTool;
+        let result = tool
+            .invoke(serde_json::json!({ "note_id": "note.md" }), &mut ctx)
+            .await
+            .unwrap();
+
+        assert_eq!(result.get("success").unwrap(), true);
+        let history = result.get("history").unwrap().as_array().unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(
+            history[0].get("message").unwrap().as_str().unwrap(),
+            "Initial"
+        );
+        assert_eq!(
+            history[1].get("message").unwrap().as_str().unwrap(),
+            "Update"
+        );
+        assert!(history[1].get("insertions").unwrap().as_u64().unwrap() > 0);
     }
 }

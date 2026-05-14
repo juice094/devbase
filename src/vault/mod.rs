@@ -4,6 +4,7 @@ pub mod backlinks;
 pub mod export;
 pub mod frontmatter;
 pub mod fs_io;
+pub mod history;
 pub mod indexer;
 pub mod scanner;
 pub mod wikilink;
@@ -265,6 +266,38 @@ impl crate::clients::VaultClient for AppContext {
             "edge_count": edges_json.len(),
             "nodes": nodes,
             "edges": edges_json,
+        }))
+    }
+
+    fn get_vault_history(&self, note_id: &str) -> anyhow::Result<serde_json::Value> {
+        let vault_dir = self.storage.workspace_dir().ok().map(|ws| ws.join("vault"));
+        let history = if let Some(ref vd) = vault_dir {
+            crate::vault::history::note_history(vd, note_id).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let entries: Vec<serde_json::Value> = history
+            .into_iter()
+            .map(|h| {
+                let ts = chrono::DateTime::from_timestamp(h.timestamp, 0)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                serde_json::json!({
+                    "commit": h.commit,
+                    "author": h.author,
+                    "email": h.email,
+                    "timestamp": ts,
+                    "message": h.message,
+                    "insertions": h.insertions,
+                    "deletions": h.deletions,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({
+            "success": true,
+            "note_id": note_id,
+            "count": entries.len(),
+            "history": entries,
         }))
     }
 
