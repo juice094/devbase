@@ -47,11 +47,47 @@ jobs:
           Copy-Item "CHANGELOG.md" "$outDir\"
           Compress-Archive -Path $outDir -DestinationPath "$outDir.zip" -Force
           Write-Host "Created $outDir.zip"
-      - name: Upload to GitHub Release
+      - name: Upload Windows asset
         shell: powershell
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $version = "${{ github.ref_name }}"
           $archive = "devbase-$version-windows-x64.zip"
-          gh release create $version $archive --generate-notes --repo ${{ github.repository }}
+          gh release upload $version $archive --repo ${{ github.repository }} --clobber
+
+  build-linux:
+    name: Build Linux Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-linux
+      - name: Build release binary
+        run: cargo build --release --locked
+      - name: Run tests
+        run: cargo test --workspace -- --test-threads=4
+      - name: Verify clippy clean
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Verify fmt clean
+        run: cargo fmt --check
+      - name: Package binary
+        run: |
+          version="${{ github.ref_name }}"
+          outDir="devbase-${version}-linux-x64"
+          mkdir -p "$outDir"
+          cp target/release/devbase "$outDir/"
+          cp README.md "$outDir/"
+          cp LICENSE "$outDir/"
+          cp CHANGELOG.md "$outDir/"
+          tar czf "${outDir}.tar.gz" "$outDir"
+          echo "Created ${outDir}.tar.gz"
+      - name: Upload Linux asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${{ github.ref_name }}"
+          archive="devbase-${version}-linux-x64.tar.gz"
+          gh release upload "$version" "$archive" --repo ${{ github.repository }} --clobber
