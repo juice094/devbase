@@ -1,10 +1,10 @@
 # devbase Roadmap
 
-> **当前阶段**：阶段六 — v0.16.0 分发就绪（进行中）
+> **当前阶段**：阶段十 — v0.19.0 知识基础设施硬化（进行中）
 >
-> **最后更新**：2026-04-26
+> **最后更新**：2026-05-14
 >
-> **版本状态**：`0.16.0-dev`（P2 Workspace crate 第二批提取 #1 完成：`devbase-workflow-interpolate`）
+> **版本状态**：`0.19.0-dev`（Schema 34，64 MCP tools，446 tests）
 
 ---
 
@@ -22,136 +22,86 @@ Schema v16 统一实体模型、Skill 自动封装、Workflow Engine、Mind Mark
 
 L0-L4 五层知识模型 MVP：entities 统一模型、known_limits 风险层、knowledge_meta 元认知层、PARA vault 结构。
 
-### 阶段四：工程健康与解耦（v0.12.0–v0.14.0）— ✅ 已交付
+### 阶段四：工程健康与解耦（v0.12.0–v0.14.0）— ✅
 
-| 任务 | 交付物 | 状态 |
-|------|--------|------|
-| Registry God Object 拆解 | 10 子模块提取为 free-function 模块 | ✅ v0.12.0 |
-| AppContext Pool 化 | `r2d2::Pool` 替代单 Connection，22 处调用点迁移 | ✅ v0.12.0 |
-| 生产 unwrap 清零 | 0 个生产 unwrap，`clippy -D warnings` 全绿 | ✅ v0.13.0 |
-| 测试覆盖率收尾 | 437 workspace tests passed，零测试文件清零 | ✅ v0.13.0 |
-| Workspace 骨架搭建 | `crates/` 目录 + 3 个零耦合模块提取 | ✅ v0.14.0 |
-| 全模块耦合地图 | 按 `crate::` 引用数扫描，🟢/🟡/🔴 分级 | ✅ v0.14.0 |
+Registry God Object 拆解、AppContext Pool 化、生产 unwrap 清零、Workspace 骨架搭建（18 crates）、全模块耦合地图。
 
-### 阶段五：v0.15.0 数据层 + 可靠性 + Agent 体验 — ✅ 已交付
+### 阶段五：数据层 + 可靠性 + Agent 体验（v0.15.0）— ✅
 
-| Sprint | 核心交付 | 状态 |
-|--------|---------|------|
-| Sprint A — 数据层 + 性能 | v28 三维 embedding 主键；rayon 并行化（130s→~20s） | ✅ `dfdc1cc` |
-| Sprint B — 可靠性 | Tantivy-SQLite Saga 一致性扫描 + orphan 懒清理 | ✅ `dcbe256` |
-| Sprint C — Agent 体验 | `devbase status` + `DevkitStatusTool` + MCP streaming | ✅ `e8860ba` |
+三维 embedding 主键、Tantivy-SQLite Saga 一致性扫描、`devbase status` + MCP streaming。
+
+### 阶段六：分发就绪与 Embedding 外迁（v0.16.0–v0.17.0）— ✅
+
+Workspace 扩展至 18 crates、Embedding Externalization（Candle/Ollama 降级为 opt-in）、Schema 34 向量存储 + `cosine_similarity` SQLite UDF、Agent Contexts / Session 记忆体系。
+
+### 阶段七：ClaudeCode 集成与世界模型定位（v0.18.0）— ✅
+
+`devkit_project_brief` / `impact_analysis`、Session 导出/导入、`devbase-claude.ps1` 启动器、World Model Compiler 定位升级、根目录治理、NotebookLM 生态消化（5 项目注册）、GreptimeDB 互补分析。
 
 ---
 
-## 当前阶段：阶段六 — v0.16.0 分发就绪（进行中）
+## 当前阶段：阶段十 — v0.19.0 知识基础设施硬化（进行中）
 
-**核心目标**：让 devbase 的通用组件达到"可独立发布"标准，同时保持主 crate 的健康度。
+**核心目标**：消除"玩具感"，将 devbase 从"功能演示级"推进到"日常生产力级"。**存储可靠性 > AI 炫技**。
 
-> 分发 ≠ 必须发布到 crates.io。分发标准是耦合健康度的检验手段：能拆 = 健康，不能拆 = 有债。
+> **核心原则**：devbase 首先是一个可靠的本地知识基础设施，然后才是一个 World Model Compiler。详见 [AGENTS.md](../AGENTS.md) §知识库生产级缺口与补齐路线。
 
----
+### v0.19.0 Sprint 规划
 
-## 待办清单（按优先级）
+| Sprint | 主题 | 关键交付 | 目标日期 |
+|--------|------|---------|----------|
+| **Sprint A — SQLite 可靠性** | WAL 模式 + 并发安全 | `PRAGMA journal_mode=WAL` 默认启用；并发写入测试覆盖；迁移回滚硬化 | 2026-05 |
+| **Sprint B — 索引健康度** | Tantivy 可观测与自愈 | `devkit_index_health` tool（健康评分 0-100）；损坏检测；自动重建策略 | 2026-05 |
+| **Sprint C — 性能基线** | 查询延迟可观测 | CI 性能回归测试（1k/10k/100k 文档）；OpLog 查询延迟指标；Redis 缓存决策文档 | 2026-06 |
+| **Sprint D — 数据自由** | Vault 导出与互操作 | `devkit_vault_export` 完整 PARA 导出；frontmatter 兼容性验证；Vendor Lock-in 消除 | 2026-06 |
 
-### P0 — Workspace 扩展（本周–本月）
+**v0.19.0 验收标准**：
+1. `cargo test` 全绿 + CI 新增性能回归红线（查询延迟 P99 < 200ms @ 10k 文档）
+2. `devkit_index_health` 可返回所有注册仓库的索引健康评分
+3. SQLite WAL 模式在所有新创建/迁移的数据库上默认启用
+4. Vault 导出可通过标准 Markdown 工具链（如 Obsidian）无损重新导入
 
-提取 🟢 健康模块（0-3 个 `crate::` refs）为独立 crate。
-
-| 候选模块 | 行数 | 测试 | 内部耦合 | 估计工时 |
-|----------|------|------|----------|----------|
-
-| ~~`syncthing_client`~~ | ~~85~~ | ~~2~~ | ~~0~~ | ~~✅ 已完成~~ |
-| ~~`registry/health`~~ | ~~156~~ | ~~3~~ | ~~0~~ | ~~✅ 已完成~~ |
-| ~~`registry/metrics`~~ | ~~153~~ | ~~4~~ | ~~0~~ | ~~✅ 已完成~~ |
-
-| ~~`vault/frontmatter`~~ | ~~175~~ | ~~5~~ | ~~0~~ | ~~✅ 已完成~~ |
-| ~~`vault/wikilink`~~ | ~~130~~ | ~~5~~ | ~~0~~ | ~~✅ 已完成~~ |
-| ~~`workflow/interpolate`~~ | ~~239~~ | ~~9~~ | ~~0~~ | ~~✅ 已完成~~ |
-| ~~`workflow/model`~~ | ~~330~~ | ~~2~~ | ~~0~~ | ~~✅ 已完成~~ |
-| ~~`embedding`~~ | ~~299~~ | ~~5~~ | ~~0~~ | ~~✅ 已完成~~ |
-
-
-
-| ~~`registry/workspace`~~ | ~~215~~ | ~~5~~ | ~~0~~ | ~~✅ 已完成~~ |
-
-
-
-**目标**：workspace 成员达到 8-10 个。当前：13 个（✅ 已超额达成）。
-**验收**：`cargo check --workspace` 0 errors，`cargo test --workspace` 全绿。
-
----
-
-### P1 — MCP trait 化（本月–下月）
-
-**问题**：`mcp/tools/repo.rs` 有 **70 个 `crate::` 引用**，是 devbase 最大耦合黑洞。
-
-**方案**：
-1. 定义 `RegistryClient` trait：
-   ```rust
-   pub trait RegistryClient {
-       fn list_repos(&self, conn: &rusqlite::Connection, filter: &str) -> Vec<RepoEntry>;
-       fn get_repo(&self, conn: &rusqlite::Connection, id: &str) -> Option<RepoEntry>;
-       // ... 其他 repo 相关操作
-   }
-   ```
-2. 定义 `SearchClient` trait：
-   ```rust
-   pub trait SearchClient {
-       fn hybrid_search(&self, query: &str, limit: usize) -> Vec<SearchResult>;
-   }
-   ```
-3. `mcp/tools` 从 `crate::registry::*` 改为 `trait` 调用
-4. devbase 主 crate 实现这些 trait
-
-**阻塞**：需要确定 trait 边界——哪些操作属于 RegistryClient，哪些属于 SearchClient。
-**验收**：`mcp/` 目录的 `crate::` 引用数从 70 降至 <10。
-
----
-
-### P2 — registry 子模块拆分（本月）
-
-`registry/health`, `registry/metrics`, `registry/workspace`, `registry/entity`, `registry/relation` 已零耦合，可直接提取为 workspace crate 或保持为子模块但消除 `crate::` 引用。
-
-**决策点**：registry 子模块是否值得独立为 crate？
-- 若作为独立 crate：`devbase-registry-health` 等
-- 若保持子模块：确保它们只对 `rusqlite::Connection` 有依赖
-
-**推荐**：暂时保持子模块结构（避免 crate 数量爆炸），但消除所有 `crate::` 引用，使它们达到"随时可提取"状态。
-
----
-
-### P3 — migrate.rs 拆解（✅ 已完成，文档滞后）
-
-| 属性 | 值 |
-|------|-----|
-| 实际行数 | **487**（非 1273，文档已过时） |
-| 耦合 | `crate::storage::StorageBackend`, `crate::backup::auto_backup_before_migration`, `crate::registry::migrations::run_all` |
-| 状态 | 迁移逻辑已全部拆分至 `migrations/` 目录（29 个独立文件，1118 行） |
-| 当前角色 | 入口门面：`init_db_at()` + `run_migrations()` 委托 |
-
-**结论**：`migrate.rs` 不再是巨石文件，无需进一步拆分。P3 关闭。
+**v0.19.0 约束**：
+- ❌ 禁止新增非可靠性相关的 MCP Tool
+- ❌ 禁止引入外部数据库依赖（GreptimeDB、Redis、PostgreSQL 仅评估，不集成）
+- ✅ 世界模型研究继续独立仓库推进
 
 ---
 
 ## 技术债务（清偿中）
 
-| 债项 | 严重 | 当前值 | 目标 | 清理路径 |
-|------|------|--------|------|----------|
-| Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调 | 补偿机制或 FTS5 替代 | 评估 `sync_index_to_db()` 两阶段提交 |
-| tree-sitter 编译成本 | 🟡 | ~15-20s | <10s | ccache 或 grammar 预编译 |
-| Feature flags 缺失 | 🟡 | 2/3（tui, watch） | ≥3 | 评估 mcp 是否独立 feature |
-| `init_db()` 全局路径 | 🟢 | 5 处 grandfathered | 0 新增 | StorageBackend trait 已奠基，迁移中 |
-| `SortMode` unused import | 🟢 | 1 warning | 0 | `cargo fix` 或手动移除 |
+| 债项 | 严重 | 当前值 | 目标 | 清理路径 | 版本 |
+|------|------|--------|------|----------|------|
+| Tantivy+SQLite 双写一致性 | 🔴 | 无事务协调，反向检测已落地 | 补偿机制 + 健康评分 | `devkit_index_health` + WAL | v0.19.0 |
+| SQLite 单文件并发锁定 | 🔴 | DELETE journal_mode | WAL mode | `PRAGMA journal_mode=WAL` | v0.19.0 |
+| 查询性能不可观测 | 🔴 | 无基线 | P99 < 200ms @ 10k | CI 性能回归 + OpLog 指标 | v0.19.0 |
+| tree-sitter 编译成本 | 🟡 | ~15-20s | <10s | ccache 或 grammar 预编译 | v0.20.0 |
+| Vault 无版本历史 | 🟠 | 无 | Git 追踪或增量表 | vault 目录 Git 子模块 | v0.20.0 |
+| Feature flags 完善 | 🟡 | 4 个（tui, watch, mcp, embedding） | ≥5 | `llm-backend` feature 细分 | v0.20.0 |
+| `init_db()` 全局路径 | 🟢 | 5 处 grandfathered | 0 新增 | StorageBackend trait 已奠基 | 持续 |
 
 ---
 
-## Future / Icebox（无排期）
+## 版本规划
 
-- 跨设备注册表同步（syncthing-rust 集成，REST API 待就绪）
-- 形式化验证 / TEE 集成（长期，无排期）
-- Workflow 引擎细化（Loop body Retry/Fallback、TUI 执行进度条）
-- 生长信号与遗忘机制（L0-L4 知识模型的自动衰减）
-- `devbase-mcp` 独立发布（待 MCP trait 化完成后）
+| 版本 | 主题 | 关键交付 | 预计时间 |
+|------|------|----------|----------|
+| v0.19.0 | **知识基础设施硬化** | SQLite WAL + Tantivy 健康评分 + CI 性能基线 + Vault 导出 | 2026-06 |
+| v0.20.0 | **知识完备性** | 双向链接图遍历 + 笔记历史追踪 + 混合检索质量监控 + block 引用 | 2026-07 |
+| v0.21.0 | **外部能力嫁接** | GreptimeDB 观测层评估 + Open Notebook 管道对接 + SurfSense Agent 参考 | 2026-08 |
+| v0.22.0 | **规模化验证** | >100 仓库场景测试 + 索引分片评估 + 查询缓存 | 2026-Q3 |
+| v0.25.0 | **分发发布** | 首个 crate (`devbase-mcp` 或 `devbase-core`) 发布到 crates.io | 2026-Q4 |
+
+---
+
+## Future / Icebox（无排期，但已注册参考项目）
+
+- **GreptimeDB 集成**：时序观测层、Flow Engine 流式知识加工、向量索引统一评估（待 v1.1 向量索引成熟）
+- **Open Notebook 嫁接**：多说话人播客/测验生成管道作为外部 MCP Tool
+- **SurfSense 参考**：Agent 协作与多 LLM 路由模式融入 Clarity 三角色
+- **跨设备注册表同步**：syncthing-rust 集成（REST API 待就绪）
+- **形式化验证 / TEE 集成**：长期，无排期
+- **生长信号与遗忘机制**：L0-L4 知识模型的自动衰减
 
 ---
 
@@ -163,21 +113,10 @@ L0-L4 五层知识模型 MVP：entities 统一模型、known_limits 风险层、
 | `.devbase` 目录规范 | 无外部采纳者 | ❌ 排除 |
 | MCP 协议扩展提案 | Star = 0，不会被采纳 | ❌ 排除 |
 | 商业化 / 付费版 | 与本地优先原则冲突 | ❌ 排除 |
-| ~~拆分 crate~~ | ~~22.7 KLOC 单 crate 仍最优~~ | ~~→ 已推翻，v0.14.0 已启动拆分~~ |
-
----
-
-## 版本规划
-
-| 版本 | 主题 | 关键交付 | 预计时间 |
-|------|------|----------|----------|
-| v0.15.0 | 数据层 + 可靠性 + Agent 体验 | Workspace 成员 6 个，三维 embedding + Saga 一致性 + MCP Streaming | ✅ 2026-05 |
-| v0.16.0 | Workspace 扩展 Phase 2 | Workspace 成员 8-10 个，debug 稳定性修复 | 2026-05 |
-| v0.16.1 | MCP 解耦收尾 | mcp/tools/repo.rs `crate::` 引用 <10 | 2026-05 |
-| v0.17.0 | Registry 清洁 + Tantivy 一致性 | 所有 registry 子模块零 `crate::` 引用，FTS5 评估 | 2026-06 |
-| v0.20.0 | 分发发布 | 首个 crate (`devbase-mcp`) 发布到 crates.io | 2026-07+ |
+| 主仓库引入 Spark/Flink | 研究性质，独立仓库处理 | ❌ 排除（红线） |
+| v0.19.0 引入 Redis/GreptimeDB | 可靠性加固需在现有栈内完成 | ❌ 排除（阶段约束） |
 
 ---
 
 *本 Roadmap 替代 `plans/roadmap-2026.md` 成为唯一活跃主路线图。*
-*历史计划见 `docs/archive/`。*
+*历史计划见 `docs/_archive/`。*

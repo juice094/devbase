@@ -49,6 +49,7 @@ impl WorkspaceRegistry {
 
     pub fn init_db_at(path: &std::path::Path) -> anyhow::Result<rusqlite::Connection> {
         let mut conn = rusqlite::Connection::open(path)?;
+        conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.execute("PRAGMA foreign_keys = ON", [])?;
         // Prevent TOCTOU races when multiple threads/processes open the same DB
         // concurrently (e.g. workflow executor's parallel step threads).

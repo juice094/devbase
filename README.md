@@ -24,24 +24,32 @@ devbase 是开发者的**世界模型编译器**。它将代码库、笔记、�
 | **项目维护者** | `devbase skill discover .` 一键将项目封装为 Skill，让 AI 用户能够发现和调用 |
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        devbase                              │
-│         World Model Compiler for Workspaces                 │
-├─────────────────────────────┬───────────────────────────────┤
-│       Human Layer           │         AI Layer              │
-│  ┌─────────────────────┐    │    ┌─────────────────────┐    │
-│  │   TUI Dashboard     │    │    │   MCP Server        │    │
-│  │   终端交互仪表盘     │    │    │   64 Tools          │    │
-│  │   • 多仓库健康总览   │    │    │   stdio + streaming  │    │
-│  │   • 跨仓库代码搜索   │    │    │                     │    │
-│  │   • 一键启动 gitui   │    │    │   • devkit_scan     │    │
-│  │   • Skill / Workflow │    │    │   • devkit_skill_run│    │
-│  │   • Vault / Session  │    │    │   • devkit_hybrid_search│  │
-│  └─────────────────────┘    │    └─────────────────────┘    │
-├─────────────────────────────┴───────────────────────────────┤
-│                      Data Layer                             │
-│   Filesystem (Source of Truth) │ SQLite │ Tantivy (Search)   │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  Interaction Layer  (人类与 AI 的接口)                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │  TUI 仪表盘   │  │ MCP Server   │  │ Workflow Engine      │  │
+│  │  (ratatui)    │  │ 64 Tools     │  │ YAML + 拓扑调度      │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+├─────────────────────────────────────────────────────────────────┤
+│  Compilation Layer  (World Model Compiler Core)                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │  Perception  │  │  Knowledge   │  │  Policy / Action     │  │
+│  │  · tree-sitter│  │  · Graph DB  │  │  · Sync Strategy     │  │
+│  │  · Tantivy    │  │  · Vector UDF│  │  · Workflow Rules    │  │
+│  │  · Git 状态   │  │  · Relation  │  │  · Health Guardrails │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+├─────────────────────────────────────────────────────────────────┤
+│  Reliability Layer  (生产级底线)                                │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │  SQLite WAL  │  │  Index Health│  │  Observability       │  │
+│  │  并发安全     │  │  · 损坏检测  │  │  · OpLog 审计        │  │
+│  │  · 增量备份   │  │  · 自动重建  │  │  · 查询延迟指标        │  │
+│  │  · 迁移回滚   │  │  · 性能基线  │  │  · 数据质量评分        │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+├─────────────────────────────────────────────────────────────────┤
+│  Source of Truth  (持久化真相源)                                │
+│  Git 代码库 · Vault PARA 笔记 · 外部论文 · 二进制资源              │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -126,15 +134,20 @@ cd devbase && cargo install --path .
 
 > 完整 Tool 矩阵见下文 [MCP Tool 矩阵](#mcp-tool-矩阵)。
 
-### Data Layer — 本地优先知识库
+### Storage & Reliability Layer — 生产级本地知识基础设施
 
-| 组件 | 技术 | 说明 |
+> **devbase 首先是一个可靠的本地知识基础设施，然后才是一个 World Model Compiler。** AI 层是编译器的输出接口，但如果存储层不可靠，AI 就是沙上建塔。
+
+| 组件 | 技术 | 生产级特性 |
 |:---|:---|:---|
-| 索引 | SQLite + Tantivy | 仓库元数据 + 全文检索 |
-| 语义 | SQLite BLOB (768-dim) + UDF | 外置 Embedding 存储 + `cosine_similarity` 纯 SQL 比对 |
-| Agent 记忆 | `agent_contexts` + `agent_memories` | 会话生命周期 + 语义记忆召回 + 向量索引 |
-| AST | tree-sitter | Rust / Python / TS / Go 多语言符号提取 |
-| 审计 | SQLite `oplog` | 所有 `scan`/`sync`/`health` 自动记录，schema 迁移前自动快照 |
+| 关系存储 | SQLite (WAL mode) | 并发安全、增量备份、Schema 迁移前自动快照、回滚保障 |
+| 全文检索 | Tantivy | BM25 评分、索引健康检测、损坏自动重建、孤儿文档清理 |
+| 语义检索 | SQLite BLOB (768-dim) + `cosine_similarity` UDF | 外置 Embedding 存储、纯 SQL 向量比对、零 ML 运行时依赖 |
+| Agent 记忆 | `agent_contexts` + `agent_memories` | 会话生命周期管理、语义记忆召回、向量索引持久化 |
+| AST 感知 | tree-sitter | Rust / Python / TS / Go 多语言符号提取 + 调用图构建 |
+| 可观测性 | SQLite `oplog` + 性能基线 | 全操作审计追踪、查询延迟指标、数据质量评分 |
+
+**可靠性红线**：所有对 Registry 的写入操作必须留下不可变审计痕迹（OpLog）；Schema 迁移前自动生成 `backup-YYYYMMDD-HHMMSS.db`；索引层具备反向一致性扫描与自动修复能力。详见 [AGENTS.md](./AGENTS.md) §知识库生产级缺口与补齐路线。
 
 ---
 

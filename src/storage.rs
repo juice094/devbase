@@ -184,6 +184,7 @@ impl AppContext {
 
     fn build_pool(path: &std::path::Path) -> anyhow::Result<Pool<SqliteConnectionManager>> {
         let manager = SqliteConnectionManager::file(path).with_init(|c| {
+            c.pragma_update(None, "journal_mode", "WAL")?;
             c.execute("PRAGMA foreign_keys = ON", [])?;
             Ok(())
         });
