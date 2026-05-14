@@ -254,8 +254,8 @@ done
 | 债项 | 严重 | 当前值 | 目标阈值 | 清理路径 | 引入 Wave |
 |---|---|---|---|---|---|
 | `main.rs` 上帝文件 | 🟢 | 778 行 | ≤1000 行 | 拆分为 `commands/simple.rs` + `commands/skill.rs` + `commands/workflow.rs` + `commands/limit.rs`；全部 22 个命令/子命令树已迁移 | ≤15 |
-| Workspace crate 版本号混乱 | 🟡 | 6 个 crate 仍为 `0.1.0-alpha.1`，workspace 版本 `0.17.0-dev` 滞后主包 `0.20.0` | 全部统一为 `version.workspace = true` 或 `0.20.0` | 批量修正 `Cargo.toml` | v0.20.1 |
-| RF-7 高耦合模块超标 | 🟡 | `registry.rs` (20)、`scan.rs` (18)、`digest.rs` (17) 超过 15 阈值 | ≤15 | `scan.rs` 拆分为 `scan/discover.rs` + `scan/filter.rs`；`digest.rs` 提取独立模块 | 持续 |
+| Workspace crate 版本号混乱 | 🟢 | **已完成**：全部 19 个 crate 统一为 `version.workspace = true`，workspace 版本 `0.20.0` | 全部统一为 `version.workspace = true` 或 `0.20.0` | 批量修正 `Cargo.toml` | v0.20.1 |
+| RF-7 高耦合模块超标 | 🟢 | **已完成**：`scan.rs` 18→7、`digest.rs` 17→5、`registry.rs` 20→4；全部 `src/*.rs` ≤ 15 `crate::` 引用 | ≤15 | use 语句规范化消除 self-reference；`registry.rs` 保留 4 个（2 use + 2 dependency_graph）作为 facade | v0.20.1 |
 | `init_db()` 全局路径 | 🟢 | `AppContext` 已集成到全部 commands/ 模块；`main()` 通过 `AppContext` 分发配置；`init_db()` 无外部调用 | 0 | 已完成：`StorageBackend` trait + `AppContext` 全面替代；`db_path`/`workspace_dir`/`index_path`/`backup_dir` 已统一 | ≤15 |
 | Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调；**已添加反向检测**（`repair_tantivy_consistency` 现在检测 SQLite→Tantivy 缺失） | 补偿机制 | 长期：事务协调或 SQLite FTS5 替代；短期：反向检测 + 日志已落地（`fe14c81`） | 7 |
 | 主从表切换 | 🟢 | Phase 1 全部完成：`repos` 表已删除，entities 为唯一数据源 | `entities` 为第一公民 | Phase 2 类型系统开放（新增 entity_type 无需改表结构） | v0.12.0 |
