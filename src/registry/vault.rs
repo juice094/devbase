@@ -19,6 +19,7 @@ pub fn save_vault_note(
         "frontmatter": note.frontmatter,
         "tags": note.tags.join(","),
         "outgoing_links": note.outgoing_links,
+        "block_refs": note.block_refs,
         "linked_repo": note.linked_repo,
         "created_at": note.created_at.to_rfc3339(),
         "updated_at": note.updated_at.to_rfc3339(),
@@ -41,7 +42,7 @@ pub fn list_vault_notes(
     let mut stmt = conn.prepare(
         "SELECT e.id, e.local_path, e.name, json_extract(e.metadata, '$.frontmatter'),
                 json_extract(e.metadata, '$.tags'), json_extract(e.metadata, '$.outgoing_links'),
-                json_extract(e.metadata, '$.linked_repo'),
+                json_extract(e.metadata, '$.block_refs'), json_extract(e.metadata, '$.linked_repo'),
                 json_extract(e.metadata, '$.created_at'), json_extract(e.metadata, '$.updated_at')
          FROM entities e
          WHERE e.entity_type = ?1
@@ -50,6 +51,7 @@ pub fn list_vault_notes(
     let rows = stmt.query_map([crate::registry::ENTITY_TYPE_VAULT_NOTE], |row| {
         let tags_raw: Option<String> = row.get(4)?;
         let links_raw: Option<String> = row.get(5)?;
+        let block_refs_raw: Option<String> = row.get(6)?;
         Ok(crate::registry::VaultNote {
             id: row.get(0)?,
             path: row.get(1)?,
@@ -64,11 +66,14 @@ pub fn list_vault_notes(
             outgoing_links: links_raw
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or_default(),
-            linked_repo: row.get(6)?,
-            created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(7)?)
+            block_refs: block_refs_raw
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default(),
+            linked_repo: row.get(7)?,
+            created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or_else(|_| Utc::now()),
-            updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
+            updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(9)?)
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or_else(|_| Utc::now()),
         })
@@ -87,7 +92,7 @@ pub fn get_vault_note(
     let mut stmt = conn.prepare(
         "SELECT e.id, e.local_path, e.name, json_extract(e.metadata, '$.frontmatter'),
                 json_extract(e.metadata, '$.tags'), json_extract(e.metadata, '$.outgoing_links'),
-                json_extract(e.metadata, '$.linked_repo'),
+                json_extract(e.metadata, '$.block_refs'), json_extract(e.metadata, '$.linked_repo'),
                 json_extract(e.metadata, '$.created_at'), json_extract(e.metadata, '$.updated_at')
          FROM entities e
          WHERE e.entity_type = ?1 AND e.id = ?2",
@@ -97,6 +102,7 @@ pub fn get_vault_note(
         |row| {
             let tags_raw: Option<String> = row.get(4)?;
             let links_raw: Option<String> = row.get(5)?;
+            let block_refs_raw: Option<String> = row.get(6)?;
             Ok(crate::registry::VaultNote {
                 id: row.get(0)?,
                 path: row.get(1)?,
@@ -114,11 +120,14 @@ pub fn get_vault_note(
                 outgoing_links: links_raw
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or_default(),
-                linked_repo: row.get(6)?,
-                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(7)?)
+                block_refs: block_refs_raw
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default(),
+                linked_repo: row.get(7)?,
+                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
                     .map(|dt| dt.with_timezone(&Utc))
                     .unwrap_or_else(|_| Utc::now()),
-                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
+                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(9)?)
                     .map(|dt| dt.with_timezone(&Utc))
                     .unwrap_or_else(|_| Utc::now()),
             })
@@ -153,6 +162,7 @@ mod tests {
             frontmatter: None,
             tags: vec!["tag1".to_string(), "tag2".to_string()],
             outgoing_links: vec!["link1".to_string()],
+            block_refs: vec![],
             linked_repo: Some("repo-a".to_string()),
             created_at: Utc::now(),
             updated_at: Utc::now(),

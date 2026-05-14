@@ -146,6 +146,7 @@ pub async fn run_vault(
             println!("  Files: {}", result["exported_files"]);
             println!("  Bytes: {}", result["total_bytes"]);
             println!("  Broken links: {}", result["broken_links"]["count"]);
+            println!("  Broken block refs: {}", result["broken_block_refs"]["count"]);
             println!("  Frontmatter errors: {}", result["frontmatter_errors"]["count"]);
         }
         crate::VaultCommands::History { path } => {
