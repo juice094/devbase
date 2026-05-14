@@ -57,7 +57,9 @@ pub fn scan_vault(
 
                 let body = &content[body_offset..];
                 let wikilinks = extract_wikilinks(body);
-                let outgoing: Vec<String> = wikilinks.into_iter().map(|l| l.target).collect();
+                let outgoing: Vec<String> = wikilinks.iter().map(|l| l.target.clone()).collect();
+                let block_refs: Vec<String> =
+                    wikilinks.iter().filter_map(|l| l.anchor.clone()).collect();
 
                 let title = frontmatter.as_ref().and_then(|fm| fm.title.clone()).or_else(|| {
                     // Fallback: first H1 heading
@@ -66,7 +68,7 @@ pub fn scan_vault(
                 });
 
                 let tags = frontmatter.as_ref().map(|fm| fm.tags.clone()).unwrap_or_default();
-                let linked_repo = frontmatter.as_ref().and_then(|fm| fm.extra.get("repo").cloned());
+                let linked_repo = frontmatter.as_ref().and_then(|fm| fm.repo.clone());
                 let fm_raw = frontmatter.map(|fm| fm.raw);
 
                 let note = VaultNote {
@@ -77,6 +79,7 @@ pub fn scan_vault(
                     frontmatter: fm_raw,
                     tags,
                     outgoing_links: outgoing,
+                    block_refs,
                     linked_repo,
                     created_at: Utc::now(),
                     updated_at: Utc::now(),

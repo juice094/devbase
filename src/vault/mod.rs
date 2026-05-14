@@ -4,6 +4,7 @@ pub mod backlinks;
 pub mod export;
 pub mod frontmatter;
 pub mod fs_io;
+pub mod history;
 pub mod indexer;
 pub mod scanner;
 pub mod wikilink;
@@ -40,14 +41,27 @@ impl crate::clients::VaultClient for AppContext {
     }
 
     fn get_backlinks(&self, note_id: &str) -> anyhow::Result<serde_json::Value> {
-        let vault_dir = self.storage.workspace_dir().ok().map(|ws| ws.join("vault"));
-        let backlinks = if let Some(vd) = vault_dir {
-            match backlinks::build_backlink_index(&vd) {
-                Ok(index) => backlinks::get_backlinks(&index, note_id),
+        let backlinks = match self.conn() {
+            Ok(conn) => match crate::registry::vault::list_vault_notes(&conn) {
+                Ok(notes) => notes
+                    .into_iter()
+                    .filter(|n| {
+                        n.outgoing_links.iter().any(|l| {
+                            let normalized = l.replace('\\', "/");
+                            normalized == note_id.replace('\\', "/")
+                                || normalized
+                                    == note_id
+                                        .replace('\\', "/")
+                                        .strip_suffix(".md")
+                                        .unwrap_or(&note_id.replace('\\', "/"))
+                                || l == note_id
+                        })
+                    })
+                    .map(|n| n.id.replace('\\', "/"))
+                    .collect(),
                 Err(_) => Vec::new(),
-            }
-        } else {
-            Vec::new()
+            },
+            Err(_) => Vec::new(),
         };
         Ok(serde_json::json!({
             "success": true,
@@ -57,9 +71,39 @@ impl crate::clients::VaultClient for AppContext {
         }))
     }
 
-    fn build_vault_graph(&self, repo_id: Option<&str>) -> anyhow::Result<serde_json::Value> {
-        let vault_dir = self.storage.workspace_dir().ok().map(|ws| ws.join("vault"));
-        let Some(vd) = vault_dir else {
+    fn build_vault_graph(
+        &self,
+        repo_id: Option<&str>,
+        note_id: Option<&str>,
+        depth: usize,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = match self.conn() {
+            Ok(c) => c,
+            Err(_) => {
+                return Ok(serde_json::json!({
+                    "success": true,
+                    "count": 0,
+                    "edge_count": 0,
+                    "nodes": [],
+                    "edges": [],
+                }));
+            }
+        };
+
+        let notes = match crate::registry::vault::list_vault_notes(&conn) {
+            Ok(n) => n,
+            Err(_) => {
+                return Ok(serde_json::json!({
+                    "success": true,
+                    "count": 0,
+                    "edge_count": 0,
+                    "nodes": [],
+                    "edges": [],
+                }));
+            }
+        };
+
+        if notes.is_empty() {
             return Ok(serde_json::json!({
                 "success": true,
                 "count": 0,
@@ -67,46 +111,35 @@ impl crate::clients::VaultClient for AppContext {
                 "nodes": [],
                 "edges": [],
             }));
-        };
-
-        let index = backlinks::build_backlink_index(&vd)?;
+        }
 
         let mut id_to_title: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
         let mut id_to_repo: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
+        let mut outgoing: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        let mut incoming: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
 
-        for entry in walkdir::WalkDir::new(&vd)
-            .follow_links(false)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-            .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
-        {
-            let path = entry.path();
-            let rel_path = path.strip_prefix(&vd).unwrap_or(path);
-            let id = rel_path.to_string_lossy().replace('\\', "/");
+        for note in &notes {
+            let id = note.id.replace('\\', "/");
+            id_to_title.insert(id.clone(), note.title.clone().unwrap_or_else(|| id.clone()));
+            if let Some(ref r) = note.linked_repo {
+                id_to_repo.insert(id.clone(), r.clone());
+            }
 
-            let content = match std::fs::read_to_string(path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
+            let targets: Vec<String> =
+                note.outgoing_links.iter().map(|t| t.replace('\\', "/")).collect();
+            outgoing.insert(id.clone(), targets.clone());
 
-            if let Some((fm, _)) = frontmatter::extract_frontmatter(&content) {
-                id_to_title.insert(id.clone(), fm.title.unwrap_or_else(|| id.clone()));
-                if let Some(repo) = fm.repo {
-                    id_to_repo.insert(id, repo);
+            for target in targets {
+                incoming.entry(target.clone()).or_default().push(id.clone());
+                if let Some(stem) = target.strip_suffix(".md") {
+                    incoming.entry(stem.to_string()).or_default().push(id.clone());
                 }
-            } else {
-                id_to_title.insert(id.clone(), id.clone());
             }
         }
-
-        let allowed_ids: std::collections::HashSet<String> = if let Some(rid) = repo_id {
-            id_to_repo.iter().filter(|(_, r)| *r == rid).map(|(id, _)| id.clone()).collect()
-        } else {
-            id_to_title.keys().cloned().collect()
-        };
 
         let mut id_lookup: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
@@ -117,7 +150,80 @@ impl crate::clients::VaultClient for AppContext {
             }
         }
 
-        let nodes: Vec<_> = allowed_ids
+        let allowed_ids: std::collections::HashSet<String> = if let Some(rid) = repo_id {
+            id_to_repo.iter().filter(|(_, r)| *r == rid).map(|(id, _)| id.clone()).collect()
+        } else {
+            id_to_title.keys().cloned().collect()
+        };
+
+        let max_depth = depth.clamp(1, 3);
+
+        let (selected_nodes, selected_edges): (
+            std::collections::HashSet<String>,
+            Vec<(String, String)>,
+        ) = if let Some(start_id) = note_id {
+            let start_normalized =
+                id_lookup.get(start_id).cloned().unwrap_or_else(|| start_id.replace('\\', "/"));
+            if !allowed_ids.contains(&start_normalized) {
+                return Ok(serde_json::json!({
+                    "success": true,
+                    "count": 1,
+                    "edge_count": 0,
+                    "nodes": [serde_json::json!({
+                        "id": start_normalized,
+                        "title": id_to_title.get(&start_normalized).unwrap_or(&start_normalized),
+                    })],
+                    "edges": [],
+                }));
+            }
+
+            let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut edges: Vec<(String, String)> = Vec::new();
+            let mut queue: Vec<(String, usize)> = vec![(start_normalized.clone(), 0)];
+            visited.insert(start_normalized.clone());
+
+            while let Some((current, dist)) = queue.pop() {
+                if dist >= max_depth {
+                    continue;
+                }
+                for target in outgoing.get(&current).into_iter().flatten() {
+                    let norm = id_lookup.get(target).cloned().unwrap_or_else(|| target.clone());
+                    if allowed_ids.contains(&norm) {
+                        edges.push((current.clone(), norm.clone()));
+                        if visited.insert(norm.clone()) {
+                            queue.push((norm, dist + 1));
+                        }
+                    }
+                }
+                for source in incoming.get(&current).into_iter().flatten() {
+                    let norm = id_lookup.get(source).cloned().unwrap_or_else(|| source.clone());
+                    if allowed_ids.contains(&norm) {
+                        edges.push((norm.clone(), current.clone()));
+                        if visited.insert(norm.clone()) {
+                            queue.push((norm, dist + 1));
+                        }
+                    }
+                }
+            }
+
+            (visited, edges)
+        } else {
+            let mut all_edges: Vec<(String, String)> = Vec::new();
+            for (source, targets) in &outgoing {
+                if !allowed_ids.contains(source) {
+                    continue;
+                }
+                for target in targets {
+                    let norm = id_lookup.get(target).cloned().unwrap_or_else(|| target.clone());
+                    if allowed_ids.contains(&norm) {
+                        all_edges.push((source.clone(), norm.clone()));
+                    }
+                }
+            }
+            (allowed_ids.clone(), all_edges)
+        };
+
+        let nodes: Vec<_> = selected_nodes
             .iter()
             .map(|id| {
                 serde_json::json!({
@@ -127,28 +233,49 @@ impl crate::clients::VaultClient for AppContext {
             })
             .collect();
 
-        let mut edges = Vec::new();
-        for (target, sources) in &index {
-            let normalized = id_lookup.get(target).cloned().unwrap_or_else(|| target.clone());
-            if !allowed_ids.contains(&normalized) {
-                continue;
-            }
-            for source in sources {
-                if allowed_ids.contains(source) {
-                    edges.push(serde_json::json!({
-                        "source": source,
-                        "target": &normalized,
-                    }));
-                }
-            }
-        }
+        let edges_json: Vec<_> = selected_edges
+            .iter()
+            .map(|(s, t)| serde_json::json!({ "source": s, "target": t }))
+            .collect();
 
         Ok(serde_json::json!({
             "success": true,
             "count": nodes.len(),
-            "edge_count": edges.len(),
+            "edge_count": edges_json.len(),
             "nodes": nodes,
-            "edges": edges,
+            "edges": edges_json,
+        }))
+    }
+
+    fn get_vault_history(&self, note_id: &str) -> anyhow::Result<serde_json::Value> {
+        let vault_dir = self.storage.workspace_dir().ok().map(|ws| ws.join("vault"));
+        let history = if let Some(ref vd) = vault_dir {
+            crate::vault::history::note_history(vd, note_id).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let entries: Vec<serde_json::Value> = history
+            .into_iter()
+            .map(|h| {
+                let ts = chrono::DateTime::from_timestamp(h.timestamp, 0)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                serde_json::json!({
+                    "commit": h.commit,
+                    "author": h.author,
+                    "email": h.email,
+                    "timestamp": ts,
+                    "message": h.message,
+                    "insertions": h.insertions,
+                    "deletions": h.deletions,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({
+            "success": true,
+            "note_id": note_id,
+            "count": entries.len(),
+            "history": entries,
         }))
     }
 

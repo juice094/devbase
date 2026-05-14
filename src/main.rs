@@ -396,11 +396,10 @@ pub(crate) enum SkillCommands {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Sync skills to an external target (e.g. clarity)
+    /// Sync skills to a plans directory (generic output, was clarity-only)
     Sync {
-        /// Target system to sync to
-        #[arg(long)]
-        target: String,
+        /// Output directory for generated plan JSON files
+        output_dir: String,
     },
     /// Discover and auto-package a project as a Skill
     Discover {
@@ -513,6 +512,11 @@ pub(crate) enum VaultCommands {
         /// Output directory for the exported vault
         #[arg(default_value = "")]
         output_dir: String,
+    },
+    /// Show Git revision history for a vault note
+    History {
+        /// Relative path of the note within the vault
+        path: String,
     },
 }
 

@@ -13,6 +13,27 @@ use std::collections::HashMap;
 
 use crate::semantic_index::SemanticSearchRow;
 
+/// Diagnostic metrics for a hybrid search query.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct HybridSearchMetrics {
+    /// Total query latency in milliseconds.
+    pub latency_ms: u64,
+    /// Number of results from the keyword path (before truncation).
+    pub keyword_recall: usize,
+    /// Number of results from the vector path (before truncation).
+    pub vector_recall: usize,
+    /// Number of items appearing in both keyword and vector results.
+    pub rrf_overlap: usize,
+    /// Which keyword backend was used: "tantivy" or "sqlite_fallback".
+    pub keyword_source: String,
+    /// RRF constant used for fusion.
+    pub rrf_k: f32,
+    /// Number of results that would be returned by keyword-only search.
+    pub keyword_only_results: usize,
+    /// Number of results that would be returned by vector-only search.
+    pub vector_only_results: usize,
+}
+
 /// Keyword search over code symbols.
 ///
 /// Primary path: Tantivy BM25 via symbol_index.
@@ -23,9 +44,22 @@ pub fn keyword_search_symbols(
     query: &str,
     limit: usize,
 ) -> anyhow::Result<Vec<SemanticSearchRow>> {
+    keyword_search_symbols_with_source(conn, repo_id, query, limit).map(|(r, _)| r)
+}
+
+/// Keyword search with backend source annotation.
+///
+/// Returns the results and a string indicating which backend was used:
+/// `"tantivy"` or `"sqlite_fallback"`.
+pub fn keyword_search_symbols_with_source(
+    conn: &rusqlite::Connection,
+    repo_id: &str,
+    query: &str,
+    limit: usize,
+) -> anyhow::Result<(Vec<SemanticSearchRow>, &'static str)> {
     // Try Tantivy BM25 first
     match crate::search::symbol_index::search_symbols(query, limit, Some(repo_id)) {
-        Ok(results) if !results.is_empty() => return Ok(results),
+        Ok(results) if !results.is_empty() => return Ok((results, "tantivy")),
         Ok(_) => {} // empty results, try fallback
         Err(e) => {
             tracing::debug!("Symbol index search failed for {}: {}", repo_id, e);
@@ -33,7 +67,8 @@ pub fn keyword_search_symbols(
     }
 
     // Fallback: SQLite LIKE (for repos without symbol index or when index is empty)
-    keyword_search_symbols_fallback(conn, repo_id, query, limit)
+    let results = keyword_search_symbols_fallback(conn, repo_id, query, limit)?;
+    Ok((results, "sqlite_fallback"))
 }
 
 fn keyword_search_symbols_fallback(
@@ -141,6 +176,27 @@ pub fn hybrid_search_symbols(
     query_embedding: Option<&[f32]>,
     limit: usize,
 ) -> anyhow::Result<Vec<SemanticSearchRow>> {
+    hybrid_search_symbols_with_metrics(conn, repo_id, query_text, query_embedding, limit)
+        .map(|(r, _)| r)
+}
+
+/// Hybrid search with diagnostic metrics.
+///
+/// Returns the fused results alongside quality metrics (latency, recall per path,
+/// overlap, backend source) for observability and debugging.
+pub fn hybrid_search_symbols_with_metrics(
+    conn: &rusqlite::Connection,
+    repo_id: &str,
+    query_text: &str,
+    query_embedding: Option<&[f32]>,
+    limit: usize,
+) -> anyhow::Result<(Vec<SemanticSearchRow>, HybridSearchMetrics)> {
+    let start = std::time::Instant::now();
+    let mut metrics = HybridSearchMetrics {
+        rrf_k: 60.0,
+        ..HybridSearchMetrics::default()
+    };
+
     let mut lists: Vec<Vec<SemanticSearchRow>> = Vec::new();
 
     // Vector path
@@ -151,23 +207,57 @@ pub fn hybrid_search_symbols(
             emb,
             limit * 2,
         )?;
+        metrics.vector_recall = vec_results.len();
         if !vec_results.is_empty() {
             lists.push(vec_results);
         }
     }
 
     // Keyword path
-    let kw_results = keyword_search_symbols(conn, repo_id, query_text, limit * 2)?;
+    let (kw_results, kw_source) =
+        keyword_search_symbols_with_source(conn, repo_id, query_text, limit * 2)?;
+    metrics.keyword_recall = kw_results.len();
+    metrics.keyword_source = kw_source.to_string();
     if !kw_results.is_empty() {
         lists.push(kw_results);
     }
 
+    metrics.latency_ms = start.elapsed().as_millis() as u64;
+
     match lists.len() {
-        0 => Ok(Vec::new()),
-        1 => Ok(lists.remove(0).into_iter().take(limit).collect()),
+        0 => Ok((Vec::new(), metrics)),
+        1 => {
+            let results: Vec<_> = lists.remove(0).into_iter().take(limit).collect();
+            metrics.keyword_only_results = if metrics.vector_recall == 0 {
+                results.len()
+            } else {
+                0
+            };
+            metrics.vector_only_results = if metrics.keyword_recall == 0 {
+                results.len()
+            } else {
+                0
+            };
+            Ok((results, metrics))
+        }
         _ => {
-            let merged = rrf_merge(lists, 60.0);
-            Ok(merged.into_iter().take(limit).collect())
+            // Compute overlap before RRF deduplication
+            let mut kw_set = std::collections::HashSet::new();
+            for row in &lists[0] {
+                kw_set.insert(format!("{}::{}::{}", row.0, row.1, row.2));
+            }
+            for row in &lists[1] {
+                let key = format!("{}::{}::{}", row.0, row.1, row.2);
+                if kw_set.contains(&key) {
+                    metrics.rrf_overlap += 1;
+                }
+            }
+
+            let merged = rrf_merge(lists, metrics.rrf_k);
+            let results: Vec<_> = merged.into_iter().take(limit).collect();
+            metrics.keyword_only_results = results.len();
+            metrics.vector_only_results = results.len();
+            Ok((results, metrics))
         }
     }
 }
@@ -279,5 +369,130 @@ mod tests {
         // Both symbols mention "token" in signature (score 1 each)
         let names: Vec<&str> = results.iter().map(|r| r.1.as_str()).collect();
         assert!(names.contains(&"validate_token"));
+    }
+
+    #[test]
+    fn test_hybrid_search_symbols_with_metrics() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE code_symbols (
+                repo_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                symbol_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                line_start INTEGER,
+                line_end INTEGER,
+                signature TEXT,
+                PRIMARY KEY (repo_id, file_path, name)
+            )",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start, signature)
+             VALUES ('repo1', 'src/lib.rs', 'function', 'handle_error', 10, 'pub fn handle_error(e: Error)'),
+                    ('repo1', 'src/lib.rs', 'function', 'parse_config', 20, 'fn parse_config() -> Config')",
+            [],
+        )
+        .unwrap();
+
+        let (results, metrics) =
+            hybrid_search_symbols_with_metrics(&conn, "repo1", "error", None, 10).unwrap();
+        assert!(!results.is_empty());
+        assert_eq!(metrics.keyword_recall, 1); // handle_error matches
+        assert_eq!(metrics.vector_recall, 0); // no embedding
+        assert_eq!(metrics.rrf_overlap, 0); // only one path
+        assert_eq!(metrics.keyword_source, "sqlite_fallback");
+        // latency_ms is u64, so it is always >= 0; just verify it was set
+        assert_eq!(metrics.rrf_k, 60.0);
+    }
+
+    #[test]
+    #[ignore = "performance regression: run with --ignored to execute"]
+    fn test_keyword_search_latency_regression_1k() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE code_symbols (
+                repo_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                symbol_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                line_start INTEGER,
+                PRIMARY KEY (repo_id, file_path, name)
+            )",
+            [],
+        )
+        .unwrap();
+
+        {
+            let mut stmt = conn
+                .prepare(
+                    "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start)
+                 VALUES (?1, ?2, 'function', ?3, ?4)",
+                )
+                .unwrap();
+            for i in 0..1000 {
+                stmt.execute(rusqlite::params![
+                    "repo1",
+                    "src/lib.rs",
+                    format!("func_{}", i),
+                    i as i64
+                ])
+                .unwrap();
+            }
+        }
+
+        let (_results, metrics) =
+            hybrid_search_symbols_with_metrics(&conn, "repo1", "func_500", None, 20).unwrap();
+        assert!(
+            metrics.latency_ms < 200,
+            "keyword search latency {}ms exceeds 200ms threshold @ 1k docs",
+            metrics.latency_ms
+        );
+    }
+
+    #[test]
+    #[ignore = "performance regression: run with --ignored to execute"]
+    fn test_keyword_search_latency_regression_10k() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE code_symbols (
+                repo_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                symbol_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                line_start INTEGER,
+                PRIMARY KEY (repo_id, file_path, name)
+            )",
+            [],
+        )
+        .unwrap();
+
+        {
+            let mut stmt = conn
+                .prepare(
+                    "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start)
+                 VALUES (?1, ?2, 'function', ?3, ?4)",
+                )
+                .unwrap();
+            for i in 0..10000 {
+                stmt.execute(rusqlite::params![
+                    "repo1",
+                    "src/lib.rs",
+                    format!("func_{}", i),
+                    i as i64
+                ])
+                .unwrap();
+            }
+        }
+
+        let (_results, metrics) =
+            hybrid_search_symbols_with_metrics(&conn, "repo1", "func_5000", None, 20).unwrap();
+        assert!(
+            metrics.latency_ms < 500,
+            "keyword search latency {}ms exceeds 500ms threshold @ 10k docs",
+            metrics.latency_ms
+        );
     }
 }

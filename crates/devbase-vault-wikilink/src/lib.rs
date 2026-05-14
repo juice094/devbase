@@ -19,6 +19,8 @@
 pub struct WikiLink {
     pub target: String,
     pub display: Option<String>,
+    /// Optional anchor: heading (e.g. `heading`) or block-id (e.g. `^block-id`).
+    pub anchor: Option<String>,
     pub start: usize,
     pub end: usize,
 }
@@ -63,21 +65,29 @@ pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
 }
 
 fn parse_link(inner: &str, start: usize, end: usize) -> WikiLink {
-    if let Some(pipe_pos) = inner.find('|') {
-        WikiLink {
-            target: inner[..pipe_pos].trim().to_string(),
-            display: Some(inner[pipe_pos + 1..].trim().to_string()),
-            start,
-            end,
-        }
+    // Step 1: split display text by `|`
+    let (left, display) = if let Some(pipe_pos) = inner.find('|') {
+        (inner[..pipe_pos].trim(), Some(inner[pipe_pos + 1..].trim().to_string()))
     } else {
-        let target = inner.trim().to_string();
-        WikiLink {
-            target: target.clone(),
-            display: None,
-            start,
-            end,
-        }
+        (inner.trim(), None)
+    };
+
+    // Step 2: split anchor by `#` (heading or ^block-id)
+    let (target, anchor) = if let Some(hash_pos) = left.find('#') {
+        (
+            left[..hash_pos].trim().to_string(),
+            Some(left[hash_pos + 1..].trim().to_string()),
+        )
+    } else {
+        (left.to_string(), None)
+    };
+
+    WikiLink {
+        target,
+        display,
+        anchor,
+        start,
+        end,
     }
 }
 
@@ -142,5 +152,35 @@ mod tests {
         assert_eq!(index.get("B"), Some(&vec!["a".to_string()]));
         assert_eq!(index.get("C"), Some(&vec!["a".to_string()]));
         assert_eq!(index.get("A"), Some(&vec!["b".to_string()]));
+    }
+
+    #[test]
+    fn test_wikilink_with_heading_anchor() {
+        let text = "See [[note#Introduction]] for context.";
+        let links = extract_wikilinks(text);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].target, "note");
+        assert_eq!(links[0].anchor, Some("Introduction".to_string()));
+        assert_eq!(links[0].display, None);
+    }
+
+    #[test]
+    fn test_wikilink_with_block_id_anchor() {
+        let text = "See [[note#^block-1]] for the exact line.";
+        let links = extract_wikilinks(text);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].target, "note");
+        assert_eq!(links[0].anchor, Some("^block-1".to_string()));
+        assert_eq!(links[0].display, None);
+    }
+
+    #[test]
+    fn test_wikilink_with_anchor_and_alias() {
+        let text = "[[note#Heading|display text]]";
+        let links = extract_wikilinks(text);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].target, "note");
+        assert_eq!(links[0].anchor, Some("Heading".to_string()));
+        assert_eq!(links[0].display, Some("display text".to_string()));
     }
 }

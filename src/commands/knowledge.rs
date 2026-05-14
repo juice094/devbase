@@ -146,7 +146,32 @@ pub async fn run_vault(
             println!("  Files: {}", result["exported_files"]);
             println!("  Bytes: {}", result["total_bytes"]);
             println!("  Broken links: {}", result["broken_links"]["count"]);
+            println!("  Broken block refs: {}", result["broken_block_refs"]["count"]);
             println!("  Frontmatter errors: {}", result["frontmatter_errors"]["count"]);
+        }
+        crate::VaultCommands::History { path } => {
+            let result = ctx.get_vault_history(&path)?;
+            let empty: Vec<serde_json::Value> = Vec::new();
+            let history = result["history"].as_array().unwrap_or(&empty);
+            if history.is_empty() {
+                println!("No history found for '{}'.", path);
+                println!("Hint: Ensure the vault directory is a Git repository.");
+            } else {
+                println!("History for {} ({} commits):", path, history.len());
+                for entry in history {
+                    let ts = entry["timestamp"].as_str().unwrap_or("unknown");
+                    let msg = entry["message"].as_str().unwrap_or("");
+                    let author = entry["author"].as_str().unwrap_or("");
+                    let ins = entry["insertions"].as_u64().unwrap_or(0);
+                    let del = entry["deletions"].as_u64().unwrap_or(0);
+                    let diff_str = if ins > 0 || del > 0 {
+                        format!(" (+{} -{})", ins, del)
+                    } else {
+                        String::new()
+                    };
+                    println!("  [{}] {} by {}{}", ts, msg, author, diff_str);
+                }
+            }
         }
     }
     Ok(())
@@ -337,15 +362,17 @@ pub fn run_oplog(
     limit: i64,
     repo: Option<String>,
 ) -> anyhow::Result<()> {
+    let start = std::time::Instant::now();
     let conn = ctx.conn_mut()?;
     let entries = match repo {
         Some(ref r) => crate::registry::workspace::list_oplog_by_repo(&conn, r, limit)?,
         None => crate::registry::workspace::list_oplog(&conn, limit)?,
     };
+    let elapsed_ms = start.elapsed().as_millis();
     if entries.is_empty() {
-        println!("操作日志为空。");
+        println!("操作日志为空。（查询耗时 {}ms）", elapsed_ms);
     } else {
-        println!("最近 {} 条操作日志:", entries.len());
+        println!("最近 {} 条操作日志:（查询耗时 {}ms）", entries.len(), elapsed_ms);
         for entry in entries {
             let ts = entry.timestamp.format("%Y-%m-%d %H:%M:%S").to_string();
             let repo = entry.repo_id.as_deref().unwrap_or("-");

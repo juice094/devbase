@@ -4,9 +4,9 @@
 
 > 它将本地数字资产的原始数据（代码库、笔记、Skill、工作流）编译为 AI 可决策的结构化情境，不负责思考，不负责执行，只负责感知、编码、持久化、检索。
 
-- **当前阶段**：阶段十 → v0.19.0 进行中（知识基础设施可靠性加固）
-- **当前版本**：v0.19.0-dev（Schema 34，64 MCP tools，446 tests）
-- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ 18 workspace crates 提取 + MCP Python SDK 1.16.0 兼容修复 + repo.rs trait 化 + flaky 测试根治（RF-2.1/2.2/2.3）+ 许可证迁移 + health 性能优化（-44%）+ index skip-embeddings + batch encoding 实验 + RF-6 清零 + 架构治理文档（ADR/不变量清单）+ Tantivy BM25 代码符号搜索（P1）+ AppContext 职责拆分 Phase 1/2（storage.rs 860→430 行）+ 架构不变量 CI（G5/T11/T12）+ Embedding 多后端（Candle/Ollama 配置切换, P3）+ EnvVersionCache 扩展（9 工具链检测, P4）+ **v0.16.0 Agent Contexts（P1/P2/P3）**：`agent_contexts`/`agent_memories`/`context_entity_links` Schema + 9 个 Session MCP tools + Context-aware Skill Runtime（`DEVBASE_ACTIVE_CONTEXT` 注入）+ **v0.16.1 Workflow-Session Binding**：`workflow_executions.context_id` + 执行自动绑定 Active Context + **v0.17.0 Embedding Externalization**：`embedding` 从 default features 移除（Candle/Ollama 降级为 opt-in `llm-backend`）+ Schema 34 向量存储 + `cosine_similarity` SQLite UDF + `devkit_session_recall` / `devkit_session_index`（60 tools）+ **v0.18.0 ClaudeCode Integration**：`devkit_project_brief`（Markdown 项目简报）+ `devkit_impact_analysis`（修改影响范围分析）+ `devkit_session_export` / `devkit_session_import` + `scripts/devbase-claude.ps1` 启动器（自动注入 `.claude/CLAUDE.md`）+ RFC `docs/RFC/claudecode-workflow-integration.md`（64 tools）+ **v0.18.0 发布收尾**：PR 合并 + 双平台二进制构建 + GitHub Release + 根目录治理 + 世界模型战略认知沉淀（Vault + AGENTS 双向联动）+ NotebookLM 生态消化（5 项目注册）+ GreptimeDB 互补分析
+- **当前阶段**：阶段十一 — v0.20.0 已发布（知识完备性）
+- **当前版本**：v0.20.0（Schema 34，68 MCP tools，451 tests）
+- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ 18 workspace crates 提取 + MCP Python SDK 1.16.0 兼容修复 + repo.rs trait 化 + flaky 测试根治（RF-2.1/2.2/2.3）+ 许可证迁移 + health 性能优化（-44%）+ index skip-embeddings + batch encoding 实验 + RF-6 清零 + 架构治理文档（ADR/不变量清单）+ Tantivy BM25 代码符号搜索（P1）+ AppContext 职责拆分 Phase 1/2（storage.rs 860→430 行）+ 架构不变量 CI（G5/T11/T12）+ Embedding 多后端（Candle/Ollama 配置切换, P3）+ EnvVersionCache 扩展（9 工具链检测, P4）+ **v0.16.0 Agent Contexts（P1/P2/P3）**：`agent_contexts`/`agent_memories`/`context_entity_links` Schema + 9 个 Session MCP tools + Context-aware Skill Runtime（`DEVBASE_ACTIVE_CONTEXT` 注入）+ **v0.16.1 Workflow-Session Binding**：`workflow_executions.context_id` + 执行自动绑定 Active Context + **v0.17.0 Embedding Externalization**：`embedding` 从 default features 移除（Candle/Ollama 降级为 opt-in `llm-backend`）+ Schema 34 向量存储 + `cosine_similarity` SQLite UDF + `devkit_session_recall` / `devkit_session_index`（60 tools）+ **v0.18.0 ClaudeCode Integration**：`devkit_project_brief`（Markdown 项目简报）+ `devkit_impact_analysis`（修改影响范围分析）+ `devkit_session_export` / `devkit_session_import` + `scripts/devbase-claude.ps1` 启动器（自动注入 `.claude/CLAUDE.md`）+ RFC `docs/RFC/claudecode-workflow-integration.md`（64 tools）+ **v0.18.0 发布收尾**：PR 合并 + 双平台二进制构建 + GitHub Release + 根目录治理 + 世界模型战略认知沉淀（Vault + AGENTS 双向联动）+ NotebookLM 生态消化（5 项目注册）+ GreptimeDB 互补分析 + **v0.19.0 知识基础设施硬化**：SQLite WAL 默认启用 + `devkit_index_health`（Beta）+ Vault 导出（`devkit_vault_export`）+ Redis ADR 决策（放弃引入）+ **v0.20.0 知识完备性**：Vault 双向链接 BFS 图遍历（`devkit_vault_graph` 扩展）+ Vault Git-based 历史追踪（`devkit_vault_history`，第 67 个 tool）+ 混合检索质量监控（`devkit_search_quality`，第 68 个 tool，`HybridSearchMetrics`）+ Block 引用支持（`WikiLink.anchor`：`[[note#heading]]` / `[[note#^block-id]]`）+ 性能回归基线（`#[ignore]` 1k/10k 阈值测试）+ 客户端无关原则（Client-Agnostic Principle）落地 + `skill sync` 泛化接口（零硬编码客户端路径）
 - **核心方向**：让 Kimi CLI 在调用文件工具之前，先通过 devbase 获得"该读哪些文件、为什么读、它们之间的关系"
 - **本质分析**：见 `vault/99-Meta/devbase-essence-analysis-20260430.md` 与 `docs/architecture/redefinition.md`
 - **设计文档**：
@@ -23,12 +23,12 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 - **Workspace**：`%LOCALAPPDATA%\devbase\workspace/` —— 文件系统 = source of truth
   - `vault/` —— PARA 结构：00-Inbox, 01-Projects, 02-Areas, 03-Resources, 04-Archives, 99-Meta
   - `assets/` —— 二进制资源
-- **MCP Server**：stdio only，**65 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools + 3 个 Relation tools + 11 个 Agent Context tools + 2 个 ClaudeCode 集成工具 + 1 个 streaming index 工具 + 1 个 oplog 工具 + **1 个 Index Health 工具**）；配置见 `mcp.json`
+- **MCP Server**：stdio only，**68 个 tools**（含 7 个 vault tools + 8 个代码分析工具 + 5 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools + 3 个 Relation tools + 11 个 Agent Context tools + 2 个 ClaudeCode 集成工具 + 1 个 streaming index 工具 + 1 个 oplog 工具 + 1 个 Index Health 工具 + 1 个 Search Quality 工具 + 1 个 Evaluate 工具）；配置见 `mcp.json`
 - **Kimi CLI 集成**：MCP server 已通过 `kimi mcp add` 注册，端到端验证通过（`kimi --print` 成功调用 `devkit_health`）；项目级 skill 位于 `.kimi/skills/devbase-project/SKILL.md`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
-- **当前测试**：446+ lib passed / 0 failed / 3 ignored + 11/11 integration passed（`tests/cli.rs`）
+- **当前测试**：451+ lib passed / 0 failed / 5 ignored + 11/11 integration passed（`tests/cli.rs`）
 - **编译状态**：0 warning / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
-- **Workspace 结构**：`crates/` 目录已启用，18 个零耦合模块已提取为独立 crate（`devbase-symbol-links`, `devbase-sync-protocol`, `devbase-core-types`, `devbase-syncthing-client`, `devbase-vault-frontmatter`, `devbase-vault-wikilink`, `devbase-workflow-interpolate`, `devbase-workflow-model`, `devbase-registry-health`, `devbase-registry-metrics`, `devbase-registry-workspace`, `devbase-embedding`, `devbase-skill-runtime-types`, `devbase-skill-runtime-parser`, `devbase-registry-entity`, `devbase-registry-relation`, `devbase-registry-call-graph`, `devbase-registry-dead-code`, `devbase-registry-code-symbols`）
+- **Workspace 结构**：`crates/` 目录已启用，19 个零耦合模块已提取为独立 crate（`devbase-symbol-links`, `devbase-sync-protocol`, `devbase-core-types`, `devbase-syncthing-client`, `devbase-vault-frontmatter`, `devbase-vault-wikilink`, `devbase-workflow-interpolate`, `devbase-workflow-model`, `devbase-registry-health`, `devbase-registry-metrics`, `devbase-registry-workspace`, `devbase-embedding`, `devbase-skill-runtime-types`, `devbase-skill-runtime-parser`, `devbase-registry-entity`, `devbase-registry-relation`, `devbase-registry-call-graph`, `devbase-registry-dead-code`, `devbase-registry-code-symbols`）
 - **Workflow Engine**：YAML 解析 + 拓扑调度 + batch 并行执行 + 5 种 step 类型（skill/subworkflow/parallel/condition/loop）
 - **NLQ 自然语言查询**：TUI `[:]` 触发 embedding 语义搜索，fallback 降级文本搜索
 - **Mind Market 评分**：success_rate / usage_count / rating（0-5），`skill recalc-scores/top/recommend`
@@ -47,6 +47,16 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 - **Registry DB** 始终存储在用户的本地配置目录（`dirs::config_dir()/devbase/`），绝不向远程传输
 - **代码内容** 不会被上传到任何云端服务（除非用户显式配置 GitHub token 用于 stars 查询）
 - **MCP Server** 仅通过 stdio 本地进程通信，不暴露网络端口
+
+### 客户端无关（Client-Agnostic）
+
+> devbase 的核心能力（编排、注册、索引、搜索、同步）必须在不依赖任何特定 AI 客户端的前提下独立运行。
+
+- ✅ **允许**：向通用目录输出数据，由用户自行分发给任意客户端（如 `skill sync --output-dir ./plans`）
+- ✅ **允许**：实现标准协议（MCP）供任意客户端连接
+- ❌ **禁止**：核心能力硬编码特定客户端的路径、API、或配置格式（如 `C:\Users\xxx\.claude`）
+- ❌ **禁止**：核心能力的可用性取决于某个客户端是否安装
+- 🟡 **适配层**：`scripts/claude/`、`docs/clients/` 等目录下的客户端适配脚本属于配套示例，不归入核心版本控制
 
 ### 凭证管理
 
@@ -242,6 +252,7 @@ grep -rn "unwrap()\|expect()\|panic!(" src/ \
 | scan 路径排除 | 🟢 | `discover_repos` + `collect_tasks` 均支持 `scan.exclude_paths`；scan 和 sync 双阶段过滤 | 0 缺口 | 排除路径使用 `Path::starts_with` 组件级匹配，避免字符串前缀误杀；相对路径在 sync 场景（无 root）下被忽略 | v0.12.0 |
 | tree-sitter 编译成本 | 🟢 | ~15-20s grammar C compilation | 可控 | 已完成 feature-gate：`lang-rust`/`lang-python`/`lang-js-ts`/`lang-go` 四个 feature，默认全启，可选关闭减少编译；`--no-default-features` 编译通过 | 8 |
 | Feature flags 缺失 | 🟢 | 4 个可选 feature (tui, watch, mcp, embedding) | ≥3 | 已完成：`tui`/`watch`/`mcp`/`embedding` 均为 optional；`--no-default-features` 编译通过 | ≤15 |
+| Vault 无版本历史 | 🟢 | `devkit_vault_history` + git2 revwalk + blob diff 行级统计 | 历史可回溯 | 用户侧将 vault 目录作为 Git 子模块管理 | v0.20.0 |
 | `LOCALAPPDATA` 测试模式残留 | 🟢 | 0 处 | 0 | 全面废弃 `LOCALAPPDATA` 环境变量覆盖，统一为 `DEVBASE_DATA_DIR`；mcp/tests.rs 修复 cleanup 逻辑（remove_var 目标从 LOCALAPPDATA 修正为 DEVBASE_DATA_DIR） | 47 |
 | 单体职责膨胀（代码智能+知识库+仓库管理+工作流+Skill+Syncthing） | 🟡 | 6 个核心领域耦合于单一二进制（31MB）；`workflow`/`skill` 与 Claude Code Agent 能力重叠 | 按领域拆分为 `devbase-core`（代码+vault）+ `devbase-sync`（仓库管理）+ `devbase-bridge`（Syncthing）；冻结 workflow/skill 新增 | 外部审查 2026-05-11 |
 

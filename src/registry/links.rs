@@ -98,6 +98,7 @@ mod tests {
             frontmatter: None,
             tags: vec![],
             outgoing_links: vec![],
+            block_refs: vec![],
             linked_repo: repo_id.map(|s| s.to_string()),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

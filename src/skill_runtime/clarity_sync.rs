@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
-//! Sync devbase skills to Clarity plans.
+//! Sync devbase skills to a generic plans directory (JSON format).
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -40,11 +40,10 @@ struct SkillWithInputs {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Sync all skills from devbase to Clarity plans directory.
-pub fn sync_skills_to_clarity(conn: &Connection, clarity_dir: &Path) -> Result<usize> {
-    let plans_dir = clarity_dir.join("plans");
-    std::fs::create_dir_all(&plans_dir)
-        .with_context(|| format!("Failed to create Clarity plans dir: {}", plans_dir.display()))?;
+/// Sync all skills from devbase to a plans directory (generic JSON output).
+pub fn sync_skills_to_plans(conn: &Connection, plans_dir: &Path) -> Result<usize> {
+    std::fs::create_dir_all(plans_dir)
+        .with_context(|| format!("Failed to create plans dir: {}", plans_dir.display()))?;
 
     let skills = fetch_skills_with_inputs(conn)?;
     let mut synced = 0;
@@ -91,6 +90,12 @@ pub fn sync_skills_to_clarity(conn: &Connection, clarity_dir: &Path) -> Result<u
     }
 
     Ok(synced)
+}
+
+/// Backward-compatible wrapper: sync to `clarity_dir/plans/`.
+#[allow(dead_code)]
+pub fn sync_skills_to_clarity(conn: &Connection, clarity_dir: &Path) -> Result<usize> {
+    sync_skills_to_plans(conn, &clarity_dir.join("plans"))
 }
 
 fn fetch_skills_with_inputs(conn: &Connection) -> Result<Vec<SkillWithInputs>> {
@@ -223,13 +228,13 @@ mod tests {
         crate::skill_runtime::registry::install_skill(&conn, &skill).unwrap();
 
         let tmp = tempfile::tempdir().unwrap();
-        let clarity_dir = tmp.path();
-        std::fs::create_dir_all(clarity_dir.join("plans")).unwrap();
+        let plans_dir = tmp.path().join("plans");
+        std::fs::create_dir_all(&plans_dir).unwrap();
 
-        let count = sync_skills_to_clarity(&conn, clarity_dir).unwrap();
+        let count = sync_skills_to_plans(&conn, &plans_dir).unwrap();
         assert_eq!(count, 1);
 
-        let plan_path = clarity_dir.join("plans").join("test-skill.json");
+        let plan_path = plans_dir.join("test-skill.json");
         assert!(plan_path.exists());
         let content = std::fs::read_to_string(&plan_path).unwrap();
         let plan: ClarityPlan = serde_json::from_str(&content).unwrap();
