@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
 pub mod backlinks;
+pub mod export;
 pub mod frontmatter;
 pub mod fs_io;
 pub mod indexer;
@@ -149,5 +150,11 @@ impl crate::clients::VaultClient for AppContext {
             "nodes": nodes,
             "edges": edges,
         }))
+    }
+
+    fn export_vault(&self, output_dir: &str) -> anyhow::Result<serde_json::Value> {
+        let vault_dir = self.storage.workspace_dir()?.join("vault");
+        let out = std::path::PathBuf::from(output_dir);
+        crate::vault::export::export_vault(&vault_dir, &out)
     }
 }

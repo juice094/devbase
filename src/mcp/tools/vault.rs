@@ -460,6 +460,55 @@ Returns: JSON with nodes (id, title) and edges (source, target)."#,
     }
 }
 
+#[derive(Clone)]
+pub struct DevkitVaultExportTool;
+
+impl McpTool for DevkitVaultExportTool {
+    fn name(&self) -> &'static str {
+        "devkit_vault_export"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "description": r#"Export the devbase Vault to a directory with integrity validation.
+
+Copies all Markdown notes preserving PARA directory structure, validates wikilink targets, and checks frontmatter YAML parseability.
+
+Use this when:
+- Creating a backup of your knowledge base
+- Migrating notes to Obsidian / Logseq / other Markdown tools
+- Verifying vault integrity (broken links, malformed frontmatter)
+
+Parameters:
+- output_dir: Destination directory for the export (created if missing)
+
+Returns: export statistics including file count, total bytes, broken links, and frontmatter errors."#,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "output_dir": {
+                        "type": "string",
+                        "description": "Destination directory for the exported vault"
+                    }
+                },
+                "required": ["output_dir"]
+            }
+        })
+    }
+
+    async fn invoke(
+        &self,
+        args: serde_json::Value,
+        ctx: &mut crate::storage::AppContext,
+    ) -> anyhow::Result<serde_json::Value> {
+        let output_dir = args
+            .get("output_dir")
+            .and_then(|v| v.as_str())
+            .context("Missing required argument: output_dir")?;
+        ctx.export_vault(output_dir)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
