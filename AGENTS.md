@@ -48,6 +48,16 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 - **代码内容** 不会被上传到任何云端服务（除非用户显式配置 GitHub token 用于 stars 查询）
 - **MCP Server** 仅通过 stdio 本地进程通信，不暴露网络端口
 
+### 客户端无关（Client-Agnostic）
+
+> devbase 的核心能力（编排、注册、索引、搜索、同步）必须在不依赖任何特定 AI 客户端的前提下独立运行。
+
+- ✅ **允许**：向通用目录输出数据，由用户自行分发给任意客户端（如 `skill sync --output-dir ./plans`）
+- ✅ **允许**：实现标准协议（MCP）供任意客户端连接
+- ❌ **禁止**：核心能力硬编码特定客户端的路径、API、或配置格式（如 `C:\Users\xxx\.claude`）
+- ❌ **禁止**：核心能力的可用性取决于某个客户端是否安装
+- 🟡 **适配层**：`scripts/claude/`、`docs/clients/` 等目录下的客户端适配脚本属于配套示例，不归入核心版本控制
+
 ### 凭证管理
 
 - GitHub token、LLM API key 存储在本地 `config.toml` 中
