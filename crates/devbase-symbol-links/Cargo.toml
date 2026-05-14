@@ -1,6 +1,6 @@
 [package]
 name = "devbase-symbol-links"
-version = "0.1.0-alpha.1"
+version.workspace = true
 edition = "2024"
 description = "Code symbol link generator: similar-signature and co-located relationship discovery"
 authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
