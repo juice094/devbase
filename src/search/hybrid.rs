@@ -395,4 +395,76 @@ mod tests {
         // latency_ms is u64, so it is always >= 0; just verify it was set
         assert_eq!(metrics.rrf_k, 60.0);
     }
+
+    #[test]
+    #[ignore = "performance regression: run with --ignored to execute"]
+    fn test_keyword_search_latency_regression_1k() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE code_symbols (
+                repo_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                symbol_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                line_start INTEGER,
+                PRIMARY KEY (repo_id, file_path, name)
+            )",
+            [],
+        )
+        .unwrap();
+
+        {
+            let mut stmt = conn.prepare(
+                "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start)
+                 VALUES (?1, ?2, 'function', ?3, ?4)",
+            ).unwrap();
+            for i in 0..1000 {
+                stmt.execute(rusqlite::params!["repo1", "src/lib.rs", format!("func_{}", i), i as i64]).unwrap();
+            }
+        }
+
+        let (_results, metrics) =
+            hybrid_search_symbols_with_metrics(&conn, "repo1", "func_500", None, 20).unwrap();
+        assert!(
+            metrics.latency_ms < 200,
+            "keyword search latency {}ms exceeds 200ms threshold @ 1k docs",
+            metrics.latency_ms
+        );
+    }
+
+    #[test]
+    #[ignore = "performance regression: run with --ignored to execute"]
+    fn test_keyword_search_latency_regression_10k() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE code_symbols (
+                repo_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                symbol_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                line_start INTEGER,
+                PRIMARY KEY (repo_id, file_path, name)
+            )",
+            [],
+        )
+        .unwrap();
+
+        {
+            let mut stmt = conn.prepare(
+                "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start)
+                 VALUES (?1, ?2, 'function', ?3, ?4)",
+            ).unwrap();
+            for i in 0..10000 {
+                stmt.execute(rusqlite::params!["repo1", "src/lib.rs", format!("func_{}", i), i as i64]).unwrap();
+            }
+        }
+
+        let (_results, metrics) =
+            hybrid_search_symbols_with_metrics(&conn, "repo1", "func_5000", None, 20).unwrap();
+        assert!(
+            metrics.latency_ms < 500,
+            "keyword search latency {}ms exceeds 500ms threshold @ 10k docs",
+            metrics.latency_ms
+        );
+    }
 }

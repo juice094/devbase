@@ -13,6 +13,7 @@ harness = false
 name = "registry_bench"
 harness = false
 
+
 [features]
 default = ["tui", "mcp", "lang-rust", "lang-python", "lang-js-ts", "lang-go"]
 # embedding feature removed from default in v0.17.0.
