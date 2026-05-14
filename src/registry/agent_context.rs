@@ -224,7 +224,7 @@ pub fn list_memories(conn: &Connection, context_id: &str) -> anyhow::Result<Vec<
             )
         })?;
         let indexed_at: Option<String> = row.get(7)?;
-        let indexed_at = indexed_at.map(|s| parse_datetime(s)).transpose().map_err(|e| {
+        let indexed_at = indexed_at.map(parse_datetime).transpose().map_err(|e| {
             rusqlite::Error::FromSqlConversionFailure(
                 7,
                 rusqlite::types::Type::Text,
@@ -343,7 +343,7 @@ pub fn search_memories(
             )
         })?;
         let indexed_at: Option<String> = row.get(7)?;
-        let indexed_at = indexed_at.map(|s| parse_datetime(s)).transpose().map_err(|e| {
+        let indexed_at = indexed_at.map(parse_datetime).transpose().map_err(|e| {
             rusqlite::Error::FromSqlConversionFailure(
                 7,
                 rusqlite::types::Type::Text,
@@ -400,7 +400,7 @@ pub fn register_vector_functions(conn: &Connection) -> anyhow::Result<()> {
         move |ctx| {
             let a_blob: Vec<u8> = ctx.get(0)?;
             let b_blob: Vec<u8> = ctx.get(1)?;
-            if a_blob.len() != b_blob.len() || a_blob.len() % 4 != 0 {
+            if a_blob.len() != b_blob.len() || !a_blob.len().is_multiple_of(4) {
                 return Err(rusqlite::Error::UserFunctionError(
                     "embedding blobs must have equal length and be multiples of 4 bytes".into(),
                 ));
@@ -472,7 +472,7 @@ pub fn search_memories_semantic(
             )
         })?;
         let indexed_at: Option<String> = row.get(7)?;
-        let indexed_at = indexed_at.map(|s| parse_datetime(s)).transpose().map_err(|e| {
+        let indexed_at = indexed_at.map(parse_datetime).transpose().map_err(|e| {
             rusqlite::Error::FromSqlConversionFailure(
                 7,
                 rusqlite::types::Type::Text,

@@ -4,9 +4,9 @@
 
 > 它将本地数字资产的原始数据（代码库、笔记、Skill、工作流）编译为 AI 可决策的结构化情境，不负责思考，不负责执行，只负责感知、编码、持久化、检索。
 
-- **当前阶段**：阶段九 → v0.18.0 进行中（ClaudeCode 工作流深度集成）
-- **当前版本**：v0.18.0-dev（Schema 34，64 MCP tools，446 tests）
-- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ 18 workspace crates 提取 + MCP Python SDK 1.16.0 兼容修复 + repo.rs trait 化 + flaky 测试根治（RF-2.1/2.2/2.3）+ 许可证迁移 + health 性能优化（-44%）+ index skip-embeddings + batch encoding 实验 + RF-6 清零 + 架构治理文档（ADR/不变量清单）+ Tantivy BM25 代码符号搜索（P1）+ AppContext 职责拆分 Phase 1/2（storage.rs 860→430 行）+ 架构不变量 CI（G5/T11/T12）+ Embedding 多后端（Candle/Ollama 配置切换, P3）+ EnvVersionCache 扩展（9 工具链检测, P4）+ **v0.16.0 Agent Contexts（P1/P2/P3）**：`agent_contexts`/`agent_memories`/`context_entity_links` Schema + 9 个 Session MCP tools + Context-aware Skill Runtime（`DEVBASE_ACTIVE_CONTEXT` 注入）+ **v0.16.1 Workflow-Session Binding**：`workflow_executions.context_id` + 执行自动绑定 Active Context + **v0.17.0 Embedding Externalization**：`embedding` 从 default features 移除（Candle/Ollama 降级为 opt-in `llm-backend`）+ Schema 34 向量存储 + `cosine_similarity` SQLite UDF + `devkit_session_recall` / `devkit_session_index`（60 tools）+ **v0.18.0-dev ClaudeCode Integration**：`devkit_project_brief`（Markdown 项目简报）+ `devkit_impact_analysis`（修改影响范围分析）+ `devkit_session_export` / `devkit_session_import` + `scripts/devbase-claude.ps1` 启动器（自动注入 `.claude/CLAUDE.md`）+ RFC `docs/RFC/claudecode-workflow-integration.md`（64 tools）
+- **当前阶段**：阶段十 → v0.19.0 进行中（知识基础设施可靠性加固）
+- **当前版本**：v0.19.0-dev（Schema 34，64 MCP tools，446 tests）
+- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ 18 workspace crates 提取 + MCP Python SDK 1.16.0 兼容修复 + repo.rs trait 化 + flaky 测试根治（RF-2.1/2.2/2.3）+ 许可证迁移 + health 性能优化（-44%）+ index skip-embeddings + batch encoding 实验 + RF-6 清零 + 架构治理文档（ADR/不变量清单）+ Tantivy BM25 代码符号搜索（P1）+ AppContext 职责拆分 Phase 1/2（storage.rs 860→430 行）+ 架构不变量 CI（G5/T11/T12）+ Embedding 多后端（Candle/Ollama 配置切换, P3）+ EnvVersionCache 扩展（9 工具链检测, P4）+ **v0.16.0 Agent Contexts（P1/P2/P3）**：`agent_contexts`/`agent_memories`/`context_entity_links` Schema + 9 个 Session MCP tools + Context-aware Skill Runtime（`DEVBASE_ACTIVE_CONTEXT` 注入）+ **v0.16.1 Workflow-Session Binding**：`workflow_executions.context_id` + 执行自动绑定 Active Context + **v0.17.0 Embedding Externalization**：`embedding` 从 default features 移除（Candle/Ollama 降级为 opt-in `llm-backend`）+ Schema 34 向量存储 + `cosine_similarity` SQLite UDF + `devkit_session_recall` / `devkit_session_index`（60 tools）+ **v0.18.0 ClaudeCode Integration**：`devkit_project_brief`（Markdown 项目简报）+ `devkit_impact_analysis`（修改影响范围分析）+ `devkit_session_export` / `devkit_session_import` + `scripts/devbase-claude.ps1` 启动器（自动注入 `.claude/CLAUDE.md`）+ RFC `docs/RFC/claudecode-workflow-integration.md`（64 tools）+ **v0.18.0 发布收尾**：PR 合并 + 双平台二进制构建 + GitHub Release + 根目录治理 + 世界模型战略认知沉淀（Vault + AGENTS 双向联动）+ NotebookLM 生态消化（5 项目注册）+ GreptimeDB 互补分析
 - **核心方向**：让 Kimi CLI 在调用文件工具之前，先通过 devbase 获得"该读哪些文件、为什么读、它们之间的关系"
 - **本质分析**：见 `vault/99-Meta/devbase-essence-analysis-20260430.md` 与 `docs/architecture/redefinition.md`
 - **设计文档**：
@@ -23,7 +23,7 @@ Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema 
 - **Workspace**：`%LOCALAPPDATA%\devbase\workspace/` —— 文件系统 = source of truth
   - `vault/` —— PARA 结构：00-Inbox, 01-Projects, 02-Areas, 03-Resources, 04-Archives, 99-Meta
   - `assets/` —— 二进制资源
-- **MCP Server**：stdio only，**64 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools + 3 个 Relation tools + 11 个 Agent Context tools + 2 个 ClaudeCode 集成工具 + 1 个 streaming index 工具 + 1 个 oplog 工具）；配置见 `mcp.json`
+- **MCP Server**：stdio only，**65 个 tools**（含 5 个 vault tools + 8 个代码分析工具 + 4 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools + 3 个 Relation tools + 11 个 Agent Context tools + 2 个 ClaudeCode 集成工具 + 1 个 streaming index 工具 + 1 个 oplog 工具 + **1 个 Index Health 工具**）；配置见 `mcp.json`
 - **Kimi CLI 集成**：MCP server 已通过 `kimi mcp add` 注册，端到端验证通过（`kimi --print` 成功调用 `devkit_health`）；项目级 skill 位于 `.kimi/skills/devbase-project/SKILL.md`
 - **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
 - **当前测试**：446+ lib passed / 0 failed / 3 ignored + 11/11 integration passed（`tests/cli.rs`）
@@ -551,6 +551,73 @@ cargo metadata --format-version 1 | jq '.workspace_members'
 # 3. 确认耦合地图（快速扫描高耦合模块）
 grep -rc 'crate::' src/*.rs | sort -t: -k2 -n | tail -5
 ```
+
+## 知识库生产级缺口与补齐路线（Knowledge Base Production Gap）
+
+> 该章节记录 devbase 作为知识基础设施与生产级要求之间的真实差距，以及消除"玩具感"的补齐路径。  
+> **核心原则**：devbase 首先是一个可靠的本地知识基础设施，然后才是一个 World Model Compiler。AI 层是编译器的输出接口，但如果存储层不可靠，AI 就是沙上建塔。
+
+### 缺口诊断（与生产级知识库对比）
+
+| 能力维度 | 当前现状 | 生产级要求 | 缺口等级 |
+|:---|:---|:---|:---:|
+| **存储可靠性** | SQLite 单文件；Schema 迁移前自动快照 | WAL 并发模式、增量备份、索引损坏自动检测重建、点对点恢复 | 🔴 **严重** |
+| **检索质量** | BM25 + 768-dim `cosine_similarity` SQL UDF | Hybrid RRF 调优、Re-rank、多路召回、查询延迟可观测 | 🔴 **严重** |
+| **知识图谱** | `relation_store/query` 简单三元组 | 双向链接图遍历、Transitive Closure、社区发现、本体约束 | 🟠 **显著** |
+| **版本历史** | 代码有 Git；Vault 笔记无版本 | 笔记块级历史、分支、冲突合并策略 | 🟠 **显著** |
+| **规模化** | 单机 Rayon；未验证 >100 仓库 / >10k 文档场景 | 索引分片、增量更新、查询缓存、内存上限保护 | 🟠 **显著** |
+| **互操作性** | Vault 读写 Markdown | Obsidian 兼容（frontmatter/wikilink）、标准导入导出、避免 Vendor Lock-in | 🟡 **中等** |
+| **多模态** | 文本为主 | PDF 解析、图片 OCR、音频转录 | 🟡 **可延期** |
+| **协作** | 单用户 + Syncthing 文件级同步 | 冲突解决（CRDT/OT 或至少 last-write-win）、多设备状态一致性 | 🟠 **显著** |
+
+### 补齐路线图
+
+#### 🔴 v0.19.0：存储可靠性加固（消除"玩具感"的最快路径）
+
+| 任务 | 优先级 | 验收标准 |
+|:---|:---:|:---|
+| SQLite WAL 模式默认启用 | P1 | 并发写入无锁定冲突；`PRAGMA journal_mode=WAL` 持久化 |
+| Tantivy 索引健康检查 `devkit_index_health` | P1 | 检测索引损坏、版本不匹配、孤儿文档；返回健康评分 0-100 |
+| 自动重建策略 | P1 | 索引损坏时自动 fallback 全量重建，而非静默失败；重建过程写入 OpLog |
+| 查询性能基线测试 | P1 | CI 中测试 1k/10k/100k 文档量级的检索延迟；建立性能回归红线 |
+| Vault 批量导出（Markdown + frontmatter） | P2 | `devkit_vault_export` 支持 PARA 结构完整导出；消除 Vendor Lock-in 焦虑 |
+| Redis 缓存评估 | P2 | 完成 Session/向量缓存需求分析；决策：引入 / 自建 / 放弃 |
+
+#### 🟠 v0.20.0：知识完备性（从"能存"到"好用"）
+
+| 任务 | 优先级 | 验收标准 |
+|:---|:---:|:---|
+| Vault 双向链接图遍历 | P1 | `vault_backlinks` 升级为图查询：最短路径、共同引用、引用频次 |
+| 笔记变更追踪 | P1 | Vault 笔记历史基于 Git 追踪（vault 目录作为 Git 子模块）或 SQLite 增量历史表 |
+| 混合检索质量监控 | P1 | RRF 参数可调（`k`、`weights`）、召回率/精确率指标、`devkit_search_quality` 工具 |
+| 笔记块级引用 `[[note#block]]` | P2 | 从文档级粒度下沉到块级；支持标题块、列表块、代码块引用 |
+| middleware.ts 错误修复 | P2 | 解决已知未解决错误，见技术债登记簿 |
+
+#### 🟡 v0.21.0+：外部能力嫁接（不重复造轮子）
+
+| 任务 | 来源 | 集成方式 |
+|:---|:---|:---|
+| 多说话人播客/测验生成管道 | Open Notebook | 提取生成模块作为外部 MCP Tool，devbase 提供文档输入 |
+| Agent 协作与多 LLM 路由 | SurfSense | 参考 Agent 架构，融入 Clarity 三角色世界模型 |
+| 时序观测基础设施 | GreptimeDB | Standalone 模式起步，替代 Prometheus，监控索引和查询健康度 |
+| 向量索引统一（远期） | GreptimeDB v1.1 | 评估替代 Tantivy+SQLite 双写架构的可行性 |
+
+### 技术债关联更新
+
+| 债项 | 严重 | 状态变更 | 清理路径 |
+|:---|:---:|:---|:---|
+| Tantivy+SQLite 双写一致性 | 🟡 | **从长期降级至 v0.19.0 P1** | WAL + 补偿机制 + `devkit_index_health` |
+| SQLite 单文件并发 | 🔴 | **新增** | v0.19.0 WAL 模式启用 |
+| 查询性能不可观测 | 🔴 | **新增** | v0.19.0 CI 性能基线 + OpLog 延迟指标 |
+| Vault 无版本历史 | 🟠 | **新增** | v0.20.0 Git 追踪或增量表 |
+
+### 决策约束
+
+1. **v0.19.0 禁止新增非可靠性相关的 MCP Tool**。所有新增 Tool 必须与存储健康、可观测性、或索引修复直接相关。
+2. **v0.19.0 禁止引入外部数据库依赖**（包括 GreptimeDB、Redis、PostgreSQL）。可靠性加固必须在现有 SQLite + Tantivy 技术栈内完成。
+3. **世界模型研究（Spark/Flink/时序图神经网络）保持独立仓库**，主仓库继续执行"不得引入 Spark/Flink 依赖"红线。
+
+---
 
 ## 架构演进方向：世界模型战略（World Model Strategy）
 

@@ -231,12 +231,11 @@ fn recall_context_memories(
     let query_text = build_recall_query(skill_id, args);
 
     // Tier 1: semantic recall
-    if let Ok(embedding) = generate_query_embedding_external(&query_text) {
-        if let Ok(results) = try_semantic_recall(conn, context_id, &embedding) {
-            if !results.is_empty() {
-                return Ok((results, "semantic".to_string()));
-            }
-        }
+    if let Ok(embedding) = generate_query_embedding_external(&query_text)
+        && let Ok(results) = try_semantic_recall(conn, context_id, &embedding)
+        && !results.is_empty()
+    {
+        return Ok((results, "semantic".to_string()));
     }
 
     // Tier 2: keyword fallback
