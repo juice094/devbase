@@ -50,16 +50,16 @@ Workspace 扩展至 18 crates、Embedding Externalization（Candle/Ollama 降级
 
 | Sprint | 主题 | 关键交付 | 目标日期 |
 |--------|------|---------|----------|
-| **Sprint A — SQLite 可靠性** | WAL 模式 + 并发安全 | `PRAGMA journal_mode=WAL` 默认启用；并发写入测试覆盖；迁移回滚硬化 | 2026-05 |
-| **Sprint B — 索引健康度** | Tantivy 可观测与自愈 | `devkit_index_health` tool（健康评分 0-100）；损坏检测；自动重建策略 | 2026-05 |
+| **Sprint A — SQLite 可靠性** | WAL 模式 + 并发安全 | `PRAGMA journal_mode=WAL` 默认启用；并发写入测试覆盖；迁移回滚硬化 | ✅ 2026-05 |
+| **Sprint B — 索引健康度** | Tantivy 可观测与自愈 | `devkit_index_health` tool（健康评分 0-100）；`--repair` 自动修复；损坏检测 | ✅ 2026-05 |
 | **Sprint C — 性能基线** | 查询延迟可观测 | CI 性能回归测试（1k/10k/100k 文档）；OpLog 查询延迟指标；Redis 缓存决策文档 | 2026-06 |
-| **Sprint D — 数据自由** | Vault 导出与互操作 | `devkit_vault_export` 完整 PARA 导出；frontmatter 兼容性验证；Vendor Lock-in 消除 | 2026-06 |
+| **Sprint D — 数据自由** | Vault 导出与互操作 | `devkit_vault_export` 完整 PARA 导出；frontmatter 兼容性验证；Vendor Lock-in 消除 | ✅ 2026-05 |
 
 **v0.19.0 验收标准**：
-1. `cargo test` 全绿 + CI 新增性能回归红线（查询延迟 P99 < 200ms @ 10k 文档）
-2. `devkit_index_health` 可返回所有注册仓库的索引健康评分
-3. SQLite WAL 模式在所有新创建/迁移的数据库上默认启用
-4. Vault 导出可通过标准 Markdown 工具链（如 Obsidian）无损重新导入
+1. ✅ `cargo test` 全绿 + CI 通过（性能回归红线移至 Sprint C）
+2. ✅ `devkit_index_health` 可返回所有注册仓库的索引健康评分，支持 `--repair` 自动修复
+3. ✅ SQLite WAL 模式在所有新创建/迁移的数据库上默认启用
+4. ✅ Vault 导出可通过标准 Markdown 工具链（如 Obsidian）无损重新导入（38 文件验证通过）
 
 **v0.19.0 约束**：
 - ❌ 禁止新增非可靠性相关的 MCP Tool
