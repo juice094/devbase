@@ -224,22 +224,13 @@ pub fn run_skill(
                 }
             }
         }
-        crate::SkillCommands::Sync { target } => {
-            if target != "clarity" {
-                return Err(anyhow::anyhow!(
-                    "Unsupported sync target: '{}'. Only 'clarity' is supported.",
-                    target
-                ));
+        crate::SkillCommands::Sync { output_dir } => {
+            let out = std::path::PathBuf::from(&output_dir);
+            if !out.exists() {
+                std::fs::create_dir_all(&out)?;
             }
-            let clarity_dir = std::path::PathBuf::from("C:\\Users\\22414\\.clarity");
-            if !clarity_dir.exists() {
-                return Err(anyhow::anyhow!(
-                    "Clarity directory not found: {}",
-                    clarity_dir.display()
-                ));
-            }
-            match skill_runtime::clarity_sync::sync_skills_to_clarity(&conn, &clarity_dir) {
-                Ok(count) => println!("Synced {} skill(s) to Clarity.", count),
+            match skill_runtime::clarity_sync::sync_skills_to_plans(&conn, &out) {
+                Ok(count) => println!("Synced {} skill(s) to {}.", count, out.display()),
                 Err(e) => {
                     return Err(anyhow::anyhow!("Skill sync failed: {}", e));
                 }

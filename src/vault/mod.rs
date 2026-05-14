@@ -167,7 +167,7 @@ impl crate::clients::VaultClient for AppContext {
             id_to_title.keys().cloned().collect()
         };
 
-        let max_depth = depth.max(1).min(3);
+        let max_depth = depth.clamp(1, 3);
 
         let (selected_nodes, selected_edges): (
             std::collections::HashSet<String>,

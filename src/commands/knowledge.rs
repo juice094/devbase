@@ -150,7 +150,8 @@ pub async fn run_vault(
         }
         crate::VaultCommands::History { path } => {
             let result = ctx.get_vault_history(&path)?;
-            let history = result["history"].as_array().unwrap_or(&vec![]);
+            let empty: Vec<serde_json::Value> = Vec::new();
+            let history = result["history"].as_array().unwrap_or(&empty);
             if history.is_empty() {
                 println!("No history found for '{}'.", path);
                 println!("Hint: Ensure the vault directory is a Git repository.");
