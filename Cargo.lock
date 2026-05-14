@@ -1118,14 +1118,14 @@ dependencies = [
 
 [[package]]
 name = "devbase-core-types"
-version = "0.1.0-alpha.1"
+version = "0.20.0"
 dependencies = [
  "chrono",
 ]
 
 [[package]]
 name = "devbase-embedding"
-version = "0.17.0-dev"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "candle-core",
@@ -1139,7 +1139,7 @@ dependencies = [
 
 [[package]]
 name = "devbase-registry-call-graph"
-version = "0.17.0-dev"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "rusqlite",
@@ -1147,7 +1147,7 @@ dependencies = [
 
 [[package]]
 name = "devbase-registry-code-symbols"
-version = "0.17.0-dev"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "rusqlite",
@@ -1155,7 +1155,7 @@ dependencies = [
 
 [[package]]
 name = "devbase-registry-dead-code"
-version = "0.17.0-dev"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "rusqlite",
@@ -1163,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "devbase-registry-entity"
-version = "0.17.0-dev"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1173,7 +1173,7 @@ dependencies = [
 
 [[package]]
 name = "devbase-registry-health"
-version = "0.17.0-dev"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1183,7 +1183,7 @@ dependencies = [
 
 [[package]]
 name = "devbase-registry-metrics"
-version = "0.17.0-dev"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1194,7 +1194,7 @@ dependencies = [
 
 [[package]]
 name = "devbase-registry-relation"
-version = "0.17.0-dev"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1203,7 +1203,7 @@ dependencies = [
 
 [[package]]
 name = "devbase-registry-workspace"
-version = "0.17.0-dev"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1213,7 +1213,7 @@ dependencies = [
 
 [[package]]
 name = "devbase-skill-runtime-parser"
-version = "0.17.0-dev"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1222,7 +1222,7 @@ dependencies = [
 
 [[package]]
 name = "devbase-skill-runtime-types"
-version = "0.17.0-dev"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1232,7 +1232,7 @@ dependencies = [
 
 [[package]]
 name = "devbase-symbol-links"
-version = "0.1.0-alpha.1"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1241,7 +1241,7 @@ dependencies = [
 
 [[package]]
 name = "devbase-sync-protocol"
-version = "0.1.0-alpha.1"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1251,7 +1251,7 @@ dependencies = [
 
 [[package]]
 name = "devbase-syncthing-client"
-version = "0.1.0-alpha.1"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "reqwest",
@@ -1260,15 +1260,15 @@ dependencies = [
 
 [[package]]
 name = "devbase-vault-frontmatter"
-version = "0.1.0-alpha.1"
+version = "0.20.0"
 
 [[package]]
 name = "devbase-vault-wikilink"
-version = "0.1.0-alpha.1"
+version = "0.20.0"
 
 [[package]]
 name = "devbase-workflow-interpolate"
-version = "0.17.0-dev"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "regex",
@@ -1278,7 +1278,7 @@ dependencies = [
 
 [[package]]
 name = "devbase-workflow-model"
-version = "0.17.0-dev"
+version = "0.20.0"
 dependencies = [
  "serde",
  "serde_json",

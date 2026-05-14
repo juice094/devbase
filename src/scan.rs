@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+use crate::clients::ScanClient;
+use crate::config::{Config, GithubConfig};
 use crate::registry::repo;
 use crate::registry::{CodeMetrics, OplogEntry, RemoteEntry, RepoEntry};
+use crate::registry::{OplogEventType, health, knowledge, metrics, workspace};
+use crate::semantic_index;
 use crate::storage::AppContext;
 use chrono::Utc;
 use git2::Repository;
@@ -28,7 +32,7 @@ pub async fn run_json(
         }));
     }
 
-    let config = crate::config::Config::load().unwrap_or_default();
+    let config = Config::load().unwrap_or_default();
     let repos = discover_repos(
         &root,
         Some(&config.github),
@@ -44,7 +48,7 @@ pub async fn run_json(
         for repo in &repos {
             repo::save_repo(&mut conn, repo)?;
             if let Some(stars) = repo.stars {
-                let _ = crate::registry::health::save_stars_cache(&conn, &repo.id, stars);
+                let _ = health::save_stars_cache(&conn, &repo.id, stars);
             }
             let repo_id = repo.id.clone();
             let path_str = repo.local_path.to_string_lossy().to_string();
@@ -54,15 +58,13 @@ pub async fn run_json(
             match tokio::task::spawn_blocking(move || {
                 if let Some(metrics) = compute_code_metrics(&path_str) {
                     let conn = pool.get()?;
-                    crate::registry::metrics::save_code_metrics(&conn, &repo_id, &metrics)?;
+                    metrics::save_code_metrics(&conn, &repo_id, &metrics)?;
                 }
                 if is_rust && let Ok(modules) = extract_rust_modules(&path_str) {
                     let conn = pool.get()?;
-                    let _ = crate::registry::knowledge::clear_modules(&conn, &repo_id);
+                    let _ = knowledge::clear_modules(&conn, &repo_id);
                     for (name, kind, src_path) in modules {
-                        let _ = crate::registry::knowledge::save_module(
-                            &conn, &repo_id, &name, &kind, &src_path,
-                        );
+                        let _ = knowledge::save_module(&conn, &repo_id, &name, &kind, &src_path);
                     }
                 }
                 Ok::<_, anyhow::Error>(())
@@ -104,11 +106,11 @@ pub async fn run_json(
             "discovered": count,
             "registered": registered
         });
-        let _ = crate::registry::workspace::save_oplog(
+        let _ = workspace::save_oplog(
             &conn,
             &OplogEntry {
                 id: None,
-                event_type: crate::registry::OplogEventType::Scan,
+                event_type: OplogEventType::Scan,
                 repo_id: None,
                 details: Some(details.to_string()),
                 status: "success".to_string(),
@@ -210,7 +212,7 @@ fn canonicalize_repo_path(path: &Path) -> PathBuf {
 
 fn discover_repos(
     root: &Path,
-    github: Option<&crate::config::GithubConfig>,
+    github: Option<&GithubConfig>,
     exclude_paths: &[String],
     exclude_patterns: &[String],
 ) -> anyhow::Result<Vec<RepoEntry>> {
@@ -228,7 +230,7 @@ fn discover_repos(
     for entry in WalkDir::new(&root)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), &scan_exclude_patterns))
+        .filter_entry(|e| !semantic_index::should_skip_dir(e.path(), &scan_exclude_patterns))
         .filter_map(|e| e.ok())
     {
         if entry.file_type().is_dir() && entry.path().join(".devbase-ignore").exists() {
@@ -248,7 +250,7 @@ fn discover_repos(
     for entry in WalkDir::new(&root)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), &scan_exclude_patterns))
+        .filter_entry(|e| !semantic_index::should_skip_dir(e.path(), &scan_exclude_patterns))
         .filter_map(|e| e.ok())
     {
         if entry.file_name() == ".git" && entry.file_type().is_dir() {
@@ -275,7 +277,7 @@ fn discover_repos(
     for entry in WalkDir::new(&root)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !crate::semantic_index::should_skip_dir(e.path(), &scan_exclude_patterns))
+        .filter_entry(|e| !semantic_index::should_skip_dir(e.path(), &scan_exclude_patterns))
         .filter_map(|e| e.ok())
     {
         let name = entry.file_name().to_string_lossy();
@@ -343,10 +345,7 @@ fn parse_github_owner_repo(upstream_url: &str) -> Option<(String, String)> {
     Some((parts[0].to_string(), parts[1].to_string()))
 }
 
-pub fn fetch_github_stars(
-    upstream_url: &str,
-    github: Option<&crate::config::GithubConfig>,
-) -> Option<u64> {
+pub fn fetch_github_stars(upstream_url: &str, github: Option<&GithubConfig>) -> Option<u64> {
     let (owner, repo) = parse_github_owner_repo(upstream_url)?;
 
     let timeout_secs = github.map(|g| g.timeout_seconds).unwrap_or(5);
@@ -416,10 +415,7 @@ fn extract_rust_modules(repo_path: &str) -> anyhow::Result<Vec<(String, String, 
     Ok(modules)
 }
 
-pub fn inspect_repo(
-    path: &Path,
-    github: Option<&crate::config::GithubConfig>,
-) -> anyhow::Result<RepoEntry> {
+pub fn inspect_repo(path: &Path, github: Option<&GithubConfig>) -> anyhow::Result<RepoEntry> {
     let path = canonicalize_repo_path(path);
     let repo = match Repository::open(&path) {
         Ok(r) => r,
@@ -559,13 +555,13 @@ pub fn compute_code_metrics(path: &str) -> Option<CodeMetrics> {
     })
 }
 
-impl crate::clients::ScanClient for AppContext {
+impl ScanClient for AppContext {
     async fn scan_directory(
         &self,
         path: &str,
         register: bool,
     ) -> anyhow::Result<serde_json::Value> {
-        crate::scan::run_json(path, register, &self.pool()).await
+        run_json(path, register, &self.pool()).await
     }
 }
 

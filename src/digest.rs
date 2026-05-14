@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+use crate::clients::DigestClient;
+use crate::config::Config;
+use crate::i18n::I18n;
+use crate::registry::ENTITY_TYPE_REPO;
+use crate::storage::AppContext;
 use chrono::{Duration, Utc};
 
 pub fn generate_daily_digest(
     conn: &rusqlite::Connection,
-    config: &crate::config::Config,
-    i18n: &crate::i18n::I18n,
+    config: &Config,
+    i18n: &I18n,
 ) -> anyhow::Result<String> {
     let since = (Utc::now() - Duration::hours(config.digest.window_hours)).to_rfc3339();
     let mut lines = Vec::new();
@@ -21,7 +26,7 @@ pub fn generate_daily_digest(
     let new_count: i64 = conn.query_row(
         &format!(
             "SELECT COUNT(*) FROM entities WHERE entity_type = '{}' AND discovered_at > ?1",
-            crate::registry::ENTITY_TYPE_REPO
+            ENTITY_TYPE_REPO
         ),
         [&since],
         |row| row.get(0),
@@ -29,7 +34,7 @@ pub fn generate_daily_digest(
     if new_count > 0 {
         lines.push(format!("{}: {} repos", i18n.log.digest_new_repos, new_count));
         let mut stmt = conn
-            .prepare(&format!("SELECT id FROM entities WHERE entity_type = '{}' AND discovered_at > ?1 ORDER BY discovered_at DESC", crate::registry::ENTITY_TYPE_REPO))?;
+            .prepare(&format!("SELECT id FROM entities WHERE entity_type = '{}' AND discovered_at > ?1 ORDER BY discovered_at DESC", ENTITY_TYPE_REPO))?;
         let ids = stmt.query_map([&since], |row| row.get::<_, String>(0))?;
         for id in ids.take(5) {
             lines.push(format!("  - {}", id?));
@@ -97,10 +102,7 @@ pub fn generate_daily_digest(
 
     // 4. 总体统计
     let total: i64 = conn.query_row(
-        &format!(
-            "SELECT COUNT(*) FROM entities WHERE entity_type = '{}'",
-            crate::registry::ENTITY_TYPE_REPO
-        ),
+        &format!("SELECT COUNT(*) FROM entities WHERE entity_type = '{}'", ENTITY_TYPE_REPO),
         [],
         |row| row.get(0),
     )?;
@@ -117,10 +119,10 @@ pub fn generate_daily_digest(
     Ok(lines.join("\n"))
 }
 
-impl crate::clients::DigestClient for crate::storage::AppContext {
+impl DigestClient for AppContext {
     fn generate_daily_digest(&self) -> anyhow::Result<serde_json::Value> {
         let conn = self.conn()?;
-        let text = crate::digest::generate_daily_digest(&conn, &self.config, &self.i18n)?;
+        let text = generate_daily_digest(&conn, &self.config, &self.i18n)?;
         Ok(serde_json::json!({ "success": true, "digest": text }))
     }
 }
