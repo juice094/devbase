@@ -413,26 +413,6 @@ fn devbase_home() -> anyhow::Result<String> {
     Ok(path.to_string_lossy().to_string())
 }
 
-#[cfg(windows)]
-fn wait_with_timeout(
-    child: &mut std::process::Child,
-    timeout: Duration,
-) -> anyhow::Result<Option<std::process::ExitStatus>> {
-    let start = Instant::now();
-    loop {
-        match child.try_wait()? {
-            Some(status) => return Ok(Some(status)),
-            None => {
-                if start.elapsed() >= timeout {
-                    return Ok(None);
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-        }
-    }
-}
-
-#[cfg(unix)]
 fn wait_with_timeout(
     child: &mut std::process::Child,
     timeout: Duration,
