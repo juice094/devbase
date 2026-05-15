@@ -40,6 +40,7 @@ pub async fn run_health(
     };
 
     let conn = ctx.conn()?;
+    let greptime_client = crate::greptime::GreptimeClient::new(&ctx.config.greptime);
     if json {
         let output = health::run_json(
             &conn,
@@ -49,6 +50,7 @@ pub async fn run_health(
             ctx.config.cache.ttl_seconds,
             &ctx.i18n,
             &env_cache,
+            Some(&greptime_client),
         )
         .await?;
         println!("{}", serde_json::to_string_pretty(&output)?);
@@ -61,6 +63,7 @@ pub async fn run_health(
             ctx.config.cache.ttl_seconds,
             &ctx.i18n,
             &env_cache,
+            Some(&greptime_client),
         )
         .await?;
     }

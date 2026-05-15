@@ -63,6 +63,7 @@ pub fn compute_workspace_hash(root: &Path) -> anyhow::Result<String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_json(
     conn: &rusqlite::Connection,
     detail: bool,
@@ -71,6 +72,7 @@ pub async fn run_json(
     ttl_seconds: i64,
     i18n: &I18n,
     env_cache: &EnvVersionCache,
+    greptime_client: Option<&crate::greptime::GreptimeClient>,
 ) -> anyhow::Result<serde_json::Value> {
     let start = std::time::Instant::now();
     let (total_repos, dirty_repos, behind_upstream, no_upstream_count, repo_details) = {
@@ -133,6 +135,15 @@ pub async fn run_json(
                             if let Err(e) = reg_health::save_health(conn, &repo.id, &new_health) {
                                 tracing::warn!("Failed to save health for {}: {}", repo.id, e);
                             }
+                            if let Some(client) = greptime_client
+                                && let Err(e) = client.write_health(&repo.id, &new_health).await
+                            {
+                                tracing::warn!(
+                                    "GreptimeDB health write failed for {}: {}",
+                                    repo.id,
+                                    e
+                                );
+                            }
                             (status, ahead, behind)
                         }
                     }
@@ -152,6 +163,11 @@ pub async fn run_json(
                             crate::registry::health::save_health(conn, &repo.id, &new_health)
                         {
                             tracing::warn!("Failed to save health for {}: {}", repo.id, e);
+                        }
+                        if let Some(client) = greptime_client
+                            && let Err(e) = client.write_health(&repo.id, &new_health).await
+                        {
+                            tracing::warn!("GreptimeDB health write failed for {}: {}", repo.id, e);
                         }
                         (status, ahead, behind)
                     }
@@ -288,6 +304,7 @@ pub async fn run_json(
     }))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     conn: &rusqlite::Connection,
     detail: bool,
@@ -296,8 +313,10 @@ pub async fn run(
     ttl_seconds: i64,
     i18n: &I18n,
     env_cache: &EnvVersionCache,
+    greptime_client: Option<&crate::greptime::GreptimeClient>,
 ) -> anyhow::Result<()> {
-    let result = run_json(conn, detail, limit, page, ttl_seconds, i18n, env_cache).await?;
+    let result =
+        run_json(conn, detail, limit, page, ttl_seconds, i18n, env_cache, greptime_client).await?;
 
     let summary = result["summary"]
         .as_object()
@@ -471,7 +490,8 @@ impl HealthClient for AppContext {
             self.set_env_cache(fresh.clone())?;
             fresh
         };
-        run_json(&conn, detail, 0, 1, self.config.cache.ttl_seconds, &self.i18n, &env_cache).await
+        run_json(&conn, detail, 0, 1, self.config.cache.ttl_seconds, &self.i18n, &env_cache, None)
+            .await
     }
 }
 

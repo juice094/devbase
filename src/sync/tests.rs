@@ -299,7 +299,7 @@ async fn test_collect_tasks_default_mode_excludes_untagged() {
     // Default mode: only managed repo should be collected
     let (tasks, skipped) = tasks::collect_tasks(&conn, None, None, &[]).await.unwrap();
     assert_eq!(tasks.len(), 1);
-    assert_eq!(skipped, 1);
+    assert_eq!(skipped.len(), 1);
     assert_eq!(tasks[0].id, "managed");
 }
 

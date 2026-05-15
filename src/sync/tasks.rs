@@ -196,12 +196,19 @@ const MANAGED_TAGS: &[&str] = &[
     "managed",
 ];
 
+#[derive(Debug, Clone)]
+pub(super) struct SkippedRepoInfo {
+    pub id: String,
+    pub path: String,
+    pub reason: String,
+}
+
 pub(super) async fn collect_tasks(
     conn: &rusqlite::Connection,
     filter_tags: Option<&str>,
     exclude: Option<&str>,
     exclude_paths: &[String],
-) -> anyhow::Result<(Vec<RepoSyncTask>, usize)> {
+) -> anyhow::Result<(Vec<RepoSyncTask>, Vec<SkippedRepoInfo>)> {
     let repos = repo::list_repos(conn)?;
 
     let is_default_mode = filter_tags.is_none();
@@ -213,7 +220,7 @@ pub(super) async fn collect_tasks(
         .map(|e| e.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect())
         .unwrap_or_default();
 
-    let mut skipped_unmanaged = 0usize;
+    let mut skipped: Vec<SkippedRepoInfo> = Vec::new();
     let tasks: Vec<RepoSyncTask> = repos
         .into_iter()
         .filter(|repo| {
@@ -226,8 +233,19 @@ pub(super) async fn collect_tasks(
             let not_path_excluded =
                 !crate::scan::is_excluded_path(&repo.local_path, exclude_paths, None);
             let included = tag_match && not_excluded && not_path_excluded;
-            if is_default_mode && !included && !tag_match {
-                skipped_unmanaged += 1;
+            if !included {
+                let reason = if !tag_match {
+                    "unmanaged".to_string()
+                } else if !not_excluded {
+                    "excluded".to_string()
+                } else {
+                    "path_excluded".to_string()
+                };
+                skipped.push(SkippedRepoInfo {
+                    id: repo.id.clone(),
+                    path: repo.local_path.to_string_lossy().to_string(),
+                    reason,
+                });
             }
             included
         })
@@ -245,7 +263,7 @@ pub(super) async fn collect_tasks(
         })
         .collect();
 
-    Ok((tasks, skipped_unmanaged))
+    Ok((tasks, skipped))
 }
 
 pub(super) fn map_action(action: &str, _message: &str) -> String {
