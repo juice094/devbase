@@ -437,7 +437,6 @@ fn wait_with_timeout(
     child: &mut std::process::Child,
     timeout: Duration,
 ) -> anyhow::Result<Option<std::process::ExitStatus>> {
-    use std::os::unix::process::ExitStatusExt;
     let start = Instant::now();
     loop {
         match child.try_wait()? {
