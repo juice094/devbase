@@ -301,6 +301,78 @@ async fn test_collect_tasks_default_mode_excludes_untagged() {
     assert_eq!(tasks.len(), 1);
     assert_eq!(skipped.len(), 1);
     assert_eq!(tasks[0].id, "managed");
+    assert_eq!(skipped[0].id, "untagged");
+    assert_eq!(skipped[0].reason, "unmanaged");
+}
+
+#[tokio::test]
+async fn test_collect_tasks_exclude_reason() {
+    use crate::registry::{RemoteEntry, RepoEntry, WorkspaceRegistry};
+    use chrono::Utc;
+    use std::path::PathBuf;
+
+    let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+
+    let managed = RepoEntry {
+        id: "repo-a".to_string(),
+        local_path: PathBuf::from("/tmp/repo-a"),
+        tags: vec!["managed".to_string()],
+        language: Some("rust".to_string()),
+        discovered_at: Utc::now(),
+        workspace_type: "git".to_string(),
+        data_tier: "private".to_string(),
+        last_synced_at: None,
+        stars: None,
+        remotes: vec![RemoteEntry {
+            remote_name: "origin".to_string(),
+            upstream_url: Some("https://github.com/test/repo-a".to_string()),
+            default_branch: Some("main".to_string()),
+            last_sync: None,
+        }],
+    };
+    crate::registry::repo::save_repo(&mut conn, &managed).unwrap();
+
+    let (tasks, skipped) = tasks::collect_tasks(&conn, None, Some("repo-a"), &[]).await.unwrap();
+    assert_eq!(tasks.len(), 0);
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0].id, "repo-a");
+    assert_eq!(skipped[0].reason, "excluded");
+}
+
+#[tokio::test]
+async fn test_collect_tasks_path_excluded_reason() {
+    use crate::registry::{RemoteEntry, RepoEntry, WorkspaceRegistry};
+    use chrono::Utc;
+
+    let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+
+    let tmp = std::env::temp_dir();
+    let repo_path = tmp.join("node_modules").join("repo-a");
+    let managed = RepoEntry {
+        id: "repo-a".to_string(),
+        local_path: repo_path.clone(),
+        tags: vec!["managed".to_string()],
+        language: Some("rust".to_string()),
+        discovered_at: Utc::now(),
+        workspace_type: "git".to_string(),
+        data_tier: "private".to_string(),
+        last_synced_at: None,
+        stars: None,
+        remotes: vec![RemoteEntry {
+            remote_name: "origin".to_string(),
+            upstream_url: Some("https://github.com/test/repo-a".to_string()),
+            default_branch: Some("main".to_string()),
+            last_sync: None,
+        }],
+    };
+    crate::registry::repo::save_repo(&mut conn, &managed).unwrap();
+
+    let exclude_paths = vec![tmp.join("node_modules").to_string_lossy().to_string()];
+    let (tasks, skipped) = tasks::collect_tasks(&conn, None, None, &exclude_paths).await.unwrap();
+    assert_eq!(tasks.len(), 0);
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0].id, "repo-a");
+    assert_eq!(skipped[0].reason, "path_excluded");
 }
 
 #[tokio::test]
