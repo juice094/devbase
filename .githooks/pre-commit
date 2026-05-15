@@ -1,0 +1,13 @@
+#!/bin/sh
+# devbase pre-commit hook
+# Usage: git config core.hooksPath .githooks
+
+set -e
+
+echo "[pre-commit] cargo fmt --check"
+cargo fmt --check
+
+echo "[pre-commit] cargo clippy --all-targets -- -D warnings"
+cargo clippy --all-targets -- -D warnings
+
+echo "[pre-commit] checks passed"
