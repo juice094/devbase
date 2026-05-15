@@ -421,6 +421,34 @@ pub async fn run_json(
         }));
     }
 
+    // Special case: bare "repos" returns all registered repositories unfiltered.
+    if query_str.trim() == "repos" {
+        let repos = crate::registry::repo::list_repos(conn)?;
+        let results: Vec<serde_json::Value> = repos
+            .into_iter()
+            .map(|repo| {
+                let primary = repo.primary_remote();
+                serde_json::json!({
+                    "id": repo.id,
+                    "local_path": repo.local_path,
+                    "upstream_url": primary.and_then(|r| r.upstream_url.clone()),
+                    "tags": repo.tags.join(","),
+                    "default_branch": primary.and_then(|r| r.default_branch.clone()),
+                    "last_sync": primary.and_then(|r| r.last_sync.map(|dt| dt.to_rfc3339())),
+                    "language": repo.language,
+                    "match_reasons": ["all"]
+                })
+            })
+            .collect();
+        let count = results.len();
+        return Ok(serde_json::json!({
+            "success": true,
+            "count": count,
+            "expression": query_str,
+            "results": results
+        }));
+    }
+
     let conditions = parse_query(query_str);
 
     let repos = crate::registry::repo::list_repos(conn)?;
