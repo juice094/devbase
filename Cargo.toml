@@ -27,6 +27,7 @@ lang-rust = ["dep:tree-sitter-rust"]
 lang-python = ["dep:tree-sitter-python"]
 lang-js-ts = ["dep:tree-sitter-typescript"]
 lang-go = ["dep:tree-sitter-go"]
+greptimedb = ["dep:greptimedb-ingester"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -82,6 +83,7 @@ devbase-registry-relation = { path = "crates/devbase-registry-relation" }
 devbase-registry-call-graph = { path = "crates/devbase-registry-call-graph" }
 devbase-registry-dead-code = { path = "crates/devbase-registry-dead-code" }
 devbase-registry-code-symbols = { path = "crates/devbase-registry-code-symbols" }
+greptimedb-ingester = { version = "0.18", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

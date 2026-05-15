@@ -107,6 +107,8 @@ pub struct Config {
     pub arxiv: ArxivConfig,
     #[serde(default)]
     pub scan: ScanConfig,
+    #[serde(default)]
+    pub greptime: GreptimeConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -489,4 +491,46 @@ max_tokens = 400
         assert_eq!(cfg.general.language, "auto");
         assert_eq!(cfg.daemon.interval_seconds, 3600);
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GreptimeConfig {
+    #[serde(default = "default_greptime_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_greptime_endpoint")]
+    pub endpoint: String,
+    #[serde(default = "default_greptime_dbname")]
+    pub dbname: String,
+    #[serde(default = "default_greptime_username")]
+    pub username: String,
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+impl Default for GreptimeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_greptime_enabled(),
+            endpoint: default_greptime_endpoint(),
+            dbname: default_greptime_dbname(),
+            username: default_greptime_username(),
+            password: None,
+        }
+    }
+}
+
+fn default_greptime_enabled() -> bool {
+    false
+}
+
+fn default_greptime_endpoint() -> String {
+    "127.0.0.1:4001".to_string()
+}
+
+fn default_greptime_dbname() -> String {
+    "devbase".to_string()
+}
+
+fn default_greptime_username() -> String {
+    "root".to_string()
 }
