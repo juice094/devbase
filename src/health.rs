@@ -138,7 +138,11 @@ pub async fn run_json(
                             if let Some(client) = greptime_client
                                 && let Err(e) = client.write_health(&repo.id, &new_health).await
                             {
-                                tracing::warn!("GreptimeDB health write failed for {}: {}", repo.id, e);
+                                tracing::warn!(
+                                    "GreptimeDB health write failed for {}: {}",
+                                    repo.id,
+                                    e
+                                );
                             }
                             (status, ahead, behind)
                         }
@@ -311,7 +315,8 @@ pub async fn run(
     env_cache: &EnvVersionCache,
     greptime_client: Option<&crate::greptime::GreptimeClient>,
 ) -> anyhow::Result<()> {
-    let result = run_json(conn, detail, limit, page, ttl_seconds, i18n, env_cache, greptime_client).await?;
+    let result =
+        run_json(conn, detail, limit, page, ttl_seconds, i18n, env_cache, greptime_client).await?;
 
     let summary = result["summary"]
         .as_object()
@@ -485,7 +490,8 @@ impl HealthClient for AppContext {
             self.set_env_cache(fresh.clone())?;
             fresh
         };
-        run_json(&conn, detail, 0, 1, self.config.cache.ttl_seconds, &self.i18n, &env_cache, None).await
+        run_json(&conn, detail, 0, 1, self.config.cache.ttl_seconds, &self.i18n, &env_cache, None)
+            .await
     }
 }
 

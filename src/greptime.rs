@@ -28,13 +28,9 @@ impl GreptimeClient {
             if !config.enabled {
                 return Self { inner: None };
             }
-            let client =
-                greptimedb_ingester::client::Client::with_urls(&[&config.endpoint,
-                ]);
-            let db = greptimedb_ingester::database::Database::new_with_dbname(
-                &config.dbname,
-                client,
-            );
+            let client = greptimedb_ingester::client::Client::with_urls(&[&config.endpoint]);
+            let db =
+                greptimedb_ingester::database::Database::new_with_dbname(&config.dbname, client);
             Self { inner: Some(db) }
         }
         #[cfg(not(feature = "greptimedb"))]
@@ -53,6 +49,7 @@ impl GreptimeClient {
         #[cfg(feature = "greptimedb")]
         {
             if let Some(db) = &self.inner {
+                use greptimedb_ingester::ColumnDataType;
                 use greptimedb_ingester::api::v1::{
                     Row, RowInsertRequest, RowInsertRequests, Rows,
                 };
@@ -60,7 +57,6 @@ impl GreptimeClient {
                 use greptimedb_ingester::helpers::values::{
                     i64_value, string_value, timestamp_millisecond_value,
                 };
-                use greptimedb_ingester::ColumnDataType;
 
                 let schema = vec![
                     tag("repo_id", ColumnDataType::String),
@@ -112,11 +108,7 @@ impl GreptimeClient {
     }
 
     /// Write stars snapshot. No-op when feature is disabled.
-    pub async fn write_stars(
-        &self,
-        _repo_id: &str,
-        _stars: u64,
-    ) -> anyhow::Result<()> {
+    pub async fn write_stars(&self, _repo_id: &str, _stars: u64) -> anyhow::Result<()> {
         #[cfg(feature = "greptimedb")]
         {
             // Phase C: convert stars to GreptimeDB row batch.

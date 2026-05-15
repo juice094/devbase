@@ -38,8 +38,9 @@ pub async fn run_json(
     let config = crate::config::Config::load().unwrap_or_default();
     let all_repos = repo::list_repos(conn)?;
     let total_registered = all_repos.len();
-    let (tasks, skipped_unmanaged) =
+    let (tasks, skipped_repos) =
         collect_tasks(conn, filter_tags, exclude, &config.scan.exclude_paths).await?;
+    let skipped_unmanaged = skipped_repos.iter().filter(|s| s.reason == "unmanaged").count();
     if filter_tags.is_none() && tasks.is_empty() && total_registered > 0 {
         println!("{}", i18n.log.hint_unmanaged_repos.replace("{}", &total_registered.to_string()));
     }
@@ -93,10 +94,16 @@ pub async fn run_json(
         },
     );
 
+    let skipped_json: Vec<serde_json::Value> = skipped_repos
+        .into_iter()
+        .map(|s| serde_json::json!({"id": s.id, "path": s.path, "reason": s.reason}))
+        .collect();
+
     Ok(serde_json::json!({
         "success": true,
         "dry_run": dry_run,
         "skipped_unmanaged": skipped_unmanaged,
+        "skipped": skipped_json,
         "results": results_json
     }))
 }
@@ -112,8 +119,9 @@ pub async fn run(
     let config = crate::config::Config::load().unwrap_or_default();
     let all_repos = repo::list_repos(conn)?;
     let total_registered = all_repos.len();
-    let (tasks, skipped_unmanaged) =
+    let (tasks, skipped_repos) =
         collect_tasks(conn, filter_tags, exclude, &config.scan.exclude_paths).await?;
+    let skipped_unmanaged = skipped_repos.iter().filter(|s| s.reason == "unmanaged").count();
     if filter_tags.is_none() && tasks.is_empty() && total_registered > 0 {
         println!("{}", i18n.log.hint_unmanaged_repos.replace("{}", &total_registered.to_string()));
     }
@@ -180,13 +188,22 @@ pub async fn run(
 
     print_summary_table(&results_json, i18n);
 
-    if skipped_unmanaged > 0 {
-        println!(
-            "\n{}",
-            i18n.sync
-                .summary_unmanaged_skipped
-                .replace("{}", &skipped_unmanaged.to_string())
-        );
+    if !skipped_repos.is_empty() {
+        println!("\n  Skipped repositories ({}):", skipped_repos.len());
+        for s in skipped_repos.iter().take(10) {
+            println!("    [{}] {} (reason: {})", s.id, s.path, s.reason);
+        }
+        if skipped_repos.len() > 10 {
+            println!("    ... and {} more", skipped_repos.len() - 10);
+        }
+        if skipped_unmanaged > 0 {
+            println!(
+                "\n{}",
+                i18n.sync
+                    .summary_unmanaged_skipped
+                    .replace("{}", &skipped_unmanaged.to_string())
+            );
+        }
     }
 
     if dry_run {
