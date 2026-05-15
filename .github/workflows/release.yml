@@ -12,8 +12,28 @@ permissions:
   contents: write
 
 jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release if not exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${{ github.ref_name }}"
+          repo="${{ github.repository }}"
+          if ! gh release view "$version" --repo "$repo" > /dev/null 2>&1; then
+            gh release create "$version" \
+              --repo "$repo" \
+              --generate-notes \
+              --title "$version"
+          else
+            echo "Release $version already exists."
+          fi
+
   build-windows:
     name: Build Windows Release
+    needs: create-release
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -58,6 +78,7 @@ jobs:
 
   build-linux:
     name: Build Linux Release
+    needs: create-release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
