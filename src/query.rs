@@ -638,7 +638,7 @@ mod tests {
             local_path: PathBuf::from(path),
             tags: tags.iter().map(|t| t.to_string()).collect(),
             discovered_at: Utc::now(),
-            language: None,
+            language: Some("rust".to_string()),
             workspace_type: "git".to_string(),
             data_tier: "private".to_string(),
             last_synced_at: None,
@@ -775,5 +775,48 @@ mod tests {
         let notes = HashMap::new();
         let cond = Condition::Note("todo".to_string());
         assert!(eval_condition(&r, &cond, None, None, &notes).is_none());
+    }
+
+    #[tokio::test]
+    async fn test_run_json_repos_returns_all() {
+        use crate::registry::{RepoEntry, WorkspaceRegistry};
+        use chrono::Utc;
+        use std::path::PathBuf;
+
+        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
+
+        let repo1 = RepoEntry {
+            id: "repo1".to_string(),
+            local_path: PathBuf::from("/tmp/repo1"),
+            tags: vec![],
+            language: Some("rust".to_string()),
+            discovered_at: Utc::now(),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        };
+        let repo2 = RepoEntry {
+            id: "repo2".to_string(),
+            local_path: PathBuf::from("/tmp/repos/repo2"),
+            tags: vec![],
+            language: Some("rust".to_string()),
+            discovered_at: Utc::now(),
+            workspace_type: "git".to_string(),
+            data_tier: "private".to_string(),
+            last_synced_at: None,
+            stars: None,
+            remotes: vec![],
+        };
+        crate::registry::repo::save_repo(&mut conn, &repo1).unwrap();
+        crate::registry::repo::save_repo(&mut conn, &repo2).unwrap();
+
+        let config = crate::config::Config::default();
+        let result = run_json(&conn, "repos", 0, 1, &config).await.unwrap();
+
+        assert_eq!(result["count"].as_u64().unwrap(), 2);
+        let results = result["results"].as_array().unwrap();
+        assert_eq!(results.len(), 2);
     }
 }

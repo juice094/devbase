@@ -79,6 +79,10 @@ if (-not $diffFiles) {
         if ($file -notmatch '\.rs$') { continue }
         if ($file -match 'tests?/|_test\.rs$|benches/|examples/') { continue }
 
+        # Inline test modules (e.g. src/foo/tests.rs included via #[cfg(test)] mod tests;)
+        # have no #[cfg(test)] marker inside the file itself.
+        if ($file -match 'tests\.rs$') { continue }
+
         # Get test line ranges for the file
         $testRanges = Get-TestLineRanges $file
 

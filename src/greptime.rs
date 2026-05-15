@@ -116,3 +116,30 @@ impl GreptimeClient {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::HealthEntry;
+    use chrono::Utc;
+
+    #[tokio::test]
+    async fn test_write_health_noop_when_disabled() {
+        let config = GreptimeConfig::default(); // enabled = false
+        let client = GreptimeClient::new(&config);
+        let entry = HealthEntry {
+            status: "ok".to_string(),
+            ahead: 0,
+            behind: 0,
+            checked_at: Utc::now(),
+        };
+        assert!(client.write_health("repo1", &entry).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_write_stars_noop_when_disabled() {
+        let config = GreptimeConfig::default();
+        let client = GreptimeClient::new(&config);
+        assert!(client.write_stars("repo1", 42).await.is_ok());
+    }
+}
