@@ -218,40 +218,6 @@ pub fn update_repo_workspace_type(
     Ok(())
 }
 
-#[allow(dead_code)]
-pub fn update_repo_last_synced_at(
-    conn: &rusqlite::Connection,
-    repo_id: &str,
-    timestamp: DateTime<Utc>,
-) -> anyhow::Result<()> {
-    let now = chrono::Utc::now().to_rfc3339();
-    conn.execute(
-        "UPDATE entities SET last_synced_at = ?1, updated_at = ?2 WHERE id = ?3",
-        rusqlite::params![timestamp.to_rfc3339(), &now, repo_id],
-    )?;
-    Ok(())
-}
-
-#[allow(dead_code)]
-pub fn list_workspaces_by_tier(
-    conn: &rusqlite::Connection,
-    tier: &str,
-) -> anyhow::Result<Vec<RepoEntry>> {
-    let stmt = conn.prepare(&format!(
-        "SELECT e.id, e.local_path, (SELECT group_concat(tag, ',') FROM repo_tags WHERE repo_id = e.id) as tags,
-                e.language, e.discovered_at,
-                e.workspace_type, e.data_tier,
-                e.last_synced_at, e.stars,
-                rm.remote_name, rm.upstream_url, rm.default_branch, rm.last_sync
-         FROM entities e
-         LEFT JOIN repo_remotes rm ON e.id = rm.repo_id
-         WHERE e.entity_type = '{}' AND e.data_tier = ?1
-         ORDER BY e.id, rm.remote_name",
-        super::ENTITY_TYPE_REPO
-    ))?;
-    collect_repos_from_stmt(stmt, &[&tier])
-}
-
 /// Sync repo_tags sub-table back into entities.metadata.tags.
 pub fn sync_repo_tags_to_entity(conn: &rusqlite::Connection, repo_id: &str) -> anyhow::Result<()> {
     let tags: Option<String> = conn
@@ -335,6 +301,21 @@ mod tests {
     }
 
     #[test]
+    fn test_repo_is_managed() {
+        let mut repo = sample_repo("r", "/tmp/r");
+        assert!(!repo.is_managed(), "no tags = not managed");
+
+        repo.tags = vec!["discovered".to_string()];
+        assert!(!repo.is_managed(), "discovered is not a managed tag");
+
+        repo.tags = vec!["managed".to_string()];
+        assert!(repo.is_managed(), "managed tag marks as managed");
+
+        repo.tags = vec!["mirror".to_string(), "discovered".to_string()];
+        assert!(repo.is_managed(), "mirror is a managed tag");
+    }
+
+    #[test]
     fn test_list_repos_empty() {
         let conn = WorkspaceRegistry::init_in_memory().unwrap();
         let repos = list_repos(&conn).unwrap();
@@ -411,30 +392,6 @@ mod tests {
     }
 
     #[test]
-    fn test_list_workspaces_by_tier() {
-        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
-        let mut private = sample_repo("private_repo", "/tmp/p");
-        private.data_tier = "private".to_string();
-
-        let mut public = sample_repo("public_repo", "/tmp/pub");
-        public.data_tier = "public".to_string();
-
-        save_repo(&mut conn, &private).unwrap();
-        save_repo(&mut conn, &public).unwrap();
-
-        let private_repos = list_workspaces_by_tier(&conn, "private").unwrap();
-        assert_eq!(private_repos.len(), 1);
-        assert_eq!(private_repos[0].id, "private_repo");
-
-        let public_repos = list_workspaces_by_tier(&conn, "public").unwrap();
-        assert_eq!(public_repos.len(), 1);
-        assert_eq!(public_repos[0].id, "public_repo");
-
-        let none = list_workspaces_by_tier(&conn, "nonexistent").unwrap();
-        assert!(none.is_empty());
-    }
-
-    #[test]
     fn test_save_repo_with_stars() {
         let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
         let mut repo = sample_repo("starred", "/tmp/s");
@@ -476,18 +433,6 @@ mod tests {
         update_repo_workspace_type(&conn, "repo1", "openclaw").unwrap();
         let repos = list_repos(&conn).unwrap();
         assert_eq!(repos[0].workspace_type, "openclaw");
-    }
-
-    #[test]
-    fn test_update_repo_last_synced_at() {
-        let mut conn = WorkspaceRegistry::init_in_memory().unwrap();
-        let repo = sample_repo("repo1", "/tmp/repo1");
-        save_repo(&mut conn, &repo).unwrap();
-
-        let now = chrono::Utc::now();
-        update_repo_last_synced_at(&conn, "repo1", now).unwrap();
-        let repos = list_repos(&conn).unwrap();
-        assert!(repos[0].last_synced_at.is_some());
     }
 
     #[test]

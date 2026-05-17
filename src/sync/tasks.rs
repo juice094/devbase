@@ -184,17 +184,8 @@ pub(super) async fn execute_task(
     }
 }
 
-const MANAGED_TAGS: &[&str] = &[
-    "mirror",
-    "reference",
-    "third-party",
-    "collaborative",
-    "team",
-    "own-project",
-    "tool",
-    "active",
-    "managed",
-];
+// Managed-tag list lives in registry::MANAGED_TAGS so it is defined once
+// and documented as the single source of truth for the "managed" concept.
 
 #[derive(Debug, Clone)]
 pub(super) struct SkippedRepoInfo {
@@ -225,7 +216,7 @@ pub(super) async fn collect_tasks(
         .into_iter()
         .filter(|repo| {
             let tag_match = if is_default_mode {
-                repo.tags.iter().any(|t| MANAGED_TAGS.contains(&t.as_str()))
+                repo.is_managed()
             } else {
                 filter_list.iter().any(|f| repo.tags.contains(&f.to_string()))
             };

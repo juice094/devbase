@@ -35,6 +35,21 @@ pub struct RepoEntry {
     pub remotes: Vec<RemoteEntry>,
 }
 
+/// Tags that mark a repository as "managed" for sync purposes.
+/// Stored in the `repo_tags` table (not metadata) because tags are the
+/// queryable, filterable dimension — metadata is for opaque JSON.
+pub const MANAGED_TAGS: &[&str] = &[
+    "mirror",
+    "reference",
+    "third-party",
+    "collaborative",
+    "team",
+    "own-project",
+    "tool",
+    "active",
+    "managed",
+];
+
 impl RepoEntry {
     /// Return the 'origin' remote if present, otherwise the first remote.
     pub fn primary_remote(&self) -> Option<&RemoteEntry> {
@@ -42,6 +57,12 @@ impl RepoEntry {
             .iter()
             .find(|r| r.remote_name == "origin")
             .or_else(|| self.remotes.first())
+    }
+
+    /// Whether this repo is considered "managed" for sync/health automation.
+    /// Managed status is determined by the presence of any tag in [`MANAGED_TAGS`].
+    pub fn is_managed(&self) -> bool {
+        self.tags.iter().any(|t| MANAGED_TAGS.contains(&t.as_str()))
     }
 }
 

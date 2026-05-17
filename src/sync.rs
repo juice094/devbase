@@ -189,12 +189,23 @@ pub async fn run(
     print_summary_table(&results_json, i18n);
 
     if !skipped_repos.is_empty() {
+        let excluded = skipped_repos.iter().filter(|s| s.reason == "excluded").count();
+        let path_excluded = skipped_repos.iter().filter(|s| s.reason == "path_excluded").count();
         println!("\n  Skipped repositories ({}):", skipped_repos.len());
+        if skipped_unmanaged > 0 {
+            println!("    · unmanaged: {}", skipped_unmanaged);
+        }
+        if excluded > 0 {
+            println!("    · excluded: {}", excluded);
+        }
+        if path_excluded > 0 {
+            println!("    · path_excluded: {}", path_excluded);
+        }
         for s in skipped_repos.iter().take(10) {
-            println!("    [{}] {} (reason: {})", s.id, s.path, s.reason);
+            println!("      [{}] {} ({})", s.id, s.path, s.reason);
         }
         if skipped_repos.len() > 10 {
-            println!("    ... and {} more", skipped_repos.len() - 10);
+            println!("      ... and {} more", skipped_repos.len() - 10);
         }
         if skipped_unmanaged > 0 {
             println!(

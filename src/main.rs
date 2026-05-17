@@ -312,8 +312,29 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         cmd: LimitCommands,
     },
+    /// Repository management — list repos and check git health
+    Repo {
+        #[command(subcommand)]
+        cmd: RepoCommands,
+    },
     /// Show version information
     Version,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum RepoCommands {
+    /// List all registered repositories
+    List {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show git health status (ahead/behind/dirty/managed) for all repos
+    Status {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -623,6 +644,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Status { json } => {
             commands::simple::run_status(&mut ctx, json).await?;
+        }
+        Commands::Repo { cmd } => {
+            commands::simple::run_repo(&mut ctx, cmd).await?;
         }
         Commands::Sync {
             dry_run,
