@@ -155,4 +155,90 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
     }
+
+    #[test]
+    fn test_list_relations() {
+        let conn = in_memory();
+        conn.execute(
+            "INSERT INTO entities (id) VALUES ('a'), ('b'), ('c')",
+            [],
+        )
+        .unwrap();
+        super::save_relation(&conn, "a", "b", "depends_on", 0.9).unwrap();
+        super::save_relation(&conn, "a", "c", "uses", 0.7).unwrap();
+
+        // List all outgoing relations from 'a'
+        let all = super::list_relations(&conn, "a", None).unwrap();
+        assert_eq!(all.len(), 2);
+
+        // Filter by relation_type
+        let depends = super::list_relations(&conn, "a", Some("depends_on")).unwrap();
+        assert_eq!(depends.len(), 1);
+        assert_eq!(depends[0].0, "b"); // to_entity_id
+        assert_eq!(depends[0].1, "depends_on");
+        assert!((depends[0].2 - 0.9).abs() < f64::EPSILON);
+
+        // Empty filter string should behave like None
+        let empty_filter = super::list_relations(&conn, "a", Some("")).unwrap();
+        assert_eq!(empty_filter.len(), 2);
+
+        // Non-existent from_entity
+        let none = super::list_relations(&conn, "z", None).unwrap();
+        assert!(none.is_empty());
+    }
+
+    #[test]
+    fn test_find_related_entities_bidirectional() {
+        let conn = in_memory();
+        conn.execute(
+            "INSERT INTO entities (id) VALUES ('a'), ('b'), ('c')",
+            [],
+        )
+        .unwrap();
+        super::save_relation(&conn, "a", "b", "depends_on", 0.9).unwrap();
+        super::save_relation(&conn, "c", "a", "uses", 0.8).unwrap();
+
+        // Bidirectional query for 'a' should find both outgoing and incoming
+        let related = super::find_related_entities(&conn, "a", None).unwrap();
+        assert_eq!(related.len(), 2);
+
+        // Filter by type
+        let depends_only =
+            super::find_related_entities(&conn, "a", Some("depends_on")).unwrap();
+        assert_eq!(depends_only.len(), 1);
+        assert_eq!(depends_only[0].0, "a"); // from_entity_id
+        assert_eq!(depends_only[0].1, "b"); // to_entity_id
+
+        // Non-existent entity
+        let none = super::find_related_entities(&conn, "z", None).unwrap();
+        assert!(none.is_empty());
+    }
+
+    #[test]
+    fn test_save_relation_upsert() {
+        let conn = in_memory();
+        conn.execute("INSERT INTO entities (id) VALUES ('a'), ('b')", [])
+            .unwrap();
+        super::save_relation(&conn, "a", "b", "depends_on", 0.5).unwrap();
+        super::save_relation(&conn, "a", "b", "depends_on", 0.9).unwrap();
+
+        // Should only have one row with updated confidence
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM relations WHERE from_entity_id = 'a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let conf: f64 = conn
+            .query_row(
+                "SELECT confidence FROM relations WHERE from_entity_id = 'a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!((conf - 0.9).abs() < f64::EPSILON);
+    }
 }

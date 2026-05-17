@@ -231,4 +231,38 @@ mod tests {
         assert_eq!(history[0].0, 10);
         assert_eq!(history[1].0, 20);
     }
+
+    #[test]
+    fn test_get_health_batch() {
+        let conn = init_in_memory();
+        let h1 = HealthEntry {
+            status: "healthy".to_string(),
+            ahead: 1,
+            behind: 0,
+            checked_at: Utc::now(),
+        };
+        let h2 = HealthEntry {
+            status: "dirty".to_string(),
+            ahead: 0,
+            behind: 2,
+            checked_at: Utc::now(),
+        };
+        save_health(&conn, "repo-a", &h1).unwrap();
+        save_health(&conn, "repo-b", &h2).unwrap();
+
+        // Batch query both repos
+        let batch = get_health_batch(&conn, &["repo-a", "repo-b"]).unwrap();
+        assert_eq!(batch.len(), 2);
+        assert_eq!(batch["repo-a"].status, "healthy");
+        assert_eq!(batch["repo-b"].status, "dirty");
+
+        // Empty input returns empty map
+        let empty = get_health_batch(&conn, &[]).unwrap();
+        assert!(empty.is_empty());
+
+        // Partial miss skips missing repos without error
+        let partial = get_health_batch(&conn, &["repo-a", "repo-c"]).unwrap();
+        assert_eq!(partial.len(), 1);
+        assert_eq!(partial["repo-a"].status, "healthy");
+    }
 }
