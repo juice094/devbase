@@ -77,7 +77,7 @@ if (-not $diffFiles) {
     $newViolations = @()
     foreach ($file in $diffFiles -split "`n") {
         if ($file -notmatch '\.rs$') { continue }
-        if ($file -match 'tests?/|_test\.rs$|benches/|examples/') { continue }
+        if ($file -match 'tests?/|tests\.rs$|_test\.rs$|benches/|examples/') { continue }
 
         # Get test line ranges for the file
         $testRanges = Get-TestLineRanges $file
