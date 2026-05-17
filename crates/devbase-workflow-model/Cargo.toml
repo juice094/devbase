@@ -3,6 +3,7 @@ name = "devbase-workflow-model"
 version.workspace = true
 edition = "2024"
 authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+description = "Workflow definition types for the YAML-based workflow engine"
 license = "MIT"
 repository = "https://github.com/juice094/devbase"
 

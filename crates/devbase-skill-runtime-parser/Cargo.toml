@@ -3,6 +3,7 @@ name = "devbase-skill-runtime-parser"
 version.workspace = true
 edition = "2024"
 authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+description = "SKILL.md frontmatter parser for skill metadata extraction"
 license = "MIT"
 repository = "https://github.com/juice094/devbase"
 

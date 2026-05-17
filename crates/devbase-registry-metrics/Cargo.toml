@@ -3,6 +3,7 @@ name = "devbase-registry-metrics"
 version.workspace = true
 edition = "2024"
 authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+description = "Code metrics persistence and retrieval for devbase repositories"
 license = "MIT"
 repository = "https://github.com/juice094/devbase"
 

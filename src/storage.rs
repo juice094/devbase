@@ -140,8 +140,17 @@ impl AppContext {
         let path = storage.db_path()?;
         // 先执行 init_db_with 确保数据库已初始化并迁移
         let mut conn = WorkspaceRegistry::init_db_with(&*storage)?;
-        if let Err(e) = repair_tantivy_consistency(&mut conn) {
-            tracing::warn!("Startup Tantivy consistency check failed: {}", e);
+        match repair_tantivy_consistency(&mut conn) {
+            Ok(result) => {
+                if result.orphans > 0 || result.missing_from_index > 0 {
+                    tracing::info!(
+                        "Tantivy consistency repaired: {} orphans, {} missing from index",
+                        result.orphans,
+                        result.missing_from_index
+                    );
+                }
+            }
+            Err(e) => tracing::warn!("Startup Tantivy consistency check failed: {}", e),
         }
         if let Err(e) = sync_index_to_db(&conn) {
             tracing::warn!("Startup Tantivy/SQLite orphan sync failed: {}", e);
@@ -163,8 +172,17 @@ impl AppContext {
     pub fn with_storage(storage: Arc<dyn StorageBackend>) -> anyhow::Result<Self> {
         let path = storage.db_path()?;
         let mut conn = WorkspaceRegistry::init_db_with(&*storage)?;
-        if let Err(e) = repair_tantivy_consistency(&mut conn) {
-            tracing::warn!("Startup Tantivy consistency check failed: {}", e);
+        match repair_tantivy_consistency(&mut conn) {
+            Ok(result) => {
+                if result.orphans > 0 || result.missing_from_index > 0 {
+                    tracing::info!(
+                        "Tantivy consistency repaired: {} orphans, {} missing from index",
+                        result.orphans,
+                        result.missing_from_index
+                    );
+                }
+            }
+            Err(e) => tracing::warn!("Startup Tantivy consistency check failed: {}", e),
         }
         if let Err(e) = sync_index_to_db(&conn) {
             tracing::warn!("Startup Tantivy/SQLite orphan sync failed: {}", e);
@@ -227,7 +245,6 @@ impl AppContext {
 }
 
 /// Result of a startup consistency scan.
-#[allow(dead_code)]
 pub(crate) struct RepairResult {
     /// Tantivy documents whose repo no longer exists in SQLite.
     pub orphans: usize,

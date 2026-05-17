@@ -3,6 +3,7 @@ name = "devbase-registry-workspace"
 version.workspace = true
 edition = "2024"
 authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+description = "Workspace snapshot and oplog event types for the devbase registry"
 license = "MIT"
 repository = "https://github.com/juice094/devbase"
 

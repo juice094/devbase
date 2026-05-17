@@ -302,6 +302,8 @@ async fn test_tools_call_devkit_skill_discover() {
             }
         }
     });
+    // SAFETY: test-only env var mutation; test runner guarantees no concurrent
+    // reads of DEVBASE_MCP_ENABLE_DESTRUCTIVE in this process.
     unsafe {
         std::env::set_var("DEVBASE_MCP_ENABLE_DESTRUCTIVE", "1");
     }
@@ -321,6 +323,7 @@ async fn test_tools_call_devkit_skill_discover() {
 #[test]
 fn test_destructive_gate_disabled_by_default() {
     // Ensure the variable is unset
+    // SAFETY: test-only env var mutation; no concurrent reads of this var.
     unsafe {
         std::env::remove_var("DEVBASE_MCP_ENABLE_DESTRUCTIVE");
     }
@@ -332,12 +335,14 @@ fn test_destructive_gate_disabled_by_default() {
 
 #[test]
 fn test_destructive_gate_enabled() {
+    // SAFETY: test-only env var mutation; no concurrent reads of this var.
     unsafe {
         std::env::set_var("DEVBASE_MCP_ENABLE_DESTRUCTIVE", "1");
     }
     let result = crate::mcp::check_destructive_enabled();
     assert!(result.is_ok());
     // Cleanup
+    // SAFETY: test-only env var mutation; no concurrent reads of this var.
     unsafe {
         std::env::remove_var("DEVBASE_MCP_ENABLE_DESTRUCTIVE");
     }
