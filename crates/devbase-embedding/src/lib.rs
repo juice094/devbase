@@ -316,6 +316,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HuggingFace model download"]
     fn test_candle_provider_encode() {
         let provider = CandleProvider;
         let emb = provider.encode("hello world").unwrap();
@@ -326,6 +327,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HuggingFace model download"]
     fn test_provider_trait_consistency() {
         let provider = default_provider();
         let emb = provider.encode("hello world").unwrap();
