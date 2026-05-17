@@ -93,7 +93,16 @@ mod tests {
             ("repo-a", "src/lib.rs", "function", "helper", 5, 15, Some("fn helper()"), None),
             ("repo-a", "src/lib.rs", "struct", "Config", 20, 30, None, Some("derive(Debug)")),
             ("repo-a", "src/models.rs", "struct", "User", 1, 20, None, None),
-            ("repo-a", "src/models.rs", "function", "new_user", 25, 35, Some("fn new_user() -> User"), None),
+            (
+                "repo-a",
+                "src/models.rs",
+                "function",
+                "new_user",
+                25,
+                35,
+                Some("fn new_user() -> User"),
+                None,
+            ),
             ("repo-b", "src/main.rs", "function", "entry", 1, 5, None, None),
         ];
         for (repo, path, ty, name, start, end, sig, attrs) in symbols {
@@ -151,7 +160,8 @@ mod tests {
         let conn = init_in_memory();
         seed_symbols(&conn);
 
-        let results = query_code_symbols(&conn, "repo-a", None, Some("struct"), Some("lib"), 100).unwrap();
+        let results =
+            query_code_symbols(&conn, "repo-a", None, Some("struct"), Some("lib"), 100).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "Config");
     }
@@ -161,7 +171,8 @@ mod tests {
         let conn = init_in_memory();
         seed_symbols(&conn);
 
-        let results = query_code_symbols(&conn, "repo-a", Some("nonexistent"), None, None, 100).unwrap();
+        let results =
+            query_code_symbols(&conn, "repo-a", Some("nonexistent"), None, None, 100).unwrap();
         assert!(results.is_empty());
     }
 

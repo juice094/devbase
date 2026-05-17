@@ -419,6 +419,8 @@ mod tests {
                 symbol_type TEXT NOT NULL,
                 name TEXT NOT NULL,
                 line_start INTEGER,
+                line_end INTEGER,
+                signature TEXT,
                 PRIMARY KEY (repo_id, file_path, name)
             )",
             [],
@@ -445,10 +447,29 @@ mod tests {
 
         let (_results, metrics) =
             hybrid_search_symbols_with_metrics(&conn, "repo1", "func_500", None, 20).unwrap();
+
+        eprintln!(
+            "[perf] 1k docs keyword search latency: {}ms (profile: {})",
+            metrics.latency_ms,
+            if cfg!(debug_assertions) {
+                "debug"
+            } else {
+                "release"
+            }
+        );
+
+        // Thresholds differ by build profile to avoid debug-mode false positives.
+        let threshold_ms = if cfg!(debug_assertions) { 800 } else { 200 };
         assert!(
-            metrics.latency_ms < 200,
-            "keyword search latency {}ms exceeds 200ms threshold @ 1k docs",
-            metrics.latency_ms
+            metrics.latency_ms < threshold_ms,
+            "keyword search latency {}ms exceeds {}ms threshold @ 1k docs (profile: {})",
+            metrics.latency_ms,
+            threshold_ms,
+            if cfg!(debug_assertions) {
+                "debug"
+            } else {
+                "release"
+            }
         );
     }
 
@@ -463,6 +484,8 @@ mod tests {
                 symbol_type TEXT NOT NULL,
                 name TEXT NOT NULL,
                 line_start INTEGER,
+                line_end INTEGER,
+                signature TEXT,
                 PRIMARY KEY (repo_id, file_path, name)
             )",
             [],
@@ -489,10 +512,28 @@ mod tests {
 
         let (_results, metrics) =
             hybrid_search_symbols_with_metrics(&conn, "repo1", "func_5000", None, 20).unwrap();
+
+        eprintln!(
+            "[perf] 10k docs keyword search latency: {}ms (profile: {})",
+            metrics.latency_ms,
+            if cfg!(debug_assertions) {
+                "debug"
+            } else {
+                "release"
+            }
+        );
+
+        let threshold_ms = if cfg!(debug_assertions) { 2000 } else { 500 };
         assert!(
-            metrics.latency_ms < 500,
-            "keyword search latency {}ms exceeds 500ms threshold @ 10k docs",
-            metrics.latency_ms
+            metrics.latency_ms < threshold_ms,
+            "keyword search latency {}ms exceeds {}ms threshold @ 10k docs (profile: {})",
+            metrics.latency_ms,
+            threshold_ms,
+            if cfg!(debug_assertions) {
+                "debug"
+            } else {
+                "release"
+            }
         );
     }
 }

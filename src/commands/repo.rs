@@ -521,12 +521,20 @@ pub async fn run_repo_list(ctx: &mut crate::storage::AppContext, json: bool) -> 
             );
         }
         let managed_count = items.iter().filter(|i| i.managed).count();
-        println!("\nTotal: {} | Managed: {} | Unmanaged: {}", items.len(), managed_count, items.len() - managed_count);
+        println!(
+            "\nTotal: {} | Managed: {} | Unmanaged: {}",
+            items.len(),
+            managed_count,
+            items.len() - managed_count
+        );
     }
     Ok(())
 }
 
-pub async fn run_repo_status(ctx: &mut crate::storage::AppContext, json: bool) -> anyhow::Result<()> {
+pub async fn run_repo_status(
+    ctx: &mut crate::storage::AppContext,
+    json: bool,
+) -> anyhow::Result<()> {
     use crate::registry::{HealthEntry, health as reg_health};
     use chrono::Utc;
 
@@ -645,7 +653,8 @@ pub async fn run_repo_status(ctx: &mut crate::storage::AppContext, json: bool) -
             );
         }
         let managed_count = items.iter().filter(|i| i.managed).count();
-        let dirty_count = items.iter().filter(|i| i.status == "dirty" || i.status == "changed").count();
+        let dirty_count =
+            items.iter().filter(|i| i.status == "dirty" || i.status == "changed").count();
         let behind_count = items.iter().filter(|i| i.behind > 0).count();
         let ahead_count = items.iter().filter(|i| i.ahead > 0).count();
         println!(

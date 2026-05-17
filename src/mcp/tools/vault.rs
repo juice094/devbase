@@ -56,11 +56,8 @@ Returns: JSON array of matching notes. Each includes: id, title, path, and tags.
         let query_owned = query.to_string();
         let results = tokio::task::spawn_blocking(move || {
             let value = ctx.list_vault_notes()?;
-            let notes_arr = value
-                .get("notes")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
+            let notes_arr =
+                value.get("notes").and_then(|v| v.as_array()).cloned().unwrap_or_default();
             let keywords: Vec<&str> = query_owned.split_whitespace().collect();
 
             let filtered: Vec<_> = notes_arr
@@ -73,10 +70,7 @@ Returns: JSON array of matching notes. Each includes: id, title, path, and tags.
                         .get("tags")
                         .and_then(|v| v.as_array())
                         .map(|arr| {
-                            arr.iter()
-                                .filter_map(|t| t.as_str())
-                                .collect::<Vec<_>>()
-                                .join(",")
+                            arr.iter().filter_map(|t| t.as_str()).collect::<Vec<_>>().join(",")
                         })
                         .unwrap_or_default();
                     let content = ctx

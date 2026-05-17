@@ -124,10 +124,7 @@ mod tests {
         let conn = init_in_memory();
         seed_edges(&conn);
 
-        let results = query_call_edges(
-            &conn, "repo-a", None, Some("main"), None, 100,
-        )
-        .unwrap();
+        let results = query_call_edges(&conn, "repo-a", None, Some("main"), None, 100).unwrap();
         assert_eq!(results.len(), 2);
         assert!(results.iter().all(|e| e.caller_symbol == "main"));
     }
@@ -137,10 +134,7 @@ mod tests {
         let conn = init_in_memory();
         seed_edges(&conn);
 
-        let results = query_call_edges(
-            &conn, "repo-a", None, None, Some("lib"), 100,
-        )
-        .unwrap();
+        let results = query_call_edges(&conn, "repo-a", None, None, Some("lib"), 100).unwrap();
         assert_eq!(results.len(), 2);
         assert!(results.iter().all(|e| e.caller_file.contains("lib")));
     }
@@ -150,10 +144,8 @@ mod tests {
         let conn = init_in_memory();
         seed_edges(&conn);
 
-        let results = query_call_edges(
-            &conn, "repo-a", Some("util"), Some("helper"), None, 100,
-        )
-        .unwrap();
+        let results =
+            query_call_edges(&conn, "repo-a", Some("util"), Some("helper"), None, 100).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].caller_symbol, "helper");
         assert_eq!(results[0].callee_name, "util");
@@ -164,10 +156,8 @@ mod tests {
         let conn = init_in_memory();
         seed_edges(&conn);
 
-        let results = query_call_edges(
-            &conn, "repo-a", Some("nonexistent"), None, None, 100,
-        )
-        .unwrap();
+        let results =
+            query_call_edges(&conn, "repo-a", Some("nonexistent"), None, None, 100).unwrap();
         assert!(results.is_empty());
     }
 

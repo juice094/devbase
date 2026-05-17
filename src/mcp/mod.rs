@@ -453,12 +453,7 @@ impl McpTool for McpToolEnum {
 ///
 /// Path: `%LOCALAPPDATA%/devbase/mcp-oplog.ndjson`
 /// Format: newline-delimited JSON (NDJSON)
-fn append_mcp_oplog(
-    tool_name: &str,
-    duration_ms: u128,
-    success: bool,
-    error_type: Option<&str>,
-) {
+fn append_mcp_oplog(tool_name: &str, duration_ms: u128, success: bool, error_type: Option<&str>) {
     let entry = serde_json::json!({
         "timestamp": chrono::Utc::now().to_rfc3339(),
         "tool": tool_name,
@@ -469,10 +464,7 @@ fn append_mcp_oplog(
 
     if let Some(data_dir) = dirs::data_local_dir() {
         let log_path = data_dir.join("devbase").join("mcp-oplog.ndjson");
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log_path)
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path)
         {
             use std::io::Write;
             if let Err(e) = writeln!(file, "{}", entry) {
@@ -575,7 +567,12 @@ impl McpServer {
                                 }))
                             }
                             Err(e) => {
-                                append_mcp_oplog(name, start.elapsed().as_millis(), false, Some("invoke_error"));
+                                append_mcp_oplog(
+                                    name,
+                                    start.elapsed().as_millis(),
+                                    false,
+                                    Some("invoke_error"),
+                                );
                                 let payload =
                                     serde_json::json!({ "success": false, "error": e.to_string() });
                                 let text = serde_json::to_string(&payload)?;
@@ -600,7 +597,12 @@ impl McpServer {
                                     .get("success")
                                     .and_then(|v: &serde_json::Value| v.as_bool())
                                     .unwrap_or(true);
-                                append_mcp_oplog(name, start.elapsed().as_millis(), !is_error, None);
+                                append_mcp_oplog(
+                                    name,
+                                    start.elapsed().as_millis(),
+                                    !is_error,
+                                    None,
+                                );
                                 let content = serde_json::json!({
                                     "type": "text",
                                     "text": text
@@ -615,7 +617,12 @@ impl McpServer {
                                 }))
                             }
                             Err(e) => {
-                                append_mcp_oplog(name, start.elapsed().as_millis(), false, Some("invoke_error"));
+                                append_mcp_oplog(
+                                    name,
+                                    start.elapsed().as_millis(),
+                                    false,
+                                    Some("invoke_error"),
+                                );
                                 let payload =
                                     serde_json::json!({ "success": false, "error": e.to_string() });
                                 let text = serde_json::to_string(&payload)?;

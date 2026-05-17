@@ -159,11 +159,8 @@ mod tests {
     #[test]
     fn test_list_relations() {
         let conn = in_memory();
-        conn.execute(
-            "INSERT INTO entities (id) VALUES ('a'), ('b'), ('c')",
-            [],
-        )
-        .unwrap();
+        conn.execute("INSERT INTO entities (id) VALUES ('a'), ('b'), ('c')", [])
+            .unwrap();
         super::save_relation(&conn, "a", "b", "depends_on", 0.9).unwrap();
         super::save_relation(&conn, "a", "c", "uses", 0.7).unwrap();
 
@@ -190,11 +187,8 @@ mod tests {
     #[test]
     fn test_find_related_entities_bidirectional() {
         let conn = in_memory();
-        conn.execute(
-            "INSERT INTO entities (id) VALUES ('a'), ('b'), ('c')",
-            [],
-        )
-        .unwrap();
+        conn.execute("INSERT INTO entities (id) VALUES ('a'), ('b'), ('c')", [])
+            .unwrap();
         super::save_relation(&conn, "a", "b", "depends_on", 0.9).unwrap();
         super::save_relation(&conn, "c", "a", "uses", 0.8).unwrap();
 
@@ -203,8 +197,7 @@ mod tests {
         assert_eq!(related.len(), 2);
 
         // Filter by type
-        let depends_only =
-            super::find_related_entities(&conn, "a", Some("depends_on")).unwrap();
+        let depends_only = super::find_related_entities(&conn, "a", Some("depends_on")).unwrap();
         assert_eq!(depends_only.len(), 1);
         assert_eq!(depends_only[0].0, "a"); // from_entity_id
         assert_eq!(depends_only[0].1, "b"); // to_entity_id
@@ -217,27 +210,22 @@ mod tests {
     #[test]
     fn test_save_relation_upsert() {
         let conn = in_memory();
-        conn.execute("INSERT INTO entities (id) VALUES ('a'), ('b')", [])
-            .unwrap();
+        conn.execute("INSERT INTO entities (id) VALUES ('a'), ('b')", []).unwrap();
         super::save_relation(&conn, "a", "b", "depends_on", 0.5).unwrap();
         super::save_relation(&conn, "a", "b", "depends_on", 0.9).unwrap();
 
         // Should only have one row with updated confidence
         let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM relations WHERE from_entity_id = 'a'",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT COUNT(*) FROM relations WHERE from_entity_id = 'a'", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(count, 1);
 
         let conf: f64 = conn
-            .query_row(
-                "SELECT confidence FROM relations WHERE from_entity_id = 'a'",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT confidence FROM relations WHERE from_entity_id = 'a'", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert!((conf - 0.9).abs() < f64::EPSILON);
     }

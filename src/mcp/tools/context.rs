@@ -85,7 +85,7 @@ Returns: JSON object with:
                 let repo_json = matched_repo.as_ref().map(|r| {
                     serde_json::json!({
                         "id": r.id,
-                        "path": r.local_path,
+                        "path": sanitize_path(&r.local_path.to_string_lossy()),
                         "language": r.language,
                         "tags": r.tags,
                         "stars": r.stars,
@@ -144,9 +144,7 @@ Returns: JSON object with:
                             modules.push(serde_json::json!({
                                 "name": name,
                                 "kind": kind,
-                                // TODO(veto-audit-2026-04-26): RF-7 路径隐私 — path 可能为绝对路径，泄露用户目录结构。
-                                // 修复: 将 dirs::home_dir() 前缀替换为 ~，或返回相对路径。
-                                "path": path,
+                                "path": sanitize_path(&path),
                             }));
                         }
                     }
@@ -162,7 +160,7 @@ Returns: JSON object with:
                                     symbol_names.insert(name.clone());
                                     symbols.push(serde_json::json!({
                                         "name": name,
-                                        "file": path,
+                                        "file": sanitize_path(&path),
                                         "line": line,
                                         "relevance_score": score,
                                     }));
@@ -180,7 +178,7 @@ Returns: JSON object with:
                         let rows = stmt.query_map([rid], |row| {
                             Ok(serde_json::json!({
                                 "name": row.get::<_, String>(0)?,
-                                "file": row.get::<_, String>(1)?,
+                                "file": sanitize_path(&row.get::<_, String>(1)?),
                                 "type": row.get::<_, String>(2)?,
                                 "line": row.get::<_, Option<i64>>(3)?,
                                 "signature": row.get::<_, Option<String>>(4)?,
@@ -238,7 +236,7 @@ Returns: JSON object with:
                     )?;
                     let rows = stmt.query_map([rid], |row| {
                         Ok(serde_json::json!({
-                            "caller_file": row.get::<_, String>(0)?,
+                            "caller_file": sanitize_path(&row.get::<_, String>(0)?),
                             "caller": row.get::<_, String>(1)?,
                             "callee": row.get::<_, String>(2)?,
                         }))
@@ -383,12 +381,12 @@ Returns: JSON object with:
                                         if meta.is_file() {
                                             assets.push(serde_json::json!({
                                                 "name": name,
-                                                "path": entry.path(),
+                                                "path": sanitize_path(&entry.path().to_string_lossy()),
                                             }));
                                         } else if meta.is_dir() {
                                             assets.push(serde_json::json!({
                                                 "name": name,
-                                                "path": entry.path(),
+                                                "path": sanitize_path(&entry.path().to_string_lossy()),
                                                 "type": "folder",
                                             }));
                                         }
@@ -437,6 +435,21 @@ Returns: JSON object with:
             "hot_files": hot_files,
         }))
     }
+}
+
+/// Replace the user's home directory prefix with `~` to avoid leaking
+/// absolute paths in MCP tool output (RF-7). Normalizes separators to `/`.
+pub(crate) fn sanitize_path(path: &str) -> String {
+    if let Some(home) = dirs::home_dir() {
+        let home_str = home.to_string_lossy();
+        // Normalize home to use forward slashes for matching
+        let home_normalized = home_str.replace('\\', "/");
+        let path_normalized = path.replace('\\', "/");
+        if let Some(rest) = path_normalized.strip_prefix(&home_normalized) {
+            return format!("~{}", rest);
+        }
+    }
+    path.replace('\\', "/")
 }
 
 pub(crate) fn collect_recent_commits(repo_path: &std::path::Path, limit: usize) -> Vec<String> {
@@ -661,5 +674,41 @@ mod tests {
         assert!(hot.is_empty());
         let commits = collect_recent_commits(tmp.path(), 10);
         assert!(commits.is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // RF-7 path privacy tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_sanitize_path_replaces_home_prefix() {
+        let home = dirs::home_dir().unwrap();
+        let home_str = home.to_string_lossy().to_string();
+        let input = format!("{}\\dev\\project", home_str);
+        let result = sanitize_path(&input);
+        assert_eq!(result, "~/dev/project");
+    }
+
+    #[test]
+    fn test_sanitize_path_normalizes_separators() {
+        let result = sanitize_path("src\\main.rs");
+        assert_eq!(result, "src/main.rs");
+    }
+
+    #[test]
+    fn test_sanitize_path_leaves_relative_unchanged() {
+        let result = sanitize_path("src/main.rs");
+        assert_eq!(result, "src/main.rs");
+    }
+
+    #[test]
+    fn test_sanitize_path_non_home_absolute() {
+        let result = sanitize_path("/tmp/foo");
+        assert_eq!(result, "/tmp/foo");
+    }
+
+    #[test]
+    fn test_sanitize_path_empty() {
+        assert_eq!(sanitize_path(""), "");
     }
 }

@@ -82,7 +82,8 @@ fn latency_percentiles(sorted: &[u64]) -> LatencyStats {
         return LatencyStats::default();
     }
     let n = sorted.len();
-    let idx = |p: f64| -> usize { ((n as f64 * p / 100.0).ceil() as usize).saturating_sub(1).min(n - 1) };
+    let idx =
+        |p: f64| -> usize { ((n as f64 * p / 100.0).ceil() as usize).saturating_sub(1).min(n - 1) };
     LatencyStats {
         p50_ms: sorted[idx(50.0)],
         p95_ms: sorted[idx(95.0)],
@@ -232,8 +233,8 @@ Returns:
 
         if analytics {
             // MCP oplog analytics path
-            let data_dir = dirs::data_local_dir()
-                .context("Failed to determine local data directory")?;
+            let data_dir =
+                dirs::data_local_dir().context("Failed to determine local data directory")?;
             let log_path = data_dir.join("devbase").join("mcp-oplog.ndjson");
 
             if !log_path.exists() {
@@ -368,24 +369,20 @@ mod tests {
         assert_eq!(report.total_calls, 3);
         assert_eq!(report.success_count, 2);
         assert_eq!(report.error_count, 1);
-        assert!((report.success_rate - 66.6667).abs() < 0.01, "success_rate = {}", report.success_rate);
+        assert!(
+            (report.success_rate - 66.6667).abs() < 0.01,
+            "success_rate = {}",
+            report.success_rate
+        );
         assert_eq!(report.unique_tools, 2);
 
-        let health = report
-            .tool_breakdown
-            .iter()
-            .find(|t| t.tool == "devkit_health")
-            .unwrap();
+        let health = report.tool_breakdown.iter().find(|t| t.tool == "devkit_health").unwrap();
         assert_eq!(health.calls, 2);
         assert_eq!(health.success, 2);
         // Nearest-rank ceil-based: n=2, p=50 -> idx=0 -> sorted[0]=100
         assert_eq!(health.p50_latency_ms, 100);
 
-        let sync = report
-            .tool_breakdown
-            .iter()
-            .find(|t| t.tool == "devkit_sync")
-            .unwrap();
+        let sync = report.tool_breakdown.iter().find(|t| t.tool == "devkit_sync").unwrap();
         assert_eq!(sync.calls, 1);
         assert_eq!(sync.errors, 1);
         assert_eq!(sync.p95_latency_ms, 500);

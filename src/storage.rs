@@ -11,7 +11,7 @@
 use crate::config::Config;
 use crate::i18n::{I18n, from_language};
 use crate::registry::{ENTITY_TYPE_REPO, WorkspaceRegistry};
-use crate::search::{list_indexed_repo_ids_at, sync_index_to_db};
+use crate::search::list_indexed_repo_ids_at;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use std::path::PathBuf;
@@ -140,7 +140,8 @@ impl AppContext {
         let path = storage.db_path()?;
         // 先执行 init_db_with 确保数据库已初始化并迁移
         let mut conn = WorkspaceRegistry::init_db_with(&*storage)?;
-        match repair_tantivy_consistency(&mut conn) {
+        let index_path = storage.index_path()?;
+        match repair_tantivy_consistency_at(&index_path, &mut conn) {
             Ok(result) => {
                 if result.orphans > 0 || result.missing_from_index > 0 {
                     tracing::info!(
@@ -152,7 +153,7 @@ impl AppContext {
             }
             Err(e) => tracing::warn!("Startup Tantivy consistency check failed: {}", e),
         }
-        if let Err(e) = sync_index_to_db(&conn) {
+        if let Err(e) = crate::search::sync_index_to_db_at(&index_path, &conn) {
             tracing::warn!("Startup Tantivy/SQLite orphan sync failed: {}", e);
         }
         drop(conn);
@@ -172,7 +173,8 @@ impl AppContext {
     pub fn with_storage(storage: Arc<dyn StorageBackend>) -> anyhow::Result<Self> {
         let path = storage.db_path()?;
         let mut conn = WorkspaceRegistry::init_db_with(&*storage)?;
-        match repair_tantivy_consistency(&mut conn) {
+        let index_path = storage.index_path()?;
+        match repair_tantivy_consistency_at(&index_path, &mut conn) {
             Ok(result) => {
                 if result.orphans > 0 || result.missing_from_index > 0 {
                     tracing::info!(
@@ -184,7 +186,7 @@ impl AppContext {
             }
             Err(e) => tracing::warn!("Startup Tantivy consistency check failed: {}", e),
         }
-        if let Err(e) = sync_index_to_db(&conn) {
+        if let Err(e) = crate::search::sync_index_to_db_at(&index_path, &conn) {
             tracing::warn!("Startup Tantivy/SQLite orphan sync failed: {}", e);
         }
         drop(conn);
@@ -252,47 +254,29 @@ pub(crate) struct RepairResult {
     pub missing_from_index: usize,
 }
 
-/// Startup consistency scan: detect Tantivy documents whose repo no longer exists in SQLite.
-/// Also detects SQLite repos that are missing from the Tantivy index.
-/// Inserts orphan records into `orphan_tantivy_docs` for lazy cleanup during next index.
-pub(crate) fn repair_tantivy_consistency(
-    conn: &mut rusqlite::Connection,
-) -> anyhow::Result<RepairResult> {
-    let backend = DefaultStorageBackend {};
-    let index_path = match backend.index_path() {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::warn!("Failed to resolve index path: {}", e);
-            return Ok(RepairResult {
-                orphans: 0,
-                missing_from_index: 0,
-            });
-        }
-    };
-    repair_tantivy_consistency_at(&index_path, conn)
-}
-
 /// Repair Tantivy consistency at an explicit index path, bypassing global storage backend.
 pub(crate) fn repair_tantivy_consistency_at(
     index_path: &std::path::Path,
     conn: &mut rusqlite::Connection,
 ) -> anyhow::Result<RepairResult> {
+    // Load SQLite IDs first — this side never fails in normal operation.
+    let sqlite_ids: std::collections::HashSet<String> = {
+        let mut stmt = conn.prepare("SELECT id FROM entities WHERE entity_type = ?1")?;
+        let rows = stmt.query_map([ENTITY_TYPE_REPO], |row| row.get::<_, String>(0))?;
+        rows.filter_map(Result::ok).collect()
+    };
+
     let tantivy_ids: std::collections::HashSet<String> = match list_indexed_repo_ids_at(index_path)
     {
         Ok(ids) => ids.into_iter().collect(),
         Err(e) => {
             tracing::warn!("Failed to list Tantivy repo IDs: {}", e);
+            // When Tantivy is unreadable, every SQLite repo is potentially missing.
             return Ok(RepairResult {
                 orphans: 0,
-                missing_from_index: 0,
+                missing_from_index: sqlite_ids.len(),
             });
         }
-    };
-
-    let sqlite_ids: std::collections::HashSet<String> = {
-        let mut stmt = conn.prepare("SELECT id FROM entities WHERE entity_type = ?1")?;
-        let rows = stmt.query_map([ENTITY_TYPE_REPO], |row| row.get::<_, String>(0))?;
-        rows.filter_map(Result::ok).collect()
     };
 
     // Clear stale orphans: repos that are now present in SQLite but still marked orphan
@@ -449,5 +433,63 @@ mod tests {
             })
             .unwrap_or(false);
         assert!(!orphan_still_exists);
+    }
+
+    /// Fresh workspace first startup: empty index + empty DB should be consistent.
+    #[test]
+    fn test_repair_tantivy_consistency_fresh_workspace() {
+        let backend = TempStorageBackend::new();
+        let index_path = backend.index_path().unwrap();
+        let db_path = backend.db_path().unwrap();
+
+        let mut conn = WorkspaceRegistry::init_db_at(&db_path).unwrap();
+
+        let result = repair_tantivy_consistency_at(&index_path, &mut conn).unwrap();
+        assert_eq!(result.orphans, 0);
+        assert_eq!(result.missing_from_index, 0);
+    }
+
+    /// First startup with pre-populated DB but empty index: should detect missing repos.
+    #[test]
+    fn test_repair_tantivy_consistency_empty_index_with_db_repos() {
+        let backend = TempStorageBackend::new();
+        let index_path = backend.index_path().unwrap();
+        let db_path = backend.db_path().unwrap();
+
+        let mut conn = WorkspaceRegistry::init_db_at(&db_path).unwrap();
+
+        // Pre-populate DB with 2 repos before index exists
+        conn.execute(
+            "INSERT INTO entities (id, entity_type, name, local_path, metadata, created_at, updated_at)
+             VALUES ('repo-a', 'repo', 'Repo A', '/tmp/a', '{}', datetime('now'), datetime('now')),
+                    ('repo-b', 'repo', 'Repo B', '/tmp/b', '{}', datetime('now'), datetime('now'))",
+            [],
+        ).unwrap();
+
+        let result = repair_tantivy_consistency_at(&index_path, &mut conn).unwrap();
+        assert_eq!(result.orphans, 0);
+        assert_eq!(result.missing_from_index, 2);
+    }
+
+    /// AppContext::with_storage must use TempStorageBackend's index path, not the global default.
+    #[test]
+    fn test_app_context_uses_correct_index_path() {
+        let storage = Arc::new(TempStorageBackend::new());
+        let expected_index = storage.index_path().unwrap();
+
+        // AppContext creation triggers consistency check + sync against the temp index path
+        let ctx = AppContext::with_storage(storage.clone()).unwrap();
+
+        // The index directory should have been created at the temp path, not the default path
+        assert!(expected_index.exists(), "index dir should exist at temp path");
+
+        // Verify we can open the index that was created
+        let (_index, _reader) = crate::search::init_index_at(&expected_index).unwrap();
+
+        // Verify DB is accessible
+        let conn = ctx.conn().unwrap();
+        let count: i64 =
+            conn.query_row("SELECT COUNT(*) FROM entities", [], |row| row.get(0)).unwrap();
+        assert_eq!(count, 0); // fresh workspace, no repos yet
     }
 }

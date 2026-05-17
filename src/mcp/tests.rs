@@ -554,16 +554,41 @@ fn seed_scenario_data(ctx: &crate::storage::AppContext) {
         conn.execute(
             "INSERT INTO repo_tags (repo_id, tag) VALUES (?1, ?2)",
             rusqlite::params!["scenario-repo", tag],
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     // 3. Code symbols: 10 entries, mix of functions and structs.
     //    Include auth-related signatures so "authentication flow" keyword search hits.
     let symbols: [(&str, &str, &str, i64, Option<&str>); 10] = [
-        ("src/auth.rs", "function", "authenticate_user", 10, Some("pub fn authenticate_user(token: &str) // authentication flow handler")),
-        ("src/auth.rs", "function", "validate_token", 20, Some("fn validate_token(t: &str) -> bool")),
-        ("src/lib.rs", "function", "handle_error", 30, Some("pub fn handle_error(e: Error)")),
-        ("src/lib.rs", "function", "parse_config", 40, Some("fn parse_config() -> Config")),
+        (
+            "src/auth.rs",
+            "function",
+            "authenticate_user",
+            10,
+            Some("pub fn authenticate_user(token: &str) // authentication flow handler"),
+        ),
+        (
+            "src/auth.rs",
+            "function",
+            "validate_token",
+            20,
+            Some("fn validate_token(t: &str) -> bool"),
+        ),
+        (
+            "src/lib.rs",
+            "function",
+            "handle_error",
+            30,
+            Some("pub fn handle_error(e: Error)"),
+        ),
+        (
+            "src/lib.rs",
+            "function",
+            "parse_config",
+            40,
+            Some("fn parse_config() -> Config"),
+        ),
         ("src/main.rs", "function", "main", 1, Some("fn main()")),
         ("src/lib.rs", "struct", "Config", 5, None),
         ("src/models.rs", "struct", "User", 10, None),
@@ -627,14 +652,13 @@ async fn test_scenario_one_project_onboarding() {
 
     // Tool 3: devkit_query_repos
     let query_tool = DevkitQueryReposTool;
-    let query_result = query_tool
-        .invoke(serde_json::json!({}), &mut ctx)
-        .await
-        .unwrap();
+    let query_result = query_tool.invoke(serde_json::json!({}), &mut ctx).await.unwrap();
     assert_eq!(query_result.get("success").unwrap(), true);
     let repos = query_result.get("repos").unwrap().as_array().unwrap();
     assert!(
-        repos.iter().any(|r| r.get("id").and_then(|v| v.as_str()) == Some("scenario-repo")),
+        repos
+            .iter()
+            .any(|r| r.get("id").and_then(|v| v.as_str()) == Some("scenario-repo")),
         "scenario-repo should be listed in query_repos"
     );
 }
@@ -660,7 +684,8 @@ async fn test_scenario_two_semantic_exploration() {
         !symbols.is_empty(),
         "hybrid_search should return at least 1 auth-related symbol via keyword fallback"
     );
-    let names: Vec<&str> = symbols.iter().filter_map(|s| s.get("name").and_then(|v| v.as_str())).collect();
+    let names: Vec<&str> =
+        symbols.iter().filter_map(|s| s.get("name").and_then(|v| v.as_str())).collect();
     assert!(
         names.contains(&"authenticate_user"),
         "authenticate_user should appear in hybrid_search results for 'authentication flow'. Got: {:?}",
@@ -689,12 +714,11 @@ async fn test_scenario_two_semantic_exploration() {
         .unwrap();
     assert_eq!(vault_result.get("success").unwrap(), true);
     let notes = vault_result.get("notes").unwrap().as_array().unwrap();
+    assert!(!notes.is_empty(), "vault_search should find the auth-design note");
     assert!(
-        !notes.is_empty(),
-        "vault_search should find the auth-design note"
-    );
-    assert!(
-        notes.iter().any(|n| n.get("title").and_then(|v| v.as_str()) == Some("Authentication Flow Design")),
+        notes
+            .iter()
+            .any(|n| n.get("title").and_then(|v| v.as_str()) == Some("Authentication Flow Design")),
         "vault_search should return auth-design note"
     );
 }
