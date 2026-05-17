@@ -796,7 +796,8 @@ mod tests {
     }
 
     #[test]
-    fn test_is_excluded_path_sync_context() {
+    #[cfg(windows)]
+    fn test_is_excluded_path_sync_context_windows() {
         // When root is None, only absolute exclude paths should be effective
         let repo = std::path::Path::new("C:/dev/clarity");
         assert!(is_excluded_path(repo, &["C:/dev/clarity".to_string()], None));

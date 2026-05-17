@@ -593,8 +593,14 @@ mod tests {
     fn test_resolve_vault_path_absolute_blocked() {
         let root = vault_root();
         assert!(resolve_vault_path("/etc/passwd", &root).is_err());
-        assert!(resolve_vault_path("C:\\Windows\\System32\\drivers\\etc\\hosts", &root).is_err());
         assert!(resolve_vault_path("\\\\server\\share\\file.txt", &root).is_err());
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_resolve_vault_path_absolute_blocked_windows() {
+        let root = vault_root();
+        assert!(resolve_vault_path("C:\\Windows\\System32\\drivers\\etc\\hosts", &root).is_err());
     }
 
     #[test]

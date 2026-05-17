@@ -439,7 +439,13 @@ mod tests {
     fn test_resolve_interpreter_python() {
         let path = std::path::PathBuf::from("scripts/run.py");
         let (interp, arg0) = super::resolve_interpreter(&path);
-        assert_eq!(interp, Some("python".to_string()));
+        // Linux CI runners typically expose only `python3`; Windows may have `python`.
+        let expected = if cfg!(windows) {
+            "python"
+        } else {
+            "python3"
+        };
+        assert_eq!(interp, Some(expected.to_string()));
         assert_eq!(arg0, "scripts/run.py");
     }
 
