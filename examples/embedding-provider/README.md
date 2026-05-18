@@ -26,7 +26,7 @@ devbase follows an **"outboard brain"** design: the Rust core handles storage, i
 
 ```bash
 # 1. Clone or navigate into this directory
-cd tools/embedding-provider
+cd examples/embedding-provider
 
 # 2. Install dependencies
 pip install -r requirements.txt

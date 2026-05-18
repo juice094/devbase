@@ -292,7 +292,7 @@ done
 | 10 | OpLog 结构化 | Schema v12, OplogEventType 枚举, JSON metadata, duration_ms | `7aa2a65` |
 | 11 | 性能基准 | criterion benches: index_repo_full, cosine_similarity, extract_symbols, CMake | `8e0f236` |
 | 12 | 混合检索核心 | `search::hybrid.rs`: RRF 归并, keyword_search, hybrid_search_symbols | `7fca714` |
-| 13 | 外部 Embedding Provider | Python CLI `tools/embedding-provider/`, Ollama 批量生成, 字节兼容序列化 | `574fb96` |
+| 13 | 外部 Embedding Provider | Python CLI `examples/embedding-provider/`, Ollama 批量生成, 字节兼容序列化 | `574fb96` |
 | 14a | 跨 repo 语义聚合 | `cross_repo_search_symbols()` INTERSECT tag 过滤, `devkit_cross_repo_search` | `8e762c7` |
 | 14b | 知识覆盖报告 | `oplog_analytics.rs`: 表存在性容错, 覆盖度/健康度/活动流, `devkit_knowledge_report` | `869bcbf` |
 | 15a | 显式知识链接 | Schema v13 `code_symbol_links`, Jaccard 签名相似度, 同文件聚类, `devkit_related_symbols` | `d462209` |
@@ -453,7 +453,7 @@ v0.11.3 已交付（tagged）。v0.12.0-alpha 全部功能已完成，进入发�
 **Embedding 状态**：
 - `code_embeddings`: **56,722** 行（37.0% 覆盖率），覆盖 10 个仓库
 - `skills.embedding`: 3 个 builtin skill 已有 384-dim 向量
-- 生成工具：`tools/embedding-provider/skills.py`（sentence-transformers `all-MiniLM-L6-v2`）
+- 生成工具：`examples/embedding-provider/skills.py`（sentence-transformers `all-MiniLM-L6-v2`）
 - 激活路径：启动 Ollama + `devbase index <repo>` 生成 embedding，或配置远程 provider 于 `config.toml [embedding]` 段
 
 ### 2026-05-04 索引性能实验记录

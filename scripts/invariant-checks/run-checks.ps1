@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 juice094
 # devbase Architecture Invariant CI Checks
-# Run from repo root: tools/invariant-checks/run-checks.ps1
+# Run from repo root: scripts/invariant-checks/run-checks.ps1
 
 $ErrorActionPreference = "Stop"
 $script:Failed = 0

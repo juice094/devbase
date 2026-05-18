@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Tantivy 一致性修复 — `repair_tantivy_consistency_at()` 启动时自动检测 orphan/missing 文档
   - 性能回归基线 — `test_keyword_search_latency_regression_1k` / `_10k`（profile-aware 阈值）
   - `TempStorageBackend` — 测试隔离后端，消除 `DEVBASE_DATA_DIR` 竞态
-- **Architecture Invariants CI 自动化** — `tools/invariant-checks/run-checks.ps1`
+- **Architecture Invariants CI 自动化** — `scripts/invariant-checks/run-checks.ps1`
   - G5 (RF-6)：diff-only 检测新增生产代码 `unwrap`/`expect`/`panic`（排除 `#[cfg(test)]`）
   - T11：`mcp/tools` 禁止直接调用 `rusqlite::Connection`
   - T12：`tui/render` 纯消费检查（禁止写入操作）
@@ -172,7 +172,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 新增: `python`, `bun`, `zig`, `java`
   - `get_tool_version` 支持 stderr fallback (Java 输出到 stderr)
   - `fmt_version` 改进: Java 引号提取、Docker/Python 格式处理
-- **P5: 架构不变量自动化 CI** — `tools/invariant-checks/run-checks.ps1`
+- **P5: 架构不变量自动化 CI** — `scripts/invariant-checks/run-checks.ps1`
   - G5: diff-only 检测新增生产代码 unwrap/expect/panic（排除 `#[cfg(test)]`）
   - T11: 检测 `mcp/tools/*` 直接调用 `rusqlite::Connection`
   - T12: 检测 `tui/render/*` 写入操作
@@ -485,7 +485,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Schema v13: `code_symbol_links` table (source_repo, source_symbol, target_repo, target_symbol, link_type, strength)
   - `src/symbol_links.rs`: `compute_similar_signature_links()` (Jaccard token overlap), `compute_co_located_links()` (same-file clustering)
   - `generate_and_save_links()`: persists links with ON CONFLICT IGNORE upsert
-- **External Embedding Provider** — Reference Python implementation in `tools/embedding-provider/`
+- **External Embedding Provider** — Reference Python implementation in `examples/embedding-provider/`
   - `index.py`: Ollama `/api/embeddings` client, batch generation, cross-platform registry DB path
   - Byte-compatible f32 little-endian serialization via `struct.pack`
   - CLI: `--repo-id`, `--model`, `--ollama-url`, `--batch-size`, `--force`

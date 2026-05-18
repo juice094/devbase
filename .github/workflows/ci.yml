@@ -114,4 +114,4 @@ jobs:
         shell: pwsh
         run: |
           git fetch origin main
-          tools/invariant-checks/run-checks.ps1
+          scripts/invariant-checks/run-checks.ps1
