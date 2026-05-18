@@ -9,6 +9,8 @@ use std::time::Duration;
 
 /// Bottom-layer filesystem watcher using `notify`.
 pub struct FsWatcher {
+    // NOTE: field is never read directly, but must be held to keep the
+    // notify watcher alive for the duration of FsWatcher's lifetime.
     #[allow(dead_code)]
     watcher: RecommendedWatcher,
     rx: crossbeam_channel::Receiver<notify::Result<Event>>,
@@ -66,6 +68,7 @@ impl FsWatcher {
 
 /// Middle-layer aggregator: dedup and degrade to full-scan when too many files change.
 pub struct WatchAggregator {
+    // NOTE: reserved for future debounce delay configuration.
     #[allow(dead_code)]
     pub delay: Duration,
     pub max_files: usize,
@@ -115,15 +118,6 @@ pub struct FolderScheduler {
 }
 
 impl FolderScheduler {
-    #[allow(dead_code)]
-    pub fn new(root: PathBuf) -> Self {
-        FolderScheduler {
-            root,
-            index: None,
-            max_files: crate::config::default_watch_max_files(),
-        }
-    }
-
     pub fn with_max_files(root: PathBuf, max_files: usize) -> Self {
         FolderScheduler { root, index: None, max_files }
     }

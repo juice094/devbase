@@ -302,6 +302,8 @@ async fn test_tools_call_devkit_skill_discover() {
             }
         }
     });
+    // SAFETY: test-only env var mutation; test runner guarantees no concurrent
+    // reads of DEVBASE_MCP_ENABLE_DESTRUCTIVE in this process.
     unsafe {
         std::env::set_var("DEVBASE_MCP_ENABLE_DESTRUCTIVE", "1");
     }
@@ -321,6 +323,7 @@ async fn test_tools_call_devkit_skill_discover() {
 #[test]
 fn test_destructive_gate_disabled_by_default() {
     // Ensure the variable is unset
+    // SAFETY: test-only env var mutation; no concurrent reads of this var.
     unsafe {
         std::env::remove_var("DEVBASE_MCP_ENABLE_DESTRUCTIVE");
     }
@@ -332,12 +335,14 @@ fn test_destructive_gate_disabled_by_default() {
 
 #[test]
 fn test_destructive_gate_enabled() {
+    // SAFETY: test-only env var mutation; no concurrent reads of this var.
     unsafe {
         std::env::set_var("DEVBASE_MCP_ENABLE_DESTRUCTIVE", "1");
     }
     let result = crate::mcp::check_destructive_enabled();
     assert!(result.is_ok());
     // Cleanup
+    // SAFETY: test-only env var mutation; no concurrent reads of this var.
     unsafe {
         std::env::remove_var("DEVBASE_MCP_ENABLE_DESTRUCTIVE");
     }
@@ -529,4 +534,191 @@ fn test_parse_tool_tiers() {
 fn test_parse_tool_tiers_empty() {
     let tiers = parse_tool_tiers("");
     assert!(tiers.is_empty());
+}
+
+// --- Claude Scenario Validation Tests ---
+
+fn seed_scenario_data(ctx: &crate::storage::AppContext) {
+    let mut conn = ctx.conn().unwrap();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // 1. Register a repo in the entities table (single source of truth)
+    conn.execute(
+        "INSERT INTO entities (id, entity_type, name, local_path, metadata, created_at, updated_at, language, discovered_at, workspace_type, data_tier, stars)
+         VALUES (?1, 'repo', ?2, ?3, ?4, ?5, ?5, ?6, ?5, ?7, ?8, ?9)",
+        rusqlite::params!["scenario-repo", "scenario-repo", "/tmp/scenario-repo", "{}", &now, "rust", "git", "private", 42i64],
+    ).unwrap();
+
+    // 2. Tags (including "managed" for is_managed coverage)
+    for tag in &["rust", "cli", "managed"] {
+        conn.execute(
+            "INSERT INTO repo_tags (repo_id, tag) VALUES (?1, ?2)",
+            rusqlite::params!["scenario-repo", tag],
+        )
+        .unwrap();
+    }
+
+    // 3. Code symbols: 10 entries, mix of functions and structs.
+    //    Include auth-related signatures so "authentication flow" keyword search hits.
+    let symbols: [(&str, &str, &str, i64, Option<&str>); 10] = [
+        (
+            "src/auth.rs",
+            "function",
+            "authenticate_user",
+            10,
+            Some("pub fn authenticate_user(token: &str) // authentication flow handler"),
+        ),
+        (
+            "src/auth.rs",
+            "function",
+            "validate_token",
+            20,
+            Some("fn validate_token(t: &str) -> bool"),
+        ),
+        (
+            "src/lib.rs",
+            "function",
+            "handle_error",
+            30,
+            Some("pub fn handle_error(e: Error)"),
+        ),
+        (
+            "src/lib.rs",
+            "function",
+            "parse_config",
+            40,
+            Some("fn parse_config() -> Config"),
+        ),
+        ("src/main.rs", "function", "main", 1, Some("fn main()")),
+        ("src/lib.rs", "struct", "Config", 5, None),
+        ("src/models.rs", "struct", "User", 10, None),
+        ("src/models.rs", "function", "new_user", 15, Some("fn new_user() -> User")),
+        ("src/db.rs", "function", "connect_pool", 5, Some("fn connect_pool() -> Pool")),
+        ("src/api.rs", "function", "serve", 1, Some("pub async fn serve(addr: &str)")),
+    ];
+    for (path, ty, name, line, sig) in &symbols {
+        conn.execute(
+            "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start, signature)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params!["scenario-repo", path, ty, name, line, *sig],
+        ).unwrap();
+    }
+
+    // 4. Vault notes: create filesystem files then scan into registry
+    let ws = ctx.storage.workspace_dir().unwrap();
+    let vault_dir = ws.join("vault");
+    std::fs::create_dir_all(&vault_dir).unwrap();
+    std::fs::write(
+        vault_dir.join("auth-design.md"),
+        "---\ntitle: Authentication Flow Design\nrepo: scenario-repo\ntags: [auth, design]\n---\n\nThis document describes the authentication flow for the scenario repo.\nThe authenticate_user function handles token validation.\n",
+    ).unwrap();
+    crate::vault::scanner::scan_vault(&mut conn, Some(&vault_dir)).unwrap();
+}
+
+#[tokio::test]
+async fn test_scenario_one_project_onboarding() {
+    let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+    let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
+    seed_scenario_data(&ctx);
+
+    // Tool 1: devkit_health
+    let health_tool = DevkitHealthTool;
+    let health_result = health_tool
+        .invoke(serde_json::json!({ "detail": true }), &mut ctx)
+        .await
+        .unwrap();
+    assert_eq!(health_result.get("success").unwrap(), true);
+    let summary = health_result.get("summary").unwrap();
+    assert!(summary.get("total_repos").unwrap().as_i64().unwrap() >= 1);
+
+    // Tool 2: devkit_project_brief
+    let brief_tool = DevkitProjectBriefTool;
+    let brief_result = brief_tool
+        .invoke(serde_json::json!({ "repo_id": "scenario-repo" }), &mut ctx)
+        .await
+        .unwrap();
+    assert_eq!(brief_result.get("success").unwrap(), true);
+    let brief = brief_result.get("brief").unwrap().as_str().unwrap();
+    // Acceptance: brief contains >= 5 key modules/symbols
+    let symbol_count = brief.matches("- `").count();
+    assert!(
+        symbol_count >= 5,
+        "Expected >= 5 symbols in brief, found {}. Brief:\n{}",
+        symbol_count,
+        brief
+    );
+    assert!(brief.contains("## Architecture"));
+    assert!(brief.contains("Key Symbols:"));
+
+    // Tool 3: devkit_query_repos
+    let query_tool = DevkitQueryReposTool;
+    let query_result = query_tool.invoke(serde_json::json!({}), &mut ctx).await.unwrap();
+    assert_eq!(query_result.get("success").unwrap(), true);
+    let repos = query_result.get("repos").unwrap().as_array().unwrap();
+    assert!(
+        repos
+            .iter()
+            .any(|r| r.get("id").and_then(|v| v.as_str()) == Some("scenario-repo")),
+        "scenario-repo should be listed in query_repos"
+    );
+}
+
+#[tokio::test]
+async fn test_scenario_two_semantic_exploration() {
+    let backend = std::sync::Arc::new(crate::storage::TempStorageBackend::new());
+    let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
+    seed_scenario_data(&ctx);
+
+    // Tool 1: devkit_hybrid_search — keyword fallback path (no embeddings seeded)
+    let search_tool = DevkitHybridSearchTool;
+    let search_result = search_tool
+        .invoke(
+            serde_json::json!({ "repo_id": "scenario-repo", "query_text": "authentication flow", "limit": 10 }),
+            &mut ctx,
+        )
+        .await
+        .unwrap();
+    assert_eq!(search_result.get("success").unwrap(), true);
+    let symbols = search_result.get("symbols").unwrap().as_array().unwrap();
+    assert!(
+        !symbols.is_empty(),
+        "hybrid_search should return at least 1 auth-related symbol via keyword fallback"
+    );
+    let names: Vec<&str> =
+        symbols.iter().filter_map(|s| s.get("name").and_then(|v| v.as_str())).collect();
+    assert!(
+        names.contains(&"authenticate_user"),
+        "authenticate_user should appear in hybrid_search results for 'authentication flow'. Got: {:?}",
+        names
+    );
+
+    // Tool 2: devkit_project_context
+    let context_tool = DevkitProjectContextTool;
+    let ctx_result = context_tool
+        .invoke(serde_json::json!({ "project": "scenario-repo" }), &mut ctx)
+        .await
+        .unwrap();
+    assert_eq!(ctx_result.get("success").unwrap(), true);
+    let ctx_symbols = ctx_result.get("symbols").unwrap().as_array().unwrap();
+    assert!(
+        ctx_symbols.len() >= 3,
+        "project_context should return >= 3 symbols for understanding. Got: {}",
+        ctx_symbols.len()
+    );
+
+    // Tool 3: devkit_vault_search
+    let vault_tool = DevkitVaultSearchTool;
+    let vault_result = vault_tool
+        .invoke(serde_json::json!({ "query": "authentication" }), &mut ctx)
+        .await
+        .unwrap();
+    assert_eq!(vault_result.get("success").unwrap(), true);
+    let notes = vault_result.get("notes").unwrap().as_array().unwrap();
+    assert!(!notes.is_empty(), "vault_search should find the auth-design note");
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.get("title").and_then(|v| v.as_str()) == Some("Authentication Flow Design")),
+        "vault_search should return auth-design note"
+    );
 }

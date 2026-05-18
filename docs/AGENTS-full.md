@@ -1,0 +1,705 @@
+# Agent 环境指引
+
+`devbase` 是 **本地情境编译器（Local Context Compiler）** —— AI agent 在本地数字世界中的海马体。
+
+> 它将本地数字资产的原始数据（代码库、笔记、Skill、工作流）编译为 AI 可决策的结构化情境，不负责思考，不负责执行，只负责感知、编码、持久化、检索。
+
+- **当前阶段**：阶段十一 — v0.20.0 已发布（知识完备性）
+- **当前版本**：v0.20.0（Schema 34，68 MCP tools，451 tests）
+- **已完成里程碑**：Registry God Object 完全拆解（10 子模块提取）+ 18 workspace crates 提取 + MCP Python SDK 1.16.0 兼容修复 + repo.rs trait 化 + flaky 测试根治（RF-2.1/2.2/2.3）+ 许可证迁移 + health 性能优化（-44%）+ index skip-embeddings + batch encoding 实验 + RF-6 清零 + 架构治理文档（ADR/不变量清单）+ Tantivy BM25 代码符号搜索（P1）+ AppContext 职责拆分 Phase 1/2（storage.rs 860→430 行）+ 架构不变量 CI（G5/T11/T12）+ Embedding 多后端（Candle/Ollama 配置切换, P3）+ EnvVersionCache 扩展（9 工具链检测, P4）+ **v0.16.0 Agent Contexts（P1/P2/P3）**：`agent_contexts`/`agent_memories`/`context_entity_links` Schema + 9 个 Session MCP tools + Context-aware Skill Runtime（`DEVBASE_ACTIVE_CONTEXT` 注入）+ **v0.16.1 Workflow-Session Binding**：`workflow_executions.context_id` + 执行自动绑定 Active Context + **v0.17.0 Embedding Externalization**：`embedding` 从 default features 移除（Candle/Ollama 降级为 opt-in `llm-backend`）+ Schema 34 向量存储 + `cosine_similarity` SQLite UDF + `devkit_session_recall` / `devkit_session_index`（60 tools）+ **v0.18.0 ClaudeCode Integration**：`devkit_project_brief`（Markdown 项目简报）+ `devkit_impact_analysis`（修改影响范围分析）+ `devkit_session_export` / `devkit_session_import` + `scripts/devbase-claude.ps1` 启动器（自动注入 `.claude/CLAUDE.md`）+ RFC `docs/RFC/claudecode-workflow-integration.md`（64 tools）+ **v0.18.0 发布收尾**：PR 合并 + 双平台二进制构建 + GitHub Release + 根目录治理 + 世界模型战略认知沉淀（Vault + AGENTS 双向联动）+ NotebookLM 生态消化（5 项目注册）+ GreptimeDB 互补分析 + **v0.19.0 知识基础设施硬化**：SQLite WAL 默认启用 + `devkit_index_health`（Beta）+ Vault 导出（`devkit_vault_export`）+ Redis ADR 决策（放弃引入）+ **v0.20.0 知识完备性**：Vault 双向链接 BFS 图遍历（`devkit_vault_graph` 扩展）+ Vault Git-based 历史追踪（`devkit_vault_history`，第 67 个 tool）+ 混合检索质量监控（`devkit_search_quality`，第 68 个 tool，`HybridSearchMetrics`）+ Block 引用支持（`WikiLink.anchor`：`[[note#heading]]` / `[[note#^block-id]]`）+ 性能回归基线（`#[ignore]` 1k/10k 阈值测试）+ 客户端无关原则（Client-Agnostic Principle）落地 + `skill sync` 泛化接口（零硬编码客户端路径）
+- **核心方向**：让 Kimi CLI 在调用文件工具之前，先通过 devbase 获得"该读哪些文件、为什么读、它们之间的关系"
+- **本质分析**：见 `vault/99-Meta/devbase-essence-analysis-20260430.md` 与 `docs/architecture/redefinition.md`
+- **设计文档**：
+  - [`docs/architecture/workflow-dsl.md`](docs/architecture/workflow-dsl.md) — Workflow DSL 规范
+  - [`docs/architecture/workspace-as-schema.md`](docs/architecture/workspace-as-schema.md) — 统一实体模型设计
+  - [`docs/RFC/agent-memory-vector-storage.md`](docs/RFC/agent-memory-vector-storage.md) — v0.17.0 Agent Memory 向量存储 RFC（Embedding 职责外迁设计）
+  - [`docs/guides/mcp-integration-guide.md`](docs/guides/mcp-integration-guide.md) — MCP 集成指南
+  - [`docs/README.md`](docs/README.md) — 完整文档导航
+
+Skill Runtime 全生命周期已落地（含依赖管理 Schema v15），Schema v16 统一实体模型（entities/relations）已落地，Skill 自动封装（`discover`）已落地。
+
+- **技术栈**：Rust 2024, SQLite, tokio, ratatui, git2, reqwest, tantivy
+- **Registry DB**：`%LOCALAPPDATA%\devbase\registry.db`（轻量索引，用户本地，永不进入版本控制）
+- **Workspace**：`%LOCALAPPDATA%\devbase\workspace/` —— 文件系统 = source of truth
+  - `vault/` —— PARA 结构：00-Inbox, 01-Projects, 02-Areas, 03-Resources, 04-Archives, 99-Meta
+  - `assets/` —— 二进制资源
+- **MCP Server**：stdio only，**68 个 tools**（含 7 个 vault tools + 8 个代码分析工具 + 5 个 embedding/搜索工具 + 4 个 Skill Runtime tools + 3 个 Workflow/评分 tools + 1 个报告工具 + 1 个 arXiv 工具 + 2 个 KnownLimit tools + 3 个 Relation tools + 11 个 Agent Context tools + 2 个 ClaudeCode 集成工具 + 1 个 streaming index 工具 + 1 个 oplog 工具 + 1 个 Index Health 工具 + 1 个 Search Quality 工具 + 1 个 Evaluate 工具）；配置见 `mcp.json`
+- **Kimi CLI 集成**：MCP server 已通过 `kimi mcp add` 注册，端到端验证通过（`kimi --print` 成功调用 `devkit_health`）；项目级 skill 位于 `.kimi/skills/devbase-project/SKILL.md`
+- **统一节点模型**：`core::node::{Node, NodeType, Edge}` —— GitRepo / VaultNote / Asset / ExternalLink
+- **当前测试**：451+ lib passed / 0 failed / 5 ignored + 11/11 integration passed（`tests/cli.rs`）
+- **编译状态**：0 warning / 0 vulnerabilities（`cargo audit` 干净，除上游 `tokei` 的 `RUSTSEC-2020-0163`）
+- **Workspace 结构**：`crates/` 目录已启用，19 个零耦合模块已提取为独立 crate（`devbase-symbol-links`, `devbase-sync-protocol`, `devbase-core-types`, `devbase-syncthing-client`, `devbase-vault-frontmatter`, `devbase-vault-wikilink`, `devbase-workflow-interpolate`, `devbase-workflow-model`, `devbase-registry-health`, `devbase-registry-metrics`, `devbase-registry-workspace`, `devbase-embedding`, `devbase-skill-runtime-types`, `devbase-skill-runtime-parser`, `devbase-registry-entity`, `devbase-registry-relation`, `devbase-registry-call-graph`, `devbase-registry-dead-code`, `devbase-registry-code-symbols`）
+- **Workflow Engine**：YAML 解析 + 拓扑调度 + batch 并行执行 + 5 种 step 类型（skill/subworkflow/parallel/condition/loop）
+- **NLQ 自然语言查询**：TUI `[:]` 触发 embedding 语义搜索，fallback 降级文本搜索
+- **Mind Market 评分**：success_rate / usage_count / rating（0-5），`skill recalc-scores/top/recommend`
+
+## 关键约定
+
+1. **文件操作**：读取用 `ReadFile`，搜索用 `Grep`/`Glob`，修改用 `StrReplaceFile`，整文件重写用 `WriteFile`
+2. **Shell**：Windows PowerShell；用 `;` 分隔命令
+3. **Git**：提交前必须通过 `cargo test --all-targets` + `cargo clippy --all-targets -D warnings` + `cargo fmt --check`
+4. **Schema 迁移**：`PRAGMA user_version` 安全升级；升级前自动调用 `backup::auto_backup_before_migration()`
+
+## 安全原则
+
+### 本地优先（Local-First）
+
+- **Registry DB** 始终存储在用户的本地配置目录（`dirs::config_dir()/devbase/`），绝不向远程传输
+- **代码内容** 不会被上传到任何云端服务（除非用户显式配置 GitHub token 用于 stars 查询）
+- **MCP Server** 仅通过 stdio 本地进程通信，不暴露网络端口
+
+### 客户端无关（Client-Agnostic）
+
+> devbase 的核心能力（编排、注册、索引、搜索、同步）必须在不依赖任何特定 AI 客户端的前提下独立运行。
+
+- ✅ **允许**：向通用目录输出数据，由用户自行分发给任意客户端（如 `skill sync --output-dir ./plans`）
+- ✅ **允许**：实现标准协议（MCP）供任意客户端连接
+- ❌ **禁止**：核心能力硬编码特定客户端的路径、API、或配置格式（如 `C:\Users\xxx\.claude`）
+- ❌ **禁止**：核心能力的可用性取决于某个客户端是否安装
+- 🟡 **适配层**：`scripts/claude/`、`docs/clients/` 等目录下的客户端适配脚本属于配套示例，不归入核心版本控制
+
+### 凭证管理
+
+- GitHub token、LLM API key 存储在本地 `config.toml` 中
+- `config.toml` 位于用户配置目录，**不在项目工作目录**，因此不会被意外 `git commit`
+- 默认配置模板中的 token 字段使用占位符 `<YOUR_GITHUB_PAT>`，避免真实 token 格式泄露
+- `.gitignore` 已覆盖 `*.db`、`.devbase/`、`.env*`、`*.local.toml`
+
+### 审计与备份
+
+- 所有 `scan`/`sync`/`health` 操作自动写入 OpLog（SQLite `oplog` 表）
+- Schema 迁移前自动生成 `backup-YYYYMMDD-HHMMSS.db` 快照
+- Registry 支持 `export`/`import` 用于用户自主备份
+
+## 许可证策略
+
+- **主许可证**: AGPL-3.0-or-later (`LICENSE`)
+- **商业授权**: 双许可模式，闭源/专有 SaaS 使用需联系作者 (`LICENSE-COMMERCIAL.md`)
+- **Cargo.toml**: `license = "AGPL-3.0-or-later"`
+- **SPDX 头**: 新增源文件应在顶部包含 AGPL-3.0 声明（见 `LICENSE` 末尾 "How to Apply" 部分）
+
+## 架构状态（Wave 15b 完成）
+
+| 维度 | 状态 |
+|------|------|
+| 代码质量 | `rustfmt.toml` + `cargo fmt` + `clippy -D warnings` 全绿 |
+| 模块拆分 | `sync`→5 / `registry`→11 / `mcp` 测试分离 / `search`→hybrid / `oplog_analytics` / `symbol_links` / **workspace: 3 crates extracted** |
+| 库/二进制 | `src/lib.rs` 导出全部 **30+** 个模块；`src/main.rs` 仅 CLI 入口 |
+| TUI 架构 | `render/` 6 子模块 + `theme.rs` Design Token + `layout.rs` 响应式引擎 |
+| 数据层 | Schema v23: `repos`/`vault_notes`/`papers`/`workflows`/`repo_modules_legacy` 表已删除；`entities` 为唯一数据源；`repo_tags/repo_remotes/repo_health/...` 为独立 JOIN 表（无 FK）；仅 `skills` 保留独立表（embedding BLOB） |
+| CI/CD | `.github/workflows/ci.yml`：check / test / fmt / clippy on Windows |
+| 依赖安全 | `cargo audit` 0 漏洞（除上游 `tokei` 的 `RUSTSEC-2020-0163`） |
+
+## 架构红线（Architecture Guardrails）
+
+> 基于第一性原理的工程约束。违反任意一条 = HALT，转交人类裁决或回滚。
+> 规则编号 `RF-XX`（Red-line / Fitness function），带客观测量标准，非主观描述。
+
+### RF-1: 依赖注入优于全局状态（Global State Anti-Pattern）
+
+**理论锚定**：全局可变状态使组件隐式耦合，破坏可测试性与可复用性（参考：Pure Function / DI 原则）。
+
+**规则**：
+- 禁止新增 `dirs::data_local_dir()` / `std::env::var_os` 硬编码路径。
+- 所有 IO 边界路径（DB、索引、备份、配置）必须通过参数、构造函数或 `trait` 注入。
+- **例外（Grandfathered）**：现有 3 处（`backup_dir`、`db_path`、`index_path`）在重构前不得新增第 4 处。
+
+**Fitness Function**：
+```bash
+# 新增 PR 中不得出现新的全局路径硬编码
+grep -rn "dirs::data_local_dir\|std::env::var_os\|std::env::var(\"LOCALAPPDATA\"" src/ \
+  | grep -v "backup.rs\|migrate.rs\|search.rs"
+# 预期输出：空
+```
+
+### RF-2: 测试密封性（Hermetic Testing）
+
+**理论锚定**：测试失败必须仅因被测代码缺陷，不因外部因素、测试顺序或并行调度（参考：Google Test Blog — Hermetic Servers）。
+
+**规则**：
+- 所有测试禁止修改全局进程状态（`std::env::set_var`、`static mut`、全局文件系统句柄）。
+- 文件系统测试必须使用 `tempfile` + 注入式路径，禁止直接操作 `%LOCALAPPDATA%` 或 `~/.config`。
+- Tantivy / SQLite 文件系统测试必须获取 `SEARCH_TEST_LOCK`（或同等级串行化机制）。
+
+**子规则（来自 PR #4 教训）**：
+- **R2.1 禁止 `DEVBASE_DATA_DIR` 全局注入**：并行测试中 `std::env::set_var("DEVBASE_DATA_DIR", ...)` 导致竞态；必须使用 `TempStorageBackend` 注入式替代。
+- **R2.2 Windows 路径双端规范化**：`TempDir` 可能返回短文件名（`TEMP~1`），而 `dunce::canonicalize` 返回长文件名；路径比较前必须对**双方**调用 `dunce::canonicalize`。
+- **R2.3 `git2` 测试显式身份 + 显式分支**：
+  - CI runner 无全局 `user.name`/`user.email` → `repo.signature()` 会 panic；必须改用 `git2::Signature::now("Test", "test@example.com")`。
+  - `git2::Repository::init` 的默认分支在不同平台可能为 `master` 或 `main`；必须显式 `repo.set_head("refs/heads/main")` 并 commit 到 `"refs/heads/main"`。
+
+**Fitness Function**：
+```bash
+# 高并发下 100% 通过，无 flaky
+cargo test --test-threads=16
+```
+
+### RF-3: Schema 单一事实来源（Single Source of Truth）
+
+**理论锚定**：重复信息必然 drift（参考：DRY 原则 + Evolutionary Architecture 的版本一致性约束）。
+
+**规则**：
+- `SCHEMA_DDL`（`registry/test_helpers.rs`）与 `migrate.rs` 必须原子同步。
+- 新增表、索引、列必须同时出现在两者中；禁止仅更新其一。
+
+**Fitness Function**：
+- CI 运行 `test_in_memory_schema_version` + schema 结构比对脚本（可手动运行 `cargo test registry::test_helpers::tests` 验证）。
+
+### RF-4: 二进制入口限界（Bounded Context）
+
+**理论锚定**：CLI 入口应仅做命令分发，业务逻辑应在 lib 模块中（参考：Hexagonal Architecture / Ports & Adapters）。
+
+**规则**：
+- `main.rs` 行数不得超过 **1000 行**。
+- 新增 CLI 命令必须先拆分为 `commands/` 子模块或独立函数，禁止在 `main.rs` 中堆积业务逻辑。
+
+**Fitness Function**：
+```bash
+# 当前 515 行（Phase 1/2/3 已削减 1003 行），远超目标
+[ $(wc -l < src/main.rs) -le 1000 ] || exit 1
+```
+
+### RF-5: 无循环依赖（Acyclic Dependencies）
+
+**理论锚定**：循环依赖破坏模块化，使增量编译和独立复用不可能（参考：John Lakos — Large-Scale C++ Software Design）。
+
+**规则**：
+- 禁止模块间双向 `use crate::` 引用。
+- 新增模块必须通过脚本验证无循环（当前已满足，未来 PR 保持）。
+
+**Fitness Function**：
+```bash
+# 文件级双向依赖检测（当前输出应为空）
+for f in src/**/*.rs; do
+  name=$(basename "$f" .rs)
+  refs=$(grep -o 'use crate::[a-z_]*' "$f" | sed 's/use crate:://')
+  for r in $refs; do
+    if [ -f "src/$r.rs" ] && grep -q "use crate::$name\b" "src/$r.rs"; then
+      echo "CYCLE: $name <-> $r"
+    fi
+  done
+done
+```
+
+### RF-7: Workspace 拆分约束（Module Distribution Readiness）
+
+**理论锚定**：模块能否独立发布是耦合健康度的金标准；不能拆分的模块 = 耦合不健康的模块。
+
+**规则**：
+- 新增模块若对 devbase 内部其他模块的 `crate::` 引用超过 **5 个**，禁止提取为 workspace crate。
+- 已提取 crate 的重新导出文件（`src/symbol_links.rs` 等）**禁止添加新代码**——顶部有 `RE-EXPORT ONLY` 注释作为守卫。
+- 子 crate 的依赖版本必须与 workspace 统一，禁止独立 bump。
+
+**Fitness Function**：
+```bash
+# 扫描所有 src/*.rs，统计 crate:: 引用数
+for f in src/*.rs; do
+  count=$(grep -c 'crate::' "$f")
+  if [ "$count" -gt 15 ]; then
+    echo "HIGH COUPLING: $f ($count refs)"
+  fi
+done
+# 预期输出：空（或仅已标记的高耦合文件如 mcp/tools/repo.rs）
+```
+
+### RF-6: 生产代码无 panic（Crash-only Software）
+
+**理论锚定**：Rust 的 `Result` 类型将错误显式化；`unwrap` 是将运行时崩溃隐藏在类型系统背后（参考：Joe Armstrong — Let it crash，但 Rust 中崩溃 = 进程终止，不可接受）。
+
+**规则**：
+- 生产代码（`src/**/*.rs` 中不在 `#[cfg(test)]` 块内的代码）禁止 `unwrap()`、`expect()`、`panic!()`。
+- 测试代码不受此限，但鼓励使用 `?` 传播。
+
+**Fitness Function**：
+```bash
+# 生产代码 unwrap 计数（排除 #[cfg(test)] 块及 tests.rs 文件）
+for f in $(find src -name "*.rs"); do
+  test_line=$(grep -n "#\[cfg(test)\]" "$f" | head -1 | cut -d: -f1)
+  if echo "$f" | grep -qE "tests?\.rs$|_test\.rs$|/tests/"; then continue; fi
+  if [ -n "$test_line" ]; then
+    head -n "$((test_line - 1))" "$f" | grep -n "\.unwrap()"
+  else
+    grep -n "\.unwrap()" "$f"
+  fi
+done
+# 预期输出：空
+```
+
+**状态**：🟢 **已完成**（v0.20.1 复核：生产代码 unwrap = 0；此前 1090 为测试模块误统计）。
+
+### 架构治理框架（Architecture Governance）
+
+> 参考：外部架构治理方法论（Kimi 会话 `e9f2965f-b949-46a5-9d7c-afd6d4d9232c`）
+
+**已制度化实践**：
+
+| 实践 | devbase 落地形式 | 文档位置 |
+|------|-----------------|---------|
+| ADR（架构决策记录） | ADR-001（单 crate defer）、ADR-002（batch encoding 回滚） | [`docs/architecture/adr-template.md`](docs/architecture/adr-template.md) |
+| 不变量清单（Invariants） | RF-1~RF-7 + 分层模块约束（T01–T12） | [`docs/architecture/invariants.md`](docs/architecture/invariants.md) |
+| 模块提取演习 | RF-7 的 5 个 `crate::` 引用阈值 + 已提取 18 workspace crates | 本文件 §RF-7 |
+| 三层摘要 | `crates/*/README.md` 要求：一句话 + 一页纸 + 深度链接 | 各 crate README |
+| 定期架构回顾 | 每次 Wave 结束时的架构审计（见 `docs/_audit/`） | `docs/_audit/2026-04-26-*.md` |
+
+**待增强**：
+- 三层摘要：部分已提取 crate 的 README 尚未达到"一页纸"标准
+- 定期架构回顾：当前按 Wave（功能迭代周期）触发，建议每 2–4 周增加一次纯架构 review（不看 feature 进度，只看不变量违反和隐式依赖）
+
+---
+
+## 技术债登记簿（Technical Debt Ledger）
+
+> 已识别的架构债，按严重程度排序。清偿前不得新增同类债务。
+
+| 债项 | 严重 | 当前值 | 目标阈值 | 清理路径 | 引入 Wave |
+|---|---|---|---|---|---|
+| `main.rs` 上帝文件 | 🟢 | 778 行 | ≤1000 行 | 拆分为 `commands/simple.rs` + `commands/skill.rs` + `commands/workflow.rs` + `commands/limit.rs`；全部 22 个命令/子命令树已迁移 | ≤15 |
+| Workspace crate 版本号混乱 | 🟢 | **已完成**：全部 19 个 crate 统一为 `version.workspace = true`，workspace 版本 `0.20.0` | 全部统一为 `version.workspace = true` 或 `0.20.0` | 批量修正 `Cargo.toml` | v0.20.1 |
+| RF-7 高耦合模块超标 | 🟢 | **已完成**：`scan.rs` 18→7、`digest.rs` 17→5、`registry.rs` 20→4；全部 `src/*.rs` ≤ 15 `crate::` 引用 | ≤15 | use 语句规范化消除 self-reference；`registry.rs` 保留 4 个（2 use + 2 dependency_graph）作为 facade | v0.20.1 |
+| `init_db()` 全局路径 | 🟢 | `AppContext` 已集成到全部 commands/ 模块；`main()` 通过 `AppContext` 分发配置；`init_db()` 无外部调用 | 0 | 已完成：`StorageBackend` trait + `AppContext` 全面替代；`db_path`/`workspace_dir`/`index_path`/`backup_dir` 已统一 | ≤15 |
+| Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调；**已添加反向检测**（`repair_tantivy_consistency` 现在检测 SQLite→Tantivy 缺失） | 补偿机制 | 长期：事务协调或 SQLite FTS5 替代；短期：反向检测 + 日志已落地（`fe14c81`） | 7 |
+| 主从表切换 | 🟢 | Phase 1 全部完成：`repos` 表已删除，entities 为唯一数据源 | `entities` 为第一公民 | Phase 2 类型系统开放（新增 entity_type 无需改表结构） | v0.12.0 |
+| vault/paper/workflow entities 缺口 | 🟢 | Stage C+D+E 全部完成：`vault_notes`/`papers`/`workflows` 表已删除，`skills` 保留（embedding BLOB） | 0 缺口 | — | v0.12.0 |
+| scan 路径排除 | 🟢 | `discover_repos` + `collect_tasks` 均支持 `scan.exclude_paths`；scan 和 sync 双阶段过滤 | 0 缺口 | 排除路径使用 `Path::starts_with` 组件级匹配，避免字符串前缀误杀；相对路径在 sync 场景（无 root）下被忽略 | v0.12.0 |
+| tree-sitter 编译成本 | 🟢 | ~15-20s grammar C compilation | 可控 | 已完成 feature-gate：`lang-rust`/`lang-python`/`lang-js-ts`/`lang-go` 四个 feature，默认全启，可选关闭减少编译；`--no-default-features` 编译通过 | 8 |
+| Feature flags 缺失 | 🟢 | 4 个可选 feature (tui, watch, mcp, embedding) | ≥3 | 已完成：`tui`/`watch`/`mcp`/`embedding` 均为 optional；`--no-default-features` 编译通过 | ≤15 |
+| Vault 无版本历史 | 🟢 | `devkit_vault_history` + git2 revwalk + blob diff 行级统计 | 历史可回溯 | 用户侧将 vault 目录作为 Git 子模块管理 | v0.20.0 |
+| `LOCALAPPDATA` 测试模式残留 | 🟢 | 0 处 | 0 | 全面废弃 `LOCALAPPDATA` 环境变量覆盖，统一为 `DEVBASE_DATA_DIR`；mcp/tests.rs 修复 cleanup 逻辑（remove_var 目标从 LOCALAPPDATA 修正为 DEVBASE_DATA_DIR） | 47 |
+| 单体职责膨胀（代码智能+知识库+仓库管理+工作流+Skill+Syncthing） | 🟡 | 6 个核心领域耦合于单一二进制（31MB）；`workflow`/`skill` 与 Claude Code Agent 能力重叠 | 按领域拆分为 `devbase-core`（代码+vault）+ `devbase-sync`（仓库管理）+ `devbase-bridge`（Syncthing）；冻结 workflow/skill 新增 | 外部审查 2026-05-11 |
+
+**清偿原则**：
+1. 禁止在清偿现有 🔴 债务前新增同类别债务。
+2. 每个债务必须关联至少一个 `TODO(#<issue>)` 或 `FIXME` 代码注释。
+3. 每季度（90 天）由 MODE-O 审查一次，更新当前值与优先级。
+
+---
+
+## 历史 Waves
+
+| Wave | 主题 | 关键产出 | Commit |
+|------|------|---------|--------|
+| 42-44 | 测试基础设施 | 22 个 smoke tests, CLI 集成测试层 (`tests/cli.rs`), Criterion 基准测试 (`benches/registry_bench.rs`) | — |
+| 45-47 | Tier 1 测试收尾 | 28 个 smoke tests 覆盖 embeddings/semantic_search/cross-repo/search/workflow/backup/registry；`SCHEMA_DDL` 补录 4 表；`init_db()` 并发安全 (`BEGIN EXCLUSIVE`)；测试数据隔离统一为 `DEVBASE_DATA_DIR` | — |
+| 1 | 代码质量 | `rustfmt.toml`, clippy 清零 | `4efcd58` |
+| 2 | 模块拆分 | `sync/`, `registry/`, `mcp/tests.rs` | `4efcd58` |
+| 3 | 工程化 | `src/lib.rs`, CI workflow, `main.rs` 简化 | `4efcd58` |
+| 4 | 依赖/审计 | `notify` 8.2.0, `tokei` 14.0.0 | `4efcd58` |
+| 5 | TUI 美学与工程学 | 主题系统, Tabs, Help Overlay, Render 拆分 | `6b9be88` |
+| 6 | 数据层深度能力 (MVP) | 语义索引、调用图、依赖图、死代码检测、Python 依赖解析 | `9fbf7c4` |
+| 7 | 向量语义搜索 | `embedding.rs`, `code_embeddings` 表, `devkit_semantic_search` | `4d400b1` |
+| 8 | 多语言符号提取 | tree-sitter-python/typescript/go, Rust/Python/JS/Go 符号 + Call Graph | `4f4911b` |
+| 9 | scan panic 修复 + arXiv/CMake | `block_on_async` 安全封装, arXiv API 元数据, CMakeLists.txt 依赖解析 | `881cd32` |
+| 10 | OpLog 结构化 | Schema v12, OplogEventType 枚举, JSON metadata, duration_ms | `7aa2a65` |
+| 11 | 性能基准 | criterion benches: index_repo_full, cosine_similarity, extract_symbols, CMake | `8e0f236` |
+| 12 | 混合检索核心 | `search::hybrid.rs`: RRF 归并, keyword_search, hybrid_search_symbols | `7fca714` |
+| 13 | 外部 Embedding Provider | Python CLI `tools/embedding-provider/`, Ollama 批量生成, 字节兼容序列化 | `574fb96` |
+| 14a | 跨 repo 语义聚合 | `cross_repo_search_symbols()` INTERSECT tag 过滤, `devkit_cross_repo_search` | `8e762c7` |
+| 14b | 知识覆盖报告 | `oplog_analytics.rs`: 表存在性容错, 覆盖度/健康度/活动流, `devkit_knowledge_report` | `869bcbf` |
+| 15a | 显式知识链接 | Schema v13 `code_symbol_links`, Jaccard 签名相似度, 同文件聚类, `devkit_related_symbols` | `d462209` |
+| 15b | 混合检索 MCP Tool | `devkit_hybrid_search`: 向量+RRF+关键词自动降级, 推荐默认搜索入口 | `6df6106` |
+| 16a | Skill Runtime Schema | `skills` + `skill_executions` 表, SKILL.md 解析器, Registry CRUD, 3 内置 skills | `e41eccb` |
+| 16b | Skill 发现与搜索 | 文本搜索 + 语义搜索 (`--semantic`), skill embedding 生成脚本 | `48b96c6` |
+| 17 | Skill 执行引擎 | Process-based executor, interpreter 自动解析, timeout, stdout/stderr 捕获, 执行审计 | `99d818e` |
+| 18 | MCP Skill 集成 | `devkit_skill_list` / `devkit_skill_search` / `devkit_skill_run` 3 个 tools | `c80fdec` |
+| 19a | Skill 生态（安装/发布） | `install_skill_from_git` (git2 clone), `publish` (validate + git tag + push remote) | `8120e4d` |
+| 19b | Skill 生态（同步/TUI） | `sync --target clarity` (导出为 Clarity plan JSON), TUI Skill Panel (`k` keybinding) | `678c70c` |
+| 20 | Skill 依赖管理 | Schema v15 `dependencies` 列，Kahn 拓扑排序，DFS 环检测，自动安装缺失依赖，`install`/`run`/`validate` 集成 | `75fed3c` |
+| 21 | 统一实体模型 + 自动封装 | Schema v16 `entities/entity_types/relations`，渐进双写；`discover` 命令（Rust/Node/Python/Go/Docker/Generic 检测 + SKILL.md 自动生成 + entry_script 包装器）；分类推断（ai/dev/data/infra/communication） | — |
+| 22 | AppContext Pool 化 | `r2d2::Pool<SqliteConnectionManager>` 替代单 Connection；22 个 commands/TUI/MCP 全链路迁移；`init_db()` 89→5 处；MCP 测试临时目录隔离；search 多线程竞态自愈 | — |
+| 23 | Registry God Object 拆解 | 提取 10 子模块（repo/vault/workspace/health/metrics/links/known_limits/knowledge_meta/knowledge）为 free-function 模块；`WorkspaceRegistry` 退化为向后兼容门面；~150 处调用点迁移；0 测试回归 | `dfc43d4` |
+
+## 敏感文件清单（禁止提交）
+
+| 文件/模式 | 原因 | .gitignore 覆盖 |
+|-----------|------|----------------|
+| `*.db` | SQLite 数据库含用户仓库元数据 | ✅ |
+| `.devbase/` | 本地 sync 标记和工作区状态 | ✅ |
+| `*.log` | 可能含路径或错误堆栈信息 | ✅ |
+| `.env*` | 环境变量和 secrets | ✅ |
+| `*.local.toml` | 本地覆盖配置 | ✅ |
+| `target/` | 构建产物 | ✅ |
+
+## 跨项目接口
+
+- **clarity-core**：已解除路径依赖。devbase 不再被 clarity-core 调用，LLM 能力内联为纯 reqwest
+- **syncthing-rust**：`.syncdone` 标记格式已对齐
+
+## 架构讨论摘要（来自 2026-04-24 会话）
+
+以下为本项目相关的粗粒度架构决策与待探索方向。
+
+### 1. 自指知识库：五层知识模型
+
+devbase 作为知识库存储层，需支持 L0-L4 五层索引：
+
+| 层级 | 内容 | 生长信号 | 遗忘机制 |
+|------|------|---------|---------|
+| L0 对象 | 外部知识块（代码、文档、日志） | 检索频率、引用次数 | 版本冻结 |
+| L1 方法 | 操作知识的方法（检索/分块/向量化） | 检索成功率、延迟分布 | A/B 测试 |
+| L2 哲学 | 设计原则（本地优先、奥卡姆剃刀） | 架构决策事后验证 | 外部论文扰动 |
+| L3 风险 | 系统弱点图谱 | 故障事件、异常日志 | 红队攻击 |
+| L4 元认知 | 关于 L1-L3 的元知识 | 人类纠正、跨会话一致性 | 形式化验证 |
+
+**决策**：粗粒度与细粒度知识保留独立索引；细粒度存 SQLite（快速查询），粗粒度存 Vector DB（语义检索）。
+
+### 2. 审计日志（OpLog）
+
+- P3 不可靠交付的使用追踪写入 OpLog，实现事后追溯
+- 边界图谱版本历史、探索任务结果写入 OpLog
+- 所有验证消息（请求+响应+共识）写入 OpLog
+
+### 3. 外部资源调度器
+
+devbase 承载外部资源调度的抽象接口：
+
+- **形式化工具**：TLA+/Coq/Lean（本地路径或远程地址）
+- **人类专家**：异步审批，不阻塞夜间批处理
+- **P2P 节点**：复用 syncthing-rust 的 Device ID 与传输层
+- **文献检索**：arXiv / Semantic Scholar API
+
+**决策**：定义资源请求的抽象接口与排队策略；具体调度算法不进当前 scope。
+
+### 4. 边界图谱存储
+
+- `BoundaryMap` 存储已知限制（KnownLimit）的版本历史
+- `ExplorationTask` 队列记录边界外待探索任务
+- 跨实例同步：通过 syncthing-rust P2P 网络同步边界快照
+
+### 5. 安全计算（MPC/TEE）
+
+- 当前四个项目中无密码学层归属
+- **短期**：devbase MCP 接口可封装外部 TEE 服务（如 Azure Confidential Computing）
+- **长期**：如需自建，新建 `clarity-tee` 或 `devbase-secure` 子项目
+
+## 当前阶段待办（v0.15.0 推进中）
+
+v0.11.3 已交付（tagged）。v0.12.0-alpha 全部功能已完成，进入发布治理阶段。
+
+| 方向 | 状态 | 说明 |
+|------|------|------|
+| `init_db()` → `AppContext` 迁移 | 🟢 | Pool 化完成，`init_db()` 从 89 处降至 5 处合法保留，全部 commands/TUI/MCP 已接入 |
+| Tantivy+SQLite 双写一致性 | 🟡 | 无事务协调，需补偿机制或 FTS5 替代评估 |
+| tree-sitter 编译成本 | 🟡 | ~15-20s，评估 ccache 或 grammar 预编译 |
+| Feature flags 扩展 | 🟡 | 2/3（tui, watch），mcp 等模块待评估 |
+
+---
+
+## 历史完成记录（v0.4.0 – v0.10.0）
+
+### 阶段二任务（v0.4.0 AI Skill 编排基础设施）
+
+| 波次 | 任务 | 状态 | 交付物 |
+|------|------|------|--------|
+| Wave 21 | Schema v16 + 自动封装 | ✅ 已完成 | `entity_types/entities/relations` + `devbase skill discover` |
+| Wave 22 | discover 硬化 | ✅ 已完成 | `--install` 真正注册 + Git URL 直接克隆封装 |
+| Wave 23 | Workflow 预留 | ✅ 规范已完成 | `docs/architecture/workflow-dsl.md` |
+| Wave 24 | Workflow Engine v0.5.0 | ✅ 已完成 | YAML 解析 + 拓扑调度 + batch 并行执行 + 5 step 类型 |
+| Wave 25 | TUI Workflow 可执行 | ✅ 已完成 | `[w]` 详情页 `r/Enter` 运行 + 结果弹窗 |
+| Wave 26 | NLQ 自然语言查询 v0.7.0 | ✅ 已完成 | `[:]` 触发 embedding 语义搜索 + fallback 降级 |
+| Wave 27 | Mind Market 评分 v0.6.0 | ✅ 已完成 | `success_rate`/`usage_count`/`rating` + `recalc-scores`/`top`/`recommend` |
+| Wave 28 | 7 个风险点修复 v0.7.1 | ✅ 已完成 | EnvGuard、NLQ fallback、StepType 显式标签、跨平台解释器探测 |
+| Wave 29 | Workflow 子类型执行 v0.8.0 | ✅ 已完成 | Subworkflow 递归 + Parallel 聚合 + Condition 表达式求值 |
+| Wave 30 | 生产代码 unwrap 清零 | ✅ 已完成 | 29 个生产代码 unwrap → 0，`cargo clippy -D warnings` 全绿 |
+| Wave 31 | NLQ 结果可执行 v0.8.1 | ✅ 已完成 | `[:]` 搜索结果按 Enter 直接运行 skill，event+state+render 三文件修改 |
+| Wave 32 | NLQ  smoke test | ✅ 已完成 | `run_nlp_selected_skill` 空列表/无技能/执行管道测试，267 tests passed |
+| Wave 33 | TUI SkillPanel 拆分 | ✅ 已完成 | 7 个 skill 字段提取到 `SkillPanelState`，App 51→44 字段 |
+| Wave 34 | Workflow Loop Step 硬化 | ✅ 已完成 | `StepType::Loop { body }` + `execute_loop_step` + `${loop.item}` / `${loop.index}` |
+| Wave 35 | L3 Risk Layer MVP | ✅ 已完成 | Schema v18 `known_limits` + Registry CRUD + MCP tools + CLI `limit` + OpLog 集成 |
+| Wave 36 | L4 元认知层 MVP | ✅ 已完成 | Schema v19 `knowledge_meta` + Registry CRUD + `--reason` resolve + L3-L4 联动 |
+| Wave 37 | Hard Veto 运行时守卫 | ✅ 已完成 | `skill_runtime::executor` 执行前检查未解决 hard veto，警告注入 stderr + OpLog 审计 |
+
+### 明确不做（已排除）
+
+- SSE transport（stdio 已覆盖主流 Client）
+- `.devbase` 目录规范（无外部采纳者）
+- MCP 协议扩展提案（Star = 0，不会被采纳）
+- 商业化 / 付费版
+- ~~拆分 crate（50+ tools 后再评估）~~ → **重新评估**：已触发外部架构审查（§九 耦合检查，6 领域耦合），`workflow`/`skill` 与 Claude Code Agent 重叠，v0.16.0 需输出拆分方案（`devbase-core` / `devbase-sync` / `devbase-bridge`）
+
+### Future / Icebox（无排期）
+
+1. ~~输出 L0-L4 五层知识的 TOML/JSON Schema 草案~~（保持开放，非阻塞）
+2. ~~输出 OpLog 审计事件类型清单~~（已有基础枚举，保持增量）
+3. ~~输出外部资源调度的请求格式草案~~（保持开放）
+4. **不做**：调度算法、边界图谱引擎、哲学规则库内容、密码学协议
+
+### Post-Wave 19  triage 结论（2026-04-25）
+
+| 优先级 | 事项 | 状态 |
+|--------|------|------|
+| P1 | SSE 传输状态与 README 一致性 | ✅ 已完成 — README 修正为 "stdio only; SSE in development"，见 commit `935dd61` |
+| P2 | 架构预拆分评估 | ✅ 已完成 — 评估报告位于 `docs/architecture/pre-split-evaluation.md`，结论：22.7 KLOC 单 crate 仍最优， defer 至 50+ tools 或编译 > 60s |
+| P3 | 竞品定位标语 | ✅ 已完成 — README 顶部标语更新为 "AI 无法识别你的 GUI，devbase 是它的眼镜。" |
+| P4 | 开发者 onboarding 文档 | ✅ 已完成 — `CONTRIBUTING.md` + README Contributing 章节（devbase + clarity） |
+
+- **Tag**: `v0.10.0` 已打标（最新）；`v0.2.4` 及之前标签见 Git history
+- **Roadmap**: `docs/ROADMAP.md` 为唯一活跃主路线图
+
+## Embedding 策略长期规划（已决策）
+
+**方向**：混合方案 — 模型向量语义搜索 + tantivy BM25 降级
+
+| 层级 | 触发条件 | 技术方案 | 状态 |
+|------|----------|----------|------|
+| L1 向量语义 | `code_embeddings` 表有数据 | Ollama/OpenAI-compatible 生成 768-dim embedding，余弦相似度 Top-K | 已实现，待激活（需 Ollama 运行） |
+| L2 全文搜索 | `code_embeddings` 为空或服务不可用时 | tantivy 索引代码符号（function name + signature + doc comment），BM25 评分 | 基础设施就绪，待接入 `semantic_search_symbols` |
+| L3 纯符号匹配 | 查询为精确标识符 | SQLite `LIKE '%name%'` 快速匹配 | 已有 |
+
+**关键决策**：不绑定 Ollama 为唯一 provider。未来可能替换 embedding 生成层为：
+- 本地 C++ 推理引擎（如 llama.cpp / onnxruntime）
+- 纯 Rust 推理引擎（如 rust-bert / candle）
+- 外部 MCP / Skill 封装（embedding 作为独立服务）
+
+**Embedding 状态**：
+- `code_embeddings`: **56,722** 行（37.0% 覆盖率），覆盖 10 个仓库
+- `skills.embedding`: 3 个 builtin skill 已有 384-dim 向量
+- 生成工具：`tools/embedding-provider/skills.py`（sentence-transformers `all-MiniLM-L6-v2`）
+- 激活路径：启动 Ollama + `devbase index <repo>` 生成 embedding，或配置远程 provider 于 `config.toml [embedding]` 段
+
+### 2026-05-04 索引性能实验记录
+
+**发现**：Candle CPU BERT `batch_size=32` forward 比 `rayon` 并行单条慢 **5.2×**（88s vs 16s）。
+- 根因：Candle CPU matmul 对大 padded batch 不友好；batch 内序列长度差异导致大量无效 padding token 计算。
+- **决策**：`generate_and_save_embeddings` 回滚到 `rayon::par_iter()` 单条编码；保留 `EmbeddingProvider::encode_batch` trait 方法供未来 GPU/ONNX provider。
+- **新增**：`devbase index <path> --skip-embeddings` 跳过 embedding 生成，纯符号/调用图索引从 ~16s 降至 ~250ms。
+
+**外部参考**：知识蒸馏 Pipeline 设计规格（六阶段：噪声过滤→语义分割→主题聚类→层级展开→可信度标注→结构化输出），来源见 `docs/_audit/2026-04-26-embedding-research.md` §2026-05-04 补充。该规格提出通过 devbase MCP 暴露 `devkit_knowledge_distill` 工具，与 Vault 系统形成输入-处理-输出闭环。状态：设计规格级，待验证后评估集成优先级。
+
+## 上下文安全机制（Context Safety Mechanism）
+
+> 长期架构原则：在多 Agent / 子代理协作场景下，保证工作区状态的一致性与可恢复性。
+
+### 1. 子代理执行隔离
+
+**教训**（2026-04-25 实际发生）：多个子代理在同一 Git 工作目录并行执行 `git checkout`/`git commit` 会导致严重的分支混乱。`agent-publish` 和 `agent-tui` 的修改互相覆盖，最终 commit 被错误地放置到对方分支， stash 中混入了不相关的代码。
+
+**规则**：
+- **串行优先**：多个子代理任务必须串行执行，每次 commit 后切回 main 再启动下一个
+- **目录隔离**：若必须并行，每个子代理在独立的 `git clone` 临时目录工作，完成后由主会话 cherry-pick
+- **禁止共享工作目录**：多个 Agent 绝不能同时操作同一个 `.git` 目录
+- **编译检查**：任何子代理返回前必须通过 `cargo test --lib`，否则标记为脏状态
+
+### 2. MCP 工具幂等性
+
+**原则**：所有通过 MCP 暴露的状态变更操作必须是幂等的。
+
+**实现**：
+- `save_embeddings` — `ON CONFLICT(repo_id, symbol_name) DO UPDATE`
+- `save_symbol_links` — `ON CONFLICT(source_repo, source_symbol, target_repo, target_symbol, link_type) DO NOTHING`
+- `index_repo` — 先 `DELETE` 旧数据再 `INSERT`（而非追加）
+- 所有批量操作包裹在 SQLite transaction 中
+
+### 3. 状态变更审计追踪
+
+**原则**：任何对 registry 的写入都必须留下不可变的审计痕迹。
+
+**实现**：
+- OpLog Schema v12+：`event_type` 枚举 + JSON metadata + `duration_ms`
+- 所有 `scan`/`sync`/`health`/`index` 操作自动记录
+- Schema 迁移前自动生成 `backup-YYYYMMDD-HHMMSS.db` 快照
+- `registry export --format json` 支持用户自主备份
+
+### 4. 知识库一致性契约
+
+**原则**：存储层（devbase）与计算层（Clarity/Skill）之间的接口契约必须显式、可版本化。
+
+**当前契约**：
+| 方向 | 接口 | 版本 |
+|------|------|------|
+| 外部 → devbase | `devkit_embedding_store(repo_id, symbol_name, embedding[])` | v1 |
+| devbase → 外部 | `devkit_hybrid_search(repo_id, query_text, query_embedding?, limit)` | v1 |
+| devbase → 外部 | `devkit_knowledge_report(repo_id?, activity_limit)` | v1 |
+
+**变更规则**：MCP tool schema 的 breaking change 必须通过新增 tool（如 `devkit_hybrid_search_v2`）而非修改现有 tool。
+
+### 5. Sync Fail-Safe Defaults（Managed-Gate）
+
+**原则**：危险操作（修改本地 Git 分支）必须默认拒绝，仅对显式授权仓库生效。
+
+**实现**（v0.12.0-alpha+）：
+- `scan --register` 不再自动分配 `"discovered"` 标签；新注册仓库标签为空。
+- 默认 `devbase sync`（无 `--filter-tags`）仅操作带有**管理标签**的仓库：
+  `mirror`, `reference`, `third-party`, `collaborative`, `team`,
+  `own-project`, `tool`, `active`, `managed`。
+- 未管理仓库仍被追踪（`health`/`index`/`query` 不受影响），但 `sync` 会跳过它们并提示：
+  `ℹ️  N registered repositories are not managed. Use 'devbase tag <repo> managed' to enable sync.`
+- `--filter-tags` 显式过滤时绕过管理门控，允许用户按需选择任意标签组合。
+- 现有 DB 中带有旧 `"discovered"` 标签的仓库自动变为未管理状态（无需迁移，即安全修复）。
+
+**用户操作路径**：
+1. `devbase scan <path> --register` → 仓库入库，标签为空。
+2. `devbase tag <repo> managed`（或 `mirror` / `active` 等）→ 授权该仓库进入自动同步池。
+3. `devbase sync` → 仅对已授权仓库执行同步。
+
+---
+
+## 上下文压缩缓解（Kimi CLI / LLM Agent 会话恢复）
+
+> Kimi CLI 等 Agent 环境存在上下文窗口限制，长会话会被压缩/截断。以下措施确保压缩后新 Agent 能独立恢复工作上下文。
+
+### 1. 文件自描述原则
+
+所有 `src/` 根目录模块和 `crates/*/src/lib.rs` 必须在文件顶部包含：
+- **一句话职责**：这个文件解决什么问题
+- **边界说明**：它依赖谁、谁依赖它（或明确声明"零内部依赖"）
+- **关键决策注释**：任何非直观的设计选择必须有 `// NOTE:` 或 `// DECISION:` 注释
+
+### 2. 状态锚点文件（Context Anchor Files）
+
+以下文件必须保持最新，作为会话压缩后的恢复点：
+
+| 文件 | 用途 | 更新触发条件 |
+|------|------|-------------|
+| `docs/ai-protocol.md` | 架构快照、待办、耦合地图 | 每次架构变更后 |
+| `AGENTS.md` | 环境指引、红线规则、历史决策 | 每次红线变更后 |
+| `Cargo.toml` workspace 声明 | 模块结构、crate 列表 | 每次提取/新增 crate |
+| 各 `crates/*/Cargo.toml` | 独立 crate 的依赖与版本 | 每次依赖变更 |
+
+### 3. 反模式：禁止在代码中埋藏隐式上下文
+
+- ❌ `// 之前讨论过这个方案` — 压缩后无法追溯
+- ❌ `// 见上文的 TODO` — "上文"已丢失
+- ✅ `// DECISION(2026-05-01): 使用 rusqlite::Connection 而非 r2d2 Pool，因为单个写入线程不需要连接池` — 自包含
+
+### 4. 会话交接模板
+
+当检测到上下文可能被压缩时，Agent 应在恢复后执行以下自检：
+
+```bash
+# 1. 确认当前架构状态
+cargo test --workspace 2>&1 | grep "test result"
+# 2. 确认 workspace 成员
+cargo metadata --format-version 1 | jq '.workspace_members'
+# 3. 确认耦合地图（快速扫描高耦合模块）
+grep -rc 'crate::' src/*.rs | sort -t: -k2 -n | tail -5
+```
+
+## 知识库生产级缺口与补齐路线（Knowledge Base Production Gap）
+
+> 该章节记录 devbase 作为知识基础设施与生产级要求之间的真实差距，以及消除"玩具感"的补齐路径。  
+> **核心原则**：devbase 首先是一个可靠的本地知识基础设施，然后才是一个 World Model Compiler。AI 层是编译器的输出接口，但如果存储层不可靠，AI 就是沙上建塔。
+
+### 缺口诊断（与生产级知识库对比）
+
+| 能力维度 | 当前现状 | 生产级要求 | 缺口等级 |
+|:---|:---|:---|:---:|
+| **存储可靠性** | SQLite 单文件；Schema 迁移前自动快照 | WAL 并发模式、增量备份、索引损坏自动检测重建、点对点恢复 | 🔴 **严重** |
+| **检索质量** | BM25 + 768-dim `cosine_similarity` SQL UDF | Hybrid RRF 调优、Re-rank、多路召回、查询延迟可观测 | 🔴 **严重** |
+| **知识图谱** | `relation_store/query` 简单三元组 | 双向链接图遍历、Transitive Closure、社区发现、本体约束 | 🟠 **显著** |
+| **版本历史** | 代码有 Git；Vault 笔记无版本 | 笔记块级历史、分支、冲突合并策略 | 🟠 **显著** |
+| **规模化** | 单机 Rayon；未验证 >100 仓库 / >10k 文档场景 | 索引分片、增量更新、查询缓存、内存上限保护 | 🟠 **显著** |
+| **互操作性** | Vault 读写 Markdown | Obsidian 兼容（frontmatter/wikilink）、标准导入导出、避免 Vendor Lock-in | 🟡 **中等** |
+| **多模态** | 文本为主 | PDF 解析、图片 OCR、音频转录 | 🟡 **可延期** |
+| **协作** | 单用户 + Syncthing 文件级同步 | 冲突解决（CRDT/OT 或至少 last-write-win）、多设备状态一致性 | 🟠 **显著** |
+
+### 补齐路线图
+
+#### 🔴 v0.19.0：存储可靠性加固（消除"玩具感"的最快路径）
+
+| 任务 | 优先级 | 验收标准 |
+|:---|:---:|:---|
+| SQLite WAL 模式默认启用 | P1 | 并发写入无锁定冲突；`PRAGMA journal_mode=WAL` 持久化 |
+| Tantivy 索引健康检查 `devkit_index_health` | P1 | 检测索引损坏、版本不匹配、孤儿文档；返回健康评分 0-100 |
+| 自动重建策略 | P1 | 索引损坏时自动 fallback 全量重建，而非静默失败；重建过程写入 OpLog |
+| 查询性能基线测试 | P1 | CI 中测试 1k/10k/100k 文档量级的检索延迟；建立性能回归红线 |
+| Vault 批量导出（Markdown + frontmatter） | P2 | `devkit_vault_export` 支持 PARA 结构完整导出；消除 Vendor Lock-in 焦虑 |
+| Redis 缓存评估 | P2 | 完成 Session/向量缓存需求分析；决策：引入 / 自建 / 放弃 |
+
+#### 🟠 v0.20.0：知识完备性（从"能存"到"好用"）
+
+| 任务 | 优先级 | 验收标准 |
+|:---|:---:|:---|
+| Vault 双向链接图遍历 | P1 | `vault_backlinks` 升级为图查询：最短路径、共同引用、引用频次 |
+| 笔记变更追踪 | P1 | Vault 笔记历史基于 Git 追踪（vault 目录作为 Git 子模块）或 SQLite 增量历史表 |
+| 混合检索质量监控 | P1 | RRF 参数可调（`k`、`weights`）、召回率/精确率指标、`devkit_search_quality` 工具 |
+| 笔记块级引用 `[[note#block]]` | P2 | 从文档级粒度下沉到块级；支持标题块、列表块、代码块引用 |
+| middleware.ts 错误修复 | P2 | 解决已知未解决错误，见技术债登记簿 |
+
+#### 🟡 v0.21.0+：外部能力嫁接（不重复造轮子）
+
+| 任务 | 来源 | 集成方式 |
+|:---|:---|:---|
+| 多说话人播客/测验生成管道 | Open Notebook | 提取生成模块作为外部 MCP Tool，devbase 提供文档输入 |
+| Agent 协作与多 LLM 路由 | SurfSense | 参考 Agent 架构，融入 Clarity 三角色世界模型 |
+| 时序观测基础设施 | GreptimeDB | Standalone 模式起步，替代 Prometheus，监控索引和查询健康度 |
+| 向量索引统一（远期） | GreptimeDB v1.1 | 评估替代 Tantivy+SQLite 双写架构的可行性 |
+
+### 技术债关联更新
+
+| 债项 | 严重 | 状态变更 | 清理路径 |
+|:---|:---:|:---|:---|
+| Tantivy+SQLite 双写一致性 | 🟡 | **从长期降级至 v0.19.0 P1** | WAL + 补偿机制 + `devkit_index_health` |
+| SQLite 单文件并发 | 🔴 | **新增** | v0.19.0 WAL 模式启用 |
+| 查询性能不可观测 | 🔴 | **新增** | v0.19.0 CI 性能基线 + OpLog 延迟指标 |
+| Vault 无版本历史 | 🟠 | **新增** | v0.20.0 Git 追踪或增量表 |
+
+### 决策约束
+
+1. **v0.19.0 禁止新增非可靠性相关的 MCP Tool**。所有新增 Tool 必须与存储健康、可观测性、或索引修复直接相关。
+2. **v0.19.0 禁止引入外部数据库依赖**（包括 GreptimeDB、Redis、PostgreSQL）。可靠性加固必须在现有 SQLite + Tantivy 技术栈内完成。
+3. **世界模型研究（Spark/Flink/时序图神经网络）保持独立仓库**，主仓库继续执行"不得引入 Spark/Flink 依赖"红线。
+
+---
+
+## 架构演进方向：世界模型战略（World Model Strategy）
+
+> 该章节记录 devbase 从"静态情境编译器"向"动态世界模型"演进的战略认知。  
+> 完整推导见 `vault/research/world-model-spark-flink-strategy.md`，精简认知见 `vault/ideas/world-model-cognition-card.md`。
+
+### 核心认知
+
+devbase 的终极壁垒不是"管理仓库的工具"，而是**把静态代码库编译成 AI 可推理的动态世界模型**。
+
+当前 devbase 是**静态世界模型编译器**——能把代码库的"当前快照"编译成 AI 可读的符号表征（调用图、知识图谱、Agent Memory），但不具备**时间维度**和**因果维度**的建模能力。
+
+### 三层缺口分析
+
+| 层级 | 当前能力 | 缺口 | 研究价值 |
+|:---|:---|:---|:---:|
+| **感知层** | AST、Git 状态、Vault 索引 | 时序演化感知、群体协作行为 | 中 |
+| **世界模型层** | 调用图、知识图谱、向量空间 | 动态转移预测、因果结构、反事实推演 | **高** |
+| **策略应对层** | 预设 Workflow 规则 | 自动规划、风险预测、基于模型的决策 | **高** |
+
+### 关键决策原则
+
+1. **产品核心**：坚持 Local-first、Rust-native、zero ML runtime。世界模型训练可在云端，**推理必须下沉到本地**。
+2. **技术选型**：Spark/Flink 是可替换的数据工程管道，不是竞争壁垒。
+3. **差异化**：静态→动态的世界模型升级，是学术+工程的双重壁垒。
+
+### Spark/Flink 定位
+
+从世界模型视角，Spark/Flink 仅处于**数据工程层**：
+- **Spark**：批量构建全局代码演化图谱、分布式因果发现（变量 > 10k 时有用）
+- **Flink**：实时事件处理、多开发者世界模型同步
+
+在单机/小团队场景下，两者均可用 `rayon` + `tokio` + `SQLite WAL` 替代。真正的研究核心在于**时序图神经网络、因果发现、世界模型压缩**，而非分布式框架本身。
+
+### 两条验证路径
+
+| 路径 | 形式 | 产出 | 与主仓库关系 |
+|:---|:---|:---|:---|
+| **学术原型** | 独立仓库 `devbase-worldmodel-research` | ICSE/FSE/NeurIPS Workshop 论文 | 复用 devbase AST 逻辑做数据预处理，模型通过 MCP 接入 |
+| **求职映射** | 简历话语 | "基于 Spark/Flink 构建代码知识图谱的动态演化分析系统" | 实际支撑：devbase 符号提取 + 独立研究仓库分布式训练 |
+
+### 待验证假设
+
+- [ ] 时序图神经网络能否预测模块缺陷爆发时间窗口？
+- [ ] 因果发现算法能否从 git history 提取可靠的干预建议？
+- [ ] 世界模型压缩后，本地推理延迟能否控制在 < 100ms？
+
+### 关联笔记（双向联动）
+
+| 笔记 | 类型 | 用途 |
+|:---|:---|:---|
+| `vault/research/world-model-spark-flink-strategy.md` | 完整推导 | 世界模型三层架构、Spark/Flink 定位、研究方向建议 |
+| `vault/ideas/world-model-cognition-card.md` | 精炼认知 | 快速查阅：一句话认知、决策原则、反常识洞察 |
+
+> **认知同步原则**：AGENTS.md 是项目级**约束文档**，Vault 笔记是**探索空间**。若 Vault 中的假设被验证，应反向同步到 AGENTS.md 的"待验证假设"中并打勾；若 AGENTS.md 的决策原则变更，应同步更新 Vault 认知卡片。
+
+## 禁止事项
+
+- 不得修改 `dev\third_party\*` 外部仓库
+- 不得在没有迁移逻辑的情况下修改 registry schema
+- 不得引入已 deprecated 的协议
+- **不得在主仓库引入 Spark/Flink 依赖**（研究性质代码必须置于独立仓库，保持主仓库轻量）
+- **不得在任何源码文件中硬编码真实 token、api_key 或密码**（包括注释和测试数据）

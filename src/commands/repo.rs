@@ -462,6 +462,213 @@ pub fn run_knowledge_report(
     Ok(())
 }
 
+pub async fn run_repo(
+    ctx: &mut crate::storage::AppContext,
+    cmd: crate::RepoCommands,
+) -> anyhow::Result<()> {
+    match cmd {
+        crate::RepoCommands::List { json } => run_repo_list(ctx, json).await,
+        crate::RepoCommands::Status { json } => run_repo_status(ctx, json).await,
+    }
+}
+
+pub async fn run_repo_list(ctx: &mut crate::storage::AppContext, json: bool) -> anyhow::Result<()> {
+    let conn = ctx.conn()?;
+    let repos = crate::registry::repo::list_repos(&conn)?;
+
+    #[derive(serde::Serialize)]
+    struct RepoListItem {
+        id: String,
+        path: String,
+        language: Option<String>,
+        tags: Vec<String>,
+        managed: bool,
+        workspace_type: String,
+        data_tier: String,
+        upstream_url: Option<String>,
+    }
+
+    let items: Vec<RepoListItem> = repos
+        .into_iter()
+        .map(|r| {
+            let managed = r.is_managed();
+            RepoListItem {
+                upstream_url: r.primary_remote().and_then(|rm| rm.upstream_url.clone()),
+                id: r.id,
+                path: r.local_path.to_string_lossy().to_string(),
+                language: r.language,
+                tags: r.tags,
+                managed,
+                workspace_type: r.workspace_type,
+                data_tier: r.data_tier,
+            }
+        })
+        .collect();
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&items)?);
+    } else {
+        println!("{:<20} {:<8} {:<10} {:<12} Path", "ID", "Managed", "Type", "Tier");
+        println!("{}", "-".repeat(90));
+        for item in &items {
+            println!(
+                "{:<20} {:<8} {:<10} {:<12} {}",
+                item.id,
+                if item.managed { "yes" } else { "no" },
+                item.workspace_type,
+                item.data_tier,
+                item.path
+            );
+        }
+        let managed_count = items.iter().filter(|i| i.managed).count();
+        println!(
+            "\nTotal: {} | Managed: {} | Unmanaged: {}",
+            items.len(),
+            managed_count,
+            items.len() - managed_count
+        );
+    }
+    Ok(())
+}
+
+pub async fn run_repo_status(
+    ctx: &mut crate::storage::AppContext,
+    json: bool,
+) -> anyhow::Result<()> {
+    use crate::registry::{HealthEntry, health as reg_health};
+    use chrono::Utc;
+
+    let conn = ctx.conn()?;
+    let repos = crate::registry::repo::list_repos(&conn)?;
+
+    // Batch load health cache
+    let repo_ids: Vec<&str> = repos.iter().map(|r| r.id.as_str()).collect();
+    let health_batch = reg_health::get_health_batch(&conn, &repo_ids).unwrap_or_default();
+
+    #[derive(serde::Serialize)]
+    struct RepoStatusItem {
+        id: String,
+        path: String,
+        managed: bool,
+        status: String,
+        ahead: usize,
+        behind: usize,
+        upstream_url: Option<String>,
+        default_branch: Option<String>,
+        tags: Vec<String>,
+        checked_at: Option<String>,
+    }
+
+    let mut items = Vec::new();
+    for repo in repos {
+        let primary = repo.primary_remote();
+        let upstream_url = primary.and_then(|r| r.upstream_url.clone());
+        let default_branch = primary.and_then(|r| r.default_branch.clone());
+
+        let (status, ahead, behind, checked_at) = if repo.workspace_type == "git" {
+            match health_batch.get(&repo.id).cloned() {
+                Some(health) => {
+                    let elapsed = Utc::now().signed_duration_since(health.checked_at).num_seconds();
+                    // Use cached value if fresh (within TTL), else re-analyze
+                    let ttl = ctx.config.cache.ttl_seconds;
+                    if elapsed >= 0 && elapsed < ttl {
+                        (
+                            health.status,
+                            health.ahead,
+                            health.behind,
+                            Some(health.checked_at.to_rfc3339()),
+                        )
+                    } else {
+                        let (st, ah, bh) = crate::health::analyze_repo(
+                            repo.local_path.to_string_lossy().as_ref(),
+                            upstream_url.as_deref(),
+                            default_branch.as_deref(),
+                        );
+                        let new_health = HealthEntry {
+                            status: st.clone(),
+                            ahead: ah,
+                            behind: bh,
+                            checked_at: Utc::now(),
+                        };
+                        if let Err(e) = reg_health::save_health(&conn, &repo.id, &new_health) {
+                            tracing::warn!("Failed to save health for {}: {}", repo.id, e);
+                        }
+                        (st, ah, bh, Some(Utc::now().to_rfc3339()))
+                    }
+                }
+                None => {
+                    let (st, ah, bh) = crate::health::analyze_repo(
+                        repo.local_path.to_string_lossy().as_ref(),
+                        upstream_url.as_deref(),
+                        default_branch.as_deref(),
+                    );
+                    let new_health = HealthEntry {
+                        status: st.clone(),
+                        ahead: ah,
+                        behind: bh,
+                        checked_at: Utc::now(),
+                    };
+                    if let Err(e) = reg_health::save_health(&conn, &repo.id, &new_health) {
+                        tracing::warn!("Failed to save health for {}: {}", repo.id, e);
+                    }
+                    (st, ah, bh, Some(Utc::now().to_rfc3339()))
+                }
+            }
+        } else {
+            ("non-git".to_string(), 0, 0, None)
+        };
+
+        let managed = repo.is_managed();
+        items.push(RepoStatusItem {
+            id: repo.id,
+            path: repo.local_path.to_string_lossy().to_string(),
+            managed,
+            status,
+            ahead,
+            behind,
+            upstream_url,
+            default_branch,
+            tags: repo.tags,
+            checked_at,
+        });
+    }
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&items)?);
+    } else {
+        println!(
+            "{:<20} {:<8} {:<12} {:>5} {:>6} Path",
+            "ID", "Managed", "Status", "Ahead", "Behind"
+        );
+        println!("{}", "-".repeat(90));
+        for item in &items {
+            println!(
+                "{:<20} {:<8} {:<12} {:>5} {:>6} {}",
+                item.id,
+                if item.managed { "yes" } else { "no" },
+                item.status,
+                item.ahead,
+                item.behind,
+                item.path
+            );
+        }
+        let managed_count = items.iter().filter(|i| i.managed).count();
+        let dirty_count =
+            items.iter().filter(|i| i.status == "dirty" || i.status == "changed").count();
+        let behind_count = items.iter().filter(|i| i.behind > 0).count();
+        let ahead_count = items.iter().filter(|i| i.ahead > 0).count();
+        println!(
+            "\nTotal: {} | Managed: {} | Dirty: {} | Behind: {} | Ahead: {}",
+            items.len(),
+            managed_count,
+            dirty_count,
+            behind_count,
+            ahead_count
+        );
+    }
+    Ok(())
+}
+
 pub fn run_registry(
     ctx: &mut crate::storage::AppContext,
     cmd: crate::RegistryCommands,

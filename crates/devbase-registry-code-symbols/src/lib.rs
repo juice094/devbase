@@ -62,3 +62,151 @@ pub fn query_code_symbols(
 
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn init_in_memory() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE code_symbols (
+                id INTEGER PRIMARY KEY,
+                repo_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                symbol_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                line_start INTEGER,
+                line_end INTEGER,
+                signature TEXT,
+                attributes TEXT
+            )",
+            [],
+        )
+        .unwrap();
+        conn
+    }
+
+    fn seed_symbols(conn: &rusqlite::Connection) {
+        let symbols = [
+            ("repo-a", "src/main.rs", "function", "main", 1, 10, None, None),
+            ("repo-a", "src/lib.rs", "function", "helper", 5, 15, Some("fn helper()"), None),
+            ("repo-a", "src/lib.rs", "struct", "Config", 20, 30, None, Some("derive(Debug)")),
+            ("repo-a", "src/models.rs", "struct", "User", 1, 20, None, None),
+            (
+                "repo-a",
+                "src/models.rs",
+                "function",
+                "new_user",
+                25,
+                35,
+                Some("fn new_user() -> User"),
+                None,
+            ),
+            ("repo-b", "src/main.rs", "function", "entry", 1, 5, None, None),
+        ];
+        for (repo, path, ty, name, start, end, sig, attrs) in symbols {
+            conn.execute(
+                "INSERT INTO code_symbols (repo_id, file_path, symbol_type, name, line_start, line_end, signature, attributes)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![repo, path, ty, name, start, end, sig, attrs],
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn test_query_all_symbols() {
+        let conn = init_in_memory();
+        seed_symbols(&conn);
+
+        let results = query_code_symbols(&conn, "repo-a", None, None, None, 100).unwrap();
+        assert_eq!(results.len(), 5);
+    }
+
+    #[test]
+    fn test_query_by_symbol_type() {
+        let conn = init_in_memory();
+        seed_symbols(&conn);
+
+        let structs = query_code_symbols(&conn, "repo-a", None, Some("struct"), None, 100).unwrap();
+        assert_eq!(structs.len(), 2);
+        assert!(structs.iter().all(|s| s.symbol_type == "struct"));
+    }
+
+    #[test]
+    fn test_query_by_name_filter() {
+        let conn = init_in_memory();
+        seed_symbols(&conn);
+
+        let results = query_code_symbols(&conn, "repo-a", Some("user"), None, None, 100).unwrap();
+        assert_eq!(results.len(), 2); // User and new_user
+        assert!(results.iter().any(|s| s.name == "User"));
+        assert!(results.iter().any(|s| s.name == "new_user"));
+    }
+
+    #[test]
+    fn test_query_by_file_path() {
+        let conn = init_in_memory();
+        seed_symbols(&conn);
+
+        let results = query_code_symbols(&conn, "repo-a", None, None, Some("models"), 100).unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|s| s.file_path.contains("models")));
+    }
+
+    #[test]
+    fn test_query_combined_filters() {
+        let conn = init_in_memory();
+        seed_symbols(&conn);
+
+        let results =
+            query_code_symbols(&conn, "repo-a", None, Some("struct"), Some("lib"), 100).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Config");
+    }
+
+    #[test]
+    fn test_query_empty_result() {
+        let conn = init_in_memory();
+        seed_symbols(&conn);
+
+        let results =
+            query_code_symbols(&conn, "repo-a", Some("nonexistent"), None, None, 100).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_query_limit() {
+        let conn = init_in_memory();
+        seed_symbols(&conn);
+
+        let results = query_code_symbols(&conn, "repo-a", None, None, None, 3).unwrap();
+        assert_eq!(results.len(), 3);
+    }
+
+    #[test]
+    fn test_query_cross_repo_isolation() {
+        let conn = init_in_memory();
+        seed_symbols(&conn);
+
+        let repo_a = query_code_symbols(&conn, "repo-a", None, None, None, 100).unwrap();
+        let repo_b = query_code_symbols(&conn, "repo-b", None, None, None, 100).unwrap();
+        assert_eq!(repo_a.len(), 5);
+        assert_eq!(repo_b.len(), 1);
+    }
+
+    #[test]
+    fn test_query_preserves_optional_fields() {
+        let conn = init_in_memory();
+        seed_symbols(&conn);
+
+        let results = query_code_symbols(&conn, "repo-a", Some("helper"), None, None, 100).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].signature, Some("fn helper()".to_string()));
+        assert_eq!(results[0].attributes, None);
+
+        let results = query_code_symbols(&conn, "repo-a", Some("Config"), None, None, 100).unwrap();
+        assert_eq!(results[0].attributes, Some("derive(Debug)".to_string()));
+    }
+}

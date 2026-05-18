@@ -449,6 +449,31 @@ impl McpTool for McpToolEnum {
     }
 }
 
+/// Append a single MCP tool invocation record to the oplog file.
+///
+/// Path: `%LOCALAPPDATA%/devbase/mcp-oplog.ndjson`
+/// Format: newline-delimited JSON (NDJSON)
+fn append_mcp_oplog(tool_name: &str, duration_ms: u128, success: bool, error_type: Option<&str>) {
+    let entry = serde_json::json!({
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "tool": tool_name,
+        "duration_ms": duration_ms,
+        "success": success,
+        "error_type": error_type,
+    });
+
+    if let Some(data_dir) = dirs::data_local_dir() {
+        let log_path = data_dir.join("devbase").join("mcp-oplog.ndjson");
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path)
+        {
+            use std::io::Write;
+            if let Err(e) = writeln!(file, "{}", entry) {
+                tracing::warn!("Failed to write MCP oplog: {}", e);
+            }
+        }
+    }
+}
+
 pub struct McpServer {
     tools: HashMap<String, McpToolEnum>,
 }
@@ -523,8 +548,10 @@ impl McpServer {
 
                 match self.tools.get(name) {
                     Some(_tool) if stream => {
+                        let start = std::time::Instant::now();
                         match self.handle_streaming_call(name, args, ctx).await {
                             Ok(events) => {
+                                append_mcp_oplog(name, start.elapsed().as_millis(), true, None);
                                 let events_json = serde_json::to_string(&events)?;
                                 let content = serde_json::json!({
                                     "type": "text",
@@ -540,6 +567,12 @@ impl McpServer {
                                 }))
                             }
                             Err(e) => {
+                                append_mcp_oplog(
+                                    name,
+                                    start.elapsed().as_millis(),
+                                    false,
+                                    Some("invoke_error"),
+                                );
                                 let payload =
                                     serde_json::json!({ "success": false, "error": e.to_string() });
                                 let text = serde_json::to_string(&payload)?;
@@ -555,41 +588,56 @@ impl McpServer {
                             }
                         }
                     }
-                    Some(tool) => match tool.invoke(args, ctx).await {
-                        Ok(result) => {
-                            let text = result.to_string();
-                            let is_error = !result
-                                .get("success")
-                                .and_then(|v: &serde_json::Value| v.as_bool())
-                                .unwrap_or(true);
-                            let content = serde_json::json!({
-                                "type": "text",
-                                "text": text
-                            });
-                            Ok(serde_json::json!({
-                                "jsonrpc": "2.0",
-                                "id": id,
-                                "result": {
-                                    "content": [content],
-                                    "isError": is_error
-                                }
-                            }))
+                    Some(tool) => {
+                        let start = std::time::Instant::now();
+                        match tool.invoke(args, ctx).await {
+                            Ok(result) => {
+                                let text = result.to_string();
+                                let is_error = !result
+                                    .get("success")
+                                    .and_then(|v: &serde_json::Value| v.as_bool())
+                                    .unwrap_or(true);
+                                append_mcp_oplog(
+                                    name,
+                                    start.elapsed().as_millis(),
+                                    !is_error,
+                                    None,
+                                );
+                                let content = serde_json::json!({
+                                    "type": "text",
+                                    "text": text
+                                });
+                                Ok(serde_json::json!({
+                                    "jsonrpc": "2.0",
+                                    "id": id,
+                                    "result": {
+                                        "content": [content],
+                                        "isError": is_error
+                                    }
+                                }))
+                            }
+                            Err(e) => {
+                                append_mcp_oplog(
+                                    name,
+                                    start.elapsed().as_millis(),
+                                    false,
+                                    Some("invoke_error"),
+                                );
+                                let payload =
+                                    serde_json::json!({ "success": false, "error": e.to_string() });
+                                let text = serde_json::to_string(&payload)?;
+                                let content = serde_json::json!({ "type": "text", "text": text });
+                                Ok(serde_json::json!({
+                                    "jsonrpc": "2.0",
+                                    "id": id,
+                                    "result": {
+                                        "content": [content],
+                                        "isError": true
+                                    }
+                                }))
+                            }
                         }
-                        Err(e) => {
-                            let payload =
-                                serde_json::json!({ "success": false, "error": e.to_string() });
-                            let text = serde_json::to_string(&payload)?;
-                            let content = serde_json::json!({ "type": "text", "text": text });
-                            Ok(serde_json::json!({
-                                "jsonrpc": "2.0",
-                                "id": id,
-                                "result": {
-                                    "content": [content],
-                                    "isError": true
-                                }
-                            }))
-                        }
-                    },
+                    }
                     None => Ok(serde_json::json!({
                         "jsonrpc": "2.0",
                         "id": id,

@@ -2,7 +2,6 @@
 // Copyright (c) 2026 juice094
 use crate::clients::{DigestClient, VaultClient};
 use crate::mcp::McpTool;
-use crate::registry::VaultNote;
 use anyhow::Context;
 
 #[derive(Clone)]
@@ -57,37 +56,30 @@ Returns: JSON array of matching notes. Each includes: id, title, path, and tags.
         let query_owned = query.to_string();
         let results = tokio::task::spawn_blocking(move || {
             let value = ctx.list_vault_notes()?;
-            let notes: Vec<VaultNote> = serde_json::from_value(
-                value.get("notes").cloned().unwrap_or(serde_json::json!([])),
-            )
-            .unwrap_or_default();
+            let notes_arr =
+                value.get("notes").and_then(|v| v.as_array()).cloned().unwrap_or_default();
             let keywords: Vec<&str> = query_owned.split_whitespace().collect();
 
-            let filtered: Vec<_> = notes
+            let filtered: Vec<_> = notes_arr
                 .into_iter()
                 .filter(|n| {
+                    let id = n.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    let path = n.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                    let title = n.get("title").and_then(|v| v.as_str()).unwrap_or("");
+                    let tags = n
+                        .get("tags")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter().filter_map(|t| t.as_str()).collect::<Vec<_>>().join(",")
+                        })
+                        .unwrap_or_default();
                     let content = ctx
-                        .read_vault_note(&n.path)
+                        .read_vault_note(path)
                         .ok()
                         .and_then(|v| v.get("content").and_then(|c| c.as_str()).map(String::from))
                         .unwrap_or_default();
-                    let hay = format!(
-                        "{} {} {} {}",
-                        n.id,
-                        n.title.as_deref().unwrap_or(""),
-                        n.tags.join(","),
-                        content
-                    )
-                    .to_lowercase();
+                    let hay = format!("{} {} {} {}", id, title, tags, content).to_lowercase();
                     keywords.iter().all(|kw| hay.contains(&kw.to_lowercase()))
-                })
-                .map(|n| {
-                    serde_json::json!({
-                        "id": n.id,
-                        "title": n.title,
-                        "path": n.path,
-                        "tags": n.tags,
-                    })
                 })
                 .collect();
 

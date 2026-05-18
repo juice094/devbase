@@ -92,12 +92,6 @@ pub fn sync_skills_to_plans(conn: &Connection, plans_dir: &Path) -> Result<usize
     Ok(synced)
 }
 
-/// Backward-compatible wrapper: sync to `clarity_dir/plans/`.
-#[allow(dead_code)]
-pub fn sync_skills_to_clarity(conn: &Connection, clarity_dir: &Path) -> Result<usize> {
-    sync_skills_to_plans(conn, &clarity_dir.join("plans"))
-}
-
 fn fetch_skills_with_inputs(conn: &Connection) -> Result<Vec<SkillWithInputs>> {
     let mut stmt = conn.prepare(
         "SELECT id, name, description, tags, inputs_schema, updated_at FROM skills ORDER BY name",
@@ -197,7 +191,7 @@ mod tests {
     use chrono::Utc;
 
     #[test]
-    fn test_sync_skills_to_clarity() {
+    fn test_sync_skills_to_plans() {
         let conn = WorkspaceRegistry::init_in_memory().unwrap();
         let skill = SkillMeta {
             id: "test-skill".to_string(),
@@ -293,7 +287,7 @@ mod tests {
         )
         .unwrap();
 
-        let count = sync_skills_to_clarity(&conn, clarity_dir).unwrap();
+        let count = sync_skills_to_plans(&conn, &plans_dir).unwrap();
         assert_eq!(count, 0);
 
         let content = std::fs::read_to_string(plans_dir.join("conflict-test.json")).unwrap();
@@ -346,7 +340,7 @@ mod tests {
         )
         .unwrap();
 
-        let count = sync_skills_to_clarity(&conn, clarity_dir).unwrap();
+        let count = sync_skills_to_plans(&conn, &plans_dir).unwrap();
         assert_eq!(count, 1);
 
         let content = std::fs::read_to_string(plans_dir.join("update-test.json")).unwrap();
