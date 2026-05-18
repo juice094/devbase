@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.1] - 2026-05-17
+
+### Added
+
+- **Phase 1 Production Hardening**
+  - Workflow E2E 测试 — `src/mcp/tools/workflow.rs`：DAG 成功执行、失败传播验证
+  - RF-7 路径隐私脱敏 — `sanitize_path()` 自动掩码 home 目录为 `~`
+  - Tantivy 一致性修复 — `repair_tantivy_consistency_at()` 启动时自动检测 orphan/missing 文档
+  - 性能回归基线 — `test_keyword_search_latency_regression_1k` / `_10k`（profile-aware 阈值）
+  - `TempStorageBackend` — 测试隔离后端，消除 `DEVBASE_DATA_DIR` 竞态
+- **Architecture Invariants CI 自动化** — `tools/invariant-checks/run-checks.ps1`
+  - G5 (RF-6)：diff-only 检测新增生产代码 `unwrap`/`expect`/`panic`（排除 `#[cfg(test)]`）
+  - T11：`mcp/tools` 禁止直接调用 `rusqlite::Connection`
+  - T12：`tui/render` 纯消费检查（禁止写入操作）
+
+### Fixed
+
+- `AppContext::with_storage()` 使用实际 storage backend 的 `index_path()` 而非硬编码默认值
+- G5 invariant checker 正则修复：`tests.rs` 文件正确跳过
+- `Cargo.lock` 同步版本 bump（修复 `--locked` release 构建失败）
+- 平台相关测试隔离：`C:\` 路径断言加 `#[cfg(windows)]`，Linux `python3` 断言适配
+- HuggingFace 网络依赖测试加 `#[ignore]`（避免 CI TLS 证书失败）
+
+## [0.20.0] - 2026-05-16
+
+### Added
+
+- **知识完备性**：Vault 双向链接图遍历（BFS depth 1-3）+ `[[note#heading]]` block 引用
+- **Vault 笔记历史追踪** — Git-based blob diff，`devkit_vault_history` tool
+- **混合检索质量监控** — `HybridSearchMetrics`（latency/recall/overlap/keyword_source）
+- **性能回归基线** — Criterion benchmarks：`index_repo_full`、`cosine_similarity`、`extract_symbols`
+- **客户端无关原则** — `StorageBackend` trait 完整实现，解耦 `dirs::data_local_dir()` 硬编码
+- **MCP Tools +4** (68 total)
+  - `devkit_vault_history`, `devkit_vault_export`, `devkit_vault_graph`, `devkit_vault_daily`
+
+### Changed
+
+- 20+ 独立 crate 零循环依赖，workspace 拆分完成
+- `entities` 表成为唯一真相源，`repos` 表彻底删除
+- Tantivy / SQLite 补偿扫描：启动时自动同步 orphan 文档
+
+## [0.19.0] - 2026-05-14
+
+### Added
+
+- **SQLite WAL 模式** — `r2d2` 连接池 + WAL journal，并发安全与增量备份
+- **Tantivy 健康评分** — `devkit_index_health`：损坏检测、自动重建、孤儿文档清理
+- **Vault 导出** — `devkit_vault_export`：Obsidian-compatible Markdown 批量导出
+- **Redis ADR 决策** — `docs/architecture/adr-003-redis.md`：评估后决定保持 SQLite 优先
+- **OpLog 审计追踪** — 结构化事件类型 `OplogEventType`，全操作不可变日志
+
+### Changed
+
+- Schema 迁移前自动生成 `backup-YYYYMMDD-HHMMSS.db` 快照
+- 索引层反向一致性扫描与自动修复能力
+
 ## [0.18.0] - 2026-05-13
 
 ### Added
@@ -603,4 +659,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `cargo audit` clean (0 vulnerabilities in direct dependencies)
 
+[0.20.1]: https://github.com/juice094/devbase/releases/tag/v0.20.1
+[0.20.0]: https://github.com/juice094/devbase/releases/tag/v0.20.0
+[0.19.0]: https://github.com/juice094/devbase/releases/tag/v0.19.0
+[0.18.0]: https://github.com/juice094/devbase/releases/tag/v0.18.0
 [0.1.0]: https://github.com/juice094/devbase/releases/tag/v0.1.0
