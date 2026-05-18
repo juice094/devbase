@@ -1,7 +1,7 @@
 # devbase
 
-[![Version](https://img.shields.io/badge/version-v0.20.0-blue)](https://github.com/juice094/devbase/releases)
-[![Tests](https://img.shields.io/badge/tests-451%2B%20passed-brightgreen)](./AGENTS.md)
+[![Version](https://img.shields.io/badge/version-v0.20.1-blue)](https://github.com/juice094/devbase/releases)
+[![Tests](https://img.shields.io/badge/tests-485%2B%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-orange)](./LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.95%2B-9cf)](https://www.rust-lang.org)
@@ -70,21 +70,21 @@ curl -fsSL https://raw.githubusercontent.com/juice094/devbase/main/scripts/insta
 
 | 平台 | 下载 | 大小 |
 |:---|:---|:---|
-| Windows x86_64 | [`devbase-v0.20.0-windows-x64.zip`](https://github.com/juice094/devbase/releases/download/v0.20.0/devbase-v0.20.0-windows-x64.zip) | ~8.7 MB |
-| Linux x86_64 | [`devbase-v0.20.0-linux-x64.tar.gz`](https://github.com/juice094/devbase/releases/download/v0.20.0/devbase-v0.20.0-linux-x64.tar.gz) | ~8.8 MB |
+| Windows x86_64 | [`devbase-v0.20.1-windows-x64.zip`](https://github.com/juice094/devbase/releases/download/v0.20.1/devbase-v0.20.1-windows-x64.zip) | ~8.7 MB |
+| Linux x86_64 | [`devbase-v0.20.1-linux-x64.tar.gz`](https://github.com/juice094/devbase/releases/download/v0.20.1/devbase-v0.20.1-linux-x64.tar.gz) | ~8.8 MB |
 
 ```powershell
 # Windows (PowerShell)
-Invoke-WebRequest -Uri "https://github.com/juice094/devbase/releases/download/v0.20.0/devbase-v0.20.0-windows-x64.zip" -OutFile devbase.zip
+Invoke-WebRequest -Uri "https://github.com/juice094/devbase/releases/download/v0.20.1/devbase-v0.20.1-windows-x64.zip" -OutFile devbase.zip
 Expand-Archive -Path devbase.zip -DestinationPath . -Force
 # 提取后的 devbase.exe 可直接运行
 ```
 
 ```bash
 # Linux
-curl -fsSL -o devbase.tar.gz https://github.com/juice094/devbase/releases/download/v0.20.0/devbase-v0.20.0-linux-x64.tar.gz
+curl -fsSL -o devbase.tar.gz https://github.com/juice094/devbase/releases/download/v0.20.1/devbase-v0.20.1-linux-x64.tar.gz
 tar xzf devbase.tar.gz
-cp devbase-v0.20.0-linux-x64/devbase /usr/local/bin/  # 或任意 PATH 目录
+cp devbase-v0.20.1-linux-x64/devbase /usr/local/bin/  # 或任意 PATH 目录
 chmod +x /usr/local/bin/devbase
 ```
 
@@ -381,7 +381,8 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | v0.17.0 | ✅ 已发布 | Agent Memory 向量存储（Schema v34）：外置 Embedding 协议 + SQLite UDF `cosine_similarity` + Skill Runtime 语义召回；默认构建零 ML 依赖 |
 | **v0.18.0** | **✅ 已发布** | **ClaudeCode 工作流集成：`project_brief` + `impact_analysis` MCP Tools + Session 导出/导入 + `devbase-claude.ps1` 一键启动器；64 Tools 完整矩阵** |
 | v0.19.0 | ✅ 已发布 | **知识基础设施硬化**：SQLite WAL + Tantivy 健康评分 + Vault 导出 + Redis ADR 决策 |
-| **v0.20.0** | **✅ 当前** | **知识完备性**：双向链接图遍历 + 笔记历史追踪 + 混合检索质量监控 + block 引用 + 性能回归基线 + 客户端无关原则；68 Tools |
+| v0.20.0 | ✅ 已发布 | 知识完备性：双向链接图遍历 + 笔记历史追踪 + 混合检索质量监控 + block 引用 + 性能回归基线 + 客户端无关原则；68 Tools |
+| **v0.20.1** | **✅ 当前** | **Phase 1 生产硬化**：workflow E2E 测试、RF-7 路径隐私脱敏、Tantivy 一致性修复、性能回归基线、Architecture Invariants CI |
 
 ---
 

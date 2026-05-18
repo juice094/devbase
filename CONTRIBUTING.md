@@ -8,8 +8,8 @@
 
 | 指标 | 状态 |
 |:---|:---|
-| 版本 | v0.15.0 |
-| 测试 | 427 passed / 0 failed / 3 ignored |
+| 版本 | v0.20.1 |
+| 测试 | 485+ passed / 0 failed / 5 ignored |
 | Clippy | `-D warnings` 全绿 |
 | 生产代码 unwrap | 0 |
 | 许可证 | AGPL-3.0-or-later |
@@ -20,7 +20,7 @@
 
 ### 环境要求
 
-- **Rust**: 1.94.1+（`rustc --version`）
+- **Rust**: 1.95.0+（`rustc --version`）
 - **OS**: Windows 10/11（主要开发平台），Linux/macOS 社区支持
 - **可选**: Python 3.10+（embedding provider）
 
