@@ -98,7 +98,7 @@ pip install cmake
 
 ## Differences from Python Provider
 
-| 维度 | Python (`tools/embedding-provider/`) | Rust (`tools/embedding-provider-rs/`) |
+| 维度 | Python (`examples/embedding-provider/`) | Rust (`examples/embedding-provider-rs/`) |
 |------|--------------------------------------|---------------------------------------|
 | 依赖 | `requests` (HTTP) → Ollama | `embellama` (本地 GGUF 直接加载) |
 | 运行时 | 需要 Ollama 服务 | 零外部服务，纯本地推理 |

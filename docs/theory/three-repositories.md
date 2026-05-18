@@ -140,7 +140,7 @@ devbase 的当前架构已经**天然横跨三层**，只是没有明确形式�
 | `search/hybrid` + `semantic_index` | Layer 1→2 桥梁 | ✅ 成熟：keyword + vector + RRF |
 | `mcp/` (31 tools) | Layer 3 (MCP 仓库) | ✅ 成熟：Stable/Beta/Experimental 三级 |
 | `vault/` + `skill-sync-prototype` | Layer 2 (Skill 仓库) | 🔄 原型：Vault→Skill 同步设计完成，待实现 |
-| `tools/embedding-provider/` | Layer 2→3 桥梁 | ✅ 可用：local.py 引擎无关 |
+| `examples/embedding-provider/` | Layer 2→3 桥梁 | ✅ 可用：local.py 引擎无关 |
 | **Skill Runtime** (`devbase skill` CLI) | Layer 2 (Skill 仓库) | ❌ 未开始：registry + executor + sandbox |
 | **Protocol Adapter** (MCP + OpenAPI 统一) | Layer 3 (MCP 仓库) | ❌ 未开始：ToolRegistry 模式移植 |
 

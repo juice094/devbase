@@ -21,7 +21,7 @@ outputs:
 ---
 # Embed Repository
 
-This skill invokes the local embedding provider (`tools/embedding-provider/local.py`)
+This skill invokes the local embedding provider (`examples/embedding-provider/local.py`)
 to generate 384-dimensional vectors for all code symbols in the specified repository.
 
 ## Usage

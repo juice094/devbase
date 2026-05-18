@@ -28,14 +28,9 @@ backup-*.db
 # OS metadata
 .DS_Store
 Thumbs.db
-tools/embedding-provider/__pycache__/
-
-tools/embedding-provider/__pycache__/
-
+examples/embedding-provider/__pycache__/
 
 .agents/
 .venv/
-spike/**/target/
 coverage_report.txt
 /releases/
-.kimi/
