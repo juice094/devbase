@@ -402,6 +402,78 @@ async fn test_tools_call_devkit_arxiv_fetch() {
 }
 
 #[tokio::test]
+async fn test_tools_call_devkit_status() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 15,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_status",
+            "arguments": {}
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    // Empty registry → overall "fresh" (vacuous truth: all 0 repos are fresh)
+    assert_eq!(parsed.get("overall").unwrap().as_str().unwrap(), "fresh");
+    let repos = parsed.get("repos").unwrap().as_array().unwrap();
+    assert!(repos.is_empty());
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_workflow_list() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 16,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_workflow_list",
+            "arguments": {}
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    assert_eq!(parsed.get("count").unwrap().as_i64().unwrap(), 0);
+    let workflows = parsed.get("workflows").unwrap().as_array().unwrap();
+    assert!(workflows.is_empty());
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_index() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 17,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_index",
+            "arguments": { "path": "" }
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    // Empty registry → indexed 0 repos
+    assert_eq!(parsed.get("indexed").unwrap().as_i64().unwrap(), 0);
+}
+
+#[tokio::test]
 async fn test_tools_call_devkit_skill_list() {
     let server = build_server();
     let req = serde_json::json!({
