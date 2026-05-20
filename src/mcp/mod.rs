@@ -124,6 +124,7 @@ pub enum McpToolEnum {
     WorkflowStatus(DevkitWorkflowStatusTool),
     OplogQuery(DevkitOplogQueryTool),
     Evaluate(DevkitEvaluateTool),
+    DocumentConvert(DevkitDocumentConvertTool),
 }
 
 /// Stability tier for MCP tools.
@@ -220,6 +221,7 @@ impl McpToolEnum {
             McpToolEnum::WorkflowStatus(_) => ToolTier::Beta,
             McpToolEnum::OplogQuery(_) => ToolTier::Beta,
             McpToolEnum::Evaluate(_) => ToolTier::Beta,
+            McpToolEnum::DocumentConvert(_) => ToolTier::Experimental,
         }
     }
 }
@@ -295,6 +297,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::WorkflowStatus(t) => t.name(),
             McpToolEnum::OplogQuery(t) => t.name(),
             McpToolEnum::Evaluate(t) => t.name(),
+            McpToolEnum::DocumentConvert(t) => t.name(),
         }
     }
 
@@ -368,6 +371,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::WorkflowStatus(t) => t.schema(),
             McpToolEnum::OplogQuery(t) => t.schema(),
             McpToolEnum::Evaluate(t) => t.schema(),
+            McpToolEnum::DocumentConvert(t) => t.schema(),
         }
     }
 
@@ -445,6 +449,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::WorkflowStatus(t) => t.invoke(args, ctx).await,
             McpToolEnum::OplogQuery(t) => t.invoke(args, ctx).await,
             McpToolEnum::Evaluate(t) => t.invoke(args, ctx).await,
+            McpToolEnum::DocumentConvert(t) => t.invoke(args, ctx).await,
         }
     }
 }
@@ -687,7 +692,7 @@ impl McpServer {
 
 /// Build an MCP server with optional tier filtering.
 ///
-/// If `tiers` is `None`, all 68 tools are registered (backward compatible).
+/// If `tiers` is `None`, all 69 tools are registered (backward compatible).
 /// If `tiers` is provided, only tools whose tier is in the set are registered.
 pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
     let mut server = McpServer::new();
@@ -760,6 +765,7 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::WorkflowStatus(DevkitWorkflowStatusTool),
         McpToolEnum::OplogQuery(DevkitOplogQueryTool),
         McpToolEnum::Evaluate(DevkitEvaluateTool),
+        McpToolEnum::DocumentConvert(DevkitDocumentConvertTool),
     ];
     for tool in all_tools {
         if let Some(allowed) = tiers

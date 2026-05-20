@@ -81,14 +81,6 @@
 
 **建议**：为 Index、Query、VaultSearch 建立 Criterion benchmarks，记录基线到 CI 产物。
 
-### `devkit_document_convert` 工具缺失
-
-**现状**：PDF/PPTX/DOCX → Markdown 的转换是常见需求，当前无内置工具。
-
-**建议**：添加 Experimental tier 工具，封装 `pdftotext` / `python-pptx` 流水线，输出到指定 Vault 路径。
-
----
-
 ## 已解决（归档）
 
 | 问题 | 解决版本 | Commit |
@@ -100,6 +92,7 @@
 | `init_db_at` 1214 行 | v0.20.1 | 拆分为 `registry/migrate.rs`（503 行）+ 子模块 |
 | 工具数量文档不一致 | v0.20.1 | `mcp-tools.md` 全面更新至 68 个 |
 | 3 Stable 工具缺 invocation tests | v0.20.1 | `query_repos`, `vault_search`, `vault_read` 测试 added |
+| `devkit_document_convert` 工具缺失 | v0.21.0 | `src/mcp/tools/document_convert.rs` + MCP 注册 |
 
 ---
 

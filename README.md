@@ -1,7 +1,7 @@
 # devbase
 
 [![Version](https://img.shields.io/badge/version-v0.20.1-blue)](https://github.com/juice094/devbase/releases)
-[![Tests](https://img.shields.io/badge/tests-485%2B%20passed-brightgreen)](./AGENTS.md)
+[![Tests](https://img.shields.io/badge/tests-494%2B%20passed-brightgreen)](./AGENTS.md)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](./AGENTS.md)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-orange)](./LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.95%2B-9cf)](https://www.rust-lang.org)
@@ -28,7 +28,7 @@ devbase 是开发者的**世界模型编译器**。它将代码库、笔记、�
 │  Interaction Layer  (人类与 AI 的接口)                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
 │  │  TUI 仪表盘   │  │ MCP Server   │  │ Workflow Engine      │  │
-│  │  (ratatui)    │  │ 68 Tools     │  │ YAML + 拓扑调度      │  │
+│  │  (ratatui)    │  │ 69 Tools     │  │ YAML + 拓扑调度      │  │
 │  └──────────────┘  └──────────────┘  └──────────────────────┘  │
 ├─────────────────────────────────────────────────────────────────┤
 │  Compilation Layer  (World Model Compiler Core)                 │
@@ -120,7 +120,7 @@ cd devbase && cargo install --path .
 - **VaultList**：Vault 笔记列表，支持 PARA 方法笔记的快速检索与阅读
 - **Session**：Agent 会话列表（● active / ◌ archived），选中后右侧面板展示该上下文的语义记忆（◆ decision ▪ constraint ★ discovery ✗ error）
 
-### AI Layer — 68 个 MCP Tools
+### AI Layer — 69 个 MCP Tools
 
 基于 [Model Context Protocol](https://modelcontextprotocol.io) 标准化接口，stdio 本地进程通信。
 
@@ -382,6 +382,7 @@ TUI `[:]` 触发 embedding 语义搜索，失败自动降级为文本搜索。AI
 | **v0.18.0** | **✅ 已发布** | **ClaudeCode 工作流集成：`project_brief` + `impact_analysis` MCP Tools + Session 导出/导入 + `devbase-claude.ps1` 一键启动器；64 Tools 完整矩阵** |
 | v0.19.0 | ✅ 已发布 | **知识基础设施硬化**：SQLite WAL + Tantivy 健康评分 + Vault 导出 + Redis ADR 决策 |
 | v0.20.0 | ✅ 已发布 | 知识完备性：双向链接图遍历 + 笔记历史追踪 + 混合检索质量监控 + block 引用 + 性能回归基线 + 客户端无关原则；68 Tools |
+| v0.20.1 | ✅ 已发布 | Phase 1 Production Hardening：Workflow E2E 测试 + RF-7 路径脱敏 + Tantivy 一致性修复 + TempStorageBackend + 架构不变量 CI；Stable 工具 invocation 测试补全；69 Tools |
 | **v0.20.1** | **✅ 当前** | **Phase 1 生产硬化**：workflow E2E 测试、RF-7 路径隐私脱敏、Tantivy 一致性修复、性能回归基线、Architecture Invariants CI |
 
 ---

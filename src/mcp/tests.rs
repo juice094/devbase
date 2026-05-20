@@ -50,7 +50,7 @@ async fn test_tools_list() {
     let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     let tools = resp.get("result").unwrap().get("tools").unwrap().as_array().unwrap();
-    assert_eq!(tools.len(), 68);
+    assert_eq!(tools.len(), 69);
     let names: Vec<&str> = tools.iter().map(|t| t.get("name").unwrap().as_str().unwrap()).collect();
     assert!(names.contains(&"devkit_index_health"));
     assert!(names.contains(&"devkit_vault_export"));
@@ -64,6 +64,7 @@ async fn test_tools_list() {
     assert!(names.contains(&"devkit_session_export"));
     assert!(names.contains(&"devkit_session_import"));
     assert!(names.contains(&"devkit_evaluate"));
+    assert!(names.contains(&"devkit_document_convert"));
     assert!(names.contains(&"devkit_scan"));
     assert!(names.contains(&"devkit_health"));
     assert!(names.contains(&"devkit_sync"));
@@ -306,12 +307,11 @@ async fn test_tools_call_devkit_vault_search() {
     let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
     assert_eq!(parsed.get("success").unwrap(), true);
     let notes = parsed.get("notes").unwrap().as_array().unwrap();
+    assert!(!notes.is_empty(), "vault_search should find the test-note");
     assert!(
-        !notes.is_empty(),
-        "vault_search should find the test-note"
-    );
-    assert!(
-        notes.iter().any(|n| n.get("title").and_then(|v| v.as_str()) == Some("Test Note")),
+        notes
+            .iter()
+            .any(|n| n.get("title").and_then(|v| v.as_str()) == Some("Test Note")),
         "vault_search should return Test Note"
     );
 }
@@ -329,7 +329,8 @@ async fn test_tools_call_devkit_vault_read() {
     std::fs::write(
         &note_path,
         "---\ntitle: Readable Note\ntags: [read]\n---\n\nContent body here.\n",
-    ).unwrap();
+    )
+    .unwrap();
     let mut conn = ctx.conn().unwrap();
     crate::vault::scanner::scan_vault(&mut conn, Some(&vault_dir)).unwrap();
 
@@ -894,6 +895,29 @@ async fn test_scenario_one_project_onboarding() {
             .any(|r| r.get("id").and_then(|v| v.as_str()) == Some("scenario-repo")),
         "scenario-repo should be listed in query_repos"
     );
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_document_convert_not_found() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 18,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_document_convert",
+            "arguments": { "source_path": "/nonexistent/file.pdf" }
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), false);
+    let err = parsed.get("error").unwrap().as_str().unwrap();
+    assert!(err.contains("not found") || err.contains("Source file"));
 }
 
 #[tokio::test]

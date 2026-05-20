@@ -1,6 +1,6 @@
 # MCP Tools 参考
 
-devbase MCP Server 提供 **68 个 tools**，通过 stdio 传输与 AI Agent 通信。工具按稳定性分为三级：
+devbase MCP Server 提供 **69 个 tools**，通过 stdio 传输与 AI Agent 通信。工具按稳定性分为三级：
 
 - **Stable** — 经过充分测试，schema 冻结。详见 [`stable-tools/`](stable-tools/README.md) 独立文档。
 - **Beta** — 功能验证通过，schema 可能微调
@@ -136,6 +136,7 @@ devbase MCP Server 提供 **68 个 tools**，通过 stdio 传输与 AI Agent 通
 | `devkit_arxiv_fetch` | Beta | 从 arXiv 获取论文元数据 | `query`, `max_results` |
 | `devkit_oplog_query` | Beta | 查询操作日志 | `limit`, `repo_id` |
 | `devkit_evaluate` | Beta | 评估工具调用结果 | `tool_name`, `result` |
+| `devkit_document_convert` | Experimental | PDF/PPTX → Markdown 转换 | `source_path`, `output_path` |
 
 ---
 
