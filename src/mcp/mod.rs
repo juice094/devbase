@@ -687,7 +687,7 @@ impl McpServer {
 
 /// Build an MCP server with optional tier filtering.
 ///
-/// If `tiers` is `None`, all 37 tools are registered (backward compatible).
+/// If `tiers` is `None`, all 68 tools are registered (backward compatible).
 /// If `tiers` is provided, only tools whose tier is in the set are registered.
 pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
     let mut server = McpServer::new();

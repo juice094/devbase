@@ -46,14 +46,14 @@
 
 这些是**待实现**的能力，不是 bug：
 
-| Gap | 影响 | 计划版本 |
-|-----|------|----------|
-| `relations` 表零生产读取路径 | 统一实体模型的图遍历能力未暴露 | v0.21.0 |
-| Workflow 引擎零 MCP 暴露 | AI 无法发现/触发工作流 | v0.21.0 |
-| `project_context` 不完整 | 缺少 relations/limits/skills/workflows | v0.21.0 |
-| 31/38 MCP 工具缺少调用测试 | 回归风险 | v0.21.0 |
-| `mcp/tools/repo.rs` 2376 行 | 维护负担 | v0.21.0 |
-| `init_db_at` 1214 行 | 迁移函数过大 | v0.21.0 |
+| Gap | 影响 | 计划版本 | 状态 |
+|-----|------|----------|------|
+| ~~`relations` 表零生产读取路径~~ | ~~统一实体模型的图遍历能力未暴露~~ | ~~v0.21.0~~ | **已完成** — `devkit_relation_store/query/delete` 已存在，`project_context` 已读取 |
+| ~~Workflow 引擎零 MCP 暴露~~ | ~~AI 无法发现/触发工作流~~ | ~~v0.21.0~~ | **已完成** — `devkit_workflow_list/run/status` 已存在 |
+| ~~`project_context` 不完整~~ | ~~缺少 relations/limits/skills/workflows~~ | ~~v0.21.0~~ | **已完成** — 已补充 `known_limits` + `skills` |
+| 31/68 MCP 工具缺少调用测试 | 回归风险 | v0.21.0 | 待评估 |
+| ~~`mcp/tools/repo.rs` 2376 行~~ | ~~维护负担~~ | ~~v0.21.0~~ | **已完成** — 已拆分为 `tools/` 目录，`repo.rs` 现 730 行 |
+| ~~`init_db_at` 1214 行~~ | ~~迁移函数过大~~ | ~~v0.21.0~~ | **已完成** — 已拆分为 `registry/migrate.rs`（503 行）+ `repo.rs` + `vault.rs` + `links.rs` |
 
 ## 防失忆校验清单（每次会话启动）
 
