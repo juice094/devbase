@@ -1,9 +1,11 @@
 [package]
 name = "devbase-workflow-interpolate"
 version.workspace = true
-edition = "2024"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Workflow variable interpolation for devbase"
-authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
 
 [dependencies]
 anyhow = "1"

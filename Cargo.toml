@@ -72,17 +72,10 @@ devbase-vault-frontmatter = { path = "crates/devbase-vault-frontmatter" }
 devbase-vault-wikilink = { path = "crates/devbase-vault-wikilink" }
 devbase-workflow-interpolate = { path = "crates/devbase-workflow-interpolate" }
 devbase-workflow-model = { path = "crates/devbase-workflow-model" }
-devbase-registry-health = { path = "crates/devbase-registry-health" }
-devbase-registry-metrics = { path = "crates/devbase-registry-metrics" }
-devbase-registry-workspace = { path = "crates/devbase-registry-workspace" }
+devbase-registry = { path = "crates/devbase-registry" }
 devbase-embedding = { path = "crates/devbase-embedding", optional = true }
 devbase-skill-runtime-types = { path = "crates/devbase-skill-runtime-types" }
 devbase-skill-runtime-parser = { path = "crates/devbase-skill-runtime-parser" }
-devbase-registry-entity = { path = "crates/devbase-registry-entity" }
-devbase-registry-relation = { path = "crates/devbase-registry-relation" }
-devbase-registry-call-graph = { path = "crates/devbase-registry-call-graph" }
-devbase-registry-dead-code = { path = "crates/devbase-registry-dead-code" }
-devbase-registry-code-symbols = { path = "crates/devbase-registry-code-symbols" }
 greptimedb-ingester = { version = "0.18", optional = true }
 
 [dev-dependencies]

@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Workspace crate 架构重组** — 消除机械提取造成的微 crate 碎片
+  - 合并 8 个 `devbase-registry-*` 微 crate（100–300 行/个）为统一 `devbase-registry`，含 8 个语义子模块（`entity`, `health`, `metrics`, `relation`, `call_graph`, `code_symbols`, `dead_code`, `workspace`）
+  - 拆分 10+ 个 monolithic `lib.rs` 为域驱动子模块：`devbase-embedding` (`candle`/`ollama`), `devbase-workflow-model` (`definition`/`execution`/`step_type`), `devbase-symbol-links` (`similarity`/`co_located`), `devbase-sync-protocol` (`index`/`version_vector`), `devbase-skill-runtime-types` (`skill_type`/`execution`/`params`), `devbase-skill-runtime-parser` (`frontmatter`/`field_parsers`), `devbase-workflow-interpolate` (`resolver`), `devbase-vault-frontmatter` (`parser`), `devbase-vault-wikilink` (`parser`), `devbase-core-types` (`node_type`/`node`/`edge`)
+  - 全 workspace `Cargo.toml` 统一使用 `[workspace.package]` 继承（`version`, `edition`, `authors`, `license`, `repository`）
 - `KNOWN_ISSUES.md` 更新：document_convert 从 P3 债务移至已解决归档；测试计数 485→494
 - `docs/reference/mcp-tools.md` 修正为 69 个工具，补充 Index / Workflow / Relation / KnownLimit / Session 分类
 - `docs/reference/stable-tools/README.md` 修正为 5 个 Stable 工具（删除过时的 `project_brief.md` / `hybrid_search.md` / `session_recall.md`）

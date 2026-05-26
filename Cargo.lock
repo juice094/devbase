@@ -1448,14 +1448,7 @@ dependencies = [
  "crossterm 0.28.1",
  "devbase-core-types",
  "devbase-embedding",
- "devbase-registry-call-graph",
- "devbase-registry-code-symbols",
- "devbase-registry-dead-code",
- "devbase-registry-entity",
- "devbase-registry-health",
- "devbase-registry-metrics",
- "devbase-registry-relation",
- "devbase-registry-workspace",
+ "devbase-registry",
  "devbase-skill-runtime-parser",
  "devbase-skill-runtime-types",
  "devbase-symbol-links",
@@ -1519,51 +1512,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "devbase-registry-call-graph"
-version = "0.20.1"
-dependencies = [
- "anyhow",
- "rusqlite",
-]
-
-[[package]]
-name = "devbase-registry-code-symbols"
-version = "0.20.1"
-dependencies = [
- "anyhow",
- "rusqlite",
-]
-
-[[package]]
-name = "devbase-registry-dead-code"
-version = "0.20.1"
-dependencies = [
- "anyhow",
- "rusqlite",
-]
-
-[[package]]
-name = "devbase-registry-entity"
-version = "0.20.1"
-dependencies = [
- "anyhow",
- "chrono",
- "rusqlite",
- "serde_json",
-]
-
-[[package]]
-name = "devbase-registry-health"
-version = "0.20.1"
-dependencies = [
- "anyhow",
- "chrono",
- "rusqlite",
- "serde",
-]
-
-[[package]]
-name = "devbase-registry-metrics"
+name = "devbase-registry"
 version = "0.20.1"
 dependencies = [
  "anyhow",
@@ -1571,25 +1520,6 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "devbase-registry-relation"
-version = "0.20.1"
-dependencies = [
- "anyhow",
- "chrono",
- "rusqlite",
-]
-
-[[package]]
-name = "devbase-registry-workspace"
-version = "0.20.1"
-dependencies = [
- "anyhow",
- "chrono",
- "rusqlite",
- "serde",
 ]
 
 [[package]]

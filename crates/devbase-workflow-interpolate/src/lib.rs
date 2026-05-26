@@ -1,15 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
-use regex::Regex;
+
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::OnceLock;
 
-static VAR_RE: OnceLock<Regex> = OnceLock::new();
-
-fn var_regex() -> &'static Regex {
-    VAR_RE.get_or_init(|| Regex::new(r"\$\{([^}]+)\}").expect("static regex is valid"))
-}
+mod resolver;
 
 /// Interpolate variables in a string using the provided context.
 ///
@@ -19,53 +14,15 @@ fn var_regex() -> &'static Regex {
 ///   ${env.<NAME>}          → environment variables
 ///   ${config.<key>}        → devbase config (not implemented yet)
 pub fn interpolate(template: &str, ctx: &InterpolationContext) -> anyhow::Result<String> {
-    let re = var_regex();
+    let re = resolver::var_regex();
     let mut result = template.to_string();
     for cap in re.captures_iter(template) {
         let full = cap.get(0).expect("capture group 0 always exists").as_str();
         let path = cap.get(1).expect("capture group 1 exists for matched pattern").as_str();
-        let value = resolve(path, ctx)?;
+        let value = resolver::resolve(path, ctx)?;
         result = result.replace(full, &value);
     }
     Ok(result)
-}
-
-fn resolve(path: &str, ctx: &InterpolationContext) -> anyhow::Result<String> {
-    let parts: Vec<&str> = path.split('.').collect();
-    match parts.as_slice() {
-        ["inputs", name] => ctx
-            .inputs
-            .get(*name)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("missing input: {name}")),
-        ["steps", step_id, "outputs", out_name] => ctx
-            .step_outputs
-            .get(*step_id)
-            .and_then(|m| m.get(*out_name))
-            .map(json_to_string)
-            .ok_or_else(|| anyhow::anyhow!("missing output {out_name} for step {step_id}")),
-        ["env", name] => {
-            std::env::var(*name).map_err(|_| anyhow::anyhow!("missing env var: {name}"))
-        }
-        ["loop", "item"] => ctx
-            .loop_vars
-            .get("item")
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("loop item not set")),
-        ["loop", "index"] => ctx
-            .loop_vars
-            .get("index")
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("loop index not set")),
-        _ => Err(anyhow::anyhow!("unsupported variable path: {path}")),
-    }
-}
-
-fn json_to_string(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        _ => v.to_string(),
-    }
 }
 
 /// Interpolate a serde_yaml::Value recursively.

@@ -1,0 +1,269 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 juice094
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HealthEntry {
+    pub status: String,
+    pub ahead: usize,
+    pub behind: usize,
+    pub checked_at: DateTime<Utc>,
+}
+
+pub fn save_health(
+    conn: &rusqlite::Connection,
+    repo_id: &str,
+    health: &HealthEntry,
+) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO repo_health (repo_id, status, ahead, behind, checked_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![
+            repo_id,
+            &health.status,
+            health.ahead as i64,
+            health.behind as i64,
+            health.checked_at.to_rfc3339()
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn get_health(
+    conn: &rusqlite::Connection,
+    repo_id: &str,
+) -> anyhow::Result<Option<HealthEntry>> {
+    let mut stmt = conn
+        .prepare("SELECT status, ahead, behind, checked_at FROM repo_health WHERE repo_id = ?1")?;
+    let mut rows = stmt.query([repo_id])?;
+    if let Some(row) = rows.next()? {
+        let status: String = row.get(0)?;
+        let ahead: i64 = row.get(1)?;
+        let behind: i64 = row.get(2)?;
+        let checked_at: String = row.get(3)?;
+        let checked_at = match DateTime::parse_from_rfc3339(&checked_at) {
+            Ok(dt) => dt.with_timezone(&Utc),
+            Err(_) => return Ok(None),
+        };
+        Ok(Some(HealthEntry {
+            status,
+            ahead: ahead as usize,
+            behind: behind as usize,
+            checked_at,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Batch load health entries for multiple repos in a single query.
+pub fn get_health_batch(
+    conn: &rusqlite::Connection,
+    repo_ids: &[&str],
+) -> anyhow::Result<std::collections::HashMap<String, HealthEntry>> {
+    if repo_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let placeholders: Vec<String> = repo_ids.iter().map(|_| "?".to_string()).collect();
+    let sql = format!(
+        "SELECT repo_id, status, ahead, behind, checked_at FROM repo_health WHERE repo_id IN ({})",
+        placeholders.join(",")
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let params: Vec<&dyn rusqlite::ToSql> =
+        repo_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+        let repo_id: String = row.get(0)?;
+        let status: String = row.get(1)?;
+        let ahead: i64 = row.get(2)?;
+        let behind: i64 = row.get(3)?;
+        let checked_at: String = row.get(4)?;
+        let checked_at = match DateTime::parse_from_rfc3339(&checked_at) {
+            Ok(dt) => dt.with_timezone(&Utc),
+            Err(_) => Utc::now(),
+        };
+        Ok((
+            repo_id,
+            HealthEntry {
+                status,
+                ahead: ahead as usize,
+                behind: behind as usize,
+                checked_at,
+            },
+        ))
+    })?;
+    let mut result = std::collections::HashMap::new();
+    for row in rows {
+        let (id, entry) = row?;
+        result.insert(id, entry);
+    }
+    Ok(result)
+}
+
+pub fn save_stars_cache(
+    conn: &rusqlite::Connection,
+    repo_id: &str,
+    stars: u64,
+) -> anyhow::Result<()> {
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR REPLACE INTO repo_stars_cache (repo_id, stars, fetched_at) VALUES (?1, ?2, ?3)",
+        rusqlite::params![repo_id, stars as i64, &now],
+    )?;
+    conn.execute(
+        "INSERT INTO repo_stars_history (repo_id, stars, fetched_at) VALUES (?1, ?2, ?3)",
+        rusqlite::params![repo_id, stars as i64, &now],
+    )?;
+    conn.execute(
+        "DELETE FROM repo_stars_history WHERE rowid NOT IN (
+            SELECT rowid FROM repo_stars_history WHERE repo_id = ?1 ORDER BY fetched_at DESC LIMIT 30
+        )",
+        rusqlite::params![repo_id],
+    )?;
+    Ok(())
+}
+
+pub fn get_stars_cache(
+    conn: &rusqlite::Connection,
+    repo_id: &str,
+) -> anyhow::Result<Option<(u64, DateTime<Utc>)>> {
+    let mut stmt =
+        conn.prepare("SELECT stars, fetched_at FROM repo_stars_cache WHERE repo_id = ?1")?;
+    let mut rows = stmt.query([repo_id])?;
+    if let Some(row) = rows.next()? {
+        let stars: i64 = row.get(0)?;
+        let fetched_at: String = row.get(1)?;
+        let fetched_at = match DateTime::parse_from_rfc3339(&fetched_at) {
+            Ok(dt) => dt.with_timezone(&Utc),
+            Err(_) => return Ok(None),
+        };
+        Ok(Some((stars as u64, fetched_at)))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn get_stars_history(
+    conn: &rusqlite::Connection,
+    repo_id: &str,
+    limit: usize,
+) -> anyhow::Result<Vec<(u64, DateTime<Utc>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT stars, fetched_at FROM repo_stars_history
+         WHERE repo_id = ?1 ORDER BY fetched_at ASC LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(rusqlite::params![repo_id, limit as i64], |row| {
+        let stars: i64 = row.get(0)?;
+        let fetched_at: String = row.get(1)?;
+        Ok((
+            stars as u64,
+            DateTime::parse_from_rfc3339(&fetched_at)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now()),
+        ))
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn init_in_memory() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE repo_health (
+                repo_id TEXT PRIMARY KEY,
+                status TEXT,
+                ahead INTEGER DEFAULT 0,
+                behind INTEGER DEFAULT 0,
+                checked_at TEXT
+            );
+            CREATE TABLE repo_stars_cache (
+                repo_id TEXT PRIMARY KEY,
+                stars INTEGER,
+                fetched_at TEXT
+            );
+            CREATE TABLE repo_stars_history (
+                repo_id TEXT,
+                stars INTEGER,
+                fetched_at TEXT
+            );
+            CREATE INDEX idx_stars_history_repo ON repo_stars_history(repo_id, fetched_at);
+            "#,
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_health_roundtrip() {
+        let conn = init_in_memory();
+        let health = HealthEntry {
+            status: "healthy".to_string(),
+            ahead: 2,
+            behind: 1,
+            checked_at: Utc::now(),
+        };
+        save_health(&conn, "repo-a", &health).unwrap();
+        let fetched = get_health(&conn, "repo-a").unwrap().unwrap();
+        assert_eq!(fetched.status, "healthy");
+        assert_eq!(fetched.ahead, 2);
+        assert_eq!(fetched.behind, 1);
+    }
+
+    #[test]
+    fn test_stars_cache_roundtrip() {
+        let conn = init_in_memory();
+        save_stars_cache(&conn, "repo-a", 42).unwrap();
+        let (stars, _) = get_stars_cache(&conn, "repo-a").unwrap().unwrap();
+        assert_eq!(stars, 42);
+    }
+
+    #[test]
+    fn test_stars_history() {
+        let conn = init_in_memory();
+        save_stars_cache(&conn, "repo-a", 10).unwrap();
+        save_stars_cache(&conn, "repo-a", 20).unwrap();
+        let history = get_stars_history(&conn, "repo-a", 10).unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].0, 10);
+        assert_eq!(history[1].0, 20);
+    }
+
+    #[test]
+    fn test_get_health_batch() {
+        let conn = init_in_memory();
+        let h1 = HealthEntry {
+            status: "healthy".to_string(),
+            ahead: 1,
+            behind: 0,
+            checked_at: Utc::now(),
+        };
+        let h2 = HealthEntry {
+            status: "dirty".to_string(),
+            ahead: 0,
+            behind: 2,
+            checked_at: Utc::now(),
+        };
+        save_health(&conn, "repo-a", &h1).unwrap();
+        save_health(&conn, "repo-b", &h2).unwrap();
+
+        // Batch query both repos
+        let batch = get_health_batch(&conn, &["repo-a", "repo-b"]).unwrap();
+        assert_eq!(batch.len(), 2);
+        assert_eq!(batch["repo-a"].status, "healthy");
+        assert_eq!(batch["repo-b"].status, "dirty");
+
+        // Empty input returns empty map
+        let empty = get_health_batch(&conn, &[]).unwrap();
+        assert!(empty.is_empty());
+
+        // Partial miss skips missing repos without error
+        let partial = get_health_batch(&conn, &["repo-a", "repo-c"]).unwrap();
+        assert_eq!(partial.len(), 1);
+        assert_eq!(partial["repo-a"].status, "healthy");
+    }
+}

@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 juice094
 
 // Re-export the external crate type for backward compatibility (src/repository/symbol.rs).
-pub use devbase_registry_dead_code::DeadFunction;
+pub use devbase_registry::dead_code::DeadFunction;
 
 /// A potentially dead function from the code symbol index.
 #[derive(Debug, Clone)]

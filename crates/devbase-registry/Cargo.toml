@@ -1,0 +1,17 @@
+[package]
+name = "devbase-registry"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Unified SQLite registry operations for devbase"
+keywords = ["registry", "sqlite", "devbase"]
+categories = ["database"]
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+rusqlite = { version = "0.34", features = ["bundled", "chrono"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"

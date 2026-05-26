@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 juice094
-// RE-EXPORT ONLY — 实现已迁移至 devbase-registry-relation crate.
-// 禁止在本文件中添加新代码。
-pub use devbase_registry_relation::*;
+pub use devbase_registry::relation::*;

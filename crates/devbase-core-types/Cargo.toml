@@ -1,10 +1,11 @@
 [package]
 name = "devbase-core-types"
 version.workspace = true
-edition = "2024"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Core knowledge graph types: Node, Edge, NodeType"
-authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
-license = "MIT"
 keywords = ["knowledge-graph", "types", "rust"]
 categories = ["data-structures"]
 

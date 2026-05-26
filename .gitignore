@@ -28,7 +28,7 @@ backup-*.db
 # OS metadata
 .DS_Store
 Thumbs.db
-examples/embedding-provider/__pycache__/
+__pycache__/
 
 .agents/
 .venv/

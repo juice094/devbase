@@ -13,7 +13,7 @@
 |----|------|--------|--------|
 | F-001 | Version | `Cargo.toml` | **v0.20.1** |
 | F-002 | Edition | `Cargo.toml` | **Rust 2024** |
-| F-003 | Test Coverage | CI | **491+ passed, 0 failed, 5 ignored** |
+| F-003 | Test Coverage | CI | **494 passed, 0 failed, 5 ignored** |
 | F-004 | Production Unwrap | Architecture Invariants | **0** (G5 rule enforced) |
 | F-005 | MCP Tools | `src/mcp/mod.rs` | **69** (5 Stable / 60 Beta / 4 Experimental) |
 | F-006 | Schema Version | `registry/migrate.rs` | **v34** |

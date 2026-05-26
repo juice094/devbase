@@ -14,6 +14,8 @@
 //! - 别名分隔符为 `|`: 与 Obsidian 一致。
 //! - 返回字符级位置 (start/end): 便于高亮和索引定位。
 
+mod parser;
+
 /// A single WikiLink found in a Markdown document.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WikiLink {
@@ -44,7 +46,7 @@ pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
                     if depth == 0 {
                         let inner = &chars[inner_start..i];
                         let inner_str: String = inner.iter().collect();
-                        let link = parse_link(&inner_str, start, i + 2);
+                        let link = parser::parse_link(&inner_str, start, i + 2);
                         links.push(link);
                         i += 2;
                         break;
@@ -62,33 +64,6 @@ pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
     }
 
     links
-}
-
-fn parse_link(inner: &str, start: usize, end: usize) -> WikiLink {
-    // Step 1: split display text by `|`
-    let (left, display) = if let Some(pipe_pos) = inner.find('|') {
-        (inner[..pipe_pos].trim(), Some(inner[pipe_pos + 1..].trim().to_string()))
-    } else {
-        (inner.trim(), None)
-    };
-
-    // Step 2: split anchor by `#` (heading or ^block-id)
-    let (target, anchor) = if let Some(hash_pos) = left.find('#') {
-        (
-            left[..hash_pos].trim().to_string(),
-            Some(left[hash_pos + 1..].trim().to_string()),
-        )
-    } else {
-        (left.to_string(), None)
-    };
-
-    WikiLink {
-        target,
-        display,
-        anchor,
-        start,
-        end,
-    }
 }
 
 /// Build a backlink index: for each target, list the source note IDs that link to it.
