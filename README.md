@@ -37,7 +37,7 @@ devbase 将代码库、笔记与工作流编译为 AI 可推理的结构化情�
 | 🏠 **本地优先** | 零数据离开本机 — SQLite + Tantivy + tree-sitter，无需云端 |
 | 🔍 **混合检索** | BM25 全文 + 纯 SQL 向量搜索（`cosine_similarity` UDF），零 ML 运行时依赖 |
 
-> [完整 69 个 Tool 矩阵 → docs/guides/mcp-integration-guide.md](docs/guides/mcp-integration-guide.md)
+> [完整 69 个 Tool 矩阵 → docs/guides/mcp-integration.md](docs/guides/mcp-integration.md)
 
 ---
 

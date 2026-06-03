@@ -94,7 +94,6 @@ devbase MCP Server 提供 **69 个 tools**，通过 stdio 传输与 AI Agent 通
 
 | 工具名 | Tier | 一句话描述 | 关键参数 |
 |--------|------|-----------|----------|
-| `devkit_index` | Beta | 索引仓库摘要、模块结构、代码符号 | `path` |
 | `devkit_index_health` | Beta | 检查索引健康状态 | `repo_id` |
 | `devkit_index_stream` | Beta | 流式索引进度 | `path` |
 

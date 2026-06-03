@@ -14,11 +14,28 @@ impl McpTool for DevkitImpactAnalysisTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Analyze the impact of modifying a specific code symbol. Returns callers, callees, related symbols, potentially affected tests, and recent change history. Use this before refactoring to understand blast radius.",
+            "description": r#"Analyze the impact of modifying a specific code symbol. Returns callers, callees, related symbols, potentially affected tests, and recent change history.
+
+Use this when the user wants to:
+- Understand the blast radius before refactoring a function or struct
+- Identify all call sites that would break if a symbol's signature changes
+- Find related symbols that share logic or data structures with the target
+
+Do NOT use this for:
+- General code search (use devkit_semantic_search or devkit_hybrid_search instead)
+- Full call graph exploration (use devkit_call_graph for the complete graph)
+- Cross-repo dependency analysis (use devkit_dependency_graph instead)
+
+Parameters:
+- repo_id: Registered repository ID containing the symbol.
+- symbol_name: Function, struct, or trait name to analyze.
+- depth: Call graph traversal depth 1-3 (default: 2).
+
+Returns: JSON with callers, callees, related_symbols, affected_tests, and change_history."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "repo_id": { "type": "string" },
+                    "repo_id": { "type": "string", "description": "Registered repository ID containing the symbol to analyze" },
                     "symbol_name": { "type": "string", "description": "Function, struct, or trait name to analyze" },
                     "depth": { "type": "integer", "default": 2, "description": "Call graph traversal depth (1-3)" }
                 },

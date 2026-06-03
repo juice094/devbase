@@ -83,9 +83,7 @@ Returns: JSON with stars, forks, open_issues, description, pushed_at, and update
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Ok(
-                serde_json::json!({ "success": false, "error": format!("GitHub API error {}: {}", status, text) }),
-            );
+            anyhow::bail!("GitHub API error {}: {}", status, text);
         }
         let data: serde_json::Value = resp.json().await?;
 
@@ -162,10 +160,7 @@ impl McpTool for DevkitArxivFetchTool {
                 "published": m.published,
                 "primary_category": m.primary_category,
             })),
-            Err(e) => Ok(serde_json::json!({
-                "success": false,
-                "error": e.to_string(),
-            })),
+            Err(e) => anyhow::bail!("arXiv fetch error: {}", e),
         }
     }
 }

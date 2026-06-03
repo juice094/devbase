@@ -2,6 +2,7 @@
 // Copyright (c) 2026 juice094
 use crate::clients::WorkflowClient;
 use crate::mcp::McpTool;
+use anyhow::Context;
 
 #[derive(Clone)]
 pub struct DevkitWorkflowListTool;
@@ -18,7 +19,12 @@ impl McpTool for DevkitWorkflowListTool {
 Use this when the user wants to:
 - See what automation workflows are available
 - Choose a workflow to run
-- Audit workflow inventory
+- Audit workflow inventory before creating new workflows
+
+Do NOT use this for:
+- Running a workflow (use devkit_workflow_run instead)
+- Checking workflow execution status (use devkit_workflow_status instead)
+- Discovering skills (use devkit_skill_list instead)
 
 Parameters: none
 
@@ -64,8 +70,8 @@ Returns: execution summary with status, step results, and execution_id."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "workflow_id": { "type": "string" },
-                    "inputs": { "type": "object" }
+                    "workflow_id": { "type": "string", "description": "ID of the workflow to run (from devkit_workflow_list)" },
+                    "inputs": { "type": "object", "description": "Optional JSON object of input key-value pairs" }
                 },
                 "required": ["workflow_id"]
             }
@@ -78,14 +84,11 @@ Returns: execution summary with status, step results, and execution_id."#,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let workflow_id =
-            args.get("workflow_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            args.get("workflow_id").and_then(|v| v.as_str()).context("workflow_id is required")?.to_string();
         let inputs_value = args.get("inputs").cloned().unwrap_or(serde_json::json!({}));
 
         if workflow_id.is_empty() {
-            return Ok(serde_json::json!({
-                "success": false,
-                "error": "workflow_id is required"
-            }));
+            anyhow::bail!("workflow_id must not be empty");
         }
 
         ctx.run_workflow(&workflow_id, inputs_value)
@@ -128,13 +131,10 @@ Returns: execution record with status, current_step, timestamps, and duration."#
         args: serde_json::Value,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        let exec_id = args.get("execution_id").and_then(|v| v.as_i64()).unwrap_or(0);
+        let exec_id = args.get("execution_id").and_then(|v| v.as_i64()).context("execution_id is required")?;
 
         if exec_id <= 0 {
-            return Ok(serde_json::json!({
-                "success": false,
-                "error": "execution_id must be a positive integer"
-            }));
+            anyhow::bail!("execution_id must be a positive integer");
         }
 
         ctx.get_execution(exec_id)
@@ -190,8 +190,8 @@ mod tests {
         let mut ctx = crate::storage::AppContext::with_storage(backend).unwrap();
 
         let tool = DevkitWorkflowStatusTool;
-        let result = tool.invoke(serde_json::json!({"execution_id": -1}), &mut ctx).await.unwrap();
-        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(false));
+        let result = tool.invoke(serde_json::json!({"execution_id": -1}), &mut ctx).await;
+        assert!(result.is_err(), "negative execution_id should return an error");
     }
 
     /// End-to-end: 3-step DAG workflow (a -> b -> c) executed via MCP tool.

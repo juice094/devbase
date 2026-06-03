@@ -6,7 +6,7 @@
 
 ## 什么是 MCP
 
-MCP（Model Context Protocol）是 AI 助手与外部工具通信的标准协议。devbase 作为 **MCP Server**，向 AI 暴露 38 个结构化工具，让 AI 能够：
+MCP（Model Context Protocol）是 AI 助手与外部工具通信的标准协议。devbase 作为 **MCP Server**，向 AI 暴露 69 个结构化工具，让 AI 能够：
 
 - 查询本地有哪些项目、它们的状态如何
 - 批量同步仓库、检查健康度

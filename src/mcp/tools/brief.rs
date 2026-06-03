@@ -14,12 +14,28 @@ impl McpTool for DevkitProjectBriefTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": "Generate a Markdown project brief optimized for LLM context injection.",
+            "description": r#"Generate a Markdown project brief optimized for LLM context injection.
+
+Use this when the user wants to:
+- Get a compact, AI-friendly summary of a registered repository
+- Provide another AI agent with context about a project before delegating work
+- Generate a README-like overview from indexed code symbols and metadata
+
+Do NOT use this for:
+- Real-time repo status (use devkit_health instead)
+- Detailed code analysis (use devkit_code_metrics or devkit_module_graph instead)
+- Searching the codebase (use devkit_semantic_search or devkit_hybrid_search instead)
+
+Parameters:
+- repo_id: Registered repository ID to generate the brief for.
+- max_tokens: Approximate token budget for the generated brief (default 2000).
+
+Returns: JSON with repo_id and brief markdown string."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "repo_id": { "type": "string" },
-                    "max_tokens": { "type": "integer", "default": 2000 }
+                    "repo_id": { "type": "string", "description": "Registered repository ID to generate the brief for" },
+                    "max_tokens": { "type": "integer", "default": 2000, "description": "Approximate token budget for the generated brief" }
                 },
                 "required": ["repo_id"]
             }

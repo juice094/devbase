@@ -454,6 +454,24 @@ impl McpTool for McpToolEnum {
     }
 }
 
+/// Long-lived oplog file handle — opened once, reused across all MCP calls.
+static OPLOG_FILE: std::sync::OnceLock<std::sync::Mutex<Option<std::fs::File>>> =
+    std::sync::OnceLock::new();
+
+fn get_oplog_file() -> &'static std::sync::Mutex<Option<std::fs::File>> {
+    OPLOG_FILE.get_or_init(|| {
+        let file = dirs::data_local_dir().and_then(|data_dir| {
+            let log_path = data_dir.join("devbase").join("mcp-oplog.ndjson");
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path)
+                .ok()
+        });
+        std::sync::Mutex::new(file)
+    })
+}
+
 /// Append a single MCP tool invocation record to the oplog file.
 ///
 /// Path: `%LOCALAPPDATA%/devbase/mcp-oplog.ndjson`
@@ -467,10 +485,8 @@ fn append_mcp_oplog(tool_name: &str, duration_ms: u128, success: bool, error_typ
         "error_type": error_type,
     });
 
-    if let Some(data_dir) = dirs::data_local_dir() {
-        let log_path = data_dir.join("devbase").join("mcp-oplog.ndjson");
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path)
-        {
+    if let Ok(mut guard) = get_oplog_file().lock() {
+        if let Some(ref mut file) = *guard {
             use std::io::Write;
             if let Err(e) = writeln!(file, "{}", entry) {
                 tracing::warn!("Failed to write MCP oplog: {}", e);
@@ -512,20 +528,36 @@ impl McpServer {
                 "id": id,
                 "result": {}
             })),
-            "initialize" => Ok(serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {
-                        "tools": {}
-                    },
-                    "serverInfo": {
-                        "name": "devbase",
-                        "version": "0.1.0"
-                    }
+            "initialize" => {
+                // Verify client protocol version for compatibility
+                let client_version = req
+                    .get("params")
+                    .and_then(|p| p.get("protocolVersion"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                let supported = ["2024-11-05"];
+                if !supported.contains(&client_version) {
+                    tracing::warn!(
+                        "Client protocol version '{}' not in supported list {:?}; proceeding with 2024-11-05",
+                        client_version,
+                        supported
+                    );
                 }
-            })),
+                Ok(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {
+                            "tools": {}
+                        },
+                        "serverInfo": {
+                            "name": "devbase",
+                            "version": env!("CARGO_PKG_VERSION")
+                        }
+                    }
+                }))
+            }
             "tools/list" => {
                 let tools: Vec<serde_json::Value> = self
                     .tools
