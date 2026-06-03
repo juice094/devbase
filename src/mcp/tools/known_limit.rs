@@ -49,9 +49,16 @@ Returns: success boolean and stored limit id."#,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
         let id = args.get("id").and_then(|v| v.as_str()).context("id is required")?.to_string();
-        let category = args.get("category").and_then(|v| v.as_str()).context("category is required")?.to_string();
-        let description =
-            args.get("description").and_then(|v| v.as_str()).context("description is required")?.to_string();
+        let category = args
+            .get("category")
+            .and_then(|v| v.as_str())
+            .context("category is required")?
+            .to_string();
+        let description = args
+            .get("description")
+            .and_then(|v| v.as_str())
+            .context("description is required")?
+            .to_string();
         let source = args.get("source").and_then(|v| v.as_str()).map(|s| s.to_string());
         let severity = args.get("severity").and_then(|v| v.as_i64()).map(|i| i as i32);
 

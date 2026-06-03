@@ -462,11 +462,7 @@ fn get_oplog_file() -> &'static std::sync::Mutex<Option<std::fs::File>> {
     OPLOG_FILE.get_or_init(|| {
         let file = dirs::data_local_dir().and_then(|data_dir| {
             let log_path = data_dir.join("devbase").join("mcp-oplog.ndjson");
-            std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&log_path)
-                .ok()
+            std::fs::OpenOptions::new().create(true).append(true).open(&log_path).ok()
         });
         std::sync::Mutex::new(file)
     })

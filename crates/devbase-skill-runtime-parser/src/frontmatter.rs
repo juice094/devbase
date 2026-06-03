@@ -54,10 +54,10 @@ pub fn parse_skill_frontmatter(raw: &str) -> SkillFrontmatter {
             match current_section {
                 Some("inputs") => {
                     // Flush previous input if we see a new "- name:" without closing the last one
-                    if item.starts_with("name:") && current_input.is_some() {
-                        fm.inputs
-                            // SAFETY: current_input is_some checked above
-                            .push(current_input.take().expect("current_input checked by is_some"));
+                    if item.starts_with("name:") {
+                        if let Some(input) = current_input.take() {
+                            fm.inputs.push(input);
+                        }
                     }
                     if current_input.is_none() && item.starts_with("name:") {
                         current_input = Some(SkillInput::default());
@@ -67,10 +67,10 @@ pub fn parse_skill_frontmatter(raw: &str) -> SkillFrontmatter {
                     }
                 }
                 Some("outputs") => {
-                    if item.starts_with("name:") && current_output.is_some() {
-                        fm.outputs.push(
-                            current_output.take().expect("current_output checked by is_some"),
-                        );
+                    if item.starts_with("name:") {
+                        if let Some(output) = current_output.take() {
+                            fm.outputs.push(output);
+                        }
                     }
                     if current_output.is_none() && item.starts_with("name:") {
                         current_output = Some(SkillOutput::default());
@@ -100,13 +100,16 @@ pub fn parse_skill_frontmatter(raw: &str) -> SkillFrontmatter {
         }
 
         // Flush any open input/output before moving to a new key
-        if current_input.is_some() && trimmed.starts_with("name:") {
-            fm.inputs.push(current_input.take().expect("current_input checked by is_some"));
+        if trimmed.starts_with("name:") {
+            if let Some(input) = current_input.take() {
+                fm.inputs.push(input);
+            }
             current_input = Some(SkillInput::default());
         }
-        if current_output.is_some() && trimmed.starts_with("name:") {
-            fm.outputs
-                .push(current_output.take().expect("current_output checked by is_some"));
+        if trimmed.starts_with("name:") {
+            if let Some(output) = current_output.take() {
+                fm.outputs.push(output);
+            }
             current_output = Some(SkillOutput::default());
         }
 

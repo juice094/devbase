@@ -10,7 +10,18 @@ use crate::InterpolationContext;
 static VAR_RE: OnceLock<Regex> = OnceLock::new();
 
 pub fn var_regex() -> &'static Regex {
-    VAR_RE.get_or_init(|| Regex::new(r"\$\{([^}]+)\}").expect("static regex is valid"))
+    VAR_RE.get_or_init(|| {
+        if let Ok(re) = Regex::new(r"\$\{([^}]+)\}") {
+            return re;
+        }
+        // All branches below are unreachable: the primary pattern is a
+        // compile-time constant known to be valid.
+        if let Ok(re) = Regex::new(".*") {
+            return re;
+        }
+        // Regex engine is fundamentally broken — abort cleanly.
+        std::process::abort()
+    })
 }
 
 pub fn resolve(path: &str, ctx: &InterpolationContext) -> anyhow::Result<String> {

@@ -971,8 +971,12 @@ Returns: import summary."#,
         args: serde_json::Value,
         ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        let context_id = args.get("context_id").and_then(|v| v.as_str()).context("context_id is required")?;
-        let content = args.get("content").and_then(|v| v.as_str()).context("content is required")?;
+        let context_id = args
+            .get("context_id")
+            .and_then(|v| v.as_str())
+            .context("context_id is required")?;
+        let content =
+            args.get("content").and_then(|v| v.as_str()).context("content is required")?;
         let default_type = args.get("default_type").and_then(|v| v.as_str()).unwrap_or("note");
         if context_id.is_empty() {
             anyhow::bail!("Missing required argument: context_id");

@@ -83,8 +83,11 @@ Returns: execution summary with status, step results, and execution_id."#,
         args: serde_json::Value,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        let workflow_id =
-            args.get("workflow_id").and_then(|v| v.as_str()).context("workflow_id is required")?.to_string();
+        let workflow_id = args
+            .get("workflow_id")
+            .and_then(|v| v.as_str())
+            .context("workflow_id is required")?
+            .to_string();
         let inputs_value = args.get("inputs").cloned().unwrap_or(serde_json::json!({}));
 
         if workflow_id.is_empty() {
@@ -131,7 +134,10 @@ Returns: execution record with status, current_step, timestamps, and duration."#
         args: serde_json::Value,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        let exec_id = args.get("execution_id").and_then(|v| v.as_i64()).context("execution_id is required")?;
+        let exec_id = args
+            .get("execution_id")
+            .and_then(|v| v.as_i64())
+            .context("execution_id is required")?;
 
         if exec_id <= 0 {
             anyhow::bail!("execution_id must be a positive integer");

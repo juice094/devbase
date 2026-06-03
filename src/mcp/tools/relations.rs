@@ -135,8 +135,12 @@ Returns: JSON array of relations with to_entity_id, relation_type, confidence, a
         args: serde_json::Value,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        let entity_id =
-            args.get("entity_id").and_then(|v| v.as_str()).context("entity_id is required")?.trim().to_string();
+        let entity_id = args
+            .get("entity_id")
+            .and_then(|v| v.as_str())
+            .context("entity_id is required")?
+            .trim()
+            .to_string();
         let relation_type = args.get("relation_type").and_then(|v| v.as_str());
         let direction = args.get("direction").and_then(|v| v.as_str()).unwrap_or("outgoing");
 
