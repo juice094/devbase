@@ -1,10 +1,11 @@
 [package]
 name = "devbase-vault-wikilink"
 version.workspace = true
-edition = "2024"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "WikiLink parser and resolver for Markdown vaults"
-authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
-license = "MIT"
 keywords = ["markdown", "wikilink", "vault", "obsidian"]
 categories = ["text-processing"]
 

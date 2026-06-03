@@ -1,0 +1,99 @@
+# Known Issues & Technical Debt
+
+> 本文件记录 devbase 的已知问题、技术债务和架构 blockers。
+> 不是 bug 列表 — 这些问题是设计层面的权衡或待完成的工作。
+
+---
+
+## P0 — 阻塞发布
+
+无当前 P0 blocker。v0.20.1 已发布，所有 P0 架构 gaps 已关闭。
+
+---
+
+## P1 — 测试覆盖
+
+### 28 个 MCP 工具缺少 invocation tests
+
+**现状**：68 个工具中，40 个有 dedicated `invoke()` 测试（+3 本批次新增），28 个仅有 name/schema smoke tests 或零覆盖。
+
+**影响**：Beta → Stable 的 promote 需要测试背书；无测试的工具在重构时存在回归风险。
+
+**缺失测试的工具清单**：
+
+| 工具 | Tier | 已有覆盖 |
+|------|------|----------|
+| `devkit_index` | Beta | 间接（scenario） |
+| `devkit_index_health` | Beta | 无 |
+| `devkit_index_stream` | Beta | 无 |
+| `devkit_status` | Beta | 无 |
+| `devkit_note` | Beta | 无 |
+| `devkit_digest` | Experimental | 无 |
+| `devkit_paper_index` | Experimental | 无 |
+| `devkit_semantic_search` | Beta | 间接（scenario） |
+| `devkit_embedding_store` | Beta | 无 |
+| `devkit_embedding_search` | Beta | 无 |
+| `devkit_cross_repo_search` | Beta | 间接（scenario） |
+| `devkit_related_symbols` | Experimental | 无 |
+| `devkit_search_quality` | Beta | 无 |
+| `devkit_impact_analysis` | Beta | 无 |
+| `devkit_project_brief` | Beta | 间接（scenario） |
+| `devkit_knowledge_report` | Beta | 间接（scenario） |
+| `devkit_session_*` × 13 | Beta/Exp | 部分 smoke |
+| `devkit_workflow_*` × 3 | Beta | 部分（workflow.rs 单元测试） |
+| `devkit_evaluate` | Beta | 无 |
+
+**建议**：按调用频率排序，优先为 Index、Status、Workflow、Session save/list 添加测试。
+
+---
+
+## P2 — 架构债务
+
+### `mcp/tools/repo.rs` 730 行
+
+**现状**：已从 2376 行拆至 730 行，但仍超过理想阈值（~300 行/模块）。
+
+**计划**：按 domain 拆分为 `repo_health.rs` + `repo_query.rs` + `repo_index.rs`。已有 `docs/architecture/split-plan.md`。
+
+### `src/mcp/mod.rs` 工具枚举集中化
+
+**现状**：`McpToolEnum` 是包含 68 个变体的 giant enum，`tier()` 方法是 200+ 行的 match 表达式。
+
+**影响**：新增工具需要修改 3 处（enum 定义、match arm、tier match），容易遗漏。
+
+**建议**：考虑使用宏或 derive 自动生成 `McpToolEnum` 和 `tier()`，减少 boilerplate。
+
+### Vault 笔记全文搜索性能
+
+**现状**：`devkit_vault_search` 在内存中对所有笔记做线性扫描 + 字符串匹配。
+
+**影响**：Vault 笔记数量 >1000 时，搜索延迟可能超过 1s。
+
+**建议**：为 Vault 内容建立 Tantivy 索引（复用现有 symbol_index 基础设施），或至少增加关键词索引表。
+
+---
+
+## P3 — 文档与可观测性
+
+### 性能基准缺失
+
+**现状**：Criterion 已列为 dev-dependency，但无实际 benchmark 套件。
+
+**建议**：为 Index、Query、VaultSearch 建立 Criterion benchmarks，记录基线到 CI 产物。
+
+## 已解决（归档）
+
+| 问题 | 解决版本 | Commit |
+|------|----------|--------|
+| `relations` 表零生产读取路径 | v0.20.1 | `devkit_relation_store/query/delete` + `project_context` 读取 |
+| Workflow 引擎零 MCP 暴露 | v0.20.1 | `devkit_workflow_list/run/status` |
+| `project_context` 不完整 | v0.20.1 | 补充 `known_limits` + `skills` |
+| `mcp/tools/repo.rs` 2376 行 | v0.20.1 | 拆分为 `tools/` 目录，repo.rs 730 行 |
+| `init_db_at` 1214 行 | v0.20.1 | 拆分为 `registry/migrate.rs`（503 行）+ 子模块 |
+| 工具数量文档不一致 | v0.20.1 | `mcp-tools.md` 全面更新至 68 个 |
+| 3 Stable 工具缺 invocation tests | v0.20.1 | `query_repos`, `vault_search`, `vault_read` 测试 added |
+| `devkit_document_convert` 工具缺失 | v0.21.0 | `src/mcp/tools/document_convert.rs` + MCP 注册 |
+
+---
+
+*Last updated: 2026-05-20*

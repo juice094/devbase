@@ -14,8 +14,6 @@ use tantivy::{
     schema::{STORED, Schema, TEXT, Value},
 };
 
-const SYMBOL_INDEX_DIR: &str = "symbol_index";
-
 fn symbol_index_path() -> Result<std::path::PathBuf, TantivyError> {
     crate::storage::DefaultStorageBackend {}
         .symbol_index_path()

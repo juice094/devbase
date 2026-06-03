@@ -165,7 +165,10 @@ pub fn run_index_health(ctx: &mut AppContext, repair: bool) -> anyhow::Result<se
 
     if repair {
         // 6a. Delete orphan documents from Tantivy
-        repaired_orphans = sync_index_to_db_at(&index_path, &conn).unwrap_or(0);
+        repaired_orphans = sync_index_to_db_at(&index_path, &conn).unwrap_or_else(|e| {
+            tracing::warn!("Failed to sync index orphans during repair: {}", e);
+            0
+        });
 
         drop(conn); // Release pool connection before reindexing
 

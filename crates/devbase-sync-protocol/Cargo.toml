@@ -1,10 +1,11 @@
 [package]
 name = "devbase-sync-protocol"
 version.workspace = true
-edition = "2024"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Lightweight directory sync protocol with version vectors"
-authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
-license = "MIT"
 keywords = ["sync", "version-vector", "directory-scan", "rust"]
 categories = ["filesystem"]
 

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 juice094
 use crate::clients::RegistryClient;
 use crate::mcp::McpTool;
+use anyhow::Context;
 
 #[derive(Clone)]
 pub struct DevkitRelationStoreTool;
@@ -30,10 +31,10 @@ Returns: success boolean and relation details."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "from_entity_id": { "type": "string" },
-                    "to_entity_id": { "type": "string" },
-                    "relation_type": { "type": "string" },
-                    "confidence": { "type": "number" }
+                    "from_entity_id": { "type": "string", "description": "Source entity ID (e.g., repo ID, symbol ID, or entity UUID)" },
+                    "to_entity_id": { "type": "string", "description": "Target entity ID" },
+                    "relation_type": { "type": "string", "description": "Relationship label (e.g., 'depends_on', 'similar_to', 'calls', 'extends')" },
+                    "confidence": { "type": "number", "description": "Confidence score 0.0–1.0 (default 1.0)", "minimum": 0.0, "maximum": 1.0 }
                 },
                 "required": ["from_entity_id", "to_entity_id", "relation_type"]
             }
@@ -48,55 +49,41 @@ Returns: success boolean and relation details."#,
         let from = args
             .get("from_entity_id")
             .and_then(|v| v.as_str())
-            .unwrap_or("")
+            .context("from_entity_id is required")?
             .trim()
             .to_string();
         let to = args
             .get("to_entity_id")
             .and_then(|v| v.as_str())
-            .unwrap_or("")
+            .context("to_entity_id is required")?
             .trim()
             .to_string();
         let rel_type = args
             .get("relation_type")
             .and_then(|v| v.as_str())
-            .unwrap_or("")
+            .context("relation_type is required")?
             .trim()
             .to_string();
         let confidence = args.get("confidence").and_then(|v| v.as_f64()).unwrap_or(1.0);
 
         if from.is_empty() || to.is_empty() || rel_type.is_empty() {
-            return Ok(serde_json::json!({
-                "success": false,
-                "error": "from_entity_id, to_entity_id, and relation_type are required"
-            }));
+            anyhow::bail!("from_entity_id, to_entity_id, and relation_type must not be empty");
         }
         if !(0.0..=1.0).contains(&confidence) {
-            return Ok(serde_json::json!({
-                "success": false,
-                "error": "confidence must be between 0.0 and 1.0"
-            }));
+            anyhow::bail!("confidence must be between 0.0 and 1.0");
         }
         if from == to {
-            return Ok(serde_json::json!({
-                "success": false,
-                "error": "self-relations (from_entity_id == to_entity_id) are not allowed"
-            }));
+            anyhow::bail!("self-relations (from_entity_id == to_entity_id) are not allowed");
         }
 
-        if let Err(e) = ctx.save_relation(&from, &to, &rel_type, confidence) {
+        ctx.save_relation(&from, &to, &rel_type, confidence).map_err(|e| {
             let msg = e.to_string();
             if msg.contains("foreign key constraint") || msg.contains("FOREIGN KEY") {
-                return Ok(serde_json::json!({
-                    "success": false,
-                    "error": format!("Entity not found in registry. Ensure both '{}' and '{}' exist as registered entities.", from, to)
-                }));
+                anyhow::anyhow!("Entity not found in registry. Ensure both '{from}' and '{to}' exist as registered entities.")
+            } else {
+                e
             }
-            return Ok(serde_json::json!({
-                "success": false,
-                "error": msg
-            }));
-        }
+        })?;
 
         Ok(serde_json::json!({
             "success": true,
@@ -148,16 +135,17 @@ Returns: JSON array of relations with to_entity_id, relation_type, confidence, a
         args: serde_json::Value,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        let entity_id =
-            args.get("entity_id").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+        let entity_id = args
+            .get("entity_id")
+            .and_then(|v| v.as_str())
+            .context("entity_id is required")?
+            .trim()
+            .to_string();
         let relation_type = args.get("relation_type").and_then(|v| v.as_str());
         let direction = args.get("direction").and_then(|v| v.as_str()).unwrap_or("outgoing");
 
         if entity_id.is_empty() {
-            return Ok(serde_json::json!({
-                "success": false,
-                "error": "entity_id is required"
-            }));
+            anyhow::bail!("entity_id must not be empty");
         }
 
         let value = ctx.query_relations(&entity_id, direction, relation_type)?;
@@ -186,18 +174,27 @@ impl McpTool for DevkitRelationDeleteTool {
         serde_json::json!({
             "description": r#"Delete a relation between two entities from the devbase registry.
 
+Use this when the user wants to:
+- Remove an incorrect or outdated relationship from the knowledge graph
+- Clean up stale dependency links after refactoring
+- Undo a previous devkit_relation_store operation
+
+Do NOT use this for:
+- Deleting entities themselves (relations only — entities must be removed separately)
+- Bulk graph cleanup (query first with devkit_relation_query, then delete selectively)
+
 Parameters:
-- from_entity_id: Source entity ID
-- to_entity_id: Target entity ID
-- relation_type: Relationship label (optional — if omitted, deletes all relations between the two entities)
+- from_entity_id: Source entity ID.
+- to_entity_id: Target entity ID.
+- relation_type: Optional relationship label. If omitted, deletes all relations between the two entities.
 
 Returns: success boolean and count of deleted relations."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "from_entity_id": { "type": "string" },
-                    "to_entity_id": { "type": "string" },
-                    "relation_type": { "type": "string" }
+                    "from_entity_id": { "type": "string", "description": "Source entity ID" },
+                    "to_entity_id": { "type": "string", "description": "Target entity ID" },
+                    "relation_type": { "type": "string", "description": "Optional relationship label — if omitted, deletes all relations between the two entities" }
                 },
                 "required": ["from_entity_id", "to_entity_id"]
             }
@@ -212,23 +209,20 @@ Returns: success boolean and count of deleted relations."#,
         let from = args
             .get("from_entity_id")
             .and_then(|v| v.as_str())
-            .unwrap_or("")
+            .context("from_entity_id is required")?
             .trim()
             .to_string();
         let to = args
             .get("to_entity_id")
             .and_then(|v| v.as_str())
-            .unwrap_or("")
+            .context("to_entity_id is required")?
             .trim()
             .to_string();
         let rel_type =
             args.get("relation_type").and_then(|v| v.as_str()).map(|s| s.trim().to_string());
 
         if from.is_empty() || to.is_empty() {
-            return Ok(serde_json::json!({
-                "success": false,
-                "error": "from_entity_id and to_entity_id are required"
-            }));
+            anyhow::bail!("from_entity_id and to_entity_id must not be empty");
         }
 
         let value =
@@ -326,9 +320,8 @@ mod tests {
                 serde_json::json!({"from_entity_id": "", "to_entity_id": "b", "relation_type": ""}),
                 &mut ctx,
             )
-            .await
-            .unwrap();
-        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(false));
+            .await;
+        assert!(result.is_err(), "empty required fields should return an error");
     }
 
     #[tokio::test]

@@ -4,6 +4,7 @@
 
 use crate::mcp::McpTool;
 use crate::storage::AppContext;
+use anyhow::Context;
 use serde_json::json;
 
 #[derive(Clone)]
@@ -265,10 +266,7 @@ Use this when the user wants to:
                     "linked_count": linked_json.len(),
                 }))
             }
-            None => Ok(json!({
-                "success": false,
-                "error": format!("Session '{}' not found", context_id)
-            })),
+            None => anyhow::bail!("Session '{}' not found", context_id),
         }
     }
 }
@@ -852,8 +850,8 @@ Returns: exported content string."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "context_id": { "type": "string" },
-                    "format": { "type": "string", "enum": ["markdown", "json"], "default": "markdown" }
+                    "context_id": { "type": "string", "description": "Session ID to export" },
+                    "format": { "type": "string", "enum": ["markdown", "json"], "default": "markdown", "description": "Export format: markdown (default) or json" }
                 },
                 "required": ["context_id"]
             }
@@ -959,9 +957,9 @@ Returns: import summary."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "context_id": { "type": "string" },
-                    "content": { "type": "string" },
-                    "default_type": { "type": "string", "default": "note" }
+                    "context_id": { "type": "string", "description": "Target session ID (created if not exists)" },
+                    "content": { "type": "string", "description": "Text block to parse for memory entries" },
+                    "default_type": { "type": "string", "default": "note", "description": "Memory type for lines without a [type] prefix" }
                 },
                 "required": ["context_id", "content"]
             }
@@ -973,8 +971,12 @@ Returns: import summary."#,
         args: serde_json::Value,
         ctx: &mut AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        let context_id = args.get("context_id").and_then(|v| v.as_str()).unwrap_or("");
-        let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
+        let context_id = args
+            .get("context_id")
+            .and_then(|v| v.as_str())
+            .context("context_id is required")?;
+        let content =
+            args.get("content").and_then(|v| v.as_str()).context("content is required")?;
         let default_type = args.get("default_type").and_then(|v| v.as_str()).unwrap_or("note");
         if context_id.is_empty() {
             anyhow::bail!("Missing required argument: context_id");

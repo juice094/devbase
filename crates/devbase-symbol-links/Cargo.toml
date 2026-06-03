@@ -1,10 +1,11 @@
 [package]
 name = "devbase-symbol-links"
 version.workspace = true
-edition = "2024"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Code symbol link generator: similar-signature and co-located relationship discovery"
-authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
-license = "MIT"
 keywords = ["code-analysis", "symbol-links", "rust", "knowledge-graph"]
 categories = ["development-tools"]
 

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
 
@@ -13,8 +12,6 @@ use tantivy::{
     query::{BooleanQuery, Occur, QueryParser, TermQuery},
     schema::{STORED, STRING, Schema, TEXT, Value},
 };
-
-const INDEX_DIR: &str = "devbase/search_index";
 
 fn index_path() -> Result<PathBuf, TantivyError> {
     crate::storage::DefaultStorageBackend {}
@@ -288,11 +285,6 @@ fn search_with_reader(
         }
     }
     Ok(results)
-}
-
-fn open_index() -> Result<(Index, Schema), TantivyError> {
-    let path = index_path()?;
-    open_index_at(&path)
 }
 
 fn open_index_at(path: &std::path::Path) -> Result<(Index, Schema), TantivyError> {

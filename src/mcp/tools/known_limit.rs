@@ -2,6 +2,7 @@
 // Copyright (c) 2026 juice094
 use crate::mcp::McpTool;
 use crate::registry::known_limits::KnownLimit;
+use anyhow::Context;
 
 #[derive(Clone)]
 pub struct DevkitKnownLimitStoreTool;
@@ -31,11 +32,11 @@ Returns: success boolean and stored limit id."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "id": { "type": "string" },
-                    "category": { "type": "string" },
-                    "description": { "type": "string" },
-                    "source": { "type": "string" },
-                    "severity": { "type": "integer" }
+                    "id": { "type": "string", "description": "Unique identifier for the limit (kebab-case recommended)" },
+                    "category": { "type": "string", "description": "Category: 'hard-veto', 'known-bug', or 'external-dep'" },
+                    "description": { "type": "string", "description": "Human-readable description of the limit" },
+                    "source": { "type": "string", "description": "Optional source reference (e.g., 'AGENTS.md', 'oplog')" },
+                    "severity": { "type": "integer", "description": "Optional severity 1-5" }
                 },
                 "required": ["id", "category", "description"]
             }
@@ -47,18 +48,22 @@ Returns: success boolean and stored limit id."#,
         args: serde_json::Value,
         ctx: &mut crate::storage::AppContext,
     ) -> anyhow::Result<serde_json::Value> {
-        let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let category = args.get("category").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let description =
-            args.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let id = args.get("id").and_then(|v| v.as_str()).context("id is required")?.to_string();
+        let category = args
+            .get("category")
+            .and_then(|v| v.as_str())
+            .context("category is required")?
+            .to_string();
+        let description = args
+            .get("description")
+            .and_then(|v| v.as_str())
+            .context("description is required")?
+            .to_string();
         let source = args.get("source").and_then(|v| v.as_str()).map(|s| s.to_string());
         let severity = args.get("severity").and_then(|v| v.as_i64()).map(|i| i as i32);
 
         if id.is_empty() || category.is_empty() || description.is_empty() {
-            return Ok(serde_json::json!({
-                "success": false,
-                "error": "id, category, and description are required"
-            }));
+            anyhow::bail!("id, category, and description must not be empty");
         }
 
         let limit = KnownLimit {

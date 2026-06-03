@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 juice094
 //! devbase-symbol-links — Code symbol link generator.
 //!
@@ -14,7 +14,8 @@
 //! - co_located strength 固定 0.5: 同文件是中等信号，不区分文件大小。
 //! - Tokenization 排除 Rust 关键字: 避免 `fn`/`pub`/`async` 等噪音影响相似度。
 
-use std::collections::{HashMap, HashSet};
+pub mod co_located;
+pub mod similarity;
 
 /// A generated link between two symbols.
 #[derive(Debug, Clone, PartialEq)]
@@ -27,116 +28,14 @@ pub struct SymbolLink {
     pub strength: f32,
 }
 
-/// Compute `similar_signature` links within a repo.
-///
-/// Links symbols whose signatures share >= `threshold` Jaccard similarity
-/// of token sets. Default threshold: 0.3 (30% token overlap).
-pub fn compute_similar_signature_links(
-    conn: &rusqlite::Connection,
-    repo_id: &str,
-    threshold: f32,
-) -> anyhow::Result<Vec<SymbolLink>> {
-    let mut stmt = conn.prepare(
-        "SELECT name, signature FROM code_symbols
-         WHERE repo_id = ?1 AND symbol_type = 'function' AND signature IS NOT NULL",
-    )?;
-    let rows =
-        stmt.query_map([repo_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
-
-    let mut symbols: Vec<(String, HashSet<String>)> = Vec::new();
-    for row in rows {
-        let (name, sig) = row?;
-        let tokens = tokenize_signature(&sig);
-        if !tokens.is_empty() {
-            symbols.push((name, tokens));
-        }
-    }
-
-    let mut links = Vec::new();
-    for i in 0..symbols.len() {
-        for j in (i + 1)..symbols.len() {
-            let jaccard = jaccard_similarity(&symbols[i].1, &symbols[j].1);
-            if jaccard >= threshold {
-                // Bidirectional link
-                links.push(SymbolLink {
-                    source_repo: repo_id.to_string(),
-                    source_symbol: symbols[i].0.clone(),
-                    target_repo: repo_id.to_string(),
-                    target_symbol: symbols[j].0.clone(),
-                    link_type: "similar_signature".to_string(),
-                    strength: jaccard,
-                });
-                links.push(SymbolLink {
-                    source_repo: repo_id.to_string(),
-                    source_symbol: symbols[j].0.clone(),
-                    target_repo: repo_id.to_string(),
-                    target_symbol: symbols[i].0.clone(),
-                    link_type: "similar_signature".to_string(),
-                    strength: jaccard,
-                });
-            }
-        }
-    }
-    Ok(links)
-}
-
-/// Compute `co_located` links: functions defined in the same source file.
-///
-/// Strength is fixed at 0.5 — co-location is a moderate signal.
-pub fn compute_co_located_links(
-    conn: &rusqlite::Connection,
-    repo_id: &str,
-) -> anyhow::Result<Vec<SymbolLink>> {
-    let mut stmt = conn.prepare(
-        "SELECT file_path, name FROM code_symbols
-         WHERE repo_id = ?1 AND symbol_type = 'function'",
-    )?;
-    let rows =
-        stmt.query_map([repo_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
-
-    let mut by_file: HashMap<String, Vec<String>> = HashMap::new();
-    for row in rows {
-        let (path, name) = row?;
-        by_file.entry(path).or_default().push(name);
-    }
-
-    let mut links = Vec::new();
-    for (_path, names) in by_file {
-        if names.len() <= 1 {
-            continue;
-        }
-        for i in 0..names.len() {
-            for j in (i + 1)..names.len() {
-                links.push(SymbolLink {
-                    source_repo: repo_id.to_string(),
-                    source_symbol: names[i].clone(),
-                    target_repo: repo_id.to_string(),
-                    target_symbol: names[j].clone(),
-                    link_type: "co_located".to_string(),
-                    strength: 0.5,
-                });
-                links.push(SymbolLink {
-                    source_repo: repo_id.to_string(),
-                    source_symbol: names[j].clone(),
-                    target_repo: repo_id.to_string(),
-                    target_symbol: names[i].clone(),
-                    link_type: "co_located".to_string(),
-                    strength: 0.5,
-                });
-            }
-        }
-    }
-    Ok(links)
-}
-
 /// Build all link types for a repo and persist to `code_symbol_links`.
 pub fn generate_and_save_links(
     conn: &mut rusqlite::Connection,
     repo_id: &str,
 ) -> anyhow::Result<usize> {
     let mut all_links = Vec::new();
-    all_links.extend(compute_similar_signature_links(conn, repo_id, 0.3)?);
-    all_links.extend(compute_co_located_links(conn, repo_id)?);
+    all_links.extend(similarity::compute_similar_signature_links(conn, repo_id, 0.3)?);
+    all_links.extend(co_located::compute_co_located_links(conn, repo_id)?);
 
     if all_links.is_empty() {
         return Ok(0);
@@ -168,62 +67,9 @@ pub fn generate_and_save_links(
     Ok(inserted)
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-fn tokenize_signature(sig: &str) -> HashSet<String> {
-    sig.split(|c: char| !c.is_alphanumeric() && c != '_')
-        .map(|s| s.to_lowercase())
-        .filter(|s| s.len() > 1 && !is_common_keyword(s) && !s.chars().all(|c| c.is_numeric()))
-        .collect()
-}
-
-fn is_common_keyword(s: &str) -> bool {
-    const KEYWORDS: &[&str] = &[
-        "fn", "pub", "async", "mut", "let", "const", "static", "use", "impl", "where", "return",
-        "self", "true", "false", "if", "else", "for", "while", "loop", "match", "in", "ref",
-        "move", "type", "crate", "super", "dyn", "trait", "enum", "struct", "mod", "unsafe",
-        "extern", "as", "break", "continue", "yield", "await", "box",
-    ];
-    KEYWORDS.contains(&s)
-}
-
-fn jaccard_similarity(a: &HashSet<String>, b: &HashSet<String>) -> f32 {
-    if a.is_empty() && b.is_empty() {
-        return 1.0;
-    }
-    let intersection = a.intersection(b).count();
-    let union = a.union(b).count();
-    if union == 0 {
-        return 0.0;
-    }
-    intersection as f32 / union as f32
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_tokenize_signature() {
-        let tokens = tokenize_signature("pub fn authenticate(token: &str) -> Result<User>");
-        assert!(tokens.contains("authenticate"));
-        assert!(tokens.contains("token"));
-        assert!(tokens.contains("str"));
-        assert!(tokens.contains("result"));
-        assert!(tokens.contains("user"));
-        assert!(!tokens.contains("fn"));
-        assert!(!tokens.contains("pub"));
-    }
-
-    #[test]
-    fn test_jaccard_similarity() {
-        let a: HashSet<String> = ["a".into(), "b".into(), "c".into()].into_iter().collect();
-        let b: HashSet<String> = ["b".into(), "c".into(), "d".into()].into_iter().collect();
-        // intersection = 2, union = 4
-        assert!((jaccard_similarity(&a, &b) - 0.5).abs() < 1e-6);
-    }
 
     #[test]
     fn test_compute_co_located_links() {
@@ -246,7 +92,7 @@ mod tests {
         )
         .unwrap();
 
-        let links = compute_co_located_links(&conn, "r1").unwrap();
+        let links = co_located::compute_co_located_links(&conn, "r1").unwrap();
         // lib.rs has foo+bar => 2 bidirectional links
         assert_eq!(links.len(), 2);
         // main.rs has only main => no links
@@ -274,7 +120,7 @@ mod tests {
         )
         .unwrap();
 
-        let links = compute_similar_signature_links(&conn, "r1", 0.3).unwrap();
+        let links = similarity::compute_similar_signature_links(&conn, "r1", 0.3).unwrap();
         // auth_token and validate_token share token, str, timeout => should link
         assert!(!links.is_empty());
         let has_auth_validate = links.iter().any(|l| {

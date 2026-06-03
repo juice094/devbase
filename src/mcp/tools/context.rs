@@ -37,7 +37,9 @@ Returns: JSON object with:
   - vault_notes: array of linked and keyword-matched notes (id, title, source: "link" or "search")
   - assets: array of files/folders from the project's assets directory
   - relations: array of knowledge-graph relations (from relations table) linking this entity to others
-  - workflows: array of recent workflow executions for this repo"#,
+  - workflows: array of recent workflow executions for this repo
+  - known_limits: array of unmitigated known limits (L3 risk layer entries)
+  - skills: array of available devbase skills"#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -397,7 +399,47 @@ Returns: JSON object with:
                     }
                 }
 
-                anyhow::Ok((repo_json, linked_vaults, modules, symbols, calls, assets, activity, related_symbols, relations, workflows, recent_commits, hot_files))
+                // 12. Known limits (unmitigated — highest relevance for active projects)
+                let mut known_limits = Vec::new();
+                match crate::registry::known_limits::list_known_limits(&conn, None, Some(false)) {
+                    Ok(limits) => {
+                        for limit in limits.into_iter().take(20) {
+                            known_limits.push(serde_json::json!({
+                                "id": limit.id,
+                                "category": limit.category,
+                                "description": limit.description,
+                                "severity": limit.severity,
+                                "source": limit.source,
+                                "first_seen_at": limit.first_seen_at.to_rfc3339(),
+                            }));
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("list_known_limits failed: {}", e);
+                    }
+                }
+
+                // 13. Available skills (top 20)
+                let mut skills = Vec::new();
+                match crate::skill_runtime::registry::list_skills(&conn, None, None) {
+                    Ok(skill_rows) => {
+                        for s in skill_rows.into_iter().take(20) {
+                            skills.push(serde_json::json!({
+                                "id": s.id,
+                                "name": s.name,
+                                "version": s.version,
+                                "skill_type": s.skill_type.as_str(),
+                                "description": s.description,
+                                "tags": s.tags,
+                            }));
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("list_skills failed: {}", e);
+                    }
+                }
+
+                anyhow::Ok((repo_json, linked_vaults, modules, symbols, calls, assets, activity, related_symbols, relations, workflows, recent_commits, hot_files, known_limits, skills))
             }
         })
         .await
@@ -416,6 +458,8 @@ Returns: JSON object with:
             workflows,
             recent_commits,
             hot_files,
+            known_limits,
+            skills,
         ) = result;
 
         Ok(serde_json::json!({
@@ -433,6 +477,8 @@ Returns: JSON object with:
             "assets": assets,
             "recent_commits": recent_commits,
             "hot_files": hot_files,
+            "known_limits": known_limits,
+            "skills": skills,
         }))
     }
 }

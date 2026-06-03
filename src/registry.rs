@@ -122,9 +122,9 @@ impl Default for WorkspaceRegistry {
     }
 }
 
-pub use devbase_registry_health::HealthEntry;
-pub use devbase_registry_metrics::CodeMetrics;
-pub use devbase_registry_workspace::{OplogEntry, OplogEventType, WorkspaceSnapshot};
+pub use devbase_registry::health::HealthEntry;
+pub use devbase_registry::metrics::CodeMetrics;
+pub use devbase_registry::workspace::{OplogEntry, OplogEventType, WorkspaceSnapshot};
 
 pub mod entity;
 pub mod relation;

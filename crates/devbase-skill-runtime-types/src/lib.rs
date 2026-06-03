@@ -1,67 +1,16 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 juice094
+
+pub mod execution;
+pub mod params;
+pub mod skill_type;
+
+// Re-export for backward compatibility
+pub use execution::{ExecutionResult, ExecutionStatus};
+pub use params::{SkillDependency, SkillInput, SkillOutput};
+pub use skill_type::SkillType;
+
 use chrono::{DateTime, Utc};
-
-/// Skill type discriminant.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SkillType {
-    /// Distributed with devbase; always available.
-    Builtin,
-    /// Installed by user from external source.
-    Custom,
-    /// Reserved for devbase-internal system utilities.
-    System,
-}
-
-impl SkillType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            SkillType::Builtin => "builtin",
-            SkillType::Custom => "custom",
-            SkillType::System => "system",
-        }
-    }
-}
-
-impl std::str::FromStr for SkillType {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "builtin" => Ok(SkillType::Builtin),
-            "custom" => Ok(SkillType::Custom),
-            "system" => Ok(SkillType::System),
-            _ => Err(anyhow::anyhow!("unknown skill_type: {}", s)),
-        }
-    }
-}
-
-/// A single input parameter declared in SKILL.md.
-#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct SkillInput {
-    pub name: String,
-    pub input_type: String,
-    pub description: String,
-    pub required: bool,
-    pub default: Option<String>,
-}
-
-/// A single output parameter declared in SKILL.md.
-#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct SkillOutput {
-    pub name: String,
-    pub output_type: String,
-    pub description: String,
-}
-
-/// A dependency declared by a skill on another skill.
-#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct SkillDependency {
-    pub id: String,
-    pub version: Option<String>,
-    pub source: Option<String>,
-}
 
 /// In-memory representation of a parsed SKILL.md + registry metadata.
 #[derive(Debug, Clone)]
@@ -105,54 +54,6 @@ impl SkillMeta {
             .join("run.py")
             .exists()
             .then_some("scripts/run.py".to_string())
-    }
-}
-
-/// Result of a skill execution.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ExecutionResult {
-    pub skill_id: String,
-    pub status: ExecutionStatus,
-    pub stdout: String,
-    pub stderr: String,
-    pub exit_code: Option<i32>,
-    pub duration_ms: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ExecutionStatus {
-    Pending,
-    Running,
-    Success,
-    Failed,
-    Timeout,
-}
-
-impl ExecutionStatus {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ExecutionStatus::Pending => "pending",
-            ExecutionStatus::Running => "running",
-            ExecutionStatus::Success => "success",
-            ExecutionStatus::Failed => "failed",
-            ExecutionStatus::Timeout => "timeout",
-        }
-    }
-}
-
-impl std::str::FromStr for ExecutionStatus {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "pending" => Ok(ExecutionStatus::Pending),
-            "running" => Ok(ExecutionStatus::Running),
-            "success" => Ok(ExecutionStatus::Success),
-            "failed" => Ok(ExecutionStatus::Failed),
-            "timeout" => Ok(ExecutionStatus::Timeout),
-            _ => Err(anyhow::anyhow!("unknown execution status: {}", s)),
-        }
     }
 }
 

@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 juice094
 
 // Re-export the external crate type for backward compatibility (src/repository/symbol.rs).
-pub use devbase_registry_code_symbols::CodeSymbol;
+pub use devbase_registry::code_symbols::CodeSymbol;
 
 /// A single code symbol from the `code_symbols` table (RegistryClient variant).
 #[derive(Debug, Clone)]

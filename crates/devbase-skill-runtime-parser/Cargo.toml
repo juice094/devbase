@@ -1,11 +1,11 @@
 [package]
 name = "devbase-skill-runtime-parser"
 version.workspace = true
-edition = "2024"
-authors = ["juice094 <160722440+juice094@users.noreply.github.com>"]
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "SKILL.md frontmatter parser for skill metadata extraction"
-license = "MIT"
-repository = "https://github.com/juice094/devbase"
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `devkit_document_convert` — Experimental tier MCP tool，PDF/PPTX → Markdown 转换（`pdftotext` / `python-pptx` 流水线），含 frontmatter 质量标注
+- Stable 工具 invocation 测试补全：`devkit_query_repos`、`devkit_vault_search`、`devkit_vault_read`、`devkit_status`、`devkit_workflow_list`、`devkit_index`
+- `seed_repo()` 轻量测试 helper（仅插入 `entities` 表，无副作用）
+
+### Fixed
+
+- `mcp/tools/document_convert.rs` 原始字符串定界符修复（`r###"` 避免与 Python f-string `"##` 冲突）
+- `cleanup_extracted_text` 单元测试期望值与实现语义对齐（保留最多 2 个连续空行）
+
+### Changed
+
+- **Workspace crate 架构重组** — 消除机械提取造成的微 crate 碎片
+  - 合并 8 个 `devbase-registry-*` 微 crate（100–300 行/个）为统一 `devbase-registry`，含 8 个语义子模块（`entity`, `health`, `metrics`, `relation`, `call_graph`, `code_symbols`, `dead_code`, `workspace`）
+  - 拆分 10+ 个 monolithic `lib.rs` 为域驱动子模块：`devbase-embedding` (`candle`/`ollama`), `devbase-workflow-model` (`definition`/`execution`/`step_type`), `devbase-symbol-links` (`similarity`/`co_located`), `devbase-sync-protocol` (`index`/`version_vector`), `devbase-skill-runtime-types` (`skill_type`/`execution`/`params`), `devbase-skill-runtime-parser` (`frontmatter`/`field_parsers`), `devbase-workflow-interpolate` (`resolver`), `devbase-vault-frontmatter` (`parser`), `devbase-vault-wikilink` (`parser`), `devbase-core-types` (`node_type`/`node`/`edge`)
+  - 全 workspace `Cargo.toml` 统一使用 `[workspace.package]` 继承（`version`, `edition`, `authors`, `license`, `repository`）
+- `KNOWN_ISSUES.md` 更新：document_convert 从 P3 债务移至已解决归档；测试计数 485→494
+- `docs/reference/mcp-tools.md` 修正为 69 个工具，补充 Index / Workflow / Relation / KnownLimit / Session 分类
+- `docs/reference/stable-tools/README.md` 修正为 5 个 Stable 工具（删除过时的 `project_brief.md` / `hybrid_search.md` / `session_recall.md`）
+
 ## [0.20.1] - 2026-05-17
 
 ### Added

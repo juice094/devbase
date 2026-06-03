@@ -11,6 +11,17 @@ fn test_ctx() -> (crate::storage::AppContext, tempfile::TempDir) {
     (ctx, tmp)
 }
 
+/// Lightweight helper: seed a single repo into the entities table.
+fn seed_repo(ctx: &crate::storage::AppContext, id: &str, lang: &str) {
+    let conn = ctx.conn().unwrap();
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO entities (id, entity_type, name, local_path, metadata, created_at, updated_at, language, discovered_at, workspace_type, data_tier, stars)
+         VALUES (?1, 'repo', ?2, ?3, ?4, ?5, ?5, ?6, ?5, 'git', 'private', 0)",
+        rusqlite::params![id, id, format!("/tmp/{}", id), "{}", &now, lang],
+    ).unwrap();
+}
+
 #[tokio::test]
 async fn test_initialize() {
     let server = build_server();
@@ -39,7 +50,7 @@ async fn test_tools_list() {
     let (mut ctx, _tmp) = test_ctx();
     let resp = server.handle_request(req, &mut ctx).await.unwrap();
     let tools = resp.get("result").unwrap().get("tools").unwrap().as_array().unwrap();
-    assert_eq!(tools.len(), 68);
+    assert_eq!(tools.len(), 69);
     let names: Vec<&str> = tools.iter().map(|t| t.get("name").unwrap().as_str().unwrap()).collect();
     assert!(names.contains(&"devkit_index_health"));
     assert!(names.contains(&"devkit_vault_export"));
@@ -53,6 +64,7 @@ async fn test_tools_list() {
     assert!(names.contains(&"devkit_session_export"));
     assert!(names.contains(&"devkit_session_import"));
     assert!(names.contains(&"devkit_evaluate"));
+    assert!(names.contains(&"devkit_document_convert"));
     assert!(names.contains(&"devkit_scan"));
     assert!(names.contains(&"devkit_health"));
     assert!(names.contains(&"devkit_sync"));
@@ -218,6 +230,156 @@ async fn test_tools_call_devkit_project_context() {
 }
 
 #[tokio::test]
+async fn test_tools_call_devkit_query_repos() {
+    let server = build_server();
+    let (mut ctx, _tmp) = test_ctx();
+
+    // 1. Empty registry returns empty results
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 10,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_query_repos",
+            "arguments": { "language": "" }
+        }
+    });
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    assert_eq!(parsed.get("count").unwrap().as_i64().unwrap(), 0);
+
+    // 2. Seeded repo is returned with correct filtering
+    seed_repo(&ctx, "test-repo", "rust");
+    let req2 = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_query_repos",
+            "arguments": { "language": "rust" }
+        }
+    });
+    let resp2 = server.handle_request(req2, &mut ctx).await.unwrap();
+    let result2 = resp2.get("result").unwrap();
+    let content2 = result2.get("content").unwrap().as_array().unwrap();
+    let text2 = content2[0].get("text").unwrap().as_str().unwrap();
+    let parsed2: serde_json::Value = serde_json::from_str(text2).unwrap();
+    assert_eq!(parsed2.get("success").unwrap(), true);
+    let repos = parsed2.get("repos").unwrap().as_array().unwrap();
+    assert_eq!(repos.len(), 1);
+    assert_eq!(repos[0].get("id").unwrap().as_str().unwrap(), "test-repo");
+    assert_eq!(repos[0].get("language").unwrap().as_str().unwrap(), "rust");
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_vault_search() {
+    let server = build_server();
+    let (mut ctx, _tmp) = test_ctx();
+
+    // Setup: create vault note and scan
+    let ws = ctx.storage.workspace_dir().unwrap();
+    let vault_dir = ws.join("vault");
+    std::fs::create_dir_all(&vault_dir).unwrap();
+    std::fs::write(
+        vault_dir.join("test-note.md"),
+        "---\ntitle: Test Note\ntags: [test, vault]\n---\n\nThis is a test note for vault search.\n",
+    ).unwrap();
+    let mut conn = ctx.conn().unwrap();
+    crate::vault::scanner::scan_vault(&mut conn, Some(&vault_dir)).unwrap();
+
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 12,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_vault_search",
+            "arguments": { "query": "test note" }
+        }
+    });
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    let notes = parsed.get("notes").unwrap().as_array().unwrap();
+    assert!(!notes.is_empty(), "vault_search should find the test-note");
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.get("title").and_then(|v| v.as_str()) == Some("Test Note")),
+        "vault_search should return Test Note"
+    );
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_vault_read() {
+    let server = build_server();
+    let (mut ctx, _tmp) = test_ctx();
+
+    // Setup: create vault note and scan
+    let ws = ctx.storage.workspace_dir().unwrap();
+    let vault_dir = ws.join("vault");
+    std::fs::create_dir_all(&vault_dir).unwrap();
+    let note_path = vault_dir.join("test-read.md");
+    std::fs::write(
+        &note_path,
+        "---\ntitle: Readable Note\ntags: [read]\n---\n\nContent body here.\n",
+    )
+    .unwrap();
+    let mut conn = ctx.conn().unwrap();
+    crate::vault::scanner::scan_vault(&mut conn, Some(&vault_dir)).unwrap();
+
+    // 1. Read existing note by absolute path
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 13,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_vault_read",
+            "arguments": { "path": note_path.to_str().unwrap() }
+        }
+    });
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    assert_eq!(parsed.get("path").unwrap().as_str().unwrap(), note_path.to_str().unwrap());
+    let frontmatter = parsed.get("frontmatter").unwrap().as_str().unwrap();
+    assert!(frontmatter.contains("title: Readable Note"));
+    let body = parsed.get("content").unwrap().as_str().unwrap();
+    assert!(body.contains("Content body here."));
+
+    // 2. Read non-existent note returns error
+    let req2 = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 14,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_vault_read",
+            "arguments": { "path": "/nonexistent/path/note.md" }
+        }
+    });
+    let resp2 = server.handle_request(req2, &mut ctx).await.unwrap();
+    let result2 = resp2.get("result").unwrap();
+    assert_eq!(result2.get("isError").unwrap(), true);
+    let content2 = result2.get("content").unwrap().as_array().unwrap();
+    let text2 = content2[0].get("text").unwrap().as_str().unwrap();
+    let parsed2: serde_json::Value = serde_json::from_str(text2).unwrap();
+    assert_eq!(parsed2.get("success").unwrap(), false);
+    assert!(
+        parsed2.get("error").unwrap().as_str().unwrap().contains("not found")
+            || parsed2.get("error").unwrap().as_str().unwrap().contains("unreadable")
+    );
+}
+
+#[tokio::test]
 async fn test_tools_call_devkit_arxiv_fetch() {
     let server = build_server();
     let req = serde_json::json!({
@@ -238,6 +400,78 @@ async fn test_tools_call_devkit_arxiv_fetch() {
     // Empty arxiv_id should result in an error from the arXiv API or parser
     assert_eq!(parsed.get("success").unwrap(), false);
     assert!(!parsed.get("error").unwrap().as_str().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_status() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 15,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_status",
+            "arguments": {}
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    // Empty registry → overall "fresh" (vacuous truth: all 0 repos are fresh)
+    assert_eq!(parsed.get("overall").unwrap().as_str().unwrap(), "fresh");
+    let repos = parsed.get("repos").unwrap().as_array().unwrap();
+    assert!(repos.is_empty());
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_workflow_list() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 16,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_workflow_list",
+            "arguments": {}
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    assert_eq!(parsed.get("count").unwrap().as_i64().unwrap(), 0);
+    let workflows = parsed.get("workflows").unwrap().as_array().unwrap();
+    assert!(workflows.is_empty());
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_index() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 17,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_index",
+            "arguments": { "path": "" }
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    // Empty registry → indexed 0 repos
+    assert_eq!(parsed.get("indexed").unwrap().as_i64().unwrap(), 0);
 }
 
 #[tokio::test]
@@ -661,6 +895,29 @@ async fn test_scenario_one_project_onboarding() {
             .any(|r| r.get("id").and_then(|v| v.as_str()) == Some("scenario-repo")),
         "scenario-repo should be listed in query_repos"
     );
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_document_convert_not_found() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 18,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_document_convert",
+            "arguments": { "source_path": "/nonexistent/file.pdf" }
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), false);
+    let err = parsed.get("error").unwrap().as_str().unwrap();
+    assert!(err.contains("not found") || err.contains("Source file"));
 }
 
 #[tokio::test]

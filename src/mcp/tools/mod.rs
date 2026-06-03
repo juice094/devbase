@@ -2,6 +2,7 @@
 // Copyright (c) 2026 juice094
 pub mod brief;
 pub mod context;
+pub mod document_convert;
 pub mod evaluate;
 pub mod impact;
 pub mod index_health;
@@ -23,6 +24,7 @@ pub mod search;
 
 pub use brief::*;
 pub use context::*;
+pub use document_convert::*;
 pub use impact::*;
 pub use index_health::*;
 pub use known_limit::*;

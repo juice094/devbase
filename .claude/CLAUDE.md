@@ -13,9 +13,9 @@
 |----|------|--------|--------|
 | F-001 | Version | `Cargo.toml` | **v0.20.1** |
 | F-002 | Edition | `Cargo.toml` | **Rust 2024** |
-| F-003 | Test Coverage | CI | **485+ passed, 0 failed, 5 ignored** |
+| F-003 | Test Coverage | CI | **494 passed, 0 failed, 5 ignored** |
 | F-004 | Production Unwrap | Architecture Invariants | **0** (G5 rule enforced) |
-| F-005 | MCP Tools | `src/mcp/mod.rs` | **68** (5 Stable / 60 Beta / 3 Experimental) |
+| F-005 | MCP Tools | `src/mcp/mod.rs` | **69** (5 Stable / 60 Beta / 4 Experimental) |
 | F-006 | Schema Version | `registry/migrate.rs` | **v34** |
 | F-007 | Entities Table | Schema v21+ | **唯一真相源** (`repos` 表已删除) |
 | F-008 | SQLite Mode | `storage.rs` | **WAL mode** |
@@ -46,14 +46,14 @@
 
 这些是**待实现**的能力，不是 bug：
 
-| Gap | 影响 | 计划版本 |
-|-----|------|----------|
-| `relations` 表零生产读取路径 | 统一实体模型的图遍历能力未暴露 | v0.21.0 |
-| Workflow 引擎零 MCP 暴露 | AI 无法发现/触发工作流 | v0.21.0 |
-| `project_context` 不完整 | 缺少 relations/limits/skills/workflows | v0.21.0 |
-| 31/38 MCP 工具缺少调用测试 | 回归风险 | v0.21.0 |
-| `mcp/tools/repo.rs` 2376 行 | 维护负担 | v0.21.0 |
-| `init_db_at` 1214 行 | 迁移函数过大 | v0.21.0 |
+| Gap | 影响 | 计划版本 | 状态 |
+|-----|------|----------|------|
+| ~~`relations` 表零生产读取路径~~ | ~~统一实体模型的图遍历能力未暴露~~ | ~~v0.21.0~~ | **已完成** — `devkit_relation_store/query/delete` 已存在，`project_context` 已读取 |
+| ~~Workflow 引擎零 MCP 暴露~~ | ~~AI 无法发现/触发工作流~~ | ~~v0.21.0~~ | **已完成** — `devkit_workflow_list/run/status` 已存在 |
+| ~~`project_context` 不完整~~ | ~~缺少 relations/limits/skills/workflows~~ | ~~v0.21.0~~ | **已完成** — 已补充 `known_limits` + `skills` |
+| 31/68 MCP 工具缺少调用测试 | 回归风险 | v0.21.0 | 待评估 |
+| ~~`mcp/tools/repo.rs` 2376 行~~ | ~~维护负担~~ | ~~v0.21.0~~ | **已完成** — 已拆分为 `tools/` 目录，`repo.rs` 现 730 行 |
+| ~~`init_db_at` 1214 行~~ | ~~迁移函数过大~~ | ~~v0.21.0~~ | **已完成** — 已拆分为 `registry/migrate.rs`（503 行）+ `repo.rs` + `vault.rs` + `links.rs` |
 
 ## 防失忆校验清单（每次会话启动）
 
@@ -89,5 +89,5 @@
 
 ---
 
-**Last Updated**: 2026-05-18 by Claude Opus 4.7
+**Last Updated**: 2026-05-20 by Claude Opus 4.7
 **Version**: v0.20.1
