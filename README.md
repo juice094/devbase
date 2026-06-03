@@ -11,6 +11,7 @@
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](https://github.com/juice094/devbase/actions)
 [![License](https://img.shields.io/badge/license-AGPL--3.0%20%2F%20Commercial-orange)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.95%2B-9cf)](https://www.rust-lang.org)
+[![Glama](https://glama.ai/mcp/servers/juice094/devbase/badges/score.svg)](https://glama.ai/mcp/servers/juice094/devbase)
 
 </div>
 
