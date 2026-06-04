@@ -195,6 +195,33 @@ CREATE TABLE IF NOT EXISTS skills (
 );
 CREATE INDEX IF NOT EXISTS idx_skills_type ON skills(skill_type);
 
+CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
+    name,
+    description,
+    tags,
+    category,
+    content='skills',
+    content_rowid='rowid',
+    tokenize='unicode61'
+);
+
+CREATE TRIGGER IF NOT EXISTS skills_fts_ai AFTER INSERT ON skills BEGIN
+    INSERT INTO skills_fts(rowid, name, description, tags, category)
+    VALUES (new.rowid, new.name, new.description, new.tags, new.category);
+END;
+
+CREATE TRIGGER IF NOT EXISTS skills_fts_ad AFTER DELETE ON skills BEGIN
+    INSERT INTO skills_fts(skills_fts, rowid, name, description, tags, category)
+    VALUES ('delete', old.rowid, old.name, old.description, old.tags, old.category);
+END;
+
+CREATE TRIGGER IF NOT EXISTS skills_fts_au AFTER UPDATE ON skills BEGIN
+    INSERT INTO skills_fts(skills_fts, rowid, name, description, tags, category)
+    VALUES ('delete', old.rowid, old.name, old.description, old.tags, old.category);
+    INSERT INTO skills_fts(rowid, name, description, tags, category)
+    VALUES (new.rowid, new.name, new.description, new.tags, new.category);
+END;
+
 CREATE TABLE IF NOT EXISTS skill_executions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     skill_id        TEXT NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
@@ -206,6 +233,27 @@ CREATE TABLE IF NOT EXISTS skill_executions (
     started_at      TEXT NOT NULL,
     finished_at     TEXT,
     duration_ms     INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS sync_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    url TEXT NOT NULL,
+    source_type TEXT NOT NULL DEFAULT 'github',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_sync_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS sync_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    skills_added INTEGER NOT NULL DEFAULT 0,
+    skills_updated INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT,
+    started_at TEXT NOT NULL DEFAULT (datetime('now')),
+    finished_at TEXT
 );
 
 -- v16: Unified Entity Model

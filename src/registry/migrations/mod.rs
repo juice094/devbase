@@ -36,6 +36,8 @@ pub mod v31_agent_contexts;
 pub mod v32_context_links;
 pub mod v33_workflow_context;
 pub mod v34_memory_vectors;
+pub mod v35_skill_fts;
+pub mod v36_skill_sources;
 
 pub fn run_all(conn: &mut Connection) -> anyhow::Result<()> {
     let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -141,6 +143,12 @@ pub fn run_all(conn: &mut Connection) -> anyhow::Result<()> {
     }
     if user_version < 34 {
         v34_memory_vectors::run(conn)?;
+    }
+    if user_version < 35 {
+        v35_skill_fts::run(conn)?;
+    }
+    if user_version < 36 {
+        v36_skill_sources::run(conn)?;
     }
 
     Ok(())

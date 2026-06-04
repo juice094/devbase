@@ -453,6 +453,20 @@ pub(crate) enum SkillCommands {
         #[arg(long, default_value_t = 5)]
         limit: usize,
     },
+    /// Import skills from external sources (GitHub repos or local directories)
+    Import {
+        /// Source URL or path (GitHub URL or local directory)
+        source: String,
+        /// Path within the source to scan for SKILL.md files
+        #[arg(long)]
+        source_path: Option<String>,
+        /// Dry-run: list discovered skills without installing
+        #[arg(long)]
+        dry_run: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
