@@ -553,6 +553,12 @@ pub(crate) enum VaultCommands {
         /// Relative path of the note within the vault
         path: String,
     },
+    /// Sync all configured vault roots (scan + incremental update)
+    Sync {
+        /// Perform a full rescan instead of incremental
+        #[arg(long)]
+        full: bool,
+    },
 }
 
 #[derive(Subcommand)]

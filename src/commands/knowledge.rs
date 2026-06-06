@@ -24,6 +24,26 @@ pub async fn run_vault(
             .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
             println!("Synced {} vault notes.", count);
         }
+        crate::VaultCommands::Sync { full: _ } => {
+            let cfg = ctx.config.vault.clone();
+            let roots: Vec<std::path::PathBuf> = if cfg.roots.is_empty() {
+                vec![crate::registry::WorkspaceRegistry::workspace_dir()?.join("vault")]
+            } else {
+                cfg.roots.iter().map(std::path::PathBuf::from).collect()
+            };
+            let options = vault::scanner::ScanOptions {
+                roots,
+                follow_links: cfg.follow_symlinks,
+            };
+            let pool = ctx.pool();
+            let count = tokio::task::spawn_blocking(move || {
+                let mut conn = pool.get()?;
+                vault::scanner::scan_vault_with_options(&mut conn, &options)
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))??;
+            println!("Vault sync complete: {} notes synced.", count);
+        }
         crate::VaultCommands::Reindex => {
             let pool = ctx.pool();
             tokio::task::spawn_blocking(move || {

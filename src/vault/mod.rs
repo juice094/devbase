@@ -9,6 +9,8 @@ pub mod indexer;
 pub mod scanner;
 pub mod wikilink;
 
+pub use scanner::ScanOptions;
+
 use crate::storage::AppContext;
 
 impl crate::clients::VaultClient for AppContext {
