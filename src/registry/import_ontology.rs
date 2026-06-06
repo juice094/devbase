@@ -139,17 +139,41 @@ fn import_relations_file(conn: &Connection, path: &Path) -> Result<(usize, usize
             )
             .is_ok();
 
+        // Skip relations referencing non-existent entities (FK constraint)
+        let from_exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM entities WHERE id = ?1",
+                rusqlite::params![from_id],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        let to_exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM entities WHERE id = ?1",
+                rusqlite::params![to_id],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        if !from_exists || !to_exists {
+            tracing::warn!("Skipping relation {}: from or to entity not found", relation_id);
+            continue;
+        }
+
+        let conn_exec = conn.execute(
+            "INSERT OR REPLACE INTO relations (id, from_entity_id, to_entity_id, relation_type, metadata, confidence, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, 1.0, ?6)",
+            rusqlite::params![relation_id, from_id, to_id, rel_type, metadata, now],
+        );
+        if let Err(e) = conn_exec {
+            tracing::warn!("Failed to insert relation {}: {}", relation_id, e);
+            continue;
+        }
+
         if exists {
             updated += 1;
         } else {
             added += 1;
         }
-
-        conn.execute(
-            "INSERT OR REPLACE INTO relations (id, from_entity_id, to_entity_id, relation_type, metadata, confidence, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, 1.0, ?6)",
-            rusqlite::params![relation_id, from_id, to_id, rel_type, metadata, now],
-        )?;
     }
 
     Ok((added, updated))
