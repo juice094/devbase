@@ -24,7 +24,7 @@ devbase 将代码库、笔记与工作流编译为 AI 可推理的结构化情�
 | 你是谁 | devbase 为你做什么 |
 |:---|:---|
 | **人类开发者** | `devbase tui` — 终端仪表盘，一眼看清 N 个仓库的 Git 状态，按 `s` 批量安全同步 |
-| **AI 智能体** | 70 个 MCP 工具：通过 `devkit_skill_run` 发现、执行、编排 Skill — 不再重复造轮子 |
+| **AI 智能体** | 71 个 MCP 工具：通过 `devkit_skill_run` 发现、执行、编排 Skill — 不再重复造轮子 |
 | **项目维护者** | `devbase skill discover .` — 一键将项目封装为 Skill，让 AI 用户能够发现和调用 |
 
 ---
@@ -34,11 +34,11 @@ devbase 将代码库、笔记与工作流编译为 AI 可推理的结构化情�
 | 亮点 | 说明 |
 |:---|:---|
 | 📊 **TUI 仪表盘** | ratatui 终端界面：跨仓库搜索、安全同步、Skill/Workflow 发现 |
-| 🔌 **70 个 MCP 工具** | stdio 本地进程通信：仓库管理、代码分析、知识图谱、智能体记忆 |
+| 🔌 **71 个 MCP 工具** | stdio 本地进程通信：仓库管理、代码分析、知识图谱、智能体记忆 |
 | 🏠 **本地优先** | 零数据离开本机 — SQLite + Tantivy + tree-sitter，无需云端 |
 | 🔍 **混合检索** | BM25 全文 + FTS5 技能搜索 + 纯 SQL 向量搜索（`cosine_similarity` UDF），零 ML 运行时依赖 |
 
-> [完整 70 个 Tool 矩阵 → docs/guides/mcp-integration.md](docs/guides/mcp-integration.md)
+> [完整 71 个 Tool 矩阵 → docs/guides/mcp-integration.md](docs/guides/mcp-integration.md)
 
 ---
 
@@ -63,7 +63,7 @@ devbase/
 │   ├── main.rs          # CLI 入口：命令解析与分发
 │   ├── tui/             # 终端仪表盘（ratatui）
 │   │                    # 多仓库导航、跨仓库搜索、安全同步预览
-│   ├── mcp/             # MCP Server（69 个工具，stdio 通信）
+│   ├── mcp/             # MCP Server（71 个工具，stdio 通信）
 │   │                    # 人类与 AI 的统一接口层
 │   ├── registry/        # 仓库注册表：Git 状态、健康检查、批量同步
 │   ├── index/           # Tantivy 全文索引 + SQLite 向量索引

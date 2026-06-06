@@ -11,7 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **FTS5 技能全文搜索** (Schema v35) — `skills_fts` 虚拟表 + 触发器，`search_skills_text()` 使用 BM25 排序（name=1.0, desc=0.8, tags=0.4, category=0.2），LIKE 降级 fallback
 - **可插拔外部技能源** (Schema v36) — `SkillSource` trait + `GitHubSource` / `LocalFileSource`，`sync_sources` / `sync_log` 审计表，`devkit_skill_sync` MCP 工具（Beta tier），`devbase skill import` CLI 子命令
-- MCP 工具数: 69 → **70**（5 stable + 61 beta + 4 experimental）
+- **Vault 多根目录 + symlink 跟随** — `VaultConfig`（roots + follow_symlinks），多根目录扫描 `scan_vault_with_options`，`resolve_vault_write_path` 实体回溯路径解析，`devbase vault sync` CLI
+- **Ontology 导入** — `devkit_ontology_import` MCP 工具（Beta tier），`devbase ontology` CLI（`--dry-run` 预览），支持 OpenClaw workspace `ontology/entities/*.json` + `ontology/relations/*.jsonl` 批量导入
+- MCP 工具数: 69 → **71**（5 stable + 62 beta + 4 experimental）
 - `devkit_document_convert` — Experimental tier MCP tool，PDF/PPTX → Markdown 转换（`pdftotext` / `python-pptx` 流水线），含 frontmatter 质量标注
 - Stable 工具 invocation 测试补全：`devkit_query_repos`、`devkit_vault_search`、`devkit_vault_read`、`devkit_status`、`devkit_workflow_list`、`devkit_index`
 - `seed_repo()` 轻量测试 helper（仅插入 `entities` 表，无副作用）
