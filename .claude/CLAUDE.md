@@ -15,7 +15,7 @@
 | F-002 | Edition | `Cargo.toml` | **Rust 2024** |
 | F-003 | Test Coverage | CI | **494 passed, 0 failed, 5 ignored** |
 | F-004 | Production Unwrap | Architecture Invariants | **0** (G5 rule enforced) |
-| F-005 | MCP Tools | `src/mcp/mod.rs` | **70** (5 Stable / 61 Beta / 4 Experimental) |
+| F-005 | MCP Tools | `src/mcp/mod.rs` | **71** (5 Stable / 62 Beta / 4 Experimental) |
 | F-006 | Schema Version | `registry/migrate.rs` | **v36** |
 | F-007 | Entities Table | Schema v21+ | **唯一真相源** (`repos` 表已删除) |
 | F-008 | SQLite Mode | `storage.rs` | **WAL mode** |
