@@ -2,7 +2,7 @@
   "$schema": "https://registry.modelcontextprotocol.io/schema/server.json",
   "name": "io.github.juice094.devbase",
   "version": "0.20.1",
-  "description": "Developer Knowledge OS — manage Git repos, vault notes (Markdown), and assets. AI-native workspace with 70 MCP tools.",
+  "description": "Developer Knowledge OS — manage Git repos, vault notes (Markdown), and assets. AI-native workspace with 71 MCP tools.",
   "license": "AGPL-3.0-or-later",
   "homepage": "https://github.com/juice094/devbase",
   "repository": {
@@ -102,13 +102,14 @@
         "devkit_oplog_query",
         "devkit_evaluate",
         "devkit_document_convert",
+        "devkit_ontology_import",
         "devkit_index_health"
       ],
       "experimental": []
     }
   },
   "tools": {
-    "count": 70,
+    "count": 71,
     "list": [
       "devkit_scan",
       "devkit_health",
@@ -178,6 +179,7 @@
       "devkit_oplog_query",
       "devkit_evaluate",
       "devkit_document_convert",
+      "devkit_ontology_import",
       "devkit_index_health"
     ]
   }

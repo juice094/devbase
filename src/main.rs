@@ -302,6 +302,15 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         cmd: SkillCommands,
     },
+    /// Import ontology entities and relations from an OpenClaw workspace
+    Ontology {
+        /// Path to OpenClaw workspace (defaults to ~/.kimi_openclaw/workspace)
+        #[arg(default_value = "")]
+        workspace: String,
+        /// Dry-run: list entities/relations without importing
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Workflow Engine — orchestrate multi-Skill pipelines
     Workflow {
         #[command(subcommand)]
@@ -803,6 +812,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Skill { cmd } => {
             commands::skill::run_skill(&mut ctx, cmd)?;
+        }
+        Commands::Ontology { workspace, dry_run } => {
+            commands::ontology::run_import(&mut ctx, &workspace, dry_run)?;
         }
         Commands::Workflow { cmd } => {
             commands::workflow::run_workflow(&mut ctx, cmd)?;

@@ -126,6 +126,7 @@ pub enum McpToolEnum {
     OplogQuery(DevkitOplogQueryTool),
     Evaluate(DevkitEvaluateTool),
     DocumentConvert(DevkitDocumentConvertTool),
+    OntologyImport(DevkitOntologyImportTool),
 }
 
 /// Stability tier for MCP tools.
@@ -224,6 +225,7 @@ impl McpToolEnum {
             McpToolEnum::OplogQuery(_) => ToolTier::Beta,
             McpToolEnum::Evaluate(_) => ToolTier::Beta,
             McpToolEnum::DocumentConvert(_) => ToolTier::Experimental,
+            McpToolEnum::OntologyImport(_) => ToolTier::Beta,
         }
     }
 }
@@ -301,6 +303,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::OplogQuery(t) => t.name(),
             McpToolEnum::Evaluate(t) => t.name(),
             McpToolEnum::DocumentConvert(t) => t.name(),
+            McpToolEnum::OntologyImport(t) => t.name(),
         }
     }
 
@@ -376,6 +379,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::OplogQuery(t) => t.schema(),
             McpToolEnum::Evaluate(t) => t.schema(),
             McpToolEnum::DocumentConvert(t) => t.schema(),
+            McpToolEnum::OntologyImport(t) => t.schema(),
         }
     }
 
@@ -455,6 +459,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::OplogQuery(t) => t.invoke(args, ctx).await,
             McpToolEnum::Evaluate(t) => t.invoke(args, ctx).await,
             McpToolEnum::DocumentConvert(t) => t.invoke(args, ctx).await,
+            McpToolEnum::OntologyImport(t) => t.invoke(args, ctx).await,
         }
     }
 }
@@ -800,6 +805,7 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::OplogQuery(DevkitOplogQueryTool),
         McpToolEnum::Evaluate(DevkitEvaluateTool),
         McpToolEnum::DocumentConvert(DevkitDocumentConvertTool),
+        McpToolEnum::OntologyImport(DevkitOntologyImportTool),
     ];
     for tool in all_tools {
         if let Some(allowed) = tiers
