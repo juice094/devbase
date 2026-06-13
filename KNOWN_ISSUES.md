@@ -86,10 +86,10 @@
 | `project_context` 不完整 | v0.20.1 | 补充 `known_limits` + `skills` |
 | `mcp/tools/repo.rs` 2376 行 | v0.20.1 | 拆分为 `tools/` 目录，repo.rs 730 行 |
 | `init_db_at` 1214 行 | v0.20.1 | 拆分为 `registry/migrate.rs`（503 行）+ 子模块 |
-| 工具数量文档不一致 | v0.20.1 | `mcp-tools.md` 全面更新至 68 个 |
+| 工具数量文档不一致 | v0.20.1 | `mcp-tools.md` 全面更新至 71 个 |
 | 3 Stable 工具缺 invocation tests | v0.20.1 | `query_repos`, `vault_search`, `vault_read` 测试 added |
 | `devkit_document_convert` 工具缺失 | v0.21.0 | `src/mcp/tools/document_convert.rs` + MCP 注册 |
 
 ---
 
-*Last updated: 2026-05-20*
+*Last updated: 2026-06-13*
