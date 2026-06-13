@@ -31,7 +31,7 @@
 | 用户 | 如何接入 MCP（Kimi / Claude / Cursor） | [`guides/mcp-integration.md`](guides/mcp-integration.md) |
 | 用户 | Vault 笔记格式 + PARA 工作流 | [`guides/vault-format.md`](guides/vault-format.md) · [`guides/vault-workflow.md`](guides/vault-workflow.md) |
 | 用户 | Embedding Provider 配置 | [`guides/embedding-provider-setup.md`](guides/embedding-provider-setup.md) |
-| 开发者 | 数据库 Schema 完整定义 | [`reference/schema-v23.md`](reference/schema-v23.md) ⚠️ 待更新至 v36 |
+| 开发者 | 数据库 Schema 完整定义 | [`reference/schema-v36.md`](reference/schema-v36.md) |
 | 开发者 | 统一实体模型（entities/relations） | [`reference/entities-model.md`](reference/entities-model.md) |
 | 开发者 | 71 个 MCP 工具速查 | [`reference/mcp-tools.md`](reference/mcp-tools.md) |
 | Agent | 项目架构定义 | [`architecture/context-compiler.md`](architecture/context-compiler.md) |
@@ -82,7 +82,7 @@
 | 文档 | 说明 |
 |------|------|
 | [`reference/mcp-tools.md`](reference/mcp-tools.md) | 71 个 MCP 工具完整清单 |
-| [`reference/schema-v23.md`](reference/schema-v23.md) | 数据库 Schema v23（⚠️ 待更新至 v36） |
+| [`reference/schema-v36.md`](reference/schema-v36.md) | 数据库 Schema v36（表、列、索引、迁移历史） |
 | [`reference/entities-model.md`](reference/entities-model.md) | 统一实体模型详解 |
 | [`reference/stable-tools/README.md`](reference/stable-tools/README.md) | 5 个 Stable 工具独立文档 |
 
