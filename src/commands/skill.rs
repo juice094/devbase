@@ -334,23 +334,20 @@ pub fn run_skill(
             json,
         } => {
             use crate::skill_runtime::sources::{GitHubSource, LocalFileSource, SkillSource};
-            let source_impl: Box<dyn SkillSource> =
-                if source.starts_with("https://github.com/")
-                    || source.starts_with("http://github.com/")
-                    || (source.contains('/')
-                        && !source.starts_with('/')
-                        && !source.contains("://"))
-                {
-                    let (owner, repo) = parse_github_url(&source)?;
-                    let path = source_path.as_deref().unwrap_or("skills");
-                    Box::new(GitHubSource::new(&owner, &repo, path))
-                } else {
-                    let path = source.strip_prefix("file://").unwrap_or(&source);
-                    let name = source_path.as_deref().unwrap_or(path);
-                    Box::new(LocalFileSource::new(name, std::path::Path::new(path)))
-                };
+            let source_impl: Box<dyn SkillSource> = if source.starts_with("https://github.com/")
+                || source.starts_with("http://github.com/")
+                || (source.contains('/') && !source.starts_with('/') && !source.contains("://"))
+            {
+                let (owner, repo) = parse_github_url(&source)?;
+                let path = source_path.as_deref().unwrap_or("skills");
+                Box::new(GitHubSource::new(&owner, &repo, path))
+            } else {
+                let path = source.strip_prefix("file://").unwrap_or(&source);
+                let name = source_path.as_deref().unwrap_or(path);
+                Box::new(LocalFileSource::new(name, std::path::Path::new(path)))
+            };
             let skills = tokio::runtime::Runtime::new()
-                .unwrap()
+                .context("failed to create tokio runtime for skill fetch")?
                 .block_on(source_impl.fetch())?;
             if dry_run {
                 if json {

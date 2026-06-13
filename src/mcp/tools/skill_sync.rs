@@ -1,8 +1,8 @@
 use anyhow::Context;
 
 use crate::mcp::McpTool;
-use crate::skill_runtime::sources::{GitHubSource, LocalFileSource, SkillSource};
 use crate::skill_runtime::registry;
+use crate::skill_runtime::sources::{GitHubSource, LocalFileSource, SkillSource};
 
 #[derive(Clone)]
 pub struct DevkitSkillSyncTool;
@@ -56,14 +56,13 @@ Requires DEVBASE_MCP_ENABLE_DESTRUCTIVE=1 since this modifies the skill registry
             .and_then(|v| v.as_str())
             .context("Missing required argument: source")?;
         let source_path = args.get("source_path").and_then(|v| v.as_str());
-        let dry_run = args
-            .get("dry_run")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
 
         let source: Box<dyn SkillSource> = if source_url.starts_with("https://github.com/")
             || source_url.starts_with("http://github.com/")
-            || (source_url.contains('/') && !source_url.starts_with("/") && !source_url.contains("://"))
+            || (source_url.contains('/')
+                && !source_url.starts_with("/")
+                && !source_url.contains("://"))
         {
             let (owner, repo) = parse_github_url(source_url)?;
             let path = source_path.unwrap_or("skills");
@@ -142,7 +141,8 @@ fn parse_github_url(url: &str) -> anyhow::Result<(String, String)> {
     }
     // Bare owner/repo format
     if let Some((owner, repo)) = url.split_once('/') {
-        if !owner.is_empty() && !repo.is_empty()
+        if !owner.is_empty()
+            && !repo.is_empty()
             && !owner.contains("://")
             && !owner.contains('\\')
             && !owner.contains(' ')

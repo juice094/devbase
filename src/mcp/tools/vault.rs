@@ -265,11 +265,12 @@ fn resolve_vault_write_path(
             cfg.vault.roots.iter().map(std::path::PathBuf::from).collect()
         }
         _ => {
-            vec![ctx
-                .storage
-                .workspace_dir()
-                .map(|ws| ws.join("vault"))
-                .unwrap_or_else(|_| std::path::PathBuf::from("vault"))]
+            vec![
+                ctx.storage
+                    .workspace_dir()
+                    .map(|ws| ws.join("vault"))
+                    .unwrap_or_else(|_| std::path::PathBuf::from("vault")),
+            ]
         }
     };
 

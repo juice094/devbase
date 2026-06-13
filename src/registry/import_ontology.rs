@@ -15,12 +15,10 @@ pub struct OntologyImportStats {
 }
 
 /// Import ontology entities and relations from an OpenClaw-compatible workspace.
-pub fn import_ontology(
-    conn: &Connection,
-    workspace_path: &Path,
-) -> Result<OntologyImportStats> {
+pub fn import_ontology(conn: &Connection, workspace_path: &Path) -> Result<OntologyImportStats> {
     let entities_dir = workspace_path.join("ontology").join("entities");
-    let relations_file = workspace_path.join("ontology").join("relations").join("core-relations.jsonl");
+    let relations_file =
+        workspace_path.join("ontology").join("relations").join("core-relations.jsonl");
 
     let mut stats = OntologyImportStats::default();
 
@@ -76,11 +74,9 @@ fn import_entity_file(conn: &Connection, path: &Path) -> Result<(usize, usize)> 
     let metadata = serde_json::to_string(&entity).unwrap_or_default();
     let now = chrono::Utc::now().to_rfc3339();
     let existing: Option<String> = conn
-        .query_row(
-            "SELECT id FROM entities WHERE id = ?1",
-            rusqlite::params![entity_id],
-            |row| row.get(0),
-        )
+        .query_row("SELECT id FROM entities WHERE id = ?1", rusqlite::params![entity_id], |row| {
+            row.get(0)
+        })
         .ok();
 
     conn.execute(
@@ -141,18 +137,14 @@ fn import_relations_file(conn: &Connection, path: &Path) -> Result<(usize, usize
 
         // Skip relations referencing non-existent entities (FK constraint)
         let from_exists: bool = conn
-            .query_row(
-                "SELECT 1 FROM entities WHERE id = ?1",
-                rusqlite::params![from_id],
-                |_| Ok(true),
-            )
+            .query_row("SELECT 1 FROM entities WHERE id = ?1", rusqlite::params![from_id], |_| {
+                Ok(true)
+            })
             .unwrap_or(false);
         let to_exists: bool = conn
-            .query_row(
-                "SELECT 1 FROM entities WHERE id = ?1",
-                rusqlite::params![to_id],
-                |_| Ok(true),
-            )
+            .query_row("SELECT 1 FROM entities WHERE id = ?1", rusqlite::params![to_id], |_| {
+                Ok(true)
+            })
             .unwrap_or(false);
         if !from_exists || !to_exists {
             tracing::warn!("Skipping relation {}: from or to entity not found", relation_id);

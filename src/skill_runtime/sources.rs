@@ -80,11 +80,8 @@ impl SkillSource for GitHubSource {
 
             // Handle directories by recursing (Box::pin required for recursive async fn)
             if entry_type == "dir" {
-                let dir_source = GitHubSource::new(
-                    &self.owner,
-                    &self.repo,
-                    &format!("{}/{}", self.path, name),
-                );
+                let dir_source =
+                    GitHubSource::new(&self.owner, &self.repo, &format!("{}/{}", self.path, name));
                 let fut = Box::pin(dir_source.fetch());
                 if let Ok(dir_skills) = fut.await {
                     skills.extend(dir_skills);
@@ -169,11 +166,7 @@ fn scan_dir_for_skills(dir: &Path, skills: &mut Vec<SkillMeta>) -> anyhow::Resul
             scan_dir_for_skills(&path, skills)?;
         } else if path.extension().map_or(false, |e| e == "md") {
             let content = std::fs::read_to_string(&path)?;
-            let name = path
-                .file_stem()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
+            let name = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
             let skill_id = name.to_lowercase().replace('_', "-");
             let skill_meta = if content.contains("---") {
                 parse_skill_or_extract(&content, &skill_id, "")
@@ -262,13 +255,7 @@ fn extract_tags(content: &str) -> Vec<String> {
         if let Some(tags_str) = trimmed.strip_prefix("tags:") {
             return tags_str
                 .split(',')
-                .map(|t| {
-                    t.trim()
-                        .trim_matches('"')
-                        .trim_matches('[')
-                        .trim_matches(']')
-                        .to_string()
-                })
+                .map(|t| t.trim().trim_matches('"').trim_matches('[').trim_matches(']').to_string())
                 .filter(|t| !t.is_empty())
                 .collect();
         }

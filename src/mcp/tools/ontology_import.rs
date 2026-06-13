@@ -44,10 +44,7 @@ Requires DEVBASE_MCP_ENABLE_DESTRUCTIVE=1 since this modifies the registry."#,
             .and_then(|v| v.as_str())
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
-                dirs::home_dir()
-                    .unwrap_or_default()
-                    .join(".kimi_openclaw")
-                    .join("workspace")
+                dirs::home_dir().unwrap_or_default().join(".kimi_openclaw").join("workspace")
             });
 
         let stats = {

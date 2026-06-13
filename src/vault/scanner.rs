@@ -58,8 +58,7 @@ pub fn scan_vault_with_options(
             continue;
         }
 
-        let walker = walkdir::WalkDir::new(root)
-            .follow_links(options.follow_links);
+        let walker = walkdir::WalkDir::new(root).follow_links(options.follow_links);
 
         for entry in walker
             .into_iter()
@@ -70,8 +69,11 @@ pub fn scan_vault_with_options(
             let path = entry.path();
             let rel_path = path.strip_prefix(root).unwrap_or(path);
             let id = if multi_root {
-                format!("{}/{}", root.file_name().unwrap_or_default().to_string_lossy(),
-                    rel_path.to_string_lossy().replace('\\', "/"))
+                format!(
+                    "{}/{}",
+                    root.file_name().unwrap_or_default().to_string_lossy(),
+                    rel_path.to_string_lossy().replace('\\', "/")
+                )
             } else {
                 rel_path.to_string_lossy().replace('\\', "/")
             };
@@ -84,15 +86,18 @@ pub fn scan_vault_with_options(
 
                     let body = &content[body_offset..];
                     let wikilinks = extract_wikilinks(body);
-                    let outgoing: Vec<String> = wikilinks.iter().map(|l| l.target.clone()).collect();
+                    let outgoing: Vec<String> =
+                        wikilinks.iter().map(|l| l.target.clone()).collect();
                     let block_refs: Vec<String> =
                         wikilinks.iter().filter_map(|l| l.anchor.clone()).collect();
 
-                    let title = frontmatter.as_ref().and_then(|fm| fm.title.clone()).or_else(|| {
-                        // Fallback: first H1 heading
-                        body.lines()
-                            .find_map(|l| l.trim().strip_prefix("# ").map(|s| s.trim().to_string()))
-                    });
+                    let title =
+                        frontmatter.as_ref().and_then(|fm| fm.title.clone()).or_else(|| {
+                            // Fallback: first H1 heading
+                            body.lines().find_map(|l| {
+                                l.trim().strip_prefix("# ").map(|s| s.trim().to_string())
+                            })
+                        });
 
                     let tags = frontmatter.as_ref().map(|fm| fm.tags.clone()).unwrap_or_default();
                     let linked_repo = frontmatter.as_ref().and_then(|fm| fm.repo.clone());

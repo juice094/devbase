@@ -2,8 +2,8 @@
 // Copyright (c) 2026 juice094
 pub mod analysis;
 pub mod knowledge;
-pub mod ontology;
 pub mod limit;
+pub mod ontology;
 pub mod repo;
 pub mod simple;
 pub mod skill;

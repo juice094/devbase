@@ -5,10 +5,7 @@ pub fn run_import(
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let wp = if workspace.is_empty() {
-        dirs::home_dir()
-            .unwrap_or_default()
-            .join(".kimi_openclaw")
-            .join("workspace")
+        dirs::home_dir().unwrap_or_default().join(".kimi_openclaw").join("workspace")
     } else {
         std::path::PathBuf::from(workspace)
     };
@@ -38,7 +35,10 @@ pub fn run_import(
 
     println!("Ontology import from: {}", wp.display());
     println!("  Entities: {} added, {} updated", stats.entities_added, stats.entities_updated);
-    println!("  Relations: {} added, {} updated", stats.relations_added, stats.relations_updated);
+    println!(
+        "  Relations: {} added, {} updated",
+        stats.relations_added, stats.relations_updated
+    );
     if !stats.errors.is_empty() {
         println!("  Errors: {}", stats.errors.len());
         for e in &stats.errors {
