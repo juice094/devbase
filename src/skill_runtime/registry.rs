@@ -218,10 +218,10 @@ pub fn search_skills_text(
     category: Option<&str>,
 ) -> anyhow::Result<Vec<SkillRow>> {
     // Try FTS5 first with BM25 ranking
-    if let Ok(results) = search_skills_fts5(conn, query, limit, category) {
-        if !results.is_empty() {
-            return Ok(results);
-        }
+    if let Ok(results) = search_skills_fts5(conn, query, limit, category)
+        && !results.is_empty()
+    {
+        return Ok(results);
     }
     // Fallback to LIKE for empty results or FTS5 errors
     search_skills_like(conn, query, limit, category)

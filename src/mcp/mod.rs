@@ -491,12 +491,12 @@ fn append_mcp_oplog(tool_name: &str, duration_ms: u128, success: bool, error_typ
         "error_type": error_type,
     });
 
-    if let Ok(mut guard) = get_oplog_file().lock() {
-        if let Some(ref mut file) = *guard {
-            use std::io::Write;
-            if let Err(e) = writeln!(file, "{}", entry) {
-                tracing::warn!("Failed to write MCP oplog: {}", e);
-            }
+    if let Ok(mut guard) = get_oplog_file().lock()
+        && let Some(ref mut file) = *guard
+    {
+        use std::io::Write;
+        if let Err(e) = writeln!(file, "{}", entry) {
+            tracing::warn!("Failed to write MCP oplog: {}", e);
         }
     }
 }

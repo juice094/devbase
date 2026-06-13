@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+use anyhow::Context;
 use devbase::*;
 use skill_runtime::{parser, registry};
 
@@ -488,6 +489,35 @@ pub fn run_skill(
     Ok(())
 }
 
+fn parse_github_url(url: &str) -> anyhow::Result<(String, String)> {
+    let url = url.trim_end_matches(".git");
+    if let Some(rest) = url.strip_prefix("https://github.com/") {
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.len() >= 2 {
+            return Ok((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+    if let Some(rest) = url.strip_prefix("http://github.com/") {
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.len() >= 2 {
+            return Ok((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+    if let Some((owner, repo)) = url.split_once('/')
+        && !owner.is_empty()
+        && !repo.is_empty()
+        && !owner.contains("://")
+        && !owner.contains('\\')
+        && !owner.contains(' ')
+    {
+        return Ok((owner.to_string(), repo.to_string()));
+    }
+    Err(anyhow::anyhow!(
+        "Could not parse GitHub URL: {}. Expected format: owner/repo or https://github.com/owner/repo",
+        url
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -554,34 +584,4 @@ mod tests {
         );
         assert!(result.is_ok());
     }
-}
-
-fn parse_github_url(url: &str) -> anyhow::Result<(String, String)> {
-    let url = url.trim_end_matches(".git");
-    if let Some(rest) = url.strip_prefix("https://github.com/") {
-        let parts: Vec<&str> = rest.split('/').collect();
-        if parts.len() >= 2 {
-            return Ok((parts[0].to_string(), parts[1].to_string()));
-        }
-    }
-    if let Some(rest) = url.strip_prefix("http://github.com/") {
-        let parts: Vec<&str> = rest.split('/').collect();
-        if parts.len() >= 2 {
-            return Ok((parts[0].to_string(), parts[1].to_string()));
-        }
-    }
-    if let Some((owner, repo)) = url.split_once('/') {
-        if !owner.is_empty()
-            && !repo.is_empty()
-            && !owner.contains("://")
-            && !owner.contains('\\')
-            && !owner.contains(' ')
-        {
-            return Ok((owner.to_string(), repo.to_string()));
-        }
-    }
-    Err(anyhow::anyhow!(
-        "Could not parse GitHub URL: {}. Expected format: owner/repo or https://github.com/owner/repo",
-        url
-    ))
 }

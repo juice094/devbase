@@ -140,15 +140,14 @@ fn parse_github_url(url: &str) -> anyhow::Result<(String, String)> {
         }
     }
     // Bare owner/repo format
-    if let Some((owner, repo)) = url.split_once('/') {
-        if !owner.is_empty()
-            && !repo.is_empty()
-            && !owner.contains("://")
-            && !owner.contains('\\')
-            && !owner.contains(' ')
-        {
-            return Ok((owner.to_string(), repo.to_string()));
-        }
+    if let Some((owner, repo)) = url.split_once('/')
+        && !owner.is_empty()
+        && !repo.is_empty()
+        && !owner.contains("://")
+        && !owner.contains('\\')
+        && !owner.contains(' ')
+    {
+        return Ok((owner.to_string(), repo.to_string()));
     }
     Err(anyhow::anyhow!(
         "Could not parse GitHub URL: {}. Expected format: owner/repo or https://github.com/owner/repo",

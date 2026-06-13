@@ -27,7 +27,7 @@ pub fn import_ontology(conn: &Connection, workspace_path: &Path) -> Result<Ontol
         for entry in std::fs::read_dir(&entities_dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "json") {
+            if path.extension().is_some_and(|e| e == "json") {
                 match import_entity_file(conn, &path) {
                     Ok((added, updated)) => {
                         stats.entities_added += added;

@@ -164,7 +164,7 @@ fn scan_dir_for_skills(dir: &Path, skills: &mut Vec<SkillMeta>) -> anyhow::Resul
         let path = entry.path();
         if path.is_dir() {
             scan_dir_for_skills(&path, skills)?;
-        } else if path.extension().map_or(false, |e| e == "md") {
+        } else if path.extension().is_some_and(|e| e == "md") {
             let content = std::fs::read_to_string(&path)?;
             let name = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
             let skill_id = name.to_lowercase().replace('_', "-");
