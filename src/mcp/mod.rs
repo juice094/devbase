@@ -101,6 +101,7 @@ pub enum McpToolEnum {
     SkillSearch(DevkitSkillSearchTool),
     SkillRun(DevkitSkillRunTool),
     SkillDiscover(DevkitSkillDiscoverTool),
+    SkillSync(DevkitSkillSyncTool),
     KnownLimitStore(DevkitKnownLimitStoreTool),
     KnownLimitList(DevkitKnownLimitListTool),
     RelationStore(DevkitRelationStoreTool),
@@ -125,6 +126,7 @@ pub enum McpToolEnum {
     OplogQuery(DevkitOplogQueryTool),
     Evaluate(DevkitEvaluateTool),
     DocumentConvert(DevkitDocumentConvertTool),
+    OntologyImport(DevkitOntologyImportTool),
 }
 
 /// Stability tier for MCP tools.
@@ -198,6 +200,7 @@ impl McpToolEnum {
             McpToolEnum::SkillSearch(_) => ToolTier::Beta,
             McpToolEnum::SkillRun(_) => ToolTier::Beta,
             McpToolEnum::SkillDiscover(_) => ToolTier::Beta,
+            McpToolEnum::SkillSync(_) => ToolTier::Beta,
             McpToolEnum::KnownLimitStore(_) => ToolTier::Beta,
             McpToolEnum::KnownLimitList(_) => ToolTier::Beta,
             McpToolEnum::RelationStore(_) => ToolTier::Beta,
@@ -222,6 +225,7 @@ impl McpToolEnum {
             McpToolEnum::OplogQuery(_) => ToolTier::Beta,
             McpToolEnum::Evaluate(_) => ToolTier::Beta,
             McpToolEnum::DocumentConvert(_) => ToolTier::Experimental,
+            McpToolEnum::OntologyImport(_) => ToolTier::Beta,
         }
     }
 }
@@ -274,6 +278,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillSearch(t) => t.name(),
             McpToolEnum::SkillRun(t) => t.name(),
             McpToolEnum::SkillDiscover(t) => t.name(),
+            McpToolEnum::SkillSync(t) => t.name(),
             McpToolEnum::KnownLimitStore(t) => t.name(),
             McpToolEnum::KnownLimitList(t) => t.name(),
             McpToolEnum::RelationStore(t) => t.name(),
@@ -298,6 +303,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::OplogQuery(t) => t.name(),
             McpToolEnum::Evaluate(t) => t.name(),
             McpToolEnum::DocumentConvert(t) => t.name(),
+            McpToolEnum::OntologyImport(t) => t.name(),
         }
     }
 
@@ -348,6 +354,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillSearch(t) => t.schema(),
             McpToolEnum::SkillRun(t) => t.schema(),
             McpToolEnum::SkillDiscover(t) => t.schema(),
+            McpToolEnum::SkillSync(t) => t.schema(),
             McpToolEnum::KnownLimitStore(t) => t.schema(),
             McpToolEnum::KnownLimitList(t) => t.schema(),
             McpToolEnum::RelationStore(t) => t.schema(),
@@ -372,6 +379,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::OplogQuery(t) => t.schema(),
             McpToolEnum::Evaluate(t) => t.schema(),
             McpToolEnum::DocumentConvert(t) => t.schema(),
+            McpToolEnum::OntologyImport(t) => t.schema(),
         }
     }
 
@@ -426,6 +434,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::SkillSearch(t) => t.invoke(args, ctx).await,
             McpToolEnum::SkillRun(t) => t.invoke(args, ctx).await,
             McpToolEnum::SkillDiscover(t) => t.invoke(args, ctx).await,
+            McpToolEnum::SkillSync(t) => t.invoke(args, ctx).await,
             McpToolEnum::KnownLimitStore(t) => t.invoke(args, ctx).await,
             McpToolEnum::KnownLimitList(t) => t.invoke(args, ctx).await,
             McpToolEnum::RelationStore(t) => t.invoke(args, ctx).await,
@@ -450,6 +459,7 @@ impl McpTool for McpToolEnum {
             McpToolEnum::OplogQuery(t) => t.invoke(args, ctx).await,
             McpToolEnum::Evaluate(t) => t.invoke(args, ctx).await,
             McpToolEnum::DocumentConvert(t) => t.invoke(args, ctx).await,
+            McpToolEnum::OntologyImport(t) => t.invoke(args, ctx).await,
         }
     }
 }
@@ -481,12 +491,12 @@ fn append_mcp_oplog(tool_name: &str, duration_ms: u128, success: bool, error_typ
         "error_type": error_type,
     });
 
-    if let Ok(mut guard) = get_oplog_file().lock() {
-        if let Some(ref mut file) = *guard {
-            use std::io::Write;
-            if let Err(e) = writeln!(file, "{}", entry) {
-                tracing::warn!("Failed to write MCP oplog: {}", e);
-            }
+    if let Ok(mut guard) = get_oplog_file().lock()
+        && let Some(ref mut file) = *guard
+    {
+        use std::io::Write;
+        if let Err(e) = writeln!(file, "{}", entry) {
+            tracing::warn!("Failed to write MCP oplog: {}", e);
         }
     }
 }
@@ -770,6 +780,7 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::SkillSearch(DevkitSkillSearchTool),
         McpToolEnum::SkillRun(DevkitSkillRunTool),
         McpToolEnum::SkillDiscover(DevkitSkillDiscoverTool),
+        McpToolEnum::SkillSync(DevkitSkillSyncTool),
         McpToolEnum::KnownLimitStore(DevkitKnownLimitStoreTool),
         McpToolEnum::KnownLimitList(DevkitKnownLimitListTool),
         McpToolEnum::RelationStore(DevkitRelationStoreTool),
@@ -794,6 +805,7 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::OplogQuery(DevkitOplogQueryTool),
         McpToolEnum::Evaluate(DevkitEvaluateTool),
         McpToolEnum::DocumentConvert(DevkitDocumentConvertTool),
+        McpToolEnum::OntologyImport(DevkitOntologyImportTool),
     ];
     for tool in all_tools {
         if let Some(allowed) = tiers

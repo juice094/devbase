@@ -13,10 +13,10 @@
 |----|------|--------|--------|
 | F-001 | Version | `Cargo.toml` | **v0.20.1** |
 | F-002 | Edition | `Cargo.toml` | **Rust 2024** |
-| F-003 | Test Coverage | CI | **494 passed, 0 failed, 5 ignored** |
+| F-003 | Test Coverage | CI | **605 passed, 0 failed, 7 ignored** |
 | F-004 | Production Unwrap | Architecture Invariants | **0** (G5 rule enforced) |
-| F-005 | MCP Tools | `src/mcp/mod.rs` | **69** (5 Stable / 60 Beta / 4 Experimental) |
-| F-006 | Schema Version | `registry/migrate.rs` | **v34** |
+| F-005 | MCP Tools | `src/mcp/mod.rs` | **71** (5 Stable / 58 Beta / 8 Experimental) |
+| F-006 | Schema Version | `registry/migrate.rs` | **v36** |
 | F-007 | Entities Table | Schema v21+ | **唯一真相源** (`repos` 表已删除) |
 | F-008 | SQLite Mode | `storage.rs` | **WAL mode** |
 | F-009 | Clippy | CI | **`-D warnings` 全绿** |
@@ -51,9 +51,9 @@
 | ~~`relations` 表零生产读取路径~~ | ~~统一实体模型的图遍历能力未暴露~~ | ~~v0.21.0~~ | **已完成** — `devkit_relation_store/query/delete` 已存在，`project_context` 已读取 |
 | ~~Workflow 引擎零 MCP 暴露~~ | ~~AI 无法发现/触发工作流~~ | ~~v0.21.0~~ | **已完成** — `devkit_workflow_list/run/status` 已存在 |
 | ~~`project_context` 不完整~~ | ~~缺少 relations/limits/skills/workflows~~ | ~~v0.21.0~~ | **已完成** — 已补充 `known_limits` + `skills` |
-| 31/68 MCP 工具缺少调用测试 | 回归风险 | v0.21.0 | 待评估 |
-| ~~`mcp/tools/repo.rs` 2376 行~~ | ~~维护负担~~ | ~~v0.21.0~~ | **已完成** — 已拆分为 `tools/` 目录，`repo.rs` 现 730 行 |
-| ~~`init_db_at` 1214 行~~ | ~~迁移函数过大~~ | ~~v0.21.0~~ | **已完成** — 已拆分为 `registry/migrate.rs`（503 行）+ `repo.rs` + `vault.rs` + `links.rs` |
+| MCP 工具测试覆盖不均 | 部分 Beta 工具仅有 smoke test | v0.21.0 | 待评估 |
+| ~~`mcp/tools/repo.rs` 2376 行~~ | ~~维护负担~~ | ~~v0.21.0~~ | **已完成** — 已拆分为 `tools/` 目录 |
+| ~~`init_db_at` 1214 行~~ | ~~迁移函数过大~~ | ~~v0.21.0~~ | **已完成** — 已拆分为 `registry/migrate.rs` + 子模块 |
 
 ## 防失忆校验清单（每次会话启动）
 
@@ -89,5 +89,5 @@
 
 ---
 
-**Last Updated**: 2026-05-20 by Claude Opus 4.7
+**Last Updated**: 2026-06-13
 **Version**: v0.20.1

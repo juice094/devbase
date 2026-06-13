@@ -3,9 +3,12 @@
 ## Documentation
 
 - **User Guide**: See [`README.md`](./README.md) for installation, quick start, and feature overview
-- **Architecture**: See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for technical design and module boundaries
+- **Documentation Index**: See [`docs/README.md`](./docs/README.md) for the full documentation map
+- **Architecture**: See [`docs/architecture/overview.md`](./docs/architecture/overview.md) for technical design and module boundaries
+- **Architecture Guardrails**: See [`docs/architecture/invariants.md`](./docs/architecture/invariants.md) for RF rules and tiered checks
 - **Agent Guidelines**: See [`AGENTS.md`](./AGENTS.md) for MCP tool conventions and schema migration rules
 - **Contributing**: See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for build instructions and PR checklist
+- **Changelog**: See [`CHANGELOG.md`](./CHANGELOG.md) for version history
 
 ## Bug Reports & Feature Requests
 

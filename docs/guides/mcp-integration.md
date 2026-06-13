@@ -6,7 +6,7 @@
 
 ## 什么是 MCP
 
-MCP（Model Context Protocol）是 AI 助手与外部工具通信的标准协议。devbase 作为 **MCP Server**，向 AI 暴露 69 个结构化工具，让 AI 能够：
+MCP（Model Context Protocol）是 AI 助手与外部工具通信的标准协议。devbase 作为 **MCP Server**，向 AI 暴露 71 个结构化工具，让 AI 能够：
 
 - 查询本地有哪些项目、它们的状态如何
 - 批量同步仓库、检查健康度
@@ -104,18 +104,22 @@ cp configs/kimi-mcp.json ~/.kimi/mcp.json
 
 ## 工具列表概览
 
-devbase 提供 38 个工具，按域分类：
+devbase 提供 71 个工具，按域分类：
 
 | 域 | 工具数 | 代表能力 |
 |:---|:---|:---|
 | 仓库管理 | 5 | scan, health, sync, query_repos, index |
 | 代码分析 | 6 | code_metrics, module_graph, code_symbols, call_graph, dependency_graph, dead_code |
-| 知识检索 | 8 | semantic_search, hybrid_search, cross_repo_search, related_symbols, knowledge_report ... |
-| Vault | 4 | vault_search, vault_read, vault_write, vault_backlinks |
-| Skill | 4 | skill_list, skill_search, skill_run, skill_discover |
-| 项目上下文 | 1 | project_context |
-| 运维 | 3 | oplog_query, known_limit_store, known_limit_list |
-| 其他 | 7 | query, note, digest, paper_index, github_info, arxiv_fetch, experiment_log |
+| 知识检索 | 9 | semantic_search, hybrid_search, cross_repo_search, search_quality, embedding_store/search ... |
+| Vault | 8 | vault_search/read/write, backlinks, daily, graph, export, history |
+| Skill | 5 | skill_list/search/run/discover/sync |
+| 项目上下文 | 3 | project_context, project_brief, impact_analysis |
+| Session | 13 | session save/list/resume/attach/detach/activate/search/capture/workflows/recall/index/export/import |
+| Index | 3 | index_health, index_stream |
+| Workflow | 3 | workflow_list/run/status |
+| Relation | 3 | relation_store/query/delete |
+| Known Limit | 2 | known_limit_store/list |
+| 运维与其他 | 11 | query, note, status, digest, paper_index, github_info, arxiv_fetch, oplog_query, evaluate, document_convert, ontology_import |
 
 完整清单参见 [`reference/mcp-tools.md`](../reference/mcp-tools.md)。
 

@@ -208,8 +208,63 @@ pub fn list_skills(
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
-/// Full-text search on skill name and description.
+/// Full-text search on skill name, description, tags, and category.
+/// Uses FTS5 with BM25 ranking when the FTS index is available,
+/// falling back to SQLite LIKE for cases where FTS5 returns no results.
 pub fn search_skills_text(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+    category: Option<&str>,
+) -> anyhow::Result<Vec<SkillRow>> {
+    // Try FTS5 first with BM25 ranking
+    if let Ok(results) = search_skills_fts5(conn, query, limit, category)
+        && !results.is_empty()
+    {
+        return Ok(results);
+    }
+    // Fallback to LIKE for empty results or FTS5 errors
+    search_skills_like(conn, query, limit, category)
+}
+
+fn search_skills_fts5(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+    category: Option<&str>,
+) -> anyhow::Result<Vec<SkillRow>> {
+    let fts_query = build_fts5_query(query);
+
+    let sql = if category.is_some() {
+        "SELECT s.id, s.name, s.version, s.description, s.author, s.tags, s.entry_script,
+                s.skill_type, s.local_path, s.installed_at, s.updated_at, s.last_used_at,
+                s.dependencies, s.category
+         FROM skills_fts f
+         JOIN skills s ON s.rowid = f.rowid
+         WHERE skills_fts MATCH ?1 AND s.category = ?2
+         ORDER BY bm25(skills_fts, 1.0, 0.8, 0.4, 0.2) ASC
+         LIMIT ?3"
+    } else {
+        "SELECT s.id, s.name, s.version, s.description, s.author, s.tags, s.entry_script,
+                s.skill_type, s.local_path, s.installed_at, s.updated_at, s.last_used_at,
+                s.dependencies, s.category
+         FROM skills_fts f
+         JOIN skills s ON s.rowid = f.rowid
+         WHERE skills_fts MATCH ?1
+         ORDER BY bm25(skills_fts, 1.0, 0.8, 0.4, 0.2) ASC
+         LIMIT ?2"
+    };
+
+    let mut stmt = conn.prepare(sql)?;
+    let rows = if let Some(cat) = category {
+        stmt.query_map(params![&fts_query, cat, limit as i64], skill_row_from_sql)?
+    } else {
+        stmt.query_map(params![&fts_query, limit as i64], skill_row_from_sql)?
+    };
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+fn search_skills_like(
     conn: &Connection,
     query: &str,
     limit: usize,
@@ -238,6 +293,26 @@ pub fn search_skills_text(
         stmt.query_map(params![&pattern, limit as i64], skill_row_from_sql)?
     };
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Build a safe FTS5 query string from user input.
+/// Multi-word queries are AND'ed; empty input matches all.
+fn build_fts5_query(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return "*".to_string();
+    }
+    let terms: Vec<&str> = trimmed.split_whitespace().collect();
+    if terms.len() == 1 {
+        // Escape double-quotes within a term to avoid FTS5 syntax errors
+        format!("\"{}\"", terms[0].replace('"', "\"\""))
+    } else {
+        terms
+            .iter()
+            .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
+            .collect::<Vec<_>>()
+            .join(" AND ")
+    }
 }
 
 /// Semantic search on skill descriptions using cosine similarity.

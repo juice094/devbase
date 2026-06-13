@@ -6,3 +6,6 @@ contact_links:
   - name: Question or discussion
     url: https://github.com/juice094/devbase/discussions
     about: For Q&A, architecture debates, or show-and-tell, use GitHub Discussions.
+  - name: Commercial licensing inquiry
+    url: mailto:juice094@protonmail.com
+    about: For commercial / dual-licensing questions, please email the maintainer.

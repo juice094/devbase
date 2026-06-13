@@ -18,7 +18,123 @@ fn default_vault_dir() -> anyhow::Result<PathBuf> {
     Ok(vault)
 }
 
-/// Scan a vault directory for Markdown notes and sync them into the registry.
+/// Options for scanning vault directories.
+#[derive(Debug, Clone)]
+pub struct ScanOptions {
+    pub roots: Vec<PathBuf>,
+    pub follow_links: bool,
+}
+
+impl Default for ScanOptions {
+    fn default() -> Self {
+        Self {
+            roots: vec![],
+            follow_links: true,
+        }
+    }
+}
+
+/// Scan vault directories for Markdown notes and sync them into the registry.
+///
+/// * `options` — scan options (roots, follow_links). If roots is empty, uses the default vault location.
+/// * Returns the number of notes synced.
+pub fn scan_vault_with_options(
+    conn: &mut rusqlite::Connection,
+    options: &ScanOptions,
+) -> anyhow::Result<usize> {
+    let roots = if options.roots.is_empty() {
+        vec![default_vault_dir()?]
+    } else {
+        options.roots.clone()
+    };
+
+    let mut synced = 0;
+
+    let multi_root = roots.len() > 1;
+
+    for root in &roots {
+        if !root.exists() {
+            info!("Vault root does not exist yet: {:?}", root);
+            continue;
+        }
+
+        let walker = walkdir::WalkDir::new(root).follow_links(options.follow_links);
+
+        for entry in walker
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+            .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
+        {
+            let path = entry.path();
+            let rel_path = path.strip_prefix(root).unwrap_or(path);
+            let id = if multi_root {
+                format!(
+                    "{}/{}",
+                    root.file_name().unwrap_or_default().to_string_lossy(),
+                    rel_path.to_string_lossy().replace('\\', "/")
+                )
+            } else {
+                rel_path.to_string_lossy().replace('\\', "/")
+            };
+
+            match std::fs::read_to_string(path) {
+                Ok(content) => {
+                    let (frontmatter, body_offset) = extract_frontmatter(&content)
+                        .map(|(fm, off)| (Some(fm), off))
+                        .unwrap_or((None, 0));
+
+                    let body = &content[body_offset..];
+                    let wikilinks = extract_wikilinks(body);
+                    let outgoing: Vec<String> =
+                        wikilinks.iter().map(|l| l.target.clone()).collect();
+                    let block_refs: Vec<String> =
+                        wikilinks.iter().filter_map(|l| l.anchor.clone()).collect();
+
+                    let title =
+                        frontmatter.as_ref().and_then(|fm| fm.title.clone()).or_else(|| {
+                            // Fallback: first H1 heading
+                            body.lines().find_map(|l| {
+                                l.trim().strip_prefix("# ").map(|s| s.trim().to_string())
+                            })
+                        });
+
+                    let tags = frontmatter.as_ref().map(|fm| fm.tags.clone()).unwrap_or_default();
+                    let linked_repo = frontmatter.as_ref().and_then(|fm| fm.repo.clone());
+                    let fm_raw = frontmatter.map(|fm| fm.raw);
+
+                    let note = VaultNote {
+                        id,
+                        path: path.to_string_lossy().to_string(),
+                        title,
+                        content: body.trim().to_string(),
+                        frontmatter: fm_raw,
+                        tags,
+                        outgoing_links: outgoing,
+                        block_refs,
+                        linked_repo,
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                    };
+
+                    if let Err(e) = crate::registry::vault::save_vault_note(conn, &note) {
+                        warn!("Failed to save vault note {}: {}", note.id, e);
+                    } else {
+                        synced += 1;
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to read vault file {:?}: {}", path, e);
+                }
+            }
+        }
+    }
+
+    info!("Vault scan complete: {} notes synced", synced);
+    Ok(synced)
+}
+
+/// Legacy API: scan a single vault directory.
 ///
 /// * `vault_dir` — root of the vault. If `None`, uses the default location.
 /// * Returns the number of notes synced.
@@ -26,79 +142,11 @@ pub fn scan_vault(
     conn: &mut rusqlite::Connection,
     vault_dir: Option<&Path>,
 ) -> anyhow::Result<usize> {
-    let root = match vault_dir {
-        Some(p) => p.to_path_buf(),
-        None => default_vault_dir()?,
+    let options = ScanOptions {
+        roots: vault_dir.map(|p| vec![p.to_path_buf()]).unwrap_or_default(),
+        follow_links: false,
     };
-
-    if !root.exists() {
-        info!("Vault directory does not exist yet: {:?}", root);
-        return Ok(0);
-    }
-
-    let mut synced = 0;
-
-    for entry in walkdir::WalkDir::new(&root)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
-    {
-        let path = entry.path();
-        let rel_path = path.strip_prefix(&root).unwrap_or(path);
-        let id = rel_path.to_string_lossy().replace('\\', "/");
-
-        match std::fs::read_to_string(path) {
-            Ok(content) => {
-                let (frontmatter, body_offset) = extract_frontmatter(&content)
-                    .map(|(fm, off)| (Some(fm), off))
-                    .unwrap_or((None, 0));
-
-                let body = &content[body_offset..];
-                let wikilinks = extract_wikilinks(body);
-                let outgoing: Vec<String> = wikilinks.iter().map(|l| l.target.clone()).collect();
-                let block_refs: Vec<String> =
-                    wikilinks.iter().filter_map(|l| l.anchor.clone()).collect();
-
-                let title = frontmatter.as_ref().and_then(|fm| fm.title.clone()).or_else(|| {
-                    // Fallback: first H1 heading
-                    body.lines()
-                        .find_map(|l| l.trim().strip_prefix("# ").map(|s| s.trim().to_string()))
-                });
-
-                let tags = frontmatter.as_ref().map(|fm| fm.tags.clone()).unwrap_or_default();
-                let linked_repo = frontmatter.as_ref().and_then(|fm| fm.repo.clone());
-                let fm_raw = frontmatter.map(|fm| fm.raw);
-
-                let note = VaultNote {
-                    id,
-                    path: path.to_string_lossy().to_string(),
-                    title,
-                    content: body.trim().to_string(),
-                    frontmatter: fm_raw,
-                    tags,
-                    outgoing_links: outgoing,
-                    block_refs,
-                    linked_repo,
-                    created_at: Utc::now(),
-                    updated_at: Utc::now(),
-                };
-
-                if let Err(e) = crate::registry::vault::save_vault_note(conn, &note) {
-                    warn!("Failed to save vault note {}: {}", note.id, e);
-                } else {
-                    synced += 1;
-                }
-            }
-            Err(e) => {
-                warn!("Failed to read vault file {:?}: {}", path, e);
-            }
-        }
-    }
-
-    info!("Vault scan complete: {} notes synced", synced);
-    Ok(synced)
+    scan_vault_with_options(conn, &options)
 }
 
 #[cfg(test)]

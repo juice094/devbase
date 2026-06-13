@@ -302,6 +302,14 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         cmd: SkillCommands,
     },
+    /// Import ontology entities and relations from an OpenClaw workspace
+    Ontology {
+        /// Path to OpenClaw workspace (defaults to ~/.kimi_openclaw/workspace)
+        workspace: Option<String>,
+        /// Dry-run: list entities/relations without importing
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Workflow Engine — orchestrate multi-Skill pipelines
     Workflow {
         #[command(subcommand)]
@@ -453,6 +461,20 @@ pub(crate) enum SkillCommands {
         #[arg(long, default_value_t = 5)]
         limit: usize,
     },
+    /// Import skills from external sources (GitHub repos or local directories)
+    Import {
+        /// Source URL or path (GitHub URL or local directory)
+        source: String,
+        /// Path within the source to scan for SKILL.md files
+        #[arg(long)]
+        source_path: Option<String>,
+        /// Dry-run: list discovered skills without installing
+        #[arg(long)]
+        dry_run: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -538,6 +560,12 @@ pub(crate) enum VaultCommands {
     History {
         /// Relative path of the note within the vault
         path: String,
+    },
+    /// Sync all configured vault roots (scan + incremental update)
+    Sync {
+        /// Perform a full rescan instead of incremental
+        #[arg(long)]
+        full: bool,
     },
 }
 
@@ -783,6 +811,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Skill { cmd } => {
             commands::skill::run_skill(&mut ctx, cmd)?;
+        }
+        Commands::Ontology { workspace, dry_run } => {
+            commands::ontology::run_import(&mut ctx, workspace.as_deref().unwrap_or(""), dry_run)?;
         }
         Commands::Workflow { cmd } => {
             commands::workflow::run_workflow(&mut ctx, cmd)?;

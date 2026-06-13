@@ -215,12 +215,7 @@ Returns: JSON with success status and the written file path."#,
             .context("Missing required argument: content")?;
         let append = args.get("append").and_then(|v| v.as_bool()).unwrap_or(false);
 
-        let vault_root = ctx
-            .storage
-            .workspace_dir()
-            .map(|ws| ws.join("vault"))
-            .unwrap_or_else(|_| std::path::PathBuf::from("vault"));
-        let target = resolve_vault_path(path, &vault_root)?;
+        let target = resolve_vault_write_path(ctx, path)?;
 
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
@@ -241,7 +236,93 @@ Returns: JSON with success status and the written file path."#,
     }
 }
 
+/// Resolve a vault write path by checking entities.local_path first,
+/// then falling back to configured vault roots.
+fn resolve_vault_write_path(
+    ctx: &crate::storage::AppContext,
+    path: &str,
+) -> anyhow::Result<std::path::PathBuf> {
+    // 1. Check if this note already exists in entities (has local_path)
+    if let Ok(conn) = ctx.conn() {
+        let local_path: Option<String> = conn
+            .query_row(
+                "SELECT local_path FROM entities WHERE entity_type = ?1 AND (id = ?2 OR name = ?2)",
+                rusqlite::params![crate::registry::ENTITY_TYPE_VAULT_NOTE, path],
+                |row| row.get(0),
+            )
+            .ok();
+        if let Some(lp) = local_path {
+            let p = std::path::PathBuf::from(lp);
+            if p.exists() || p.parent().map(|d| d.exists()).unwrap_or(false) {
+                return Ok(p);
+            }
+        }
+    }
+
+    // 2. Fall back to vault roots from config
+    let vault_roots = match crate::config::Config::load() {
+        Ok(cfg) if !cfg.vault.roots.is_empty() => {
+            cfg.vault.roots.iter().map(std::path::PathBuf::from).collect()
+        }
+        _ => {
+            vec![
+                ctx.storage
+                    .workspace_dir()
+                    .map(|ws| ws.join("vault"))
+                    .unwrap_or_else(|_| std::path::PathBuf::from("vault")),
+            ]
+        }
+    };
+
+    let relative = std::path::Path::new(path);
+    for root in &vault_roots {
+        let target = resolve_vault_relative_path(relative, root)?;
+        if target.starts_with(root) {
+            return Ok(target);
+        }
+    }
+
+    anyhow::bail!("Path '{}' cannot be resolved under any configured vault root", path)
+}
+
+/// Resolve a relative path under a single vault root.
+fn resolve_vault_relative_path(
+    relative_path: &std::path::Path,
+    vault_root: &std::path::Path,
+) -> anyhow::Result<std::path::PathBuf> {
+    let path = relative_path;
+    if path.is_absolute() {
+        anyhow::bail!("Absolute paths are not allowed in vault: {}", relative_path.display());
+    }
+    let s = relative_path.to_string_lossy();
+    if s.starts_with('/') || s.starts_with('\\') {
+        anyhow::bail!("Absolute paths are not allowed in vault: {}", relative_path.display());
+    }
+
+    let mut normalized = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::Normal(name) => normalized.push(name),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !normalized.pop() {
+                    anyhow::bail!("Path escapes vault root: {}", relative_path.display());
+                }
+            }
+            _ => anyhow::bail!("Invalid path component in: {}", relative_path.display()),
+        }
+    }
+
+    let target = vault_root.join(&normalized);
+    if !target.starts_with(vault_root) {
+        anyhow::bail!("Path escapes vault root: {}", relative_path.display());
+    }
+
+    Ok(target)
+}
+
 /// Resolve a vault-relative path, enforcing that it stays within the vault root.
+#[allow(dead_code)]
 fn resolve_vault_path(
     relative_path: &str,
     vault_root: &std::path::Path,
@@ -379,7 +460,7 @@ Returns: JSON with success status and the generated file path."#,
             let digest = ctx.generate_daily_digest()?;
             let digest_str = digest.get("digest").and_then(|v| v.as_str()).unwrap_or("");
 
-            let target = resolve_vault_path(&rel_path, &vault_root)?;
+            let target = resolve_vault_relative_path(std::path::Path::new(&rel_path), &vault_root)?;
 
             if let Some(parent) = target.parent() {
                 std::fs::create_dir_all(parent)?;

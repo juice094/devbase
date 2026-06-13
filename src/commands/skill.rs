@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
+use anyhow::Context;
 use devbase::*;
 use skill_runtime::{parser, registry};
 
@@ -327,6 +328,100 @@ pub fn run_skill(
                 println!("  [{}] {} (v{}) — rating: {:.2}", s.id, s.name, s.version, s.rating);
             }
         }
+        crate::SkillCommands::Import {
+            source,
+            source_path,
+            dry_run,
+            json,
+        } => {
+            use crate::skill_runtime::sources::{GitHubSource, LocalFileSource, SkillSource};
+            let source_impl: Box<dyn SkillSource> = if source.starts_with("https://github.com/")
+                || source.starts_with("http://github.com/")
+                || (source.contains('/') && !source.starts_with('/') && !source.contains("://"))
+            {
+                let (owner, repo) = parse_github_url(&source)?;
+                let path = source_path.as_deref().unwrap_or("skills");
+                Box::new(GitHubSource::new(&owner, &repo, path))
+            } else {
+                let path = source.strip_prefix("file://").unwrap_or(&source);
+                let name = source_path.as_deref().unwrap_or(path);
+                Box::new(LocalFileSource::new(name, std::path::Path::new(path)))
+            };
+            let skills = tokio::runtime::Runtime::new()
+                .context("failed to create tokio runtime for skill fetch")?
+                .block_on(source_impl.fetch())?;
+            if dry_run {
+                if json {
+                    let names: Vec<&str> = skills.iter().map(|s| s.name.as_str()).collect();
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "dry_run": true,
+                            "source": source_impl.name(),
+                            "skills_found": skills.len(),
+                            "skill_names": names,
+                        }))?
+                    );
+                } else {
+                    println!(
+                        "Dry-run: found {} skill(s) from '{}':",
+                        skills.len(),
+                        source_impl.name()
+                    );
+                    for s in &skills {
+                        println!("  - {} ({})", s.name, s.id);
+                    }
+                }
+            } else {
+                let mut added = 0usize;
+                let mut updated = 0usize;
+                for skill in &skills {
+                    let exists = registry::get_skill(&conn, &skill.id)?.is_some();
+                    registry::install_skill(&conn, skill)?;
+                    if exists {
+                        updated += 1;
+                    } else {
+                        added += 1;
+                    }
+                }
+                // Record sync audit
+                let _ = conn.execute(
+                    "INSERT INTO sync_log (source_name, status, skills_added, skills_updated, finished_at)
+                     VALUES (?1, ?2, ?3, ?4, datetime('now'))",
+                    rusqlite::params![
+                        source_impl.name(),
+                        "success",
+                        added as i64,
+                        updated as i64
+                    ],
+                );
+                let _ = conn.execute(
+                    "INSERT INTO sync_sources (name, url, source_type)
+                     VALUES (?1, ?2, ?3)
+                     ON CONFLICT(name) DO UPDATE SET last_sync_at = datetime('now')",
+                    rusqlite::params![source_impl.name(), &source, source_impl.name()],
+                );
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "source": source_impl.name(),
+                            "skills_found": skills.len(),
+                            "skills_added": added,
+                            "skills_updated": updated,
+                        }))?
+                    );
+                } else {
+                    println!(
+                        "Imported {} skill(s) from '{}' ({} added, {} updated).",
+                        skills.len(),
+                        source_impl.name(),
+                        added,
+                        updated
+                    );
+                }
+            }
+        }
         crate::SkillCommands::Publish { path, dry_run } => {
             let p = std::path::PathBuf::from(&path);
             match skill_runtime::publish::validate_skill_for_publish(&p) {
@@ -392,6 +487,35 @@ pub fn run_skill(
         }
     }
     Ok(())
+}
+
+fn parse_github_url(url: &str) -> anyhow::Result<(String, String)> {
+    let url = url.trim_end_matches(".git");
+    if let Some(rest) = url.strip_prefix("https://github.com/") {
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.len() >= 2 {
+            return Ok((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+    if let Some(rest) = url.strip_prefix("http://github.com/") {
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.len() >= 2 {
+            return Ok((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+    if let Some((owner, repo)) = url.split_once('/')
+        && !owner.is_empty()
+        && !repo.is_empty()
+        && !owner.contains("://")
+        && !owner.contains('\\')
+        && !owner.contains(' ')
+    {
+        return Ok((owner.to_string(), repo.to_string()));
+    }
+    Err(anyhow::anyhow!(
+        "Could not parse GitHub URL: {}. Expected format: owner/repo or https://github.com/owner/repo",
+        url
+    ))
 }
 
 #[cfg(test)]

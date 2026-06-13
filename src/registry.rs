@@ -140,6 +140,7 @@ pub mod call_graph;
 pub mod code_symbols;
 pub mod dead_code;
 pub mod health;
+pub mod import_ontology;
 pub mod knowledge;
 pub mod knowledge_meta;
 pub mod known_limits;

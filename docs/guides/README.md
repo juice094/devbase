@@ -9,3 +9,5 @@
 | [`mcp-integration.md`](mcp-integration.md) | AI 用户 | Kimi / Claude / Cursor MCP 配置 |
 | [`vault-format.md`](vault-format.md) | Vault 用户 | 笔记格式规范 |
 | [`vault-workflow.md`](vault-workflow.md) | Vault 用户 | PARA 目录结构实践 |
+| [`embedding-provider-setup.md`](embedding-provider-setup.md) | 高级用户 | Embedding Provider 配置 |
+| [`ai-instance-handoff.md`](ai-instance-handoff.md) | Agent 用户 | AI 实例交接指南 |

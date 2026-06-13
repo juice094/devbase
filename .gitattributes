@@ -1,0 +1,16 @@
+# Line ending normalization for cross-platform collaboration
+*.sh eol=lf
+*.ps1 eol=crlf
+
+# Binary files — do not treat as text
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.db binary
+*.db-wal binary
+*.db-journal binary
+*.zip binary
+*.tar binary
+*.gz binary

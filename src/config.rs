@@ -69,6 +69,27 @@ impl Default for ScanConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultConfig {
+    #[serde(default = "default_vault_roots")]
+    pub roots: Vec<String>,
+    #[serde(default = "default_true")]
+    pub follow_symlinks: bool,
+}
+
+impl Default for VaultConfig {
+    fn default() -> Self {
+        Self {
+            roots: default_vault_roots(),
+            follow_symlinks: true,
+        }
+    }
+}
+
+fn default_vault_roots() -> Vec<String> {
+    vec![]
+}
+
 pub fn default_exclude_patterns() -> Vec<String> {
     vec![
         "target".into(),
@@ -107,6 +128,8 @@ pub struct Config {
     pub arxiv: ArxivConfig,
     #[serde(default)]
     pub scan: ScanConfig,
+    #[serde(default)]
+    pub vault: VaultConfig,
     #[serde(default)]
     pub greptime: GreptimeConfig,
 }

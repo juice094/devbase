@@ -54,10 +54,10 @@ pub fn parse_skill_frontmatter(raw: &str) -> SkillFrontmatter {
             match current_section {
                 Some("inputs") => {
                     // Flush previous input if we see a new "- name:" without closing the last one
-                    if item.starts_with("name:") {
-                        if let Some(input) = current_input.take() {
-                            fm.inputs.push(input);
-                        }
+                    if item.starts_with("name:")
+                        && let Some(input) = current_input.take()
+                    {
+                        fm.inputs.push(input);
                     }
                     if current_input.is_none() && item.starts_with("name:") {
                         current_input = Some(SkillInput::default());
@@ -67,10 +67,10 @@ pub fn parse_skill_frontmatter(raw: &str) -> SkillFrontmatter {
                     }
                 }
                 Some("outputs") => {
-                    if item.starts_with("name:") {
-                        if let Some(output) = current_output.take() {
-                            fm.outputs.push(output);
-                        }
+                    if item.starts_with("name:")
+                        && let Some(output) = current_output.take()
+                    {
+                        fm.outputs.push(output);
                     }
                     if current_output.is_none() && item.starts_with("name:") {
                         current_output = Some(SkillOutput::default());

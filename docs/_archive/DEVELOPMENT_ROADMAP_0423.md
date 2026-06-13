@@ -37,7 +37,7 @@
                                         │
 [devbase SSE Daemon W5-W8] ───────────► [clarity-gateway SSE 持久化]
                                         │
-[syncthing-rust 格雷反馈 Step B] ──────► [端到端大规模压测]
+[syncthing-rust [External-Test-Node]反馈 Step B] ──────► [端到端大规模压测]
 ```
 
 ---
@@ -77,11 +77,11 @@
 
 | 任务 | 优先级 | 预计工时 | 产出 |
 |------|--------|---------|------|
-| 等格雷反馈 Step B（幻X离线原因） | P0 | — | 外部不可控 |
+| 等[External-Test-Node]反馈 Step B（幻X离线原因） | P0 | — | 外部不可控 |
 | 准备大规模测试数据集 | P1 | 4h | 100MB+ 混合文件集 |
 | REST API 文档整理 | P1 | 4h | 供 clarity 侧参考 |
 
-**阻塞方**：格雷（外部，不可控，设 3 天缓冲期）
+**阻塞方**：[External-Test-Node]（外部，不可控，设 3 天缓冲期）
 
 ---
 
@@ -108,15 +108,15 @@
 
 **阻塞方**：devbase Vault 格式规范（devbase 侧需 4/30 前产出）
 
-#### 路径 C — syncthing-rust（若格雷反馈到达）
+#### 路径 C — syncthing-rust（若[External-Test-Node]反馈到达）
 
 | 任务 | 优先级 | 前置条件 | 预计工时 | 产出 |
 |------|--------|---------|---------|------|
-| 端到端大规模压测 | P0 | 格雷 Step B 反馈 | 2d | 100MB+ 文件双向同步报告 |
-| 幻X设备重新加入验证 | P0 | 格雷 Step B 反馈 | 4h | 三设备拓扑测试 |
+| 端到端大规模压测 | P0 | [External-Test-Node] Step B 反馈 | 2d | 100MB+ 文件双向同步报告 |
+| 幻X设备重新加入验证 | P0 | [External-Test-Node] Step B 反馈 | 4h | 三设备拓扑测试 |
 | `reference/sketches/` 同步错误修复 | P1 | 幻X上线 | 4h | — |
 
-**阻塞方**：格雷反馈（外部，不可控）
+**阻塞方**：[External-Test-Node]反馈（外部，不可控）
 
 ---
 
@@ -157,7 +157,7 @@
 |------|---------|------------|------------|------------|
 | Kimi CLI (本窗口) | **devbase** | tool description audit | Vault-Skill 同步原型 + SSE 前期 | SSE Daemon W5-W8 |
 | 另一窗口 | **clarity** | McpToolAdapter + CI audit | Vault 解析 + tool_tiers 字段 | SSE 持久化适配 |
-| 另一窗口 | **syncthing-rust** | 等格雷反馈 | 大规模压测（若反馈到达） | — |
+| 另一窗口 | **syncthing-rust** | 等[External-Test-Node]反馈 | 大规模压测（若反馈到达） | — |
 
 ---
 
@@ -167,7 +167,7 @@
 |------|------|------|------|
 | 4/30 | tool description audit 是否完成？ | 影响 clarity 侧 tool 选择准确率 | devbase |
 | 4/30 | Vault 格式规范文档是否产出？ | 阻塞 clarity Vault 解析测试 | devbase |
-| 5/1  | 格雷 Step B 是否反馈？ | 影响 syncthing-rust 波次 2 能否启动 | 格雷（外部）|
+| 5/1  | [External-Test-Node] Step B 是否反馈？ | 影响 syncthing-rust 波次 2 能否启动 | [External-Test-Node]（外部）|
 | 5/15 | `invoke_stream` trait 是否冻结？ | 影响 SSE 全链路开发节奏 | devbase |
 | 6/12 | `devbase daemon` 是否可用？ | 阻塞 clarity-gateway SSE 适配 | devbase |
 
@@ -177,7 +177,7 @@
 
 | 风险 | 概率 | 影响 | 缓解措施 |
 |------|------|------|---------|
-| 格雷反馈延迟 | 中 | syncthing-rust 波次 2 空转 | 提前准备测试数据集，格雷到达后立即执行 |
+| [External-Test-Node]反馈延迟 | 中 | syncthing-rust 波次 2 空转 | 提前准备测试数据集，[External-Test-Node]到达后立即执行 |
 | devbase Daemon 延期 | 低 | clarity 波次 3 阻塞 | W5 前完成 trait review，预留 1 周缓冲 |
 | clarity Vault 解析受阻 | 低 | Vault-Skill 同步延期 | devbase 提前产出规范文档，预留联调时间 |
 | tool description 优化效果不及预期 | 中 | AI tool 选择准确率无提升 | A/B 测试：对比优化前后的 tool 调用准确率 |

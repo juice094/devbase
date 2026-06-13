@@ -16,8 +16,9 @@ startCommand:
 
 description: |
   Developer Knowledge OS — manage Git repos, vault notes (Markdown), and assets.
-  Provides 19 MCP tools for repo scanning, health checks, vault search/backlinks,
-  and unified project context queries.
+  Provides 71 MCP tools (5 stable / 58 beta / 8 experimental) for repo scanning,
+  health checks, code analysis, vault search/backlinks, agent sessions, workflows,
+  knowledge graphs, and unified project context queries.
 
 categories:
   - developer-tools

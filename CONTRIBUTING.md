@@ -9,7 +9,7 @@
 | 指标 | 状态 |
 |:---|:---|
 | 版本 | v0.20.1 |
-| 测试 | 485+ passed / 0 failed / 5 ignored |
+| 测试 | 605 passed / 0 failed / 7 ignored |
 | Clippy | `-D warnings` 全绿 |
 | 生产代码 unwrap | 0 |
 | 许可证 | AGPL-3.0-or-later |
@@ -140,17 +140,18 @@ cargo run -- mcp
 | **添加 MCP Tool** | `src/mcp/tools/` 新建模块 | `src/mcp/tools/mod.rs`, `src/mcp/mod.rs` | [AGENTS.md](AGENTS.md) "MCP 工具幂等性" |
 | **添加 Skill** | `skills/` 或外部 git 仓库 | `SKILL.md` 规范 | [AGENTS.md](AGENTS.md) "Skill 规范" |
 | **改进文档** | 直接编辑 `.md` 文件 | `README.md`, `AGENTS.md` | — |
-| **重构 / 性能优化** | 先开 Issue 讨论 | — | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| **重构 / 性能优化** | 先开 Issue 讨论 | — | [`docs/architecture/invariants.md`](docs/architecture/invariants.md) |
 
 ### 添加 MCP Tool 的标准路径
 
 1. 在 `src/mcp/tools/` 新建模块
-2. 实现 `McpTool` trait（`name()`, `description()`, `handle()`）
-3. 在 `src/mcp/tools/mod.rs` 注册
-4. 在 `src/mcp/mod.rs` 的 `handle_request` 中路由
+2. 实现 `McpTool` trait（`name()`, `schema()`, `invoke()`，可选 `invoke_stream()`）
+3. 在 `src/mcp/tools/mod.rs` 注册并 `pub use`
+4. 在 `src/mcp/mod.rs` 的 `McpToolEnum` / 路由中加入该工具
 5. **必须**添加单元测试到 `src/mcp/tests.rs`
 6. 更新 `README.md` Tool 矩阵
 7. 更新 `AGENTS.md` 工具计数
+8. 更新 `docs/reference/mcp-tools.md` 工具清单
 
 > **核心原则**: 所有状态变更操作必须幂等（`ON CONFLICT ... DO UPDATE`）。
 
@@ -232,8 +233,9 @@ existence before registration. Returns structured validation report.
 
 | 文档 | 内容 |
 |:---|:---|
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | 三层架构、技术决策记录、模块边界 |
-| [`AGENTS.md`](AGENTS.md) | 安全原则、上下文机制、Schema 迁移规范、历史 Waves |
+| [`docs/architecture/overview.md`](docs/architecture/overview.md) | 三层架构、技术决策记录、模块边界 |
+| [`docs/architecture/invariants.md`](docs/architecture/invariants.md) | 架构红线 RF-1~RF-7 + 分层约束 |
+| [`AGENTS.md`](AGENTS.md) | Agent 环境指引、安全原则、Schema 迁移规范 |
 | [`docs/architecture/`](docs/architecture/) | 预拆分评估、Workflow DSL 规范、统一实体模型 |
 | [`docs/research/`](docs/research/) | 竞品分析、Embedding 策略 |
 
