@@ -13,9 +13,9 @@
 
 ## P1 — 测试覆盖
 
-### 28 个 MCP 工具缺少 invocation tests
+### MCP 工具 invocation 测试覆盖不均
 
-**现状**：68 个工具中，40 个有 dedicated `invoke()` 测试（+3 本批次新增），28 个仅有 name/schema smoke tests 或零覆盖。
+**现状**：71 个工具中，约 45 个有 dedicated `invoke()` 测试，其余以 name/schema smoke tests 或间接覆盖为主。Stable 工具已实现 invocation 测试补全。
 
 **影响**：Beta → Stable 的 promote 需要测试背书；无测试的工具在重构时存在回归风险。
 
@@ -23,27 +23,23 @@
 
 | 工具 | Tier | 已有覆盖 |
 |------|------|----------|
-| `devkit_index` | Beta | 间接（scenario） |
 | `devkit_index_health` | Beta | 无 |
 | `devkit_index_stream` | Beta | 无 |
-| `devkit_status` | Beta | 无 |
 | `devkit_note` | Beta | 无 |
 | `devkit_digest` | Experimental | 无 |
 | `devkit_paper_index` | Experimental | 无 |
-| `devkit_semantic_search` | Beta | 间接（scenario） |
 | `devkit_embedding_store` | Beta | 无 |
 | `devkit_embedding_search` | Beta | 无 |
-| `devkit_cross_repo_search` | Beta | 间接（scenario） |
 | `devkit_related_symbols` | Experimental | 无 |
 | `devkit_search_quality` | Beta | 无 |
 | `devkit_impact_analysis` | Beta | 无 |
 | `devkit_project_brief` | Beta | 间接（scenario） |
 | `devkit_knowledge_report` | Beta | 间接（scenario） |
-| `devkit_session_*` × 13 | Beta/Exp | 部分 smoke |
-| `devkit_workflow_*` × 3 | Beta | 部分（workflow.rs 单元测试） |
-| `devkit_evaluate` | Beta | 无 |
+| `devkit_session_*` × 13 | Beta/Exp | 部分 smoke；save/list/resume 已有覆盖 |
+| `devkit_evaluate` | Beta | smoke |
+| `devkit_ontology_import` | Beta | smoke |
 
-**建议**：按调用频率排序，优先为 Index、Status、Workflow、Session save/list 添加测试。
+**建议**：按调用频率排序，持续为 IndexHealth、Session 记忆召回、OntologyImport、Embedding 相关工具添加 dedicated 测试。
 
 ---
 

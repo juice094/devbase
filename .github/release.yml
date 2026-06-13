@@ -1,0 +1,32 @@
+# GitHub Release notes configuration
+# https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes
+
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+      - "chore"
+    authors:
+      - dependabot[bot]
+  categories:
+    - title: ⚠️ Breaking Changes
+      labels:
+        - breaking-change
+    - title: 🚀 New Features
+      labels:
+        - enhancement
+        - feature
+    - title: 🐛 Bug Fixes
+      labels:
+        - bug
+    - title: 🛠️ Maintenance
+      labels:
+        - refactor
+        - perf
+        - test
+    - title: 📚 Documentation
+      labels:
+        - documentation
+    - title: Other Changes
+      labels:
+        - "*"

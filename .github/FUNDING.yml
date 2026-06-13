@@ -1,0 +1,7 @@
+# Funding and sponsorship configuration for devbase
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+
+github: [juice094]
+custom:
+  - "https://github.com/juice094/devbase"
+  - "mailto:juice094@protonmail.com"

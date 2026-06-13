@@ -1,10 +1,12 @@
 # MCP Tools 参考
 
-devbase MCP Server 提供 **69 个 tools**，通过 stdio 传输与 AI Agent 通信。工具按稳定性分为三级：
+> 状态：已同步至 v0.20.1 · `src/mcp/mod.rs`
 
-- **Stable** — 经过充分测试，schema 冻结。详见 [`stable-tools/`](stable-tools/README.md) 独立文档。
-- **Beta** — 功能验证通过，schema 可能微调
-- **Experimental** — 新功能，行为可能变化
+devbase MCP Server 提供 **71 个 tools**，通过 stdio 传输与 AI Agent 通信。工具按稳定性分为三级：
+
+- **Stable（5）** — 经过充分测试，schema 冻结。详见 [`stable-tools/`](stable-tools/README.md) 独立文档。
+- **Beta（58）** — 功能验证通过，schema 可能微调。
+- **Experimental（8）** — 新功能，行为可能变化。
 
 ---
 
@@ -15,7 +17,7 @@ devbase MCP Server 提供 **69 个 tools**，通过 stdio 传输与 AI Agent 通
 | `devkit_scan` | Beta | 扫描目录发现 Git 仓库并注册 | `path`, `register` |
 | [`devkit_health`](stable-tools/health.md) | Stable | 检查注册仓库的健康状态（dirty/behind/ahead） | `detail`, `limit`, `page` |
 | `devkit_sync` | Beta | 安全同步仓库与上游（destructive gate） | `repo_id`, `dry_run` |
-| `devkit_query_repos` | Stable | 查询已注册仓库列表，支持 tag/language 过滤 | `query`, `limit`, `page` |
+| [`devkit_query_repos`](stable-tools/query_repos.md) | Stable | 查询已注册仓库列表，支持 tag/language 过滤 | `query`, `limit`, `page` |
 | `devkit_index` | Beta | 索引仓库摘要、模块结构、代码符号 | `path` |
 
 ## 代码分析（6）
@@ -29,7 +31,7 @@ devbase MCP Server 提供 **69 个 tools**，通过 stdio 传输与 AI Agent 通
 | `devkit_call_graph` | Beta | 获取函数调用图 | `repo_id`, `symbol_name` |
 | `devkit_dead_code` | Beta | 检测未被调用的私有函数 | `repo_id`, `include_pub` |
 
-## 知识检索（8）
+## 知识检索（9）
 
 | 工具名 | Tier | 一句话描述 | 关键参数 |
 |--------|------|-----------|----------|
@@ -41,13 +43,14 @@ devbase MCP Server 提供 **69 个 tools**，通过 stdio 传输与 AI Agent 通
 | `devkit_embedding_search` | Beta | 基于 embedding 的相似度搜索 | `repo_id`, `embedding`, `limit` |
 | `devkit_natural_language_query` | Beta | 自然语言查询（NLQ） | `query`, `limit` |
 | `devkit_knowledge_report` | Beta | 生成工作区知识覆盖报告 | `repo_id`, `activity_limit` |
+| `devkit_search_quality` | Beta | 评估混合检索质量指标 | `repo_id`, `query` |
 
 ## Vault 笔记（8）
 
 | 工具名 | Tier | 一句话描述 | 关键参数 |
 |--------|------|-----------|----------|
 | [`devkit_vault_search`](stable-tools/vault_search.md) | Stable | 关键词搜索 Vault 笔记 | `query` |
-| `devkit_vault_read` | Stable | 读取指定 Vault 笔记的完整内容 | `path` |
+| [`devkit_vault_read`](stable-tools/vault_read.md) | Stable | 读取指定 Vault 笔记的完整内容 | `path` |
 | `devkit_vault_write` | Beta | 写入或更新 Vault 笔记（destructive gate） | `path`, `content`, `frontmatter` |
 | `devkit_vault_backlinks` | Beta | 查找指向指定笔记的反向链接 | `note_id` |
 | `devkit_vault_daily` | Beta | 按日期列出 Vault 每日笔记 | `date`, `limit` |
@@ -55,7 +58,7 @@ devbase MCP Server 提供 **69 个 tools**，通过 stdio 传输与 AI Agent 通
 | `devkit_vault_export` | Beta | 导出 Vault 笔记集合 | `query`, `format` |
 | `devkit_vault_history` | Beta | 获取 Vault 笔记修改历史 | `path`, `limit` |
 
-## Skill 运行时（4）
+## Skill 运行时（5）
 
 | 工具名 | Tier | 一句话描述 | 关键参数 |
 |--------|------|-----------|----------|
@@ -63,12 +66,13 @@ devbase MCP Server 提供 **69 个 tools**，通过 stdio 传输与 AI Agent 通
 | `devkit_skill_search` | Beta | 语义搜索 Skill | `query`, `limit` |
 | `devkit_skill_run` | Beta | 执行指定 Skill（destructive gate） | `skill_id`, `args` |
 | `devkit_skill_discover` | Beta | 将当前项目封装为 Skill（destructive gate，dry_run 默认 true） | `path` |
+| `devkit_skill_sync` | Beta | 同步外部 Skill 源 | `source`, `dry_run` |
 
 ## 项目上下文（3）
 
 | 工具名 | Tier | 一句话描述 | 关键参数 |
 |--------|------|-----------|----------|
-| `devkit_project_context` | Stable | 获取项目统一上下文（repo + vault + assets + modules + symbols + calls） | `project` |
+| [`devkit_project_context`](stable-tools/project_context.md) | Stable | 获取项目统一上下文（repo + vault + assets + modules + symbols + calls） | `project` |
 | `devkit_project_brief` | Beta | 生成 Markdown 项目摘要（架构 + 活动 + 限制），供 LLM 注入 | `repo_id`, `max_tokens` |
 | `devkit_impact_analysis` | Beta | 分析代码变更影响范围 | `repo_id`, `file_path` |
 
@@ -120,7 +124,7 @@ devbase MCP Server 提供 **69 个 tools**，通过 stdio 传输与 AI Agent 通
 | `devkit_known_limit_store` | Beta | 记录已知限制（Hard Veto / Known Bug） | `id`, `category`, `description` |
 | `devkit_known_limit_list` | Beta | 列出已知限制 | `category`, `mitigated` |
 
-## 其他（6）
+## 运维与其他（12）
 
 | 工具名 | Tier | 一句话描述 | 关键参数 |
 |--------|------|-----------|----------|
@@ -129,13 +133,13 @@ devbase MCP Server 提供 **69 个 tools**，通过 stdio 传输与 AI Agent 通
 | `devkit_status` | Beta | 检查 devbase 服务状态 | — |
 | `devkit_digest` | Experimental | 生成每日知识摘要 | — |
 | `devkit_paper_index` | Experimental | 索引学术论文 | `title`, `authors`, `venue` |
-| `devkit_search_quality` | Beta | 评估搜索质量指标 | `repo_id`, `query` |
-| `devkit_experiment_log` | Beta | 记录实验结果 | `repo_id`, `paper_id`, `status` |
 | `devkit_github_info` | Beta | 查询 GitHub 仓库信息 | `owner`, `repo` |
 | `devkit_arxiv_fetch` | Beta | 从 arXiv 获取论文元数据 | `query`, `max_results` |
 | `devkit_oplog_query` | Beta | 查询操作日志 | `limit`, `repo_id` |
 | `devkit_evaluate` | Beta | 评估工具调用结果 | `tool_name`, `result` |
+| `devkit_experiment_log` | Beta | 记录实验结果 | `repo_id`, `paper_id`, `status` |
 | `devkit_document_convert` | Experimental | PDF/PPTX → Markdown 转换 | `source_path`, `output_path` |
+| `devkit_ontology_import` | Beta | 本体批量导入 | `path`, `dry_run` |
 
 ---
 
@@ -151,6 +155,7 @@ devbase MCP Server 提供 **69 个 tools**，通过 stdio 传输与 AI Agent 通
 - `devkit_relation_delete`
 - `devkit_known_limit_store`
 - `devkit_workflow_run`
+- `devkit_ontology_import`
 
 ---
 
@@ -163,3 +168,7 @@ devbase MCP Server 提供 **69 个 tools**，通过 stdio 传输与 AI Agent 通
 ```
 
 默认值：`stable,beta,experimental`（暴露全部）。
+
+---
+
+*本文件必须与 `src/mcp/mod.rs` 的 `McpToolEnum` / `tier()` 保持同步。*

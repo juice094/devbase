@@ -4,20 +4,24 @@ about: Suggest an idea for devbase
 title: '[Feature] '
 labels: enhancement
 assignees: ''
-
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+## Problem Statement
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+<!-- 这个功能要解决什么问题？请描述你遇到的痛点或使用场景 -->
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+## Proposed Solution
 
-**Use case**
-Who would benefit from this feature? How would they use it?
+<!-- 你希望 devbase 如何解决这个问题？如果涉及新 MCP tool 或 CLI 命令，请给出拟议的接口 -->
 
-**Additional context**
-Add any other context, mockups, or references about the feature request here.
+## Use Case
+
+<!-- 谁会受益？在什么场景下使用？ -->
+
+## Alternatives Considered
+
+<!-- 你考虑过哪些替代方案？为什么它们不够好？ -->
+
+## Additional Context
+
+<!-- 其他上下文：参考链接、mockup、相关 issue 等 -->

@@ -7,7 +7,7 @@
 一套引擎，统一代码上下文、知识记忆与智能体推理。
 
 [![Version](https://img.shields.io/badge/version-v0.20.1-blue)](https://github.com/juice094/devbase/releases)
-[![Tests](https://img.shields.io/badge/tests-494%2B%20passed-brightgreen)](https://github.com/juice094/devbase/actions)
+[![Tests](https://img.shields.io/badge/tests-605%2B%20passed-brightgreen)](https://github.com/juice094/devbase/actions)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](https://github.com/juice094/devbase/actions)
 [![License](https://img.shields.io/badge/license-AGPL--3.0%20%2F%20Commercial-orange)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.95%2B-9cf)](https://www.rust-lang.org)
@@ -38,7 +38,7 @@ devbase 将代码库、笔记与工作流编译为 AI 可推理的结构化情�
 | 🏠 **本地优先** | 零数据离开本机 — SQLite + Tantivy + tree-sitter，无需云端 |
 | 🔍 **混合检索** | BM25 全文 + FTS5 技能搜索 + 纯 SQL 向量搜索（`cosine_similarity` UDF），零 ML 运行时依赖 |
 
-> [完整 71 个 Tool 矩阵 → docs/guides/mcp-integration.md](docs/guides/mcp-integration.md)
+> [完整 71 个 Tool 矩阵 → docs/reference/mcp-tools.md](docs/reference/mcp-tools.md)
 
 ---
 
@@ -60,26 +60,27 @@ devbase 将代码库、笔记与工作流编译为 AI 可推理的结构化情�
 ```
 devbase/
 ├── src/
-│   ├── main.rs          # CLI 入口：命令解析与分发
+│   ├── main.rs          # CLI 入口：命令解析与分发（RF-4 ≤ 1000 行）
+│   ├── lib.rs           # 导出 30+ 模块
+│   ├── commands/        # CLI 子命令实现
 │   ├── tui/             # 终端仪表盘（ratatui）
-│   │                    # 多仓库导航、跨仓库搜索、安全同步预览
 │   ├── mcp/             # MCP Server（71 个工具，stdio 通信）
-│   │                    # 人类与 AI 的统一接口层
-│   ├── registry/        # 仓库注册表：Git 状态、健康检查、批量同步
-│   ├── index/           # Tantivy 全文索引 + SQLite 向量索引
-│   │                    # 混合检索核心，BM25 + cosine 向量评分
+│   ├── registry/        # SQLite Registry：schema、迁移、实体、关系
+│   ├── search/          # Tantivy BM25 + 向量混合检索
 │   ├── vault/           # PARA 笔记系统：双向链接、BFS 图遍历
-│   ├── skill/           # Skill 生命周期：发现 → 安装 → 执行 → 评分 → 发布
-│   │                    # 自动封装项目为 AI 可调用的 Skill
-│   ├── workflow/        # YAML 编排引擎：5 种 step 类型，拓扑调度 + 并行执行
-│   └── session/         # 智能体会话生命周期 + 向量记忆持久化
-├── docs/
-│   ├── architecture/    # 架构文档总览
-│   └── guides/          # 集成指南（Claude Code / 5ire / Kimi CLI）
-├── scripts/
-│   ├── install.ps1      # Windows 一键安装
-│   ├── install.sh       # Linux/macOS 一键安装
-│   └── devbase-claude.ps1 # Claude Code 一键启动器
+│   ├── skill_runtime/   # Skill 生命周期：发现 → 安装 → 执行 → 评分 → 发布
+│   ├── workflow/        # YAML 编排引擎：5 种 step 类型
+│   ├── knowledge_engine/# 代码符号提取与语义索引
+│   └── sync/            # 仓库同步编排与策略
+├── crates/              # 12 个独立 workspace crate
+│   ├── devbase-core-types
+│   ├── devbase-registry
+│   ├── devbase-embedding
+│   ├── devbase-vault-wikilink
+│   └── ...
+├── docs/                # 完整文档导航：docs/README.md
+├── scripts/             # 安装脚本与 CI 辅助
+├── skills/              # 示例 Skill
 └── README.md
 ```
 

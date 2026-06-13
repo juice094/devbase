@@ -6,8 +6,8 @@ The following versions of devbase currently receive security updates:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.15.x  | :white_check_mark: |
-| < 0.15  | :x:                |
+| 0.20.x  | :white_check_mark: |
+| < 0.20  | :x:                |
 
 ## Reporting a Vulnerability
 
