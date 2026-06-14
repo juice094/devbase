@@ -45,15 +45,15 @@
 
 ## P2 — 架构债务
 
-### `mcp/tools/repo.rs` 730 行
+### ~~`mcp/tools/repo.rs` 730 行~~
 
-**现状**：已从 2376 行拆至 730 行，但仍超过理想阈值（~300 行/模块）。
+**现状**：~~已从 2376 行拆至 730 行，但仍超过理想阈值（~300 行/模块）。~~
 
-**计划**：按 domain 拆分为 `repo_health.rs` + `repo_query.rs` + `repo_index.rs`。已有 `docs/architecture/split-plan.md`。
+**结果**：**已完成** — 拆分为 `repo/{scan,health,sync,index,query_repos,nl_query}.rs`，入口 `repo.rs` 降至 ~100 行。计划详见 `docs/architecture/split-plan.md`。
 
 ### `src/mcp/mod.rs` 工具枚举集中化
 
-**现状**：`McpToolEnum` 是包含 68 个变体的 giant enum，`tier()` 方法是 200+ 行的 match 表达式。
+**现状**：`McpToolEnum` 是包含 71 个变体的 giant enum，`tier()` 方法是 200+ 行的 match 表达式。
 
 **影响**：新增工具需要修改 3 处（enum 定义、match arm、tier match），容易遗漏。
 
