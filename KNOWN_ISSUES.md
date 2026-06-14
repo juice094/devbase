@@ -23,23 +23,26 @@
 
 | 工具 | Tier | 已有覆盖 |
 |------|------|----------|
-| `devkit_index_health` | Beta | 无 |
-| `devkit_index_stream` | Beta | 无 |
-| `devkit_note` | Beta | 无 |
 | `devkit_digest` | Experimental | 无 |
 | `devkit_paper_index` | Experimental | 无 |
 | `devkit_embedding_store` | Beta | 无 |
 | `devkit_embedding_search` | Beta | 无 |
-| `devkit_related_symbols` | Experimental | 无 |
-| `devkit_search_quality` | Beta | 无 |
 | `devkit_impact_analysis` | Beta | 无 |
 | `devkit_project_brief` | Beta | 间接（scenario） |
-| `devkit_knowledge_report` | Beta | 间接（scenario） |
 | `devkit_session_*` × 13 | Beta/Exp | 部分 smoke；save/list/resume 已有覆盖 |
-| `devkit_evaluate` | Beta | smoke |
-| `devkit_ontology_import` | Beta | smoke |
 
-**建议**：按调用频率排序，持续为 IndexHealth、Session 记忆召回、OntologyImport、Embedding 相关工具添加 dedicated 测试。
+**已补充 dedicated invocation 测试**：
+- `devkit_index_health`
+- `devkit_index_stream`
+- `devkit_note`
+- `devkit_evaluate`
+- `devkit_ontology_import`
+- `devkit_search_quality`
+- `devkit_related_symbols`
+- `devkit_knowledge_report`
+- `devkit_experiment_log`
+
+**建议**：按调用频率排序，持续为 Embedding 相关工具、ImpactAnalysis、ProjectBrief、Session 记忆召回添加 dedicated 测试。
 
 ---
 
