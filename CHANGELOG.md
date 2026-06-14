@@ -15,7 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ontology 导入** — `devkit_ontology_import` MCP 工具（Beta tier），`devbase ontology` CLI（`--dry-run` 预览），支持 OpenClaw workspace `ontology/entities/*.json` + `ontology/relations/*.jsonl` 批量导入
 - MCP 工具数: 69 → **71**（5 stable / 58 beta / 8 experimental）
 - `devkit_document_convert` — Experimental tier MCP tool，PDF/PPTX → Markdown 转换（`pdftotext` / `python-pptx` 流水线），含 frontmatter 质量标注
-- Stable 工具 invocation 测试补全：`devkit_query_repos`、`devkit_vault_search`、`devkit_vault_read`、`devkit_status`、`devkit_workflow_list`、`devkit_index`
+- **Vault Tantivy 全文搜索** — `devkit_vault_search` 优先使用 BM25（`search_vault_at`），空结果/失败时回退到内存扫描；`run_index_with_progress` 在索引仓库时同步 `reindex_vault_with_writer` 写入同一 Tantivy 段
+- **Criterion vault benchmark 基线** — 新增 `benches/vault_bench.rs`（`reindex_vault` 50/200 笔记，`search_vault` 单/多关键词 50/200 笔记），保存 baseline `v0.20.1`
+- Stable 工具 invocation 测试补全：`devkit_query_repos`、`devkit_vault_search`（覆盖 Tantivy 路径）、`devkit_vault_read`、`devkit_status`、`devkit_workflow_list`、`devkit_index`
 - `seed_repo()` 轻量测试 helper（仅插入 `entities` 表，无副作用）
 
 ### Fixed

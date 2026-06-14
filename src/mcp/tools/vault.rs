@@ -14,7 +14,7 @@ impl McpTool for DevkitVaultSearchTool {
 
     fn schema(&self) -> serde_json::Value {
         serde_json::json!({
-            "description": r#"Search the devbase Vault (Markdown notes) by keywords across note titles, tags, and full content. This is the primary discovery tool for the knowledge base.
+            "description": r#"Search the devbase Vault (Markdown notes) by keywords across note titles, tags, and full content using BM25 full-text search. This is the primary discovery tool for the knowledge base.
 
 Use this when the user wants to:
 - Find notes related to a topic, architecture decision, or project
@@ -31,7 +31,9 @@ Do NOT use this for:
 Parameters:
 - query: Space-separated keywords. All keywords must match (AND logic). Case-insensitive.
 
-Returns: JSON array of matching notes. Each includes: id, title, path, and tags. Use devkit_vault_read with the id or path to retrieve full content."#,
+Returns: JSON array of matching notes. Each includes: id, title, path, and tags. Use devkit_vault_read with the id or path to retrieve full content.
+
+Note: Results are ranked by Tantivy BM25 when the vault search index is available; otherwise falls back to an in-memory substring scan. Run `devbase vault reindex` or `devkit_index` to build/update the index."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -55,6 +57,35 @@ Returns: JSON array of matching notes. Each includes: id, title, path, and tags.
         let ctx = ctx.clone();
         let query_owned = query.to_string();
         let results = tokio::task::spawn_blocking(move || {
+            // 1. Try Tantivy BM25 full-text search first
+            if let Ok(index_path) = ctx.storage.index_path()
+                && let Ok(tantivy_results) =
+                    crate::search::search_vault_at(&index_path, &query_owned, 50)
+                && !tantivy_results.is_empty()
+            {
+                let value = ctx.list_vault_notes()?;
+                let notes_arr =
+                    value.get("notes").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+                let note_by_id: std::collections::HashMap<String, serde_json::Value> = notes_arr
+                    .into_iter()
+                    .filter_map(|n| {
+                        let id = n.get("id").and_then(|v| v.as_str())?.to_string();
+                        Some((id, n))
+                    })
+                    .collect();
+
+                let mut hydrated = Vec::new();
+                for (id, _score) in tantivy_results {
+                    if let Some(note) = note_by_id.get(&id) {
+                        hydrated.push(note.clone());
+                    }
+                }
+                if !hydrated.is_empty() {
+                    return anyhow::Ok(hydrated);
+                }
+            }
+
+            // 2. Fallback: in-memory linear scan
             let value = ctx.list_vault_notes()?;
             let notes_arr =
                 value.get("notes").and_then(|v| v.as_array()).cloned().unwrap_or_default();

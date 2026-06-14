@@ -1,6 +1,6 @@
 # devbase 文档导航
 
-> **项目状态**：v0.20.1 · Schema v36 · 71 MCP tools · 605 tests · 12 workspace crates
+> **项目状态**：v0.20.1 · Schema v36 · 71 MCP tools · 616 tests · 12 workspace crates
 > **权威入口**：[`AGENTS.md`](../AGENTS.md)（Agent 环境指引）· [`CHANGELOG.md`](../CHANGELOG.md)（版本变更）
 > **最后整理**：2026-06-13
 
@@ -12,7 +12,7 @@
 |------|------|------|
 | 版本 | v0.20.1 | `Cargo.toml` |
 | Rust Edition | 2024 | `Cargo.toml` |
-| 测试 | 605 passed / 0 failed / 7 ignored | `cargo test --workspace -- --list` |
+| 测试 | 616 passed / 0 failed / 6 ignored | `cargo test --workspace -- --list` |
 | Clippy | `-D warnings` 全绿 | CI |
 | Schema | v36 | `src/registry/migrate.rs` |
 | MCP Tools | **71**（5 Stable / 62 Beta / 4 Experimental） | `src/mcp/mod.rs` |

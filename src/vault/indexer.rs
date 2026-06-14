@@ -14,15 +14,26 @@ use tracing::info;
 /// P1-1: filesystem-first — note content is read from disk on demand,
 /// the SQLite registry only stores lightweight metadata.
 pub fn reindex_vault(conn: &rusqlite::Connection) -> anyhow::Result<()> {
-    let notes = crate::registry::vault::list_vault_notes(conn)?;
-
     let (index, _reader) = search::init_index()?;
     let mut writer = search::get_writer(&index)?;
     let schema = index.schema();
-    reindex_vault_core(&notes, &mut writer, &schema)
+    reindex_vault_with_writer(conn, &mut writer, &schema)
 }
 
-fn reindex_vault_core(
+/// Re-index all vault notes using an already-open Tantivy writer.
+///
+/// This is used by the main indexing pipeline so that vault notes and
+/// repositories can be committed in the same Tantivy segment.
+pub fn reindex_vault_with_writer(
+    conn: &rusqlite::Connection,
+    writer: &mut IndexWriter,
+    schema: &Schema,
+) -> anyhow::Result<()> {
+    let notes = crate::registry::vault::list_vault_notes(conn)?;
+    reindex_vault_core(&notes, writer, schema)
+}
+
+pub fn reindex_vault_core(
     notes: &[crate::registry::VaultNote],
     writer: &mut IndexWriter,
     schema: &Schema,
@@ -151,6 +162,46 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_reindex_vault_with_writer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let md_path = tmp.path().join("note.md");
+        let mut file = std::fs::File::create(&md_path).unwrap();
+        writeln!(file, "# Hello\n\nThis is a test note.").unwrap();
+        drop(file);
+
+        let mut conn = crate::registry::WorkspaceRegistry::init_in_memory().unwrap();
+        let note = VaultNote {
+            id: "note-1".to_string(),
+            path: md_path.to_str().unwrap().to_string(),
+            title: Some("Hello".to_string()),
+            content: "ignored".to_string(),
+            frontmatter: None,
+            tags: vec!["tag1".to_string()],
+            outgoing_links: vec![],
+            block_refs: vec![],
+            linked_repo: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        crate::registry::vault::save_vault_note(&mut conn, &note).unwrap();
+
+        let index_tmp = tempfile::tempdir().unwrap();
+        let (index, _reader) = search::init_index_at(index_tmp.path()).unwrap();
+        let mut writer = search::get_writer(&index).unwrap();
+        let schema = index.schema();
+        reindex_vault_with_writer(&conn, &mut writer, &schema).unwrap();
+        drop(writer);
+        drop(index);
+
+        // Windows may hold mmap handles briefly after dropping the index.
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        let results = search::search_vault_at(index_tmp.path(), "test", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "note-1");
     }
 
     #[test]

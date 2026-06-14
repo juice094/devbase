@@ -22,8 +22,8 @@
 | Rust Edition | `2024`（要求 rustc 1.95+） |
 | Registry Schema | `v36`（`src/registry/migrate.rs`） |
 | MCP Tools | **71** 个（`src/mcp/tools/*.rs` 中 `pub struct Devkit*Tool`） |
-| 测试函数 | **605** 个（`cargo test --workspace -- --list`） |
-| Ignored 测试 | 7 个（`#[ignore]` 在 `src/` 6 个 + `crates/devbase-embedding` 1 个） |
+| 测试函数 | **616** 个（`cargo test --workspace -- --list`） |
+| Ignored 测试 | 6 个（`#[ignore]` 在 `src/`） |
 | Workspace Crates | **12** 个（`crates/` 目录） |
 | `src/main.rs` 行数 | 833 行（RF-4 限界 1000 行内） |
 | Clippy | `-D warnings` / CI `-W warnings` |
@@ -108,7 +108,8 @@ devbase/
 │   └── cli.rs              # 11 个集成测试
 ├── benches/
 │   ├── registry_bench.rs
-│   └── semantic_index.rs
+│   ├── semantic_index.rs
+│   └── vault_bench.rs
 ├── skills/                 # 示例 Skill（embed-repo / knowledge-report / search-workspace）
 ├── scripts/
 │   ├── install.ps1 / install.sh
@@ -173,7 +174,7 @@ scripts/invariant-checks/run-checks.ps1
 - **单元测试**：分布在 `src/**/tests.rs` 与 `#[cfg(test)]` 块中。
 - **集成测试**：`tests/cli.rs`，使用 `assert_cmd` + `tempfile`，通过 `DEVBASE_DATA_DIR` 隔离数据目录。
 - **Crate 测试**：每个 `crates/*/src/*.rs` 自带测试。
-- **Bench**：`criterion` 驱动的 `benches/registry_bench.rs`、`benches/semantic_index.rs`。
+- **Bench**：`criterion` 驱动的 `benches/registry_bench.rs`、`benches/semantic_index.rs`、`benches/vault_bench.rs`。
 - **测试隔离**：
   - 所有 IO 测试使用 `TempDir` 与 `StorageBackend` 注入，禁止直接写 `%LOCALAPPDATA%`。
   - `.cargo/config.toml` 默认 `RUST_TEST_THREADS=1`；CI 使用 `--test-threads=4`。

@@ -7,7 +7,7 @@
 一套引擎，统一代码上下文、知识记忆与智能体推理。
 
 [![Version](https://img.shields.io/badge/version-v0.20.1-blue)](https://github.com/juice094/devbase/releases)
-[![Tests](https://img.shields.io/badge/tests-605%2B%20passed-brightgreen)](https://github.com/juice094/devbase/actions)
+[![Tests](https://img.shields.io/badge/tests-616%2B%20passed-brightgreen)](https://github.com/juice094/devbase/actions)
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-green)](https://github.com/juice094/devbase/actions)
 [![License](https://img.shields.io/badge/license-AGPL--3.0%20%2F%20Commercial-orange)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.95%2B-9cf)](https://www.rust-lang.org)
@@ -36,7 +36,7 @@ devbase 将代码库、笔记与工作流编译为 AI 可推理的结构化情�
 | 📊 **TUI 仪表盘** | ratatui 终端界面：跨仓库搜索、安全同步、Skill/Workflow 发现 |
 | 🔌 **71 个 MCP 工具** | stdio 本地进程通信：仓库管理、代码分析、知识图谱、智能体记忆 |
 | 🏠 **本地优先** | 零数据离开本机 — SQLite + Tantivy + tree-sitter，无需云端 |
-| 🔍 **混合检索** | BM25 全文 + FTS5 技能搜索 + 纯 SQL 向量搜索（`cosine_similarity` UDF），零 ML 运行时依赖 |
+| 🔍 **混合检索** | BM25 全文（仓库 + Vault）+ FTS5 技能搜索 + 纯 SQL 向量搜索（`cosine_similarity` UDF），零 ML 运行时依赖 |
 
 > [完整 71 个 Tool 矩阵 → docs/reference/mcp-tools.md](docs/reference/mcp-tools.md)
 

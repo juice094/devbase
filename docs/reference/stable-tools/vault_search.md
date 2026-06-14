@@ -3,7 +3,7 @@
 > **Tier**: Stable (frozen at v0.21.0)
 > **Source**: `src/mcp/tools/vault.rs` — `DevkitVaultSearchTool`
 
-Search the devbase Vault (Markdown notes) by keywords across note titles, tags, and full content.
+Search the devbase Vault (Markdown notes) by keywords across note titles, tags, and full content using Tantivy BM25 full-text search.
 
 ## Purpose
 
@@ -37,13 +37,10 @@ Search the devbase Vault (Markdown notes) by keywords across note titles, tags, 
 
 ## Matching behavior
 
-- All keywords must match (AND logic)
-- Case-insensitive matching across:
-  - Note ID
-  - Note title
-  - Tags (comma-joined)
-  - Full Markdown body content
-- No stemming or fuzzy matching — exact substring only
+- Primary path: Tantivy BM25 full-text search across note title, tags, and full Markdown body content.
+- Fallback path: if the Tantivy index is empty/unavailable, case-insensitive substring scan across the same fields.
+- All keywords must match (AND logic).
+- Run `devbase vault reindex` or `devkit_index` to build/update the search index.
 
 ## Output Schema
 
@@ -81,4 +78,5 @@ Search the devbase Vault (Markdown notes) by keywords across note titles, tags, 
 
 | Version | Change                                    |
 |---------|------------------------------------------|
+| Unreleased | Primary search path switched to Tantivy BM25; substring scan retained as fallback |
 | v0.21.0 | Schema frozen as Stable                  |
