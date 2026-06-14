@@ -980,3 +980,223 @@ async fn test_scenario_two_semantic_exploration() {
         "vault_search should return auth-design note"
     );
 }
+
+#[tokio::test]
+async fn test_tools_call_devkit_index_health() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 19,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_index_health",
+            "arguments": { "repair": false }
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert!(parsed.get("overall_score").unwrap().as_i64().is_some());
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_index_stream() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_index_stream",
+            "arguments": {}
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    assert!(parsed.get("indexed").unwrap().as_i64().unwrap() >= 0);
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_note() {
+    let server = build_server();
+    let (mut ctx, _tmp) = test_ctx();
+    seed_repo(&ctx, "note-repo", "rust");
+
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 21,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_note",
+            "arguments": {
+                "repo_id": "note-repo",
+                "text": "This is a test discovery note.",
+                "author": "test"
+            }
+        }
+    });
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_evaluate() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 22,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_evaluate",
+            "arguments": { "scope": "check_only" }
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    assert!(parsed.get("check").unwrap().is_object());
+    assert!(parsed.get("clippy").unwrap().is_object());
+    assert!(parsed.get("fmt").unwrap().is_object());
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_ontology_import_not_found() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 23,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_ontology_import",
+            "arguments": {
+                "path": "/nonexistent/ontology.json",
+                "dry_run": true
+            }
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), false);
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_search_quality() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 24,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_search_quality",
+            "arguments": {
+                "repo_id": "scenario-repo",
+                "query_text": "authentication flow",
+                "limit": 5
+            }
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    seed_repo(&ctx, "scenario-repo", "rust");
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    assert!(parsed.get("keyword_recall").unwrap().is_number());
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_related_symbols() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 25,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_related_symbols",
+            "arguments": {
+                "repo_id": "scenario-repo",
+                "symbol_name": "authenticate_user",
+                "limit": 5
+            }
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    seed_repo(&ctx, "scenario-repo", "rust");
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    assert!(parsed.get("links").unwrap().is_array());
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_knowledge_report() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 26,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_knowledge_report",
+            "arguments": {}
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+    assert!(parsed.get("report").unwrap().get("repo_count").unwrap().as_i64().is_some());
+}
+
+#[tokio::test]
+async fn test_tools_call_devkit_experiment_log() {
+    let server = build_server();
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 27,
+        "method": "tools/call",
+        "params": {
+            "name": "devkit_experiment_log",
+            "arguments": {
+                "id": "exp-001",
+                "repo_id": "scenario-repo",
+                "status": "completed"
+            }
+        }
+    });
+    let (mut ctx, _tmp) = test_ctx();
+    seed_repo(&ctx, "scenario-repo", "rust");
+    let resp = server.handle_request(req, &mut ctx).await.unwrap();
+    let result = resp.get("result").unwrap();
+    let content = result.get("content").unwrap().as_array().unwrap();
+    let text = content[0].get("text").unwrap().as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.get("success").unwrap(), true);
+}
