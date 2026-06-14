@@ -291,6 +291,7 @@ async fn test_tools_call_devkit_vault_search() {
     ).unwrap();
     let mut conn = ctx.conn().unwrap();
     crate::vault::scanner::scan_vault(&mut conn, Some(&vault_dir)).unwrap();
+    crate::vault::indexer::reindex_vault(&conn).unwrap();
 
     let req = serde_json::json!({
         "jsonrpc": "2.0",

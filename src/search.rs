@@ -223,6 +223,48 @@ pub fn search_vault(query_str: &str, limit: usize) -> Result<Vec<(String, f32)>,
     search_by_doc_type(query_str, limit, Some("vault"))
 }
 
+/// Search vault notes in a Tantivy index at an explicit path.
+pub fn search_vault_at(
+    path: &std::path::Path,
+    query_str: &str,
+    limit: usize,
+) -> Result<Vec<(String, f32)>, TantivyError> {
+    search_by_doc_type_at(path, query_str, limit, Some("vault"))
+}
+
+/// Index all vault notes from SQLite into the Tantivy search index.
+/// Replaces the existing `doc_type:vault` documents.
+pub fn index_vault_notes(conn: &rusqlite::Connection) -> Result<(), TantivyError> {
+    let path = index_path()?;
+    index_vault_notes_at(conn, &path)
+}
+
+/// Index all vault notes into a Tantivy index at an explicit path.
+pub fn index_vault_notes_at(
+    conn: &rusqlite::Connection,
+    index_path: &std::path::Path,
+) -> Result<(), TantivyError> {
+    let (index, _reader) = init_index_at(index_path)?;
+    let schema = index.schema();
+    let mut writer = get_writer(&index)?;
+
+    // Delete existing vault documents
+    let doc_type_f = schema.get_field("doc_type")?;
+    let vault_term = tantivy::Term::from_field_text(doc_type_f, "vault");
+    writer.delete_term(vault_term);
+
+    // Re-add all vault notes from SQLite
+    let notes = crate::registry::vault::list_vault_notes(conn)
+        .map_err(|e| TantivyError::InvalidArgument(e.to_string()))?;
+    for note in notes {
+        let title = note.title.as_deref().unwrap_or("");
+        add_vault_doc(&mut writer, &schema, &note.id, title, &note.content, &note.tags)?;
+    }
+
+    commit_writer(&mut writer)?;
+    Ok(())
+}
+
 fn search_by_doc_type(
     query_str: &str,
     limit: usize,
@@ -487,6 +529,32 @@ mod tests {
                 search_with_reader(index, &reader, "workspace", 10, Some("vault")).unwrap();
             assert!(repo_results.is_empty());
         });
+    }
+
+    #[test]
+    fn test_search_vault_at() {
+        let _guard = super::SEARCH_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let (index, _reader) = init_index_at(tmp.path()).unwrap();
+        let mut writer = get_writer(&index).unwrap();
+        let schema = index.schema();
+        add_repo_doc(&mut writer, &schema, "repo1", "devbase", "developer workspace manager", &[])
+            .unwrap();
+        add_vault_doc(&mut writer, &schema, "note1", "My Note", "vault note content", &[]).unwrap();
+        commit_writer(&mut writer).unwrap();
+        drop(writer);
+        drop(index);
+
+        // Windows may hold mmap handles briefly after dropping the index.
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        let results = search_vault_at(tmp.path(), "vault", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "note1");
+
+        // repo doc should not appear in vault search
+        let repo_results = search_vault_at(tmp.path(), "workspace", 10).unwrap();
+        assert!(repo_results.is_empty());
     }
 
     #[test]

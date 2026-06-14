@@ -309,6 +309,15 @@ pub fn run_index_with_progress(
         count += 1;
     }
 
+    // Index vault notes into Tantivy for full-text search (same writer as repos)
+    if let Err(e) =
+        crate::vault::indexer::reindex_vault_with_writer(conn, &mut search_writer, &search_schema)
+    {
+        warn!("Failed to index vault notes: {}", e);
+    } else {
+        notify("vault_index".to_string());
+    }
+
     crate::search::commit_writer(&mut search_writer)?;
     notify("tantivy_commit".to_string());
 

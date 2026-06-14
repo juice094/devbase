@@ -62,28 +62,18 @@
 
 **建议**：考虑使用宏或 derive 自动生成 `McpToolEnum` 和 `tier()`，减少 boilerplate。
 
-### Vault 笔记全文搜索性能
-
-**现状**：`devkit_vault_search` 在内存中对所有笔记做线性扫描 + 字符串匹配。
-
-**影响**：Vault 笔记数量 >1000 时，搜索延迟可能超过 1s。
-
-**建议**：为 Vault 内容建立 Tantivy 索引（复用现有 symbol_index 基础设施），或至少增加关键词索引表。
-
 ---
 
 ## P3 — 文档与可观测性
 
-### 性能基准缺失
-
-**现状**：Criterion 已列为 dev-dependency，但无实际 benchmark 套件。
-
-**建议**：为 Index、Query、VaultSearch 建立 Criterion benchmarks，记录基线到 CI 产物。
+当前无活跃 P3 债务。
 
 ## 已解决（归档）
 
-| 问题 | 解决版本 | Commit |
-|------|----------|--------|
+| 问题 | 解决版本 | Commit / 实现 |
+|------|----------|---------------|
+| Vault 笔记全文搜索性能 | Unreleased | `devkit_vault_search` 优先使用 Tantivy BM25（`search_vault_at`），回退内存扫描；`reindex_vault_with_writer` 与仓库索引同 writer |
+| 性能基准缺失 | Unreleased | 新增 `benches/vault_bench.rs`，保存 Criterion baseline `v0.20.1` |
 | `relations` 表零生产读取路径 | v0.20.1 | `devkit_relation_store/query/delete` + `project_context` 读取 |
 | Workflow 引擎零 MCP 暴露 | v0.20.1 | `devkit_workflow_list/run/status` |
 | `project_context` 不完整 | v0.20.1 | 补充 `known_limits` + `skills` |
