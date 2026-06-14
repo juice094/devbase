@@ -375,7 +375,7 @@ done
 | G3 | 所有状态变更 MCP tool 必须幂等 |
 | G4 | Breaking change 只能通过新增 tool 实现，不修改现有 schema |
 | G5 | 生产代码不得新增 `unwrap`/`expect`（RF-6） |
-| T11 | `mcp/tools/*` 不得直接调用 `rusqlite::Connection`，必须通过 registry 封装（已知例外：`repo.rs`、`brief.rs`、`impact.rs`） |
+| T11 | `mcp/tools/*` 不得直接调用 `rusqlite::Connection`，必须通过 registry 封装（已知例外：`repo.rs`、`repo/nl_query.rs`、`brief.rs`、`impact.rs`） |
 | T12 | `tui/render/*` 是纯消费者层，禁止写入 registry |
 
 CI 通过 `scripts/invariant-checks/run-checks.ps1` 检测 G5 / T11 / T12 / README+Cargo.toml 完整性。

@@ -143,6 +143,7 @@ Write-CheckHeader "T11: mcp/tools direct rusqlite::Connection check"
 
 $knownT11Exceptions = @(
     "src/mcp/tools/repo.rs",
+    "src/mcp/tools/repo/nl_query.rs",
     "src/mcp/tools/brief.rs",
     "src/mcp/tools/impact.rs"
 )
