@@ -299,7 +299,8 @@ fn search_with_reader(
     let tags = schema.get_field("tags")?;
     let doc_type_f = schema.get_field("doc_type")?;
 
-    let query_parser = QueryParser::for_index(index, vec![title, content, tags]);
+    let mut query_parser = QueryParser::for_index(index, vec![title, content, tags]);
+    query_parser.set_conjunction_by_default();
     let text_query = query_parser.parse_query(query_str)?;
 
     // Build combined query: text_query AND doc_type:filter (if specified)

@@ -154,4 +154,5 @@ VALUES ('r1', 'paper-resnet', 'imagenet-1k', 'uses', '2026-04-30T00:00:00Z');
 ## 相关文档
 
 - [`schema-v23.md`](schema-v23.md) — 完整数据库表结构
-- [`context-compiler.md`](../architecture/context-compiler.md) — 情境编译器架构定义
+- [`.knowledge/architecture/three-layer-model.md`](../../.knowledge/architecture/three-layer-model.md) — 三层架构模型
+- [`.knowledge/architecture/project-worktree.md`](../../.knowledge/architecture/project-worktree.md) — 项目模块与工作树速查

@@ -42,13 +42,25 @@ struct SkillWithInputs {
 
 /// Sync all skills from devbase to a plans directory (generic JSON output).
 pub fn sync_skills_to_plans(conn: &Connection, plans_dir: &Path) -> Result<usize> {
+    let rows = fetch_skills_with_inputs(conn)?;
+    let skills: Vec<crate::skill_runtime::SkillMeta> = rows.iter().map(skill_row_to_meta).collect();
+    sync_skills_to_plans_with_skills(plans_dir, &skills)
+}
+
+/// Sync the provided skills to a plans directory (generic JSON output).
+///
+/// This is the implementation used by [`crate::skill_runtime::sync_adapter::ClarityJsonAdapter`].
+pub fn sync_skills_to_plans_with_skills(
+    plans_dir: &Path,
+    skills: &[crate::skill_runtime::SkillMeta],
+) -> Result<usize> {
     std::fs::create_dir_all(plans_dir)
         .with_context(|| format!("Failed to create plans dir: {}", plans_dir.display()))?;
 
-    let skills = fetch_skills_with_inputs(conn)?;
     let mut synced = 0;
 
     for skill in skills {
+        let skill = skill_meta_to_row(skill);
         let plan_path = plans_dir.join(format!("{}.json", skill.id));
 
         let devbase_updated = skill.updated_at;
@@ -90,6 +102,45 @@ pub fn sync_skills_to_plans(conn: &Connection, plans_dir: &Path) -> Result<usize
     }
 
     Ok(synced)
+}
+
+fn skill_row_to_meta(row: &SkillWithInputs) -> crate::skill_runtime::SkillMeta {
+    let inputs: Vec<crate::skill_runtime::SkillInput> =
+        serde_json::from_str(&row.inputs_schema).unwrap_or_default();
+    let tags = parse_tags_from_skill(&row.tags);
+    crate::skill_runtime::SkillMeta {
+        id: row.id.clone(),
+        name: row.name.clone(),
+        version: "1.0.0".to_string(),
+        description: row.description.clone(),
+        author: None,
+        tags,
+        entry_script: None,
+        skill_type: crate::skill_runtime::SkillType::Custom,
+        local_path: std::path::PathBuf::new(),
+        inputs,
+        outputs: vec![],
+        dependencies: vec![],
+        embedding: None,
+        installed_at: row.updated_at,
+        updated_at: row.updated_at,
+        last_used_at: None,
+        body: String::new(),
+        category: None,
+    }
+}
+
+fn skill_meta_to_row(skill: &crate::skill_runtime::SkillMeta) -> SkillWithInputs {
+    let inputs_schema = serde_json::to_string(&skill.inputs).unwrap_or_default();
+    let tags = skill.tags.join(",");
+    SkillWithInputs {
+        id: skill.id.clone(),
+        name: skill.name.clone(),
+        description: skill.description.clone(),
+        tags,
+        inputs_schema,
+        updated_at: skill.updated_at,
+    }
 }
 
 fn fetch_skills_with_inputs(conn: &Connection) -> Result<Vec<SkillWithInputs>> {

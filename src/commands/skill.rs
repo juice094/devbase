@@ -225,17 +225,58 @@ pub fn run_skill(
                 }
             }
         }
-        crate::SkillCommands::Sync { output_dir } => {
+        crate::SkillCommands::Sync { output_dir, targets } => {
             let out = std::path::PathBuf::from(&output_dir);
             if !out.exists() {
                 std::fs::create_dir_all(&out)?;
             }
-            match skill_runtime::clarity_sync::sync_skills_to_plans(&conn, &out) {
-                Ok(count) => println!("Synced {} skill(s) to {}.", count, out.display()),
-                Err(e) => {
-                    return Err(anyhow::anyhow!("Skill sync failed: {}", e));
+
+            let targets = if targets.iter().any(|t| t.eq_ignore_ascii_case("all")) {
+                skill_runtime::sync_adapter::supported_adapters()
+                    .into_iter()
+                    .map(String::from)
+                    .collect::<Vec<_>>()
+            } else {
+                targets
+            };
+
+            let adapters = skill_runtime::sync_adapter::resolve_adapters(&targets)?;
+            let rows = registry::list_skills(&conn, None, None)?;
+            let mut skills = Vec::new();
+            for row in rows {
+                let skill_md = std::path::PathBuf::from(&row.local_path).join("SKILL.md");
+                if !skill_md.exists() {
+                    continue;
+                }
+                match parser::parse_skill_md(&skill_md) {
+                    Ok(skill) => skills.push(skill),
+                    Err(e) => eprintln!("Warning: failed to parse {}: {}", skill_md.display(), e),
                 }
             }
+            let mut total = 0usize;
+            for adapter in adapters {
+                let adapter_out = out.join(adapter.name());
+                std::fs::create_dir_all(&adapter_out)?;
+                match adapter.sync(&skills, &adapter_out) {
+                    Ok(count) => {
+                        println!(
+                            "Synced {} skill(s) to {} ({}).",
+                            count,
+                            adapter_out.display(),
+                            adapter.name()
+                        );
+                        total += count;
+                    }
+                    Err(e) => {
+                        return Err(anyhow::anyhow!(
+                            "Skill sync failed for target '{}': {}",
+                            adapter.name(),
+                            e
+                        ));
+                    }
+                }
+            }
+            println!("Total synced: {} skill instance(s).", total);
         }
         crate::SkillCommands::Discover { path, skill_id, dry_run, json } => {
             let is_git_url = path.starts_with("http://")
@@ -335,7 +376,8 @@ pub fn run_skill(
             json,
         } => {
             use crate::skill_runtime::sources::{GitHubSource, LocalFileSource, SkillSource};
-            let source_impl: Box<dyn SkillSource> = if source.starts_with("https://github.com/")
+            let source_impl: Box<dyn SkillSource + Send + Sync> = if source
+                .starts_with("https://github.com/")
                 || source.starts_with("http://github.com/")
                 || (source.contains('/') && !source.starts_with('/') && !source.contains("://"))
             {
@@ -347,9 +389,14 @@ pub fn run_skill(
                 let name = source_path.as_deref().unwrap_or(path);
                 Box::new(LocalFileSource::new(name, std::path::Path::new(path)))
             };
-            let skills = tokio::runtime::Runtime::new()
-                .context("failed to create tokio runtime for skill fetch")?
-                .block_on(source_impl.fetch())?;
+            let source_name = source_impl.name().to_string();
+            let skills = std::thread::spawn(move || {
+                tokio::runtime::Runtime::new()
+                    .context("failed to create tokio runtime for skill fetch")?
+                    .block_on(source_impl.fetch())
+            })
+            .join()
+            .map_err(|e| anyhow::anyhow!("skill fetch thread panicked: {:?}", e))??;
             if dry_run {
                 if json {
                     let names: Vec<&str> = skills.iter().map(|s| s.name.as_str()).collect();
@@ -357,17 +404,13 @@ pub fn run_skill(
                         "{}",
                         serde_json::to_string_pretty(&serde_json::json!({
                             "dry_run": true,
-                            "source": source_impl.name(),
+                            "source": source_name,
                             "skills_found": skills.len(),
                             "skill_names": names,
                         }))?
                     );
                 } else {
-                    println!(
-                        "Dry-run: found {} skill(s) from '{}':",
-                        skills.len(),
-                        source_impl.name()
-                    );
+                    println!("Dry-run: found {} skill(s) from '{}':", skills.len(), source_name);
                     for s in &skills {
                         println!("  - {} ({})", s.name, s.id);
                     }
@@ -389,7 +432,7 @@ pub fn run_skill(
                     "INSERT INTO sync_log (source_name, status, skills_added, skills_updated, finished_at)
                      VALUES (?1, ?2, ?3, ?4, datetime('now'))",
                     rusqlite::params![
-                        source_impl.name(),
+                        source_name,
                         "success",
                         added as i64,
                         updated as i64
@@ -399,13 +442,13 @@ pub fn run_skill(
                     "INSERT INTO sync_sources (name, url, source_type)
                      VALUES (?1, ?2, ?3)
                      ON CONFLICT(name) DO UPDATE SET last_sync_at = datetime('now')",
-                    rusqlite::params![source_impl.name(), &source, source_impl.name()],
+                    rusqlite::params![source_name, &source, source_name],
                 );
                 if json {
                     println!(
                         "{}",
                         serde_json::to_string_pretty(&serde_json::json!({
-                            "source": source_impl.name(),
+                            "source": source_name,
                             "skills_found": skills.len(),
                             "skills_added": added,
                             "skills_updated": updated,
@@ -415,7 +458,7 @@ pub fn run_skill(
                     println!(
                         "Imported {} skill(s) from '{}' ({} added, {} updated).",
                         skills.len(),
-                        source_impl.name(),
+                        source_name,
                         added,
                         updated
                     );

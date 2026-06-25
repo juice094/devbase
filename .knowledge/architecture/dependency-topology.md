@@ -1,12 +1,18 @@
-# devbase 依赖拓扑规划
+---
+type: ArchitectureTopology
+title: devbase 模块依赖拓扑
+description: 按模块间依赖关系组织的功能分层（11-Tier），包含枢纽分析与迭代策略。
+timestamp: 2026-06-25T11:15:50Z
+tags: [architecture, topology, dependency, tiers]
+---
 
-> 本文件按**模块间依赖关系**（而非时间排期）重新组织 devbase 的功能演进顺序。
-> 
+# devbase 模块依赖拓扑
+
 > 原则：**下层为上层提供契约，上层为下层提供场景验证。** 改动下层（高扇入枢纽）影响面大，需更严格测试；叶节点可独立迭代实验。
 
 ---
 
-## 一、拓扑总览
+## 拓扑总览
 
 ```text
 Tier 11  ┌────────────────────────────────────────┐
@@ -14,7 +20,7 @@ Tier 11  ┌──────────────────────�
 Tier 10  ├────────────────────────────────────────┤
          │  tui/ (theme/layout/state/event/render)│  ← 终端交互层
 Tier 9   ├────────────────────────────────────────┤
-         │  mcp/ (mod + tools/*)                  │  ← MCP 协议适配层，35 tools
+         │  mcp/ (mod + tools/*)                  │  ← MCP 协议适配层，71 tools
 Tier 8   ├────────────────────────────────────────┤
          │  knowledge_engine, skill_sync, vault   │  ← 高级聚合、跨层桥接
 Tier 7   ├────────────────────────────────────────┤
@@ -51,7 +57,7 @@ Tier 0   ├──────────────────────�
 
 ---
 
-## 二、逐层规划
+## 逐层规划
 
 ### Tier 0 — 原子基础层
 
@@ -59,23 +65,21 @@ Tier 0   ├──────────────────────�
 
 | 模块 | 功能 | 依赖数 | 被依赖数 |
 |:---|:---|:---:|:---:|
-| `core` | NodeType / Node / Edge 统一实体枚举 | 0 | 中 |
-| `i18n` | 静态字符串表（en/zh_cn） | 0 | **高** |
-| `config` | 配置结构体：LLM、Embedding、Sync、Daemon | 0 | **高** |
+| `core` | `NodeType` / `Node` / `Edge` 统一实体枚举 | 0 | 中 |
+| `i18n` | 静态字符串表（en/zh_cn） | 0 | 高 |
+| `config` | 配置结构体：LLM、Embedding、Sync、Daemon | 0 | 高 |
 | `asyncgit` | 异步 Git 状态通知通道（crossbeam） | 0 | 中 |
-| `sync_protocol` | FileInfo / SyncIndex / scan_directory | 0 | 低 |
+| `sync_protocol` | `FileInfo` / `SyncIndex` / scan_directory | 0 | 低 |
 
 **迭代策略**：极度稳定，变更需全量回归。`i18n` 新增字段需同步所有语言文件。
 
----
-
 ### Tier 1 — 数据契约与原子能力层
 
-**目的**：定义**领域模型**和**可独立工作的原子能力**。registry 是整个系统的"心脏"，所有业务数据最终落盘于此。
+**目的**：定义**领域模型**和**可独立工作的原子能力**。`registry` 是整个系统的"心脏"，所有业务数据最终落盘于此。
 
 | 模块/子模块 | 功能 | 依赖 | 被依赖 |
 |:---|:---|:---|:---|
-| `registry/` | SQLite Schema v17 + CRUD：repos/repo_tags/code_symbols/code_embeddings/code_call_graph/code_symbol_links/oplog/vault_notes/papers/experiments/skills/skill_executions/entities/entity_types/relations/workflows/workflow_executions | Tier 0 (dirs) | **几乎所有上层** |
+| `registry/` | SQLite Schema v36 + CRUD：repos/repo_tags/code_symbols/code_embeddings/code_call_graph/code_symbol_links/oplog/vault_notes/papers/experiments/skills/skill_executions/entities/entity_types/relations/workflows/workflow_executions | Tier 0 (dirs) | 几乎所有上层 |
 | `vault/fs_io` | Vault 文件读写原子操作 | 无 | vault/* |
 | `vault/frontmatter` | YAML frontmatter 解析 | 无 | vault/scanner, skill_sync |
 | `vault/wikilink` | `[[wikilink]]` 提取 | 无 | vault/scanner |
@@ -87,9 +91,8 @@ Tier 0   ├──────────────────────�
 **关键决策**：registry 的 Schema 变更是**全局阻塞点**。任何新增表/字段必须：
 1. 更新 `registry/migrate.rs` 的 `PRAGMA user_version`
 2. 触发 `backup::auto_backup_before_migration()`
-3. 同步修改 `oplog_analytics.rs` 的表存在性检查
-
----
+3. 同步修改 `test_helpers.rs` 的 `SCHEMA_DDL`
+4. 检查 `oplog_analytics.rs` 的表存在性检查
 
 ### Tier 2 — 扫描与发现层
 
@@ -105,22 +108,18 @@ Tier 0   ├──────────────────────�
 
 **迭代策略**：scan 是数据入口，新增语言支持或检测规则在此层实验，不影响查询层。
 
----
-
 ### Tier 3 — 分析与关联层
 
 **目的**：在已结构化数据上建立**语义关联**，为查询层提供"图"能力。
 
 | 模块 | 功能 | 输入数据 | 产出 |
 |:---|:---|:---|:---|
-| `dependency_graph` | 跨仓库依赖图构建 | scan 发现的 Cargo.toml/package.json | 图结构（待深化） |
+| `dependency_graph` | 跨仓库依赖图构建 | scan 发现的 Cargo.toml/package.json | 图结构 |
 | `symbol_links` | Jaccard 签名相似度 + 同文件聚类 → code_symbol_links | registry.code_symbols | registry.code_symbol_links |
 | `vault/indexer` | Vault 笔记入 Tantivy 全文索引 | vault_notes, search | Tantivy 索引文档 |
 | `vault/backlinks` | Vault 反向链接图谱 | vault_notes.outgoing_links | 关联查询结果 |
 
-**迭代策略**：symbol_links 的阈值（默认 0.3）和算法可在此层独立调优，不破坏下游 API。
-
----
+**迭代策略**：`symbol_links` 的阈值（默认 0.3）和算法可在此层独立调优，不破坏下游 API。
 
 ### Tier 4 — 查询与报告层
 
@@ -135,8 +134,6 @@ Tier 0   ├──────────────────────�
 
 **关键约束**：查询层必须保持**向后兼容**。MCP tool schema 的 breaking change 只能通过新增 tool（如 `_v2`）而非修改现有 tool。
 
----
-
 ### Tier 5 — 同步编排层
 
 **目的**：将 registry 中的**期望状态**（upstream_url、tags、policy）与文件系统的**实际状态**对齐。
@@ -148,13 +145,11 @@ Tier 0   ├──────────────────────�
 | `sync/orchestrator` | 并发信号量控制、批量执行、超时处理、进度回调 | policy, tasks |
 | `watch` | notify 文件系统监控、事件聚合 | sync_protocol |
 
-**迭代策略**：sync 是**危险操作层**。新增 sync 策略（如 `SyncPolicy::StashThenRebase`）需先在 policy 层定义，再在 tasks 层实现，最后由 orchestrator 编排。
-
----
+**迭代策略**：sync 是**危险操作层**。新增 sync 策略需先在 policy 层定义，再在 tasks 层实现，最后由 orchestrator 编排。
 
 ### Tier 6 — Skill Runtime 层
 
-**目的**：实现 Skill 的**全生命周期管理**，是阶段二的核心交付物。
+**目的**：实现 Skill 的**全生命周期管理**。
 
 | 子模块 | 功能 | 依赖 |
 |:---|:---|:---|
@@ -173,8 +168,6 @@ parser → discover
 registry → dependency → executor
 registry + executor → scoring
 ```
-
----
 
 ### Tier 7 — Workflow 引擎层
 
@@ -197,8 +190,6 @@ scheduler → executor
 skill_runtime::executor → executor
 ```
 
----
-
 ### Tier 8 — 高级聚合与跨层桥接
 
 **目的**：连接原本正交的子系统，产生**涌现能力**。
@@ -209,27 +200,25 @@ skill_runtime::executor → executor
 | `skill_sync` | Vault 笔记（ai_context=true）→ Clarity SKILL.md 格式导出 | vault ↔ skill_runtime |
 | `vault/mod` | Vault 子系统统一出口 | 聚合 vault/* |
 
----
-
 ### Tier 9 — MCP 协议层
 
-**目的**：将所有下层能力**封装为标准协议接口**，供 Clarity 等 AI Agent 调用。
+**目的**：将所有下层能力**封装为标准协议接口**，供 AI Agent 调用。
 
 | 子模块 | 对应 Tools | 依赖的下层模块 |
 |:---|:---|:---|
 | `tools/repo` | scan, health, sync, query_repos | scan, health, sync, query |
 | `tools/query` | query, index, code_metrics, module_graph | query, scan, semantic_index |
-| `tools/vault` | vault_search, vault_read, vault_write, vault_backlinks | vault/*, search |
-| `tools/skill` | skill_list, skill_search, skill_run, skill_top | skill_runtime/* |
-| `tools/context` | project_context, natural_language_query, hybrid_search, cross_repo_search, related_symbols, knowledge_report, embedding_store, embedding_search | search/hybrid, embedding, oplog_analytics, query |
+| `tools/vault` | vault_search, vault_read, vault_write, vault_backlinks, vault_daily, vault_graph, vault_export, vault_history | vault/*, search |
+| `tools/skill` | skill_list, skill_search, skill_run, skill_discover, skill_sync | skill_runtime/* |
+| `tools/context` | project_context, project_brief, impact_analysis, hybrid_search, cross_repo_search, related_symbols, knowledge_report, embedding_store, embedding_search | search/hybrid, embedding, oplog_analytics, query |
+| `tools/session` | session_save, session_list, session_resume, session_attach, session_detach, session_activate, session_search, session_capture, session_workflows, session_recall, session_index, session_export, session_import | registry, workflow |
+| `tools/relations` | relation_store, relation_query, relation_delete | registry::relation |
 | `mcp/mod` | 框架：McpTool trait、invoke_stream、ToolStreamEvent | 聚合上述所有 tools |
 
 **关键契约**：
-- 所有状态变更操作必须**幂等**（`ON CONFLICT ... DO UPDATE/NOTHING`）
-- 所有批量操作包裹在 SQLite transaction 中
-- Breaking change 通过新增 tool 实现，不修改现有 tool schema
-
----
+- 所有状态变更操作必须**幂等**（`ON CONFLICT ... DO UPDATE/NOTHING`）。
+- 所有批量操作包裹在 SQLite transaction 中。
+- Breaking change 通过新增 tool 实现，不修改现有 tool schema。
 
 ### Tier 10 — TUI 交互层
 
@@ -247,20 +236,18 @@ skill_runtime::executor → executor
 | `render/help` | 快捷键帮助覆盖层 | state, theme, layout |
 | `render/logs` | 底部日志面板 | state, theme, layout |
 
-**迭代策略**：TUI 是纯消费者层，新增面板（如 `render/loop_step.rs`）不改动任何下层逻辑。
-
----
+**迭代策略**：TUI 是纯消费者层，新增面板不改动任何下层逻辑。
 
 ### Tier 11 — 系统入口
 
 | 模块 | 功能 | 依赖 |
 |:---|:---|:---|
-| `main.rs` | CLI 子命令解析（clap）、模块路由 | **所有上层** |
+| `main.rs` | CLI 子命令解析（clap）、模块路由 | 所有上层 |
 | `daemon.rs` | 定时 tick：stale repo health check、自动 sync | config, health, sync |
 
 ---
 
-## 三、枢纽分析
+## 枢纽分析
 
 ### 高扇入模块（改动影响大，需谨慎）
 
@@ -283,42 +270,9 @@ skill_runtime::executor → executor
 
 ---
 
-## 四、基于依赖的迭代策略
+## 基于依赖的迭代策略
 
-### 1. 根节点加固（Tier 0–1）
-- **registry Schema** 的任何变更需经过：migration 脚本 → 备份逻辑 → oplog_analytics 表存在性检查 → MCP tool schema 兼容性审查
-- **i18n** 新增字段需全语言覆盖，否则 TUI 会出现空字符串
-
-### 2. 数据管道扩展（Tier 2–3）
-- 新增语言支持（如 `tree-sitter-zig`）：在 `semantic_index` 扩展 → `scan` 触发索引 → `symbol_links` 自动关联 → `search/hybrid` 无需改动即可搜索
-- 新增 Vault 笔记格式：在 `vault/frontmatter` 或 `vault/wikilink` 实验 → `vault/scanner` 消费 → `vault/indexer` 入 Tantivy
-
-### 3. 查询能力叠加（Tier 4）
-- `search/hybrid` 的 RRF 权重、Tantivy 与 embedding 的融合策略可独立调优
-- `oplog_analytics` 的新报表类型只需读取 registry，不改动写入路径
-
-### 4. 编排能力实验（Tier 5–7）
-- **Skill Runtime** 和 **Workflow** 是相对独立的"应用层"，可并行开发
-- Workflow 的 `StepType::Loop` 新增：只需在 `workflow/model` 加枚举 → `workflow/parser` 反序列化 → `workflow/executor` 实现循环逻辑 → 不影响 Skill Runtime
-
-### 5. 协议与界面适配（Tier 9–10）
-- 新增 MCP tool：在对应 `tools/*` 子模块实现，注册到 `mcp/mod.rs` 的 `McpToolEnum`，零改动下层业务逻辑
-- 新增 TUI 面板：在 `render/` 新增子模块，由 `event.rs` 路由按键，零改动下层
-
----
-
-## 五、与排期路线的对比
-
-| 排期路线（时间线） | 拓扑路线（依赖线） | 差异说明 |
-|:---|:---|:---|
-| Wave 1–15b：数据层与索引 | Tier 0 → Tier 1 → Tier 2 → Tier 3 | 一致 |
-| Wave 16–21：Skill Runtime | Tier 6（parser → registry → discover → dependency → executor → scoring） | 拓扑更细粒度展示子模块依赖 |
-| Wave 22–25：Workflow Engine | Tier 7（model → parser → scheduler → executor） | 明确 Workflow 依赖 Skill Runtime executor |
-| Wave 26–27：NLQ + Mind Market | Tier 4（search/hybrid）+ Tier 6（scoring） | NLQ 是查询层增强，Mind Market 是 Skill 层增强，二者**无依赖关系**，可并行 |
-| Wave 28–33：风险修复与硬化 | 跨 Tier（unwrap 清零涉及 Tier 6–7） | 质量工作横向穿透所有层 |
-| Future：L0–L4 知识模型 | 可能新增 Tier 3.5（知识图谱层）或扩展 Tier 1 Schema | 需先定义模型与 registry 的映射 |
-| Future：跨设备同步 | Tier 5（sync）+ Tier 11（daemon）扩展 | 依赖 syncthing-rust 的 REST API |
-
----
-
-*本文档作为架构决策参考，应与 `overview.md` 和 `AGENTS.md` 同步维护。*
+1. **根节点加固（Tier 0–1）**：registry Schema 变更需经过 migration → 备份 → 兼容性检查。
+2. **数据管道扩展（Tier 2–3）**：新增语言支持在 `semantic_index` 扩展 → `scan` 触发索引 → `symbol_links` 自动关联 → `search/hybrid` 无需改动。
+3. **查询能力叠加（Tier 4）**：`search/hybrid` RRF 权重、`oplog_analytics` 新报表可独立调优。
+4. **编排能力实验（Tier 5–7）**：sync 策略、Skill Runtime、Workflow StepType 在此层迭代。

@@ -17,7 +17,7 @@
 | Schema | v36 | `src/registry/migrate.rs` |
 | MCP Tools | **71**（5 Stable / 62 Beta / 4 Experimental） | `src/mcp/mod.rs` |
 | Workspace Crates | 12 | `crates/` |
-| `main.rs` | 833 行（RF-4 ≤ 1000） | `wc -l` |
+| `main.rs` | 836 行（RF-4 ≤ 1000） | `wc -l` |
 | RF-6 | ✅ 生产代码 unwrap/expect/panic 清零 | invariant checks |
 
 ---
@@ -34,8 +34,8 @@
 | 开发者 | 数据库 Schema 完整定义 | [`reference/schema-v36.md`](reference/schema-v36.md) |
 | 开发者 | 统一实体模型（entities/relations） | [`reference/entities-model.md`](reference/entities-model.md) |
 | 开发者 | 71 个 MCP 工具速查 | [`reference/mcp-tools.md`](reference/mcp-tools.md) |
-| Agent | 项目架构定义 | [`architecture/context-compiler.md`](architecture/context-compiler.md) |
-| Agent | 架构红线与不变量 | [`architecture/invariants.md`](architecture/invariants.md) |
+| Agent | 项目架构定义 | [`../.knowledge/architecture/index.md`](../.knowledge/architecture/index.md) |
+| Agent | 架构红线与不变量 | [`../.knowledge/architecture/invariants.md`](../.knowledge/architecture/invariants.md) |
 | 维护者 | 功能路线图 | [`ROADMAP.md`](ROADMAP.md) |
 | 维护者 | 已知问题与技术债务 | [`../KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) |
 
@@ -49,11 +49,8 @@
 
 | 文档 | 说明 |
 |------|------|
-| [`architecture/overview.md`](architecture/overview.md) | 三层架构：字节 → 语义 → 行动 |
-| [`architecture/context-compiler.md`](architecture/context-compiler.md) | **核心定义**：本地情境编译器 — 五层架构、六维信息模型 |
+| [`../.knowledge/architecture/index.md`](../.knowledge/architecture/index.md) | **OKF 权威架构概念索引**（Agent 优先阅读） |
 | [`architecture/workflow-dsl.md`](architecture/workflow-dsl.md) | Workflow DSL 规范（YAML 多步骤编排） |
-| [`architecture/dependency-topology.md`](architecture/dependency-topology.md) | 模块依赖拓扑（Tier 1–11） |
-| [`architecture/invariants.md`](architecture/invariants.md) | **架构红线** RF-1~RF-7 + 分层约束 G/T |
 | [`architecture/split-plan.md`](architecture/split-plan.md) | Workspace crate 拆分计划 |
 | [`architecture/pre-split-evaluation.md`](architecture/pre-split-evaluation.md) | 单 crate vs 多 crate 评估 |
 | [`architecture/adr-template.md`](architecture/adr-template.md) | ADR 模板与已完成决策索引 |
@@ -132,6 +129,10 @@
 | [`_archive/roadmap-2026.md`](_archive/roadmap-2026.md) | 严重过时（v0.2.3） |
 | [`_archive/skill-runtime.md`](_archive/skill-runtime.md) | 已完全实现 |
 | [`_archive/tui-skill-integration.md`](_archive/tui-skill-integration.md) | 已完全实现 |
+| [`_archive/overview.md`](_archive/overview.md) | 历史三层架构讨论，已迁移至 `.knowledge/architecture/three-layer-model.md` |
+| [`_archive/context-compiler.md`](_archive/context-compiler.md) | v0.13.0 历史架构定义，已迁移至 `.knowledge/architecture/` |
+| [`_archive/dependency-topology.md`](_archive/dependency-topology.md) | 历史 11-Tier 拓扑，已迁移至 `.knowledge/architecture/dependency-topology.md` |
+| [`_archive/invariants.md`](_archive/invariants.md) | 历史不变量清单，已迁移至 `.knowledge/architecture/invariants.md` |
 | `_archive/*` | 其余见目录内文件 |
 
 ### 📊 运维与进度（Ops & Progress）
