@@ -10,6 +10,8 @@ devbase is a Rust workspace (edition 2024, Rust 1.95+) that compiles a developer
 
 **License**: AGPL-3.0-or-later / dual-licensed commercial. New source files must include the SPDX header.
 
+**Project knowledge bundle**: The canonical AI-agent documentation lives in `.knowledge/` as an Open Knowledge Format (OKF) bundle. Start with [`.knowledge/index.md`](./.knowledge/index.md) for the full architecture map, registry migration policy, MCP tool-adding guide, and development conventions.
+
 ---
 
 ## Build, Test, and Lint
@@ -63,6 +65,28 @@ scripts/ci-local.sh    # Linux/macOS
 - **`src/main.rs`** — CLI only; delegates to `commands/` submodules. Hard ceiling: <1000 lines (RF-4).
 - **`src/lib.rs`** — Exports all 30+ modules; the binary is a thin wrapper.
 
+### Project map by layer
+
+| Layer | Modules | Responsibility |
+|-------|---------|----------------|
+| **Interaction** | `commands/`, `tui/`, `mcp/` | Human CLI, ratatui dashboard, 71 MCP tools over stdio |
+| **Compilation** | `registry/`, `search/`, `vault/`, `skill_runtime/`, `workflow/`, `knowledge_engine/`, `sync/` | Compile repos/notes/skills/workflows into queryable knowledge |
+| **Reliability** | SQLite WAL, Tantivy, git2, `storage.rs` | Local-first durable storage, indexing, and audit trail |
+
+### Crate dependency direction
+
+```
+devbase-core-types (zero internal coupling)
+    ↓
+{ devbase-registry, devbase-embedding, devbase-vault-*, devbase-skill-runtime-*, ... }
+    ↓
+src/ modules (commands, tui, mcp, registry, search, vault, ...)
+```
+
+- `devbase-core-types` is the bottom-most crate; it must not depend on any other devbase crate.
+- Workspace crates in `crates/` must not import from the main `src/` binary/library via `crate::`.
+- `src/` modules aggregate all workspace crates and internal modules; `main.rs` is the only binary entry point.
+
 ### Key architectural patterns
 
 #### MCP Tool trait
@@ -110,17 +134,17 @@ Discovery (`skill_runtime/discover.rs`) → Install → Execute (`executor.rs`) 
 
 ## Architecture Guardrails (RF Rules)
 
-These are enforced in CI via `scripts/invariant-checks/run-checks.ps1`. A violation is a blocking failure.
+These are enforced in CI via `scripts/invariant-checks/run-checks.ps1`. A violation is a blocking failure. `RF-*` map to `AGENTS.md` red-lines `G1–G7`.
 
-| Rule | Summary |
-|------|---------|
-| **RF-1** | Dependency injection over global state. No new `dirs::data_local_dir()` / `std::env::var_os` hard-coding. |
-| **RF-2** | Hermetic testing. No `std::env::set_var` in tests. Use `tempfile` + injected `StorageBackend`. Tantivy/SQLite FS tests must be serialized. |
-| **RF-3** | `SCHEMA_DDL` and `migrate.rs` must stay atomically in sync. |
-| **RF-4** | `main.rs` ≤ 1000 lines; CLI commands live in `commands/`. |
-| **RF-5** | No cyclic `crate::` dependencies between modules. |
-| **RF-6** | **Zero** `unwrap()` / `expect()` / `panic!()` in production code (outside `#[cfg(test)]`). |
-| **RF-7** | New modules with >5 internal `crate::` refs cannot be extracted to workspace crates. Re-export files (`src/symbol_links.rs`, etc.) are `RE-EXPORT ONLY`. |
+| Rule | Maps | Summary |
+|------|------|---------|
+| **RF-1** | G1 | Dependency injection over global state. No new `dirs::data_local_dir()` / `std::env::var_os` hard-coding. |
+| **RF-2** | G2 | Hermetic testing. No `std::env::set_var` in tests. Use `tempfile` + injected `StorageBackend`. Tantivy/SQLite FS tests must be serialized. |
+| **RF-3** | G3 | `SCHEMA_DDL` and `migrate.rs` must stay atomically in sync. |
+| **RF-4** | G4 | `main.rs` ≤ 1000 lines; CLI commands live in `commands/`. |
+| **RF-5** | G6 | No cyclic `crate::` dependencies between modules. |
+| **RF-6** | G5 | **Zero** `unwrap()` / `expect()` / `panic!()` in production code (outside `#[cfg(test)]`). |
+| **RF-7** | G7 | New modules with >5 internal `crate::` refs cannot be extracted to workspace crates. Re-export files (`src/symbol_links.rs`, etc.) are `RE-EXPORT ONLY`. |
 
 **Additional tiered checks** (from `run-checks.ps1`):
 - **T11**: `mcp/tools/*.rs` must not use `rusqlite::Connection` directly. Known exceptions: `repo.rs`, `brief.rs`, `impact.rs`.
@@ -143,7 +167,7 @@ These are enforced in CI via `scripts/invariant-checks/run-checks.ps1`. A violat
 `TempDir` may return short filenames (`TEMP~1`) while `dunce::canonicalize` returns long filenames. Normalize **both** sides before comparing paths in tests.
 
 ### Running tests
-Current test count: **605** passed / 7 ignored (from `cargo test --workspace -- --list`).
+Current test count: **616+** passed (a small subset ignored) from `cargo test --workspace -- --list`.
 
 Local `.cargo/config.toml` sets `RUST_TEST_THREADS = "1"`. CI uses `--test-threads=4`. If you encounter flaky SQLite/Tantivy tests locally, reduce threads:
 ```bash
@@ -160,7 +184,7 @@ cargo test -- --test-threads=1
 4. Add variant to `McpToolEnum` in `src/mcp/mod.rs`
 5. Add routing arm in `src/mcp/mod.rs` `handle_request`
 6. Add unit tests in `src/mcp/tests.rs`
-7. Update README Tool matrix and `AGENTS.md` tool count
+7. Update README Tool matrix, `AGENTS.md`, and `CLAUDE.md` tool counts
 
 **All state-changing tools must be idempotent** — use `ON CONFLICT ... DO UPDATE` or equivalent upsert logic.
 
@@ -173,7 +197,7 @@ cargo test -- --test-threads=1
 3. Call `backup::auto_backup_before_migration()` at the start
 4. Update `CURRENT_SCHEMA_VERSION`
 5. Mirror changes into `src/registry/test_helpers.rs` `SCHEMA_DDL`
-6. Update `AGENTS.md` schema version number
+6. Update `AGENTS.md`, `CLAUDE.md`, and `.knowledge/index.md` schema version numbers
 
 ---
 
@@ -206,6 +230,8 @@ cargo fmt --check
 | `src/workflow/executor.rs` | YAML workflow DAG executor |
 | `src/vault/backlinks.rs` | Wikilink BFS graph traversal |
 | `crates/` | 12 workspace sub-crates (zero internal coupling) |
+| `.knowledge/index.md` | Canonical OKF knowledge bundle entry point |
+| `.knowledge/architecture/project-worktree.md` | Complete project worktree for module/file lookup |
 | `scripts/invariant-checks/run-checks.ps1` | CI architecture invariant checks |
 | `.cargo/config.toml` | Local cargo config (`RUST_TEST_THREADS=1`) |
 | `rustfmt.toml` | `edition = "2024"`, `max_width = 100` |

@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-devbase 的六维信息模型在**纸面架构**（`docs/architecture/context-compiler.md`）与**实际实现**之间存在显著落差。核心问题：
+devbase 的六维信息模型在**纸面架构**（`docs/_archive/context-compiler.md`，历史文档，已归档）与**实际实现**之间存在显著落差。核心问题：
 
 1. **`project_context` 并非真正的“编译端点”** — 它聚合了 7 类数据，但未触及 `relations` 统一关系表、`known_limits` 风险层、`experiments` 历史层，也无法跨项目工作。
 2. **38 个 MCP tools 中仅 7 个有实际 invocation 测试**，其余 31 个仅为 schema 注册测试（`test_tools_list`）。

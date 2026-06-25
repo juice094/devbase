@@ -140,7 +140,7 @@ cargo run -- mcp
 | **添加 MCP Tool** | `src/mcp/tools/` 新建模块 | `src/mcp/tools/mod.rs`, `src/mcp/mod.rs` | [AGENTS.md](AGENTS.md) "MCP 工具幂等性" |
 | **添加 Skill** | `skills/` 或外部 git 仓库 | `SKILL.md` 规范 | [AGENTS.md](AGENTS.md) "Skill 规范" |
 | **改进文档** | 直接编辑 `.md` 文件 | `README.md`, `AGENTS.md` | — |
-| **重构 / 性能优化** | 先开 Issue 讨论 | — | [`docs/architecture/invariants.md`](docs/architecture/invariants.md) |
+| **重构 / 性能优化** | 先开 Issue 讨论 | — | [`.knowledge/architecture/invariants.md`](../.knowledge/architecture/invariants.md) |
 
 ### 添加 MCP Tool 的标准路径
 
@@ -233,8 +233,9 @@ existence before registration. Returns structured validation report.
 
 | 文档 | 内容 |
 |:---|:---|
-| [`docs/architecture/overview.md`](docs/architecture/overview.md) | 三层架构、技术决策记录、模块边界 |
-| [`docs/architecture/invariants.md`](docs/architecture/invariants.md) | 架构红线 RF-1~RF-7 + 分层约束 |
+| [`.knowledge/architecture/three-layer-model.md`](../.knowledge/architecture/three-layer-model.md) | 三层架构：交互层 → 编译层 → 可靠层 |
+| [`.knowledge/architecture/dependency-topology.md`](../.knowledge/architecture/dependency-topology.md) | 11-Tier 模块依赖拓扑 |
+| [`.knowledge/architecture/invariants.md`](../.knowledge/architecture/invariants.md) | 架构红线 G1–G7 + 分层不变量 T01–T12 |
 | [`AGENTS.md`](AGENTS.md) | Agent 环境指引、安全原则、Schema 迁移规范 |
 | [`docs/architecture/`](docs/architecture/) | 预拆分评估、Workflow DSL 规范、统一实体模型 |
 | [`docs/research/`](docs/research/) | 竞品分析、Embedding 策略 |

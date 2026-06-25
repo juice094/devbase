@@ -91,7 +91,7 @@ devbase/
 2. **编译层** — 感知（tree-sitter/Tantivy/Git）→ 知识（图谱/向量/关系）→ 策略（同步/工作流/健康守卫）
 3. **可靠层** — SQLite WAL 并发安全 + 索引健康检测 + OpLog 全操作审计
 
-> 可靠性红线：所有 Registry 写入必须留下不可变审计痕迹（OpLog）；Schema 迁移前自动生成快照。详见 [docs/architecture/overview.md](docs/architecture/overview.md)。
+> 可靠性红线：所有 Registry 写入必须留下不可变审计痕迹（OpLog）；Schema 迁移前自动生成快照。详见 [`.knowledge/architecture/invariants.md`](.knowledge/architecture/invariants.md)。
 
 ---
 

@@ -162,7 +162,8 @@ grep "devbase" src/<module_path>.rs  # 应为空（除 re-export 文件）
 | [`AGENTS.md`](../../AGENTS.md) | 架构红线、安全原则、历史决策 | 每次会话启动 |
 | [`docs/ai-protocol.md`](../ai-protocol.md) | 架构快照、待办、耦合地图 | 每次架构变更后 |
 | [`docs/ROADMAP.md`](../ROADMAP.md) | 路线图、版本规划、技术债 | 需要了解长期计划时 |
-| [`docs/architecture/overview.md`](../architecture/overview.md) | 系统架构图、模块关系 | 新功能设计时 |
+| [`.knowledge/architecture/three-layer-model.md`](../../.knowledge/architecture/three-layer-model.md) | 三层架构与数据流 | 新功能设计时 |
+| [`.knowledge/architecture/dependency-topology.md`](../../.knowledge/architecture/dependency-topology.md) | 11-Tier 模块依赖拓扑 | 模块分层变更时 |
 | [`CONTRIBUTING.md`](../../CONTRIBUTING.md) | 开发规范、Schema 迁移指南 | 提交 PR 前 |
 | [`Cargo.toml`](../../Cargo.toml) | 依赖、workspace 成员、features | 依赖变更时 |
 
