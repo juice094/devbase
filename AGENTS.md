@@ -472,6 +472,7 @@ CI 通过 `scripts/invariant-checks/run-checks.ps1` 检测 G5 / T11 / T12 / READ
 - 入口脚本支持 `py`、`sh`、`ps1`、`js` 或二进制。
 - 命令：`skill discover`、`skill run`、`skill install`、`skill publish`、`skill sync`。
 - 评分：`success_rate`、`usage_count`、`rating`（0-5）。
+- 跨客户端 sync：`skill sync <OUTPUT_DIR> --target <TARGET>...`，支持 `all` / `clarity` / `kimicli` / `claude-code` / `codex` / `claw`。详见 `vault/99-Meta/skillopt-devbase-integration.md`。
 
 ### Workflow
 

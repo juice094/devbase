@@ -9,6 +9,7 @@ pub mod publish;
 pub mod registry;
 pub mod scoring;
 pub mod sources;
+pub mod sync_adapter;
 
 // Types migrated to devbase-skill-runtime-types crate.
 pub use devbase_skill_runtime_types::*;

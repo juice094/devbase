@@ -17,13 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `devkit_document_convert` — Experimental tier MCP tool，PDF/PPTX → Markdown 转换（`pdftotext` / `python-pptx` 流水线），含 frontmatter 质量标注
 - **Vault Tantivy 全文搜索** — `devkit_vault_search` 优先使用 BM25（`search_vault_at`），空结果/失败时回退到内存扫描；`run_index_with_progress` 在索引仓库时同步 `reindex_vault_with_writer` 写入同一 Tantivy 段
 - **Criterion vault benchmark 基线** — 新增 `benches/vault_bench.rs`（`reindex_vault` 50/200 笔记，`search_vault` 单/多关键词 50/200 笔记），保存 baseline `v0.20.1`
+- **跨客户端 Skill Sync 基础设施** — `SkillSyncAdapter` trait + `ClarityJsonAdapter` / `KimiCliAdapter` / `ClaudeCodeAdapter` / `CodexAdapter` / `ClawAdapter`；`devbase skill sync <OUTPUT_DIR> --target <TARGET>...` 支持 `all` 同时输出 clarity/kimicli/claude-code/codex/claw 格式
 - Stable 工具 invocation 测试补全：`devkit_query_repos`、`devkit_vault_search`（覆盖 Tantivy 路径）、`devkit_vault_read`、`devkit_status`、`devkit_workflow_list`、`devkit_index`
 - `seed_repo()` 轻量测试 helper（仅插入 `entities` 表，无副作用）
+- 新增 Vault 集成记录：`workspace/vault/99-Meta/skillopt-devbase-integration.md`
 
 ### Fixed
 
 - `mcp/tools/document_convert.rs` 原始字符串定界符修复（`r###"` 避免与 Python f-string `"##` 冲突）
 - `cleanup_extracted_text` 单元测试期望值与实现语义对齐（保留最多 2 个连续空行）
+- `skill import` 在 async runtime 中调用 `tokio::block_on` 导致的嵌套 runtime panic：改为 `std::thread::spawn` + 新建 `tokio::runtime::Runtime` 执行 `SkillSource::fetch()`
 
 ### Changed
 

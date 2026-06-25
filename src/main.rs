@@ -429,6 +429,9 @@ pub(crate) enum SkillCommands {
     Sync {
         /// Output directory for generated plan JSON files
         output_dir: String,
+        /// Target client format(s) to generate. Use 'all' for every adapter.
+        #[arg(long = "target", value_name = "TARGET", num_args = 1.., default_value = "clarity")]
+        targets: Vec<String>,
     },
     /// Discover and auto-package a project as a Skill
     Discover {
