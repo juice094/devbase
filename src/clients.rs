@@ -152,3 +152,40 @@ pub trait VaultClient: Send + Sync {
     fn get_vault_history(&self, note_id: &str) -> Result<Value>;
     fn export_vault(&self, output_dir: &str) -> Result<Value>;
 }
+
+/// Agent memory intelligence operations (v37+ knowledge graph).
+pub trait MemoryClient: Send + Sync {
+    /// Link two memories with a typed relationship.
+    fn link_memories(
+        &self,
+        from_id: i64,
+        to_id: i64,
+        relation_type: &str,
+        confidence: f64,
+        evidence: Option<&str>,
+    ) -> Result<Value>;
+
+    /// Query memory relations (outgoing/incoming/both).
+    fn query_memory_relations(
+        &self,
+        memory_id: i64,
+        direction: &str,
+        relation_type: Option<&str>,
+        limit: usize,
+    ) -> Result<Value>;
+
+    /// Build and return a memory sub-graph via BFS.
+    fn build_memory_graph(&self, root_memory_id: i64, depth: u32) -> Result<Value>;
+
+    /// Detect duplicate memories within a context by vector similarity.
+    fn dedup_memories(&self, context_id: &str, threshold: f32) -> Result<Value>;
+
+    /// Merge two similar memories.
+    fn merge_memories(&self, primary_id: i64, secondary_id: i64, strategy: &str) -> Result<Value>;
+
+    /// Apply decay policy to a context's memories.
+    fn apply_memory_decay(&self, context_id: &str) -> Result<Value>;
+
+    /// Return memory statistics for a context.
+    fn memory_stats(&self, context_id: &str) -> Result<Value>;
+}

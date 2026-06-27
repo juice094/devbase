@@ -7,6 +7,7 @@ pub mod evaluate;
 pub mod impact;
 pub mod index_health;
 pub mod known_limit;
+pub mod memory_intelligence;
 pub mod ontology_import;
 pub mod oplog;
 pub mod query;
@@ -30,6 +31,7 @@ pub use document_convert::*;
 pub use impact::*;
 pub use index_health::*;
 pub use known_limit::*;
+pub use memory_intelligence::*;
 pub use ontology_import::*;
 pub use oplog::*;
 pub use query::*;
@@ -79,5 +81,13 @@ mod tests {
         let _ = super::session::DevkitSessionImportTool;
         let _ = super::brief::DevkitProjectBriefTool;
         let _ = super::impact::DevkitImpactAnalysisTool;
+        let _ = super::memory_intelligence::DevkitMemoryLinkTool;
+        let _ = super::memory_intelligence::DevkitMemoryRelatedTool;
+        let _ = super::memory_intelligence::DevkitMemoryGraphTool;
+        let _ = super::memory_intelligence::DevkitMemoryDedupTool;
+        let _ = super::memory_intelligence::DevkitMemoryQualityTool;
+        let _ = super::memory_intelligence::DevkitMemoryDecayTool;
+        let _ = super::memory_intelligence::DevkitMemoryMergeTool;
+        let _ = super::memory_intelligence::DevkitMemoryStatsTool;
     }
 }

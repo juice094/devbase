@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 juice094
-//! Agent Context registry: CRUD for agent_contexts and agent_memories tables.
+//! Agent Context registry: CRUD for agent_contexts, agent_memories, and memory_relations tables.
 //!
 //! Provides persistent AI session contexts (Claude Projects inspired) with
-//! associated typed memories. All operations are transactional where needed.
+//! associated typed memories and a knowledge-graph of typed memory→memory relations.
+//! All operations are transactional where needed.
 
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, OptionalExtension};
@@ -32,6 +33,75 @@ pub struct AgentMemory {
     pub embedding: Option<Vec<u8>>,
     pub embedding_model: Option<String>,
     pub indexed_at: Option<DateTime<Utc>>,
+    // ── v37 columns ──
+    /// Importance weight 0.0–1.0, default 0.5. Higher = more likely retained.
+    pub importance: f64,
+    /// Decay rate per day (0.0 = never decays, 0.05 = loses 5% weight per day).
+    pub decay_factor: f64,
+    /// Last time this memory was accessed (for decay computation).
+    pub last_accessed_at: Option<DateTime<Utc>>,
+    /// Cumulative access count (for quality scoring).
+    pub access_count: i64,
+    /// How this memory was captured (manual, auto-hook, file_edit, command, error).
+    pub source: String,
+    /// Position within a chunked memory group (None for non-chunked).
+    pub chunk_index: Option<i64>,
+    /// Parent memory ID when this is a chunk of a larger memory.
+    pub parent_memory_id: Option<i64>,
+    /// Estimated token count (rough: chars/2.5 for English, chars/1.5 for CJK).
+    pub token_count: Option<i64>,
+    /// Quality score 0.0–1.0 (computed from access frequency, recency, importance).
+    pub quality_score: Option<f64>,
+    /// Soft-delete flag for decay-based archival.
+    pub is_archived: bool,
+}
+
+/// A typed relation edge between two memories (knowledge-graph edge).
+#[derive(Debug, Clone, PartialEq)]
+pub struct MemoryRelation {
+    pub id: i64,
+    pub from_memory_id: i64,
+    pub to_memory_id: i64,
+    pub relation_type: String,
+    pub confidence: f64,
+    pub evidence: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// BFS-traversed memory graph rooted at a given memory.
+#[derive(Debug, Clone)]
+pub struct MemoryGraph {
+    pub root_id: i64,
+    pub nodes: Vec<MemoryGraphNode>,
+    pub edges: Vec<MemoryGraphEdge>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MemoryGraphNode {
+    pub memory_id: i64,
+    pub depth: u32,
+    pub memory_type: String,
+    pub content_preview: String, // first 200 chars
+    pub importance: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct MemoryGraphEdge {
+    pub relation_id: i64,
+    pub from_id: i64,
+    pub to_id: i64,
+    pub relation_type: String,
+    pub confidence: f64,
+}
+
+/// Result of smart memory insertion (may detect duplicate or create new).
+#[derive(Debug, Clone)]
+pub struct InsertResult {
+    pub memory_id: i64,
+    pub is_duplicate: bool,
+    pub duplicate_of: Option<i64>,
+    pub similarity: Option<f64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +244,9 @@ pub fn delete_context(conn: &mut Connection, id: &str) -> anyhow::Result<bool> {
 ///
 /// `embedding` is an optional f32 slice produced by an external provider.
 /// devbase only stores and searches it; it never generates embeddings.
+///
+/// New columns default: importance=0.5, source="manual", is_archived=false.
+/// Estimated token count is computed automatically if not set.
 pub fn insert_memory(
     conn: &mut Connection,
     context_id: &str,
@@ -181,6 +254,30 @@ pub fn insert_memory(
     content: &str,
     embedding: Option<&[f32]>,
     embedding_model: Option<&str>,
+) -> anyhow::Result<i64> {
+    insert_memory_ext(
+        conn,
+        context_id,
+        memory_type,
+        content,
+        embedding,
+        embedding_model,
+        0.5,
+        "manual",
+    )
+}
+
+/// Extended insert with importance and source control.
+#[allow(clippy::too_many_arguments)]
+pub fn insert_memory_ext(
+    conn: &mut Connection,
+    context_id: &str,
+    memory_type: &str,
+    content: &str,
+    embedding: Option<&[f32]>,
+    embedding_model: Option<&str>,
+    importance: f64,
+    source: &str,
 ) -> anyhow::Result<i64> {
     let tx = conn.transaction()?;
     let now = Utc::now().to_rfc3339();
@@ -192,14 +289,28 @@ pub fn insert_memory(
         bytes
     });
     let indexed_at = if embedding.is_some() {
-        Some(&now)
+        Some(now.as_str())
     } else {
         None
     };
+    let token_count = estimate_tokens(content);
     tx.execute(
-        "INSERT INTO agent_memories (context_id, memory_type, content, created_at, embedding, embedding_model, indexed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        rusqlite::params![context_id, memory_type, content, now, embedding_blob, embedding_model, indexed_at],
+        "INSERT INTO agent_memories (context_id, memory_type, content, created_at,
+         embedding, embedding_model, indexed_at,
+         importance, source, token_count)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        rusqlite::params![
+            context_id,
+            memory_type,
+            content,
+            now,
+            embedding_blob,
+            embedding_model,
+            indexed_at,
+            importance,
+            source,
+            token_count,
+        ],
     )?;
     let id = tx.last_insert_rowid();
     tx.commit()?;
@@ -207,41 +318,19 @@ pub fn insert_memory(
     Ok(id)
 }
 
-/// List memories for a context, newest first.
+/// List memories for a context, newest first. Excludes archived memories.
 pub fn list_memories(conn: &Connection, context_id: &str) -> anyhow::Result<Vec<AgentMemory>> {
     let mut stmt = conn.prepare(
-        "SELECT id, context_id, memory_type, content, created_at, embedding, embedding_model, indexed_at
+        "SELECT id, context_id, memory_type, content, created_at,
+                embedding, embedding_model, indexed_at,
+                importance, decay_factor, last_accessed_at, access_count,
+                source, chunk_index, parent_memory_id, token_count,
+                quality_score, is_archived
          FROM agent_memories
-         WHERE context_id = ?1
+         WHERE context_id = ?1 AND is_archived = 0
          ORDER BY created_at DESC",
     )?;
-    let rows = stmt.query_map([context_id], |row| {
-        let created_at = parse_datetime(row.get(4)?).map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                4,
-                rusqlite::types::Type::Text,
-                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
-            )
-        })?;
-        let indexed_at: Option<String> = row.get(7)?;
-        let indexed_at = indexed_at.map(parse_datetime).transpose().map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                7,
-                rusqlite::types::Type::Text,
-                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
-            )
-        })?;
-        Ok(AgentMemory {
-            id: row.get(0)?,
-            context_id: row.get(1)?,
-            memory_type: row.get(2)?,
-            content: row.get(3)?,
-            created_at,
-            embedding: row.get(5)?,
-            embedding_model: row.get(6)?,
-            indexed_at,
-        })
-    })?;
+    let rows = stmt.query_map([context_id], read_memory_row)?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
@@ -327,6 +416,7 @@ pub fn list_linking_contexts(
 }
 
 /// Search memories by keyword (LIKE query) within a context or globally.
+/// Excludes archived memories.
 pub fn search_memories(
     conn: &Connection,
     context_id: Option<&str>,
@@ -334,52 +424,30 @@ pub fn search_memories(
     limit: usize,
 ) -> anyhow::Result<Vec<AgentMemory>> {
     let pattern = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
-    let row_mapper = |row: &rusqlite::Row| {
-        let created_at = parse_datetime(row.get(4)?).map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                4,
-                rusqlite::types::Type::Text,
-                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
-            )
-        })?;
-        let indexed_at: Option<String> = row.get(7)?;
-        let indexed_at = indexed_at.map(parse_datetime).transpose().map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                7,
-                rusqlite::types::Type::Text,
-                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
-            )
-        })?;
-        Ok(AgentMemory {
-            id: row.get(0)?,
-            context_id: row.get(1)?,
-            memory_type: row.get(2)?,
-            content: row.get(3)?,
-            created_at,
-            embedding: row.get(5)?,
-            embedding_model: row.get(6)?,
-            indexed_at,
-        })
-    };
+    let select_sql = "\
+        SELECT id, context_id, memory_type, content, created_at,
+               embedding, embedding_model, indexed_at,
+               importance, decay_factor, last_accessed_at, access_count,
+               source, chunk_index, parent_memory_id, token_count,
+               quality_score, is_archived
+        FROM agent_memories
+        WHERE {where_clause} AND is_archived = 0
+        ORDER BY created_at DESC
+        LIMIT ?";
+
     if let Some(cid) = context_id {
-        let mut stmt = conn.prepare(
-            "SELECT id, context_id, memory_type, content, created_at, embedding, embedding_model, indexed_at
-             FROM agent_memories
-             WHERE context_id = ?1 AND content LIKE ?2
-             ORDER BY created_at DESC
-             LIMIT ?3",
-        )?;
-        let rows = stmt.query_map(rusqlite::params![cid, &pattern, limit as i64], row_mapper)?;
+        let where_clause = "context_id = ?1 AND content LIKE ?2";
+        let sql = select_sql.replace("{where_clause}", where_clause);
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params![cid, &pattern, limit as i64], move |row| {
+            read_memory_row(row)
+        })?;
         return rows.collect::<Result<Vec<_>, _>>().map_err(Into::into);
     }
-    let mut stmt = conn.prepare(
-        "SELECT id, context_id, memory_type, content, created_at, embedding, embedding_model, indexed_at
-         FROM agent_memories
-         WHERE content LIKE ?1
-         ORDER BY created_at DESC
-         LIMIT ?2",
-    )?;
-    let rows = stmt.query_map(rusqlite::params![&pattern, limit as i64], row_mapper)?;
+    let sql = select_sql.replace("{where_clause}", "content LIKE ?1");
+    let mut stmt = conn.prepare(&sql)?;
+    let rows =
+        stmt.query_map(rusqlite::params![&pattern, limit as i64], read_memory_row)?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
@@ -444,9 +512,13 @@ pub fn embedding_to_blob(vec: &[f32]) -> Vec<u8> {
 }
 
 /// Search memories by vector similarity within a specific context.
+/// Excludes archived memories.
 ///
 /// `query_embedding` must be generated by an external provider.
 /// devbase performs pure cosine-similarity computation via SQLite UDF.
+///
+/// Results include a composite `score` that blends cosine similarity with
+/// importance and freshness bonuses.
 pub fn search_memories_semantic(
     conn: &Connection,
     context_id: &str,
@@ -457,42 +529,56 @@ pub fn search_memories_semantic(
     let mut stmt = conn.prepare(
         "SELECT id, context_id, memory_type, content, created_at,
                 embedding, embedding_model, indexed_at,
+                importance, decay_factor, last_accessed_at, access_count,
+                source, chunk_index, parent_memory_id, token_count,
+                quality_score, is_archived,
                 cosine_similarity(embedding, ?1) AS score
          FROM agent_memories
-         WHERE context_id = ?2 AND embedding IS NOT NULL
+         WHERE context_id = ?2 AND embedding IS NOT NULL AND is_archived = 0
          ORDER BY score DESC
          LIMIT ?3",
     )?;
     let rows = stmt.query_map(rusqlite::params![query_blob, context_id, limit as i64], |row| {
-        let created_at = parse_datetime(row.get(4)?).map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                4,
-                rusqlite::types::Type::Text,
-                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
-            )
-        })?;
-        let indexed_at: Option<String> = row.get(7)?;
-        let indexed_at = indexed_at.map(parse_datetime).transpose().map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                7,
-                rusqlite::types::Type::Text,
-                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
-            )
-        })?;
-        let score: f64 = row.get(8)?;
-        let mem = AgentMemory {
-            id: row.get(0)?,
-            context_id: row.get(1)?,
-            memory_type: row.get(2)?,
-            content: row.get(3)?,
-            created_at,
-            embedding: row.get(5)?,
-            embedding_model: row.get(6)?,
-            indexed_at,
-        };
+        let mem = read_memory_row(row)?;
+        let score: f64 = row.get(18)?; // column 18 = score alias (after 18 data columns 0–17)
         Ok((mem, score))
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Search memories by text query with optional auto-embedding.
+/// Falls back to keyword LIKE search when no embedding provider is available.
+pub fn search_memories_by_text(
+    conn: &Connection,
+    context_id: &str,
+    query_text: &str,
+    limit: usize,
+) -> anyhow::Result<Vec<(AgentMemory, f64)>> {
+    // Try to generate embedding from text; fall back to keyword search
+    #[cfg(feature = "embedding")]
+    {
+        let provider = crate::embedding::default_provider();
+        match provider.encode(query_text) {
+            Ok(emb) => return search_memories_semantic(conn, context_id, &emb, limit),
+            Err(e) => {
+                tracing::warn!(
+                    "Embedding generation failed for text query ({}), falling back to keyword: {}",
+                    query_text,
+                    e
+                );
+            }
+        }
+    }
+    // Fallback: keyword search with pseudo-scores
+    let results = search_memories(conn, Some(context_id), query_text, limit)?;
+    Ok(results
+        .into_iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let score = 1.0 / (1.0 + i as f64); // descending pseudo-score
+            (m, score)
+        })
+        .collect())
 }
 
 /// Write an agent-context operation to the oplog for audit/compensation.
@@ -535,9 +621,473 @@ pub fn resolve_active_context() -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
+// Memory Relations (Knowledge-Graph Edges)
+// ---------------------------------------------------------------------------
+
+/// Link two memories with a typed relationship.
+///
+/// Supported relation types:
+/// - `SUPERSEDES`: newer memory replaces an older one
+/// - `DEPENDS_ON`: this memory depends on another for context
+/// - `CAUSED_BY`: error/fix was caused by a previous event
+/// - `RELATES_TO`: general conceptual link
+/// - `CONTRADICTS`: two memories disagree
+/// - `GENERALIZES`: abstract memory generalizes a specific one
+/// - `REFINES`: specific memory refines a general one
+/// - `IMPLEMENTS`: concrete implementation of an abstract decision
+///
+/// Returns the relation row ID. Idempotent via UNIQUE constraint.
+pub fn link_memories(
+    conn: &Connection,
+    from_memory_id: i64,
+    to_memory_id: i64,
+    relation_type: &str,
+    confidence: f64,
+    evidence: Option<&str>,
+) -> anyhow::Result<i64> {
+    if from_memory_id == to_memory_id {
+        anyhow::bail!("self-relations are not allowed (from == to == {})", from_memory_id);
+    }
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR REPLACE INTO memory_relations
+         (from_memory_id, to_memory_id, relation_type, confidence, evidence, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+        rusqlite::params![from_memory_id, to_memory_id, relation_type, confidence, evidence, now],
+    )?;
+    let id = conn.last_insert_rowid();
+    log_op(conn, "link_memories", &from_memory_id.to_string(), None, "ok");
+    Ok(id)
+}
+
+/// Query memory relations in a given direction.
+///
+/// `direction`: "outgoing" (from this memory), "incoming" (to this memory), or "both".
+pub fn query_memory_relations(
+    conn: &Connection,
+    memory_id: i64,
+    direction: &str,
+    relation_type: Option<&str>,
+    limit: usize,
+) -> anyhow::Result<Vec<MemoryRelation>> {
+    let type_filter = relation_type.map(|_| "AND mr.relation_type = ?3").unwrap_or("");
+    let sql = match direction {
+        "incoming" => format!(
+            "SELECT mr.id, mr.from_memory_id, mr.to_memory_id, mr.relation_type,
+                    mr.confidence, mr.evidence, mr.created_at, mr.updated_at
+             FROM memory_relations mr
+             WHERE mr.to_memory_id = ?1 {}
+             ORDER BY mr.created_at DESC
+             LIMIT ?2",
+            type_filter
+        ),
+        "both" => format!(
+            "SELECT mr.id, mr.from_memory_id, mr.to_memory_id, mr.relation_type,
+                    mr.confidence, mr.evidence, mr.created_at, mr.updated_at
+             FROM memory_relations mr
+             WHERE (mr.from_memory_id = ?1 OR mr.to_memory_id = ?1) {}
+             ORDER BY mr.created_at DESC
+             LIMIT ?2",
+            type_filter
+        ),
+        _ => format!(
+            "SELECT mr.id, mr.from_memory_id, mr.to_memory_id, mr.relation_type,
+                    mr.confidence, mr.evidence, mr.created_at, mr.updated_at
+             FROM memory_relations mr
+             WHERE mr.from_memory_id = ?1 {}
+             ORDER BY mr.created_at DESC
+             LIMIT ?2",
+            type_filter
+        ),
+    };
+
+    let mut stmt = conn.prepare(&sql)?;
+    let relation_type_owned = relation_type.map(|s| s.to_string());
+    let params: Vec<Box<dyn rusqlite::types::ToSql>> = if let Some(ref rt) = relation_type_owned {
+        vec![
+            Box::new(memory_id),
+            Box::new(limit as i64),
+            Box::new(rt.clone()),
+        ]
+    } else {
+        vec![Box::new(memory_id), Box::new(limit as i64)]
+    };
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+    let rows = stmt.query_map(param_refs.as_slice(), |row| {
+        let created_at = parse_datetime(row.get(6)?).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                6,
+                rusqlite::types::Type::Text,
+                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+            )
+        })?;
+        let updated_at = parse_datetime(row.get(7)?).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                7,
+                rusqlite::types::Type::Text,
+                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+            )
+        })?;
+        Ok(MemoryRelation {
+            id: row.get(0)?,
+            from_memory_id: row.get(1)?,
+            to_memory_id: row.get(2)?,
+            relation_type: row.get(3)?,
+            confidence: row.get(4)?,
+            evidence: row.get(5)?,
+            created_at,
+            updated_at,
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Delete a single memory relation by ID.
+pub fn delete_memory_relation(conn: &Connection, id: i64) -> anyhow::Result<bool> {
+    let rows = conn.execute("DELETE FROM memory_relations WHERE id = ?1", [id])?;
+    Ok(rows > 0)
+}
+
+/// Build a BFS-traversed memory sub-graph rooted at `root_memory_id`.
+///
+/// `depth`: maximum traversal depth (1–3 recommended).
+pub fn build_memory_graph(
+    conn: &Connection,
+    root_memory_id: i64,
+    depth: u32,
+) -> anyhow::Result<MemoryGraph> {
+    use std::collections::{HashSet, VecDeque};
+
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
+    let mut visited: HashSet<i64> = HashSet::new();
+    let mut queue: VecDeque<(i64, u32)> = VecDeque::new();
+
+    // Load root node
+    let root = get_memory_by_id(conn, root_memory_id)?;
+    let root_type = root.as_ref().map(|m| m.memory_type.clone()).unwrap_or_default();
+    let root_preview =
+        root.as_ref().map(|m| m.content.chars().take(200).collect()).unwrap_or_default();
+    let root_importance = root.as_ref().map(|m| m.importance).unwrap_or(0.5);
+    nodes.push(MemoryGraphNode {
+        memory_id: root_memory_id,
+        depth: 0,
+        memory_type: root_type,
+        content_preview: root_preview,
+        importance: root_importance,
+    });
+    visited.insert(root_memory_id);
+    queue.push_back((root_memory_id, 0));
+
+    while let Some((current_id, current_depth)) = queue.pop_front() {
+        if current_depth >= depth {
+            continue;
+        }
+        // Get all relations (both directions)
+        let rels = query_memory_relations(conn, current_id, "both", None, 200)?;
+        for rel in rels {
+            let neighbor_id = if rel.from_memory_id == current_id {
+                rel.to_memory_id
+            } else {
+                rel.from_memory_id
+            };
+            if !visited.contains(&neighbor_id) {
+                visited.insert(neighbor_id);
+                let neighbor = get_memory_by_id(conn, neighbor_id)?;
+                let ntype = neighbor.as_ref().map(|m| m.memory_type.clone()).unwrap_or_default();
+                let npreview = neighbor
+                    .as_ref()
+                    .map(|m| m.content.chars().take(200).collect())
+                    .unwrap_or_default();
+                let nimportance = neighbor.as_ref().map(|m| m.importance).unwrap_or(0.5);
+                nodes.push(MemoryGraphNode {
+                    memory_id: neighbor_id,
+                    depth: current_depth + 1,
+                    memory_type: ntype,
+                    content_preview: npreview,
+                    importance: nimportance,
+                });
+                queue.push_back((neighbor_id, current_depth + 1));
+            }
+            edges.push(MemoryGraphEdge {
+                relation_id: rel.id,
+                from_id: rel.from_memory_id,
+                to_id: rel.to_memory_id,
+                relation_type: rel.relation_type.clone(),
+                confidence: rel.confidence,
+            });
+        }
+    }
+
+    Ok(MemoryGraph {
+        root_id: root_memory_id,
+        nodes,
+        edges,
+    })
+}
+
+/// Get a single memory by ID (not scoped to a context).
+pub fn get_memory_by_id(conn: &Connection, id: i64) -> anyhow::Result<Option<AgentMemory>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, context_id, memory_type, content, created_at,
+                embedding, embedding_model, indexed_at,
+                importance, decay_factor, last_accessed_at, access_count,
+                source, chunk_index, parent_memory_id, token_count,
+                quality_score, is_archived
+         FROM agent_memories WHERE id = ?1",
+    )?;
+    stmt.query_row([id], read_memory_row).optional().map_err(Into::into)
+}
+
+// ---------------------------------------------------------------------------
+// Memory Lifecycle (Quality / Decay / Archival)
+// ---------------------------------------------------------------------------
+
+/// Update the importance weight of a memory.
+pub fn update_memory_importance(conn: &Connection, id: i64, importance: f64) -> anyhow::Result<()> {
+    if !(0.0..=1.0).contains(&importance) {
+        anyhow::bail!("importance must be between 0.0 and 1.0");
+    }
+    conn.execute(
+        "UPDATE agent_memories SET importance = ?1 WHERE id = ?2",
+        rusqlite::params![importance, id],
+    )?;
+    Ok(())
+}
+
+/// Update the quality score of a memory.
+pub fn update_memory_quality(conn: &Connection, id: i64, score: f64) -> anyhow::Result<()> {
+    if !(0.0..=1.0).contains(&score) {
+        anyhow::bail!("quality score must be between 0.0 and 1.0");
+    }
+    conn.execute(
+        "UPDATE agent_memories SET quality_score = ?1 WHERE id = ?2",
+        rusqlite::params![score, id],
+    )?;
+    Ok(())
+}
+
+/// Record an access event for a memory (updates last_accessed_at and access_count).
+pub fn record_memory_access(conn: &Connection, id: i64) -> anyhow::Result<()> {
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE agent_memories
+         SET last_accessed_at = ?1,
+             access_count = access_count + 1
+         WHERE id = ?2",
+        rusqlite::params![now, id],
+    )?;
+    Ok(())
+}
+
+/// Soft-delete a memory by marking it archived.
+pub fn archive_memory(conn: &Connection, id: i64) -> anyhow::Result<bool> {
+    let rows = conn.execute("UPDATE agent_memories SET is_archived = 1 WHERE id = ?1", [id])?;
+    Ok(rows > 0)
+}
+
+/// Apply decay policy to a context's memories.
+///
+/// Archives memories where: `importance * (1.0 - days_since_access * decay_factor) < threshold`.
+/// Default threshold is 0.1. Memories with decay_factor = 0 are never decayed.
+///
+/// Returns the IDs of archived memories.
+pub fn apply_memory_decay(conn: &Connection, context_id: &str) -> anyhow::Result<Vec<i64>> {
+    let threshold: f64 = 0.1;
+    let now = Utc::now();
+
+    // Find candidates without holding a transaction
+    let mut stmt = conn.prepare(
+        "SELECT id, importance, decay_factor, last_accessed_at
+         FROM agent_memories
+         WHERE context_id = ?1
+           AND is_archived = 0
+           AND decay_factor > 0.0
+           AND importance < 0.5",
+    )?;
+    let candidates: Vec<(i64, f64, f64, Option<String>)> = stmt
+        .query_map([context_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
+    drop(stmt);
+
+    let mut archived = Vec::new();
+    for (id, importance, decay_factor, last_access_str) in candidates {
+        let days_stale = match last_access_str {
+            Some(s) => {
+                let la = parse_datetime(s)?;
+                (now - la).num_days().max(0) as f64
+            }
+            None => 90.0, // never accessed → assume 90 days stale
+        };
+        let score = importance * (1.0 - days_stale * decay_factor).max(0.0);
+        if score < threshold {
+            conn.execute("UPDATE agent_memories SET is_archived = 1 WHERE id = ?1", [id])?;
+            archived.push(id);
+        }
+    }
+
+    Ok(archived)
+}
+
+// ---------------------------------------------------------------------------
+// Memory Chunking
+// ---------------------------------------------------------------------------
+
+/// Chunk a large memory into smaller pieces using paragraph breaks.
+///
+/// Returns the IDs of newly created child chunks.
+/// The original memory is marked as a parent (parent_memory_id stays NULL, chunk_index = NULL).
+pub fn chunk_memory(conn: &Connection, id: i64, max_tokens: usize) -> anyhow::Result<Vec<i64>> {
+    let original = match get_memory_by_id(conn, id)? {
+        Some(m) => m,
+        None => anyhow::bail!("memory {} not found", id),
+    };
+
+    let chunks: Vec<String> = split_into_chunks(&original.content, max_tokens);
+    if chunks.len() <= 1 {
+        return Ok(Vec::new()); // nothing to chunk
+    }
+
+    let now = Utc::now().to_rfc3339();
+    let mut child_ids = Vec::new();
+
+    for (i, chunk) in chunks.iter().enumerate() {
+        let token_count = estimate_tokens(chunk);
+        conn.execute(
+            "INSERT INTO agent_memories
+             (context_id, memory_type, content, created_at,
+              importance, source, chunk_index, parent_memory_id, token_count)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                original.context_id,
+                original.memory_type,
+                chunk,
+                now,
+                original.importance,
+                original.source,
+                i as i64,
+                id,
+                token_count,
+            ],
+        )?;
+        child_ids.push(conn.last_insert_rowid());
+    }
+
+    // Mark original as having chunks
+    conn.execute(
+        "UPDATE agent_memories SET token_count = ?1 WHERE id = ?2",
+        rusqlite::params![estimate_tokens(&original.content), id],
+    )?;
+
+    Ok(child_ids)
+}
+
+// ---------------------------------------------------------------------------
+// Smart Insert (Dedup-aware)
+// ---------------------------------------------------------------------------
+
+/// Smart memory insertion with automatic deduplication.
+///
+/// If an existing memory within the same context has cosine similarity ≥ `similarity_threshold`
+/// and embedding is available, returns the existing ID as a duplicate.
+/// Otherwise, creates a new memory and returns its ID.
+pub fn insert_memory_smart(
+    conn: &mut Connection,
+    context_id: &str,
+    memory_type: &str,
+    content: &str,
+    embedding: Option<&[f32]>,
+    similarity_threshold: f32,
+) -> anyhow::Result<InsertResult> {
+    // Try dedup via vector similarity if embedding is provided
+    if let Some(emb) = embedding {
+        let existing = search_memories_semantic(conn, context_id, emb, 5)?;
+        for (mem, score) in existing {
+            if score as f32 >= similarity_threshold {
+                // Record access to the existing memory
+                record_memory_access(conn, mem.id)?;
+                return Ok(InsertResult {
+                    memory_id: mem.id,
+                    is_duplicate: true,
+                    duplicate_of: Some(mem.id),
+                    similarity: Some(score),
+                });
+            }
+        }
+    }
+
+    // No duplicate found, insert new
+    let memory_id =
+        insert_memory_ext(conn, context_id, memory_type, content, embedding, None, 0.5, "manual")?;
+
+    Ok(InsertResult {
+        memory_id,
+        is_duplicate: false,
+        duplicate_of: None,
+        similarity: None,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Statistics
+// ---------------------------------------------------------------------------
+
+/// Compute memory statistics for a context.
+#[derive(Debug, Clone)]
+pub struct MemoryStats {
+    pub total_count: usize,
+    pub archived_count: usize,
+    pub total_tokens_estimate: i64,
+    pub avg_quality: f64,
+    pub avg_importance: f64,
+}
+
+/// Return statistics for a context's memories.
+pub fn memory_stats(conn: &Connection, context_id: &str) -> anyhow::Result<MemoryStats> {
+    let total: usize = conn.query_row(
+        "SELECT COUNT(*) FROM agent_memories WHERE context_id = ?1",
+        [context_id],
+        |row| row.get(0),
+    )?;
+    let archived: usize = conn.query_row(
+        "SELECT COUNT(*) FROM agent_memories WHERE context_id = ?1 AND is_archived = 1",
+        [context_id],
+        |row| row.get(0),
+    )?;
+    let total_tokens: i64 = conn.query_row(
+        "SELECT COALESCE(SUM(token_count), 0) FROM agent_memories
+             WHERE context_id = ?1 AND is_archived = 0",
+        [context_id],
+        |row| row.get(0),
+    )?;
+    let avg_quality: f64 = conn.query_row(
+        "SELECT COALESCE(AVG(quality_score), 0.0) FROM agent_memories
+             WHERE context_id = ?1 AND is_archived = 0 AND quality_score IS NOT NULL",
+        [context_id],
+        |row| row.get(0),
+    )?;
+    let avg_importance: f64 = conn.query_row(
+        "SELECT COALESCE(AVG(importance), 0.0) FROM agent_memories
+             WHERE context_id = ?1 AND is_archived = 0",
+        [context_id],
+        |row| row.get(0),
+    )?;
+    Ok(MemoryStats {
+        total_count: total,
+        archived_count: archived,
+        total_tokens_estimate: total_tokens,
+        avg_quality,
+        avg_importance,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Parse a datetime string from the database into a `DateTime<Utc>`.
 fn parse_datetime(s: String) -> anyhow::Result<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(&s)
         .map(|dt| dt.with_timezone(&Utc))
@@ -546,6 +1096,135 @@ fn parse_datetime(s: String) -> anyhow::Result<DateTime<Utc>> {
                 .map(|ndt| DateTime::from_naive_utc_and_offset(ndt, Utc))
         })
         .map_err(|e| anyhow::anyhow!("Invalid datetime '{}': {}", s, e))
+}
+
+/// Read an AgentMemory row from a query result (must select all 17 columns in order).
+fn read_memory_row(row: &rusqlite::Row) -> rusqlite::Result<AgentMemory> {
+    let created_at = parse_datetime(row.get::<_, String>(4)?).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(
+            4,
+            rusqlite::types::Type::Text,
+            Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+        )
+    })?;
+    let indexed_at: Option<String> = row.get(7)?;
+    let indexed_at = indexed_at
+        .map(|s| {
+            parse_datetime(s).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    7,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+                )
+            })
+        })
+        .transpose()?;
+    let last_accessed_at: Option<String> = row.get(10)?;
+    let last_accessed_at = last_accessed_at
+        .map(|s| {
+            parse_datetime(s).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    10,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+                )
+            })
+        })
+        .transpose()?;
+    let is_archived_int: i64 = row.get(17)?;
+    Ok(AgentMemory {
+        id: row.get(0)?,
+        context_id: row.get(1)?,
+        memory_type: row.get(2)?,
+        content: row.get(3)?,
+        created_at,
+        embedding: row.get(5)?,
+        embedding_model: row.get(6)?,
+        indexed_at,
+        importance: row.get(8)?,
+        decay_factor: row.get(9)?,
+        last_accessed_at,
+        access_count: row.get(11)?,
+        source: row.get(12)?,
+        chunk_index: row.get(13)?,
+        parent_memory_id: row.get(14)?,
+        token_count: row.get(15)?,
+        quality_score: row.get::<_, Option<f64>>(16).ok().flatten(),
+        is_archived: is_archived_int != 0,
+    })
+}
+
+/// Estimate token count from text length.
+/// Rough heuristic: English ~2.5 chars/token, CJK ~1.5 chars/token.
+/// Estimate token count from text length (re-exported for session tools).
+pub fn estimate_tokens(text: &str) -> i64 {
+    let total = text.chars().count() as f64;
+    let cjk = text
+        .chars()
+        .filter(|c| {
+            matches!(
+                c,
+                '\u{4E00}'..='\u{9FFF}'
+                    | '\u{3400}'..='\u{4DBF}'
+                    | '\u{F900}'..='\u{FAFF}'
+                    | '\u{3040}'..='\u{309F}'
+                    | '\u{30A0}'..='\u{30FF}'
+                    | '\u{AC00}'..='\u{D7AF}'
+            )
+        })
+        .count() as f64;
+    let ascii = total - cjk;
+    ((ascii / 2.5 + cjk / 1.5).ceil() as i64).max(1)
+}
+
+/// Split text into chunks at paragraph boundaries with a max token budget per chunk.
+fn split_into_chunks(text: &str, max_tokens: usize) -> Vec<String> {
+    let paragraphs: Vec<&str> = text.split("\n\n").collect();
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    let mut current_tokens: usize = 0;
+
+    for para in paragraphs {
+        let para_tokens = estimate_tokens(para) as usize;
+        if para_tokens >= max_tokens {
+            // Flush current chunk if not empty
+            if !current.is_empty() {
+                chunks.push(std::mem::take(&mut current));
+                current_tokens = 0;
+            }
+            // Large paragraph: split by sentences
+            for sentence in para.split(['.', '。', '！', '？']) {
+                let trimmed = sentence.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let st = estimate_tokens(trimmed) as usize;
+                if current_tokens + st > max_tokens && !current.is_empty() {
+                    chunks.push(std::mem::take(&mut current));
+                    current_tokens = 0;
+                }
+                if !current.is_empty() {
+                    current.push_str(". ");
+                }
+                current.push_str(trimmed);
+                current_tokens += st;
+            }
+        } else if current_tokens + para_tokens > max_tokens && !current.is_empty() {
+            chunks.push(std::mem::take(&mut current));
+            current.push_str(para);
+            current_tokens = para_tokens;
+        } else {
+            if !current.is_empty() {
+                current.push_str("\n\n");
+            }
+            current.push_str(para);
+            current_tokens += para_tokens;
+        }
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    chunks
 }
 
 #[cfg(test)]

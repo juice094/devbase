@@ -430,10 +430,39 @@ CREATE TABLE IF NOT EXISTS agent_memories (
     embedding BLOB,
     embedding_model TEXT,
     indexed_at DATETIME,
+    importance REAL NOT NULL DEFAULT 0.5,
+    decay_factor REAL NOT NULL DEFAULT 0.0,
+    last_accessed_at TEXT,
+    access_count INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'manual',
+    chunk_index INTEGER,
+    parent_memory_id INTEGER,
+    token_count INTEGER,
+    quality_score REAL,
+    is_archived INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (context_id) REFERENCES agent_contexts(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_agent_memories_context ON agent_memories(context_id);
 CREATE INDEX IF NOT EXISTS idx_agent_memories_embedding ON agent_memories(context_id, indexed_at) WHERE embedding IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_agent_memories_decay
+    ON agent_memories(context_id, is_archived, importance, last_accessed_at);
+
+CREATE TABLE IF NOT EXISTS memory_relations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_memory_id INTEGER NOT NULL,
+    to_memory_id INTEGER NOT NULL,
+    relation_type TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    evidence TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (from_memory_id) REFERENCES agent_memories(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_memory_id) REFERENCES agent_memories(id) ON DELETE CASCADE,
+    UNIQUE(from_memory_id, to_memory_id, relation_type)
+);
+CREATE INDEX IF NOT EXISTS idx_memory_relations_from ON memory_relations(from_memory_id);
+CREATE INDEX IF NOT EXISTS idx_memory_relations_to ON memory_relations(to_memory_id);
+CREATE INDEX IF NOT EXISTS idx_memory_relations_type ON memory_relations(relation_type);
 
 CREATE TABLE IF NOT EXISTS context_entity_links (
     context_id TEXT NOT NULL,
@@ -519,5 +548,47 @@ mod tests {
             )
             .unwrap_or(false);
         assert!(exists, "agent_memories table must exist in current schema");
+    }
+
+    #[test]
+    fn test_memory_relations_table_exists() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memory_relations'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        assert!(exists, "memory_relations table must exist in current schema");
+    }
+
+    #[test]
+    fn test_agent_memories_has_new_columns() {
+        let conn = WorkspaceRegistry::init_in_memory().unwrap();
+        // Verify v37 columns exist on agent_memories
+        let columns: Vec<String> = {
+            let mut stmt = conn.prepare("PRAGMA table_info(agent_memories)").unwrap();
+            let rows = stmt.query_map([], |row| row.get::<_, String>(1)).unwrap();
+            rows.filter_map(|r| r.ok()).collect()
+        };
+        for col in &[
+            "importance",
+            "decay_factor",
+            "last_accessed_at",
+            "access_count",
+            "source",
+            "chunk_index",
+            "parent_memory_id",
+            "token_count",
+            "quality_score",
+            "is_archived",
+        ] {
+            assert!(
+                columns.contains(&col.to_string()),
+                "agent_memories must have column '{}'",
+                col
+            );
+        }
     }
 }

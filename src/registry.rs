@@ -531,6 +531,246 @@ impl RegistryClient for AppContext {
     }
 }
 
+use crate::clients::MemoryClient;
+
+impl MemoryClient for AppContext {
+    fn link_memories(
+        &self,
+        from_id: i64,
+        to_id: i64,
+        relation_type: &str,
+        confidence: f64,
+        evidence: Option<&str>,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let id = agent_context::link_memories(
+            &conn,
+            from_id,
+            to_id,
+            relation_type,
+            confidence,
+            evidence,
+        )?;
+        Ok(serde_json::json!({
+            "success": true,
+            "relation_id": id,
+            "from_memory_id": from_id,
+            "to_memory_id": to_id,
+            "relation_type": relation_type,
+            "confidence": confidence
+        }))
+    }
+
+    fn query_memory_relations(
+        &self,
+        memory_id: i64,
+        direction: &str,
+        relation_type: Option<&str>,
+        limit: usize,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let rels = agent_context::query_memory_relations(
+            &conn,
+            memory_id,
+            direction,
+            relation_type,
+            limit,
+        )?;
+        let results: Vec<serde_json::Value> = rels
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "id": r.id,
+                    "from_memory_id": r.from_memory_id,
+                    "to_memory_id": r.to_memory_id,
+                    "relation_type": r.relation_type,
+                    "confidence": r.confidence,
+                    "evidence": r.evidence,
+                    "created_at": r.created_at.to_rfc3339(),
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({ "success": true, "count": results.len(), "relations": results }))
+    }
+
+    fn build_memory_graph(
+        &self,
+        root_memory_id: i64,
+        depth: u32,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let graph = agent_context::build_memory_graph(&conn, root_memory_id, depth)?;
+        let nodes: Vec<serde_json::Value> = graph
+            .nodes
+            .iter()
+            .map(|n| {
+                serde_json::json!({
+                    "memory_id": n.memory_id,
+                    "depth": n.depth,
+                    "memory_type": n.memory_type,
+                    "content_preview": n.content_preview,
+                    "importance": n.importance,
+                })
+            })
+            .collect();
+        let edges: Vec<serde_json::Value> = graph
+            .edges
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "relation_id": e.relation_id,
+                    "from_id": e.from_id,
+                    "to_id": e.to_id,
+                    "relation_type": e.relation_type,
+                    "confidence": e.confidence,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({
+            "success": true,
+            "root_id": graph.root_id,
+            "node_count": nodes.len(),
+            "edge_count": edges.len(),
+            "nodes": nodes,
+            "edges": edges
+        }))
+    }
+
+    fn dedup_memories(
+        &self,
+        context_id: &str,
+        threshold: f32,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let memories = agent_context::list_memories(&conn, context_id)?;
+        let mut duplicates: Vec<serde_json::Value> = Vec::new();
+        let mut seen: Vec<&agent_context::AgentMemory> = Vec::new();
+
+        for mem in &memories {
+            let emb = match &mem.embedding {
+                Some(e) => e.clone(),
+                None => {
+                    seen.push(mem);
+                    continue;
+                }
+            };
+            let emb_f32 = crate::embedding::bytes_to_embedding(&emb);
+            for prev in &seen {
+                if let Some(prev_emb) = &prev.embedding {
+                    let prev_f32 = crate::embedding::bytes_to_embedding(prev_emb);
+                    let sim = crate::embedding::cosine_similarity(&emb_f32, &prev_f32);
+                    if sim >= threshold {
+                        duplicates.push(serde_json::json!({
+                            "memory_a": { "id": prev.id, "type": prev.memory_type, "content_preview": &prev.content[..prev.content.len().min(100)] },
+                            "memory_b": { "id": mem.id, "type": mem.memory_type, "content_preview": &mem.content[..mem.content.len().min(100)] },
+                            "similarity": sim
+                        }));
+                    }
+                }
+            }
+            seen.push(mem);
+        }
+
+        Ok(serde_json::json!({
+            "success": true,
+            "context_id": context_id,
+            "threshold": threshold,
+            "duplicate_count": duplicates.len(),
+            "duplicates": duplicates
+        }))
+    }
+
+    fn merge_memories(
+        &self,
+        primary_id: i64,
+        secondary_id: i64,
+        strategy: &str,
+    ) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let primary = agent_context::get_memory_by_id(&conn, primary_id)?
+            .ok_or_else(|| anyhow::anyhow!("primary memory {} not found", primary_id))?;
+        let secondary = agent_context::get_memory_by_id(&conn, secondary_id)?
+            .ok_or_else(|| anyhow::anyhow!("secondary memory {} not found", secondary_id))?;
+
+        match strategy {
+            "supersede" => {
+                agent_context::link_memories(
+                    &conn,
+                    primary_id,
+                    secondary_id,
+                    "SUPERSEDES",
+                    1.0,
+                    Some("auto-merge"),
+                )?;
+                agent_context::archive_memory(&conn, secondary_id)?;
+            }
+            "merge_content" => {
+                let merged = format!(
+                    "{}\\n\\n---\\n[Merged from memory #{}]\\n{}",
+                    primary.content, secondary_id, secondary.content
+                );
+                let token_count = (merged.len() as f64 / 2.5).ceil() as i64;
+                conn.execute(
+                    "UPDATE agent_memories SET content = ?1, token_count = ?2 WHERE id = ?3",
+                    rusqlite::params![merged, token_count, primary_id],
+                )?;
+                agent_context::link_memories(
+                    &conn,
+                    primary_id,
+                    secondary_id,
+                    "SUPERSEDES",
+                    1.0,
+                    Some("merged content"),
+                )?;
+                agent_context::archive_memory(&conn, secondary_id)?;
+            }
+            _ => {
+                // "keep_both": just link
+                agent_context::link_memories(
+                    &conn,
+                    primary_id,
+                    secondary_id,
+                    "RELATES_TO",
+                    1.0,
+                    Some("manual link (keep_both)"),
+                )?;
+            }
+        }
+
+        Ok(serde_json::json!({
+            "success": true,
+            "primary_id": primary_id,
+            "secondary_id": secondary_id,
+            "strategy": strategy
+        }))
+    }
+
+    fn apply_memory_decay(&self, context_id: &str) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let archived = agent_context::apply_memory_decay(&conn, context_id)?;
+        Ok(serde_json::json!({
+            "success": true,
+            "context_id": context_id,
+            "archived_count": archived.len(),
+            "archived_ids": archived
+        }))
+    }
+
+    fn memory_stats(&self, context_id: &str) -> anyhow::Result<serde_json::Value> {
+        let conn = self.conn()?;
+        let stats = agent_context::memory_stats(&conn, context_id)?;
+        Ok(serde_json::json!({
+            "success": true,
+            "context_id": context_id,
+            "total_count": stats.total_count,
+            "archived_count": stats.archived_count,
+            "total_tokens_estimate": stats.total_tokens_estimate,
+            "avg_quality": stats.avg_quality,
+            "avg_importance": stats.avg_importance,
+        }))
+    }
+}
+
 #[cfg(test)]
 pub mod test_helpers;
 

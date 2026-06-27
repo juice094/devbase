@@ -127,6 +127,14 @@ pub enum McpToolEnum {
     Evaluate(DevkitEvaluateTool),
     DocumentConvert(DevkitDocumentConvertTool),
     OntologyImport(DevkitOntologyImportTool),
+    MemoryLink(DevkitMemoryLinkTool),
+    MemoryRelated(DevkitMemoryRelatedTool),
+    MemoryGraph(DevkitMemoryGraphTool),
+    MemoryDedup(DevkitMemoryDedupTool),
+    MemoryQuality(DevkitMemoryQualityTool),
+    MemoryDecay(DevkitMemoryDecayTool),
+    MemoryMerge(DevkitMemoryMergeTool),
+    MemoryStats(DevkitMemoryStatsTool),
 }
 
 /// Stability tier for MCP tools.
@@ -226,6 +234,14 @@ impl McpToolEnum {
             McpToolEnum::Evaluate(_) => ToolTier::Beta,
             McpToolEnum::DocumentConvert(_) => ToolTier::Experimental,
             McpToolEnum::OntologyImport(_) => ToolTier::Beta,
+            McpToolEnum::MemoryLink(_) => ToolTier::Beta,
+            McpToolEnum::MemoryRelated(_) => ToolTier::Beta,
+            McpToolEnum::MemoryGraph(_) => ToolTier::Beta,
+            McpToolEnum::MemoryDedup(_) => ToolTier::Experimental,
+            McpToolEnum::MemoryQuality(_) => ToolTier::Beta,
+            McpToolEnum::MemoryDecay(_) => ToolTier::Experimental,
+            McpToolEnum::MemoryMerge(_) => ToolTier::Beta,
+            McpToolEnum::MemoryStats(_) => ToolTier::Beta,
         }
     }
 }
@@ -304,6 +320,14 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Evaluate(t) => t.name(),
             McpToolEnum::DocumentConvert(t) => t.name(),
             McpToolEnum::OntologyImport(t) => t.name(),
+            McpToolEnum::MemoryLink(t) => t.name(),
+            McpToolEnum::MemoryRelated(t) => t.name(),
+            McpToolEnum::MemoryGraph(t) => t.name(),
+            McpToolEnum::MemoryDedup(t) => t.name(),
+            McpToolEnum::MemoryQuality(t) => t.name(),
+            McpToolEnum::MemoryDecay(t) => t.name(),
+            McpToolEnum::MemoryMerge(t) => t.name(),
+            McpToolEnum::MemoryStats(t) => t.name(),
         }
     }
 
@@ -380,6 +404,14 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Evaluate(t) => t.schema(),
             McpToolEnum::DocumentConvert(t) => t.schema(),
             McpToolEnum::OntologyImport(t) => t.schema(),
+            McpToolEnum::MemoryLink(t) => t.schema(),
+            McpToolEnum::MemoryRelated(t) => t.schema(),
+            McpToolEnum::MemoryGraph(t) => t.schema(),
+            McpToolEnum::MemoryDedup(t) => t.schema(),
+            McpToolEnum::MemoryQuality(t) => t.schema(),
+            McpToolEnum::MemoryDecay(t) => t.schema(),
+            McpToolEnum::MemoryMerge(t) => t.schema(),
+            McpToolEnum::MemoryStats(t) => t.schema(),
         }
     }
 
@@ -460,6 +492,14 @@ impl McpTool for McpToolEnum {
             McpToolEnum::Evaluate(t) => t.invoke(args, ctx).await,
             McpToolEnum::DocumentConvert(t) => t.invoke(args, ctx).await,
             McpToolEnum::OntologyImport(t) => t.invoke(args, ctx).await,
+            McpToolEnum::MemoryLink(t) => t.invoke(args, ctx).await,
+            McpToolEnum::MemoryRelated(t) => t.invoke(args, ctx).await,
+            McpToolEnum::MemoryGraph(t) => t.invoke(args, ctx).await,
+            McpToolEnum::MemoryDedup(t) => t.invoke(args, ctx).await,
+            McpToolEnum::MemoryQuality(t) => t.invoke(args, ctx).await,
+            McpToolEnum::MemoryDecay(t) => t.invoke(args, ctx).await,
+            McpToolEnum::MemoryMerge(t) => t.invoke(args, ctx).await,
+            McpToolEnum::MemoryStats(t) => t.invoke(args, ctx).await,
         }
     }
 }
@@ -806,6 +846,14 @@ pub fn build_server_with_tiers(tiers: Option<&HashSet<ToolTier>>) -> McpServer {
         McpToolEnum::Evaluate(DevkitEvaluateTool),
         McpToolEnum::DocumentConvert(DevkitDocumentConvertTool),
         McpToolEnum::OntologyImport(DevkitOntologyImportTool),
+        McpToolEnum::MemoryLink(DevkitMemoryLinkTool),
+        McpToolEnum::MemoryRelated(DevkitMemoryRelatedTool),
+        McpToolEnum::MemoryGraph(DevkitMemoryGraphTool),
+        McpToolEnum::MemoryDedup(DevkitMemoryDedupTool),
+        McpToolEnum::MemoryQuality(DevkitMemoryQualityTool),
+        McpToolEnum::MemoryDecay(DevkitMemoryDecayTool),
+        McpToolEnum::MemoryMerge(DevkitMemoryMergeTool),
+        McpToolEnum::MemoryStats(DevkitMemoryStatsTool),
     ];
     for tool in all_tools {
         if let Some(allowed) = tiers

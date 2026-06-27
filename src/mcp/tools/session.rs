@@ -665,33 +665,45 @@ impl McpTool for DevkitSessionRecallTool {
 
     fn schema(&self) -> serde_json::Value {
         json!({
-            "description": r#"Semantic memory recall for an active agent session.
+            "description": r#"Semantic memory recall for an active agent session. Supports both vector and text-based queries.
 
 Use this when the user wants to:
 - Find relevant past memories by meaning rather than exact keyword
 - Surface decisions, constraints, or discoveries related to the current task
 - Inject top-k relevant memories into the prompt context
 
-Requires an externally-generated query embedding vector. devbase does NOT generate embeddings; it only searches stored vectors.
+Two query modes (choose one):
+1. Vector mode: provide query_embedding (f32 array, externally generated or from devkit_embedding_search).
+2. Text mode: provide query_text (plain string). devbase auto-generates the embedding internally when the 'embedding' feature is enabled, or falls back to keyword search.
+
+Do NOT use this for:
+- Keyword-only search over all memories (use devkit_session_search instead)
+- Querying entity relations (use devkit_relation_query instead)
 
 Parameters:
 - context_id: Session ID (optional; falls back to DEVBASE_ACTIVE_CONTEXT).
-- query_embedding: f32 array from an external embedding provider (required).
+- query_embedding: f32 array from an external embedding provider (optional if query_text is set).
+- query_text: Plain text query string (optional if query_embedding is set). Auto-embedded when embedding feature enabled.
 - limit: Maximum memories to return (default 5, max 20).
+- max_tokens: Optional total token budget for returned content. Truncates longer memories.
 
-Returns: memories sorted by cosine similarity score (0.0-1.0)."#,
+Returns: memories sorted by relevance score (vector cosine similarity or keyword match score 0.0-1.0)."#,
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "context_id": { "type": "string", "description": "Session ID (optional)" },
+                    "context_id": { "type": "string", "description": "Session ID (optional; falls back to active context)" },
                     "query_embedding": {
                         "type": "array",
                         "items": { "type": "number" },
-                        "description": "Query vector as f32 array (externally generated)"
+                        "description": "Query vector as f32 array (optional if query_text is set)"
                     },
-                    "limit": { "type": "integer", "default": 5 }
-                },
-                "required": ["query_embedding"]
+                    "query_text": {
+                        "type": "string",
+                        "description": "Plain text query (optional if query_embedding is set). Internally embedded when feature enabled, or falls back to keyword search."
+                    },
+                    "limit": { "type": "integer", "default": 5, "description": "Maximum memories to return (default 5, max 20)" },
+                    "max_tokens": { "type": "integer", "description": "Optional total token budget. Longer memories are truncated." }
+                }
             }
         })
     }
@@ -709,37 +721,54 @@ Returns: memories sorted by cosine similarity score (0.0-1.0)."#,
                 )
             })?,
         };
-        let query_emb = args
-            .get("query_embedding")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| anyhow::anyhow!("query_embedding required"))?
-            .iter()
-            .filter_map(|v| v.as_f64().map(|f| f as f32))
-            .collect::<Vec<f32>>();
-        if query_emb.is_empty() {
-            anyhow::bail!("query_embedding must not be empty");
-        }
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(5).min(20) as usize;
+        let max_tokens = args.get("max_tokens").and_then(|v| v.as_u64());
 
         let conn = ctx.conn_mut()?;
-        // Ensure UDF is registered on this connection
         crate::registry::agent_context::register_vector_functions(&conn)?;
-        let results = crate::registry::agent_context::search_memories_semantic(
-            &conn,
-            &context_id,
-            &query_emb,
-            limit,
-        )?;
+
+        // Determine query mode: vector vs text
+        let results: Vec<(crate::registry::agent_context::AgentMemory, f64)> =
+            if let Some(query_emb) = args.get("query_embedding").and_then(|v| v.as_array()) {
+                // Vector mode
+                let emb: Vec<f32> = query_emb
+                    .iter()
+                    .filter_map(|v| v.as_f64().map(|f| f as f32))
+                    .collect();
+                if emb.is_empty() {
+                    anyhow::bail!("query_embedding must not be empty if provided");
+                }
+                crate::registry::agent_context::search_memories_semantic(
+                    &conn, &context_id, &emb, limit,
+                )?
+            } else if let Some(query_text) = args.get("query_text").and_then(|v| v.as_str()) {
+                if query_text.trim().is_empty() {
+                    anyhow::bail!("query_text must not be empty if provided");
+                }
+                // Text mode: auto-embedding with keyword fallback
+                crate::registry::agent_context::search_memories_by_text(
+                    &conn, &context_id, query_text, limit,
+                )?
+            } else {
+                anyhow::bail!("One of query_embedding or query_text is required");
+            };
 
         let memories: Vec<serde_json::Value> = results
             .into_iter()
             .map(|(mem, score)| {
+                let content = if let Some(max_tok) = max_tokens {
+                    truncate_to_tokens(&mem.content, max_tok as usize)
+                } else {
+                    mem.content.clone()
+                };
                 json!({
                     "id": mem.id,
                     "type": mem.memory_type,
-                    "content": mem.content,
+                    "content": content,
                     "created_at": mem.created_at.to_rfc3339(),
                     "embedding_model": mem.embedding_model,
+                    "importance": mem.importance,
+                    "quality_score": mem.quality_score,
                     "score": score,
                 })
             })
@@ -1027,6 +1056,20 @@ Returns: import summary."#,
             "imported": imported,
         }))
     }
+}
+
+/// Truncate text to fit within an approximate token budget.
+/// Rough heuristic: ~2.5 chars/token for ASCII, ~1.5 for CJK.
+fn truncate_to_tokens(text: &str, max_tokens: usize) -> String {
+    let total_chars = text.chars().count();
+    let estimated_tokens = crate::registry::agent_context::estimate_tokens(text) as usize;
+    if estimated_tokens <= max_tokens {
+        return text.to_string();
+    }
+    // Truncate proportionally
+    let target_chars = (total_chars as f64 * max_tokens as f64 / estimated_tokens as f64) as usize;
+    let truncated: String = text.chars().take(target_chars.max(50)).collect();
+    format!("{}…[truncated to ~{} tokens]", truncated, max_tokens)
 }
 
 #[cfg(test)]

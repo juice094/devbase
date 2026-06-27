@@ -38,6 +38,7 @@ pub mod v33_workflow_context;
 pub mod v34_memory_vectors;
 pub mod v35_skill_fts;
 pub mod v36_skill_sources;
+pub mod v37_memory_graph;
 
 pub fn run_all(conn: &mut Connection) -> anyhow::Result<()> {
     let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -149,6 +150,9 @@ pub fn run_all(conn: &mut Connection) -> anyhow::Result<()> {
     }
     if user_version < 36 {
         v36_skill_sources::run(conn)?;
+    }
+    if user_version < 37 {
+        v37_memory_graph::run(conn)?;
     }
 
     Ok(())

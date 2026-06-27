@@ -9,8 +9,8 @@
 //! and implements all MCP client traits (`ScanClient`, `HealthClient`, etc.).
 
 use crate::config::Config;
-use crate::i18n::{I18n, from_language};
-use crate::registry::{ENTITY_TYPE_REPO, WorkspaceRegistry};
+use crate::i18n::{from_language, I18n};
+use crate::registry::{WorkspaceRegistry, ENTITY_TYPE_REPO};
 use crate::search::list_indexed_repo_ids_at;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -131,6 +131,10 @@ pub struct AppContext {
     pub i18n: I18n,
     pool: Pool<SqliteConnectionManager>,
     env_cache: Arc<std::sync::Mutex<EnvVersionCache>>,
+    /// Optional embedding provider for text→vector generation.
+    /// Available when the `embedding` feature is enabled.
+    #[cfg(feature = "embedding")]
+    embedding_provider: Arc<dyn crate::embedding::EmbeddingProvider>,
 }
 
 impl AppContext {
@@ -166,6 +170,8 @@ impl AppContext {
             i18n,
             pool,
             env_cache: Arc::new(std::sync::Mutex::new(EnvVersionCache::default())),
+            #[cfg(feature = "embedding")]
+            embedding_provider: Arc::from(crate::embedding::default_provider()),
         })
     }
 
@@ -199,6 +205,8 @@ impl AppContext {
             i18n,
             pool,
             env_cache: Arc::new(std::sync::Mutex::new(EnvVersionCache::default())),
+            #[cfg(feature = "embedding")]
+            embedding_provider: Arc::from(crate::embedding::default_provider()),
         })
     }
 
@@ -224,6 +232,13 @@ impl AppContext {
     /// 获取连接池的克隆，用于 spawn_blocking / thread::spawn 闭包。
     pub fn pool(&self) -> Pool<SqliteConnectionManager> {
         self.pool.clone()
+    }
+
+    /// 获取嵌入提供者，用于文本→向量生成。
+    /// 仅在 `embedding` feature 启用时可用。
+    #[cfg(feature = "embedding")]
+    pub fn embedding_provider(&self) -> &dyn crate::embedding::EmbeddingProvider {
+        &*self.embedding_provider
     }
 
     /// 获取环境版本缓存的只读快照。
