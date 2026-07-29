@@ -10,6 +10,6 @@ keywords = ["syncthing", "p2p", "sync", "rest-client"]
 categories = ["network-programming"]
 
 [dependencies]
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 serde_json = "1"
 anyhow = "1"
